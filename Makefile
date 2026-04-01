@@ -1,8 +1,16 @@
 .PHONY: build dev icon
 
+ifeq ($(OS),Windows_NT)
+PYTHON_ICON = .venv/Scripts/python.exe
+else
 PYTHON_ICON = .venv/bin/python
+endif
 ICON_INSET = 0.85
 
+ifeq ($(OS),Windows_NT)
+icon:
+	@echo Skipping icon generation on Windows. Using existing build/windows/icon.ico.
+else
 icon:
 	rm -f build/appicon.png build/appicon.source.png
 	sips -s format png silphium.svg --out build/appicon.source.png >/dev/null
@@ -24,6 +32,7 @@ icon:
 	$(PYTHON_ICON) -c "from PIL import Image; img = Image.open('build/appicon.png').convert('RGBA'); img.save('build/windows/icon.ico', format='ICO', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])"
 	if [ -f build/bin/Silphium.app/Contents/Resources/iconfile.icns ]; then cp build/darwin/iconfile.icns build/bin/Silphium.app/Contents/Resources/iconfile.icns; fi
 	rm -rf build/icon.iconset
+endif
 
 build:
 	$(MAKE) icon
