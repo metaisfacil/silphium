@@ -1320,6 +1320,25 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
     }
 };
 
+const firstTrackIndexFromRandomAlbumFolder = (): number => {
+    const folderCandidates = Array.from(libraryNodeByPath.values())
+        .filter((node) => node.trackIndexes.length > 0);
+
+    if (folderCandidates.length === 0) {
+        return 0;
+    }
+
+    const randomFolder = folderCandidates[Math.floor(Math.random() * folderCandidates.length)];
+    const orderedTrackIndexes = [...randomFolder.trackIndexes].sort((leftIndex, rightIndex) => (
+        tracks[leftIndex].name.localeCompare(tracks[rightIndex].name, undefined, {
+            sensitivity: 'base',
+            numeric: true,
+        })
+    ));
+
+    return orderedTrackIndexes[0] ?? 0;
+};
+
 const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => {
     if (!scanResult.rootPath) {
         return;
@@ -1451,7 +1470,8 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
     currentFolderPath = '';
     renderFolder('none');
     resetShuffleHistory();
-    void loadTrack(0);
+    const startingTrackIndex = firstTrackIndexFromRandomAlbumFolder();
+    void loadTrack(startingTrackIndex);
 
     updatePlayButton();
 };
