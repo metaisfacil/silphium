@@ -1475,6 +1475,20 @@ const openImageFileModal = async (imageFile: ImageLibraryFile): Promise<void> =>
     }
 };
 
+const openImagePreviewModal = (title: string, source: string): void => {
+    if (imageModalHideTimer !== undefined) {
+        window.clearTimeout(imageModalHideTimer);
+        imageModalHideTimer = undefined;
+    }
+
+    imageFileTitle.textContent = title;
+    imageFilePreview.src = source;
+    imageFileModal.hidden = false;
+    window.requestAnimationFrame(() => {
+        imageFileModal.classList.add('is-visible');
+    });
+};
+
 const closeSettingsModal = (): void => {
     settingsModal.hidden = true;
     settingsStatus.textContent = '';
@@ -2007,6 +2021,19 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
 };
 
 coverFrame.addEventListener('click', () => {
+    if (!coverArt.classList.contains('is-visible') || !coverArt.src) {
+        return;
+    }
+
+    const activeTrack = tracks[currentTrackIndex];
+    const title = activeTrack
+        ? `${activeTrack.displayArtist} - ${activeTrack.displayAlbum}`
+        : 'Cover art';
+    openImagePreviewModal(title, coverArt.src);
+});
+
+coverFrame.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
     setCoverFlipped(!coverFlipped);
 });
 
@@ -2016,7 +2043,16 @@ coverFrame.addEventListener('keydown', (event) => {
     }
 
     event.preventDefault();
-    setCoverFlipped(!coverFlipped);
+
+    if (!coverArt.classList.contains('is-visible') || !coverArt.src) {
+        return;
+    }
+
+    const activeTrack = tracks[currentTrackIndex];
+    const title = activeTrack
+        ? `${activeTrack.displayArtist} - ${activeTrack.displayAlbum}`
+        : 'Cover art';
+    openImagePreviewModal(title, coverArt.src);
 });
 
 librarySettings.addEventListener('click', () => {
