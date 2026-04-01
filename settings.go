@@ -12,13 +12,26 @@ const appSettingsFileName = "silphium.settings.json"
 type AppSettings struct {
 	LibraryPath           string `json:"libraryPath"`
 	ListenBrainzUserToken string `json:"listenBrainzUserToken"`
+	PlaybackOrder         string `json:"playbackOrder"`
+}
+
+const defaultPlaybackOrder = "ordered-library"
+
+func normalizePlaybackOrder(value string) string {
+	switch strings.TrimSpace(value) {
+	case "ordered-album", "ordered-library", "shuffle-album", "shuffle-library":
+		return strings.TrimSpace(value)
+	default:
+		return defaultPlaybackOrder
+	}
 }
 
 func normalizeAppSettings(settings AppSettings) AppSettings {
 	token := strings.TrimSpace(settings.ListenBrainzUserToken)
 	path := strings.TrimSpace(settings.LibraryPath)
+	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
 	if path == "" {
-		return AppSettings{ListenBrainzUserToken: token}
+		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder}
 	}
 
 	path = normalizePath(path)
@@ -29,6 +42,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	return AppSettings{
 		LibraryPath:           path,
 		ListenBrainzUserToken: token,
+		PlaybackOrder:         playbackOrder,
 	}
 }
 

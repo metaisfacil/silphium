@@ -115,7 +115,10 @@ type AudioPlaybackState = {
 type AppSettings = {
     libraryPath: string;
     listenBrainzUserToken: string;
+    playbackOrder: PlaybackOrderMode;
 };
+
+type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
 
 const app = document.querySelector('#app');
 
@@ -168,6 +171,12 @@ app.innerHTML = `
                         </div>
                     </section>
                 </div>
+                <div id="play-order-menu" class="play-order-menu" role="menu" aria-label="Playback order" hidden>
+                    <button class="play-order-item" type="button" role="menuitemradio" data-play-order="ordered-album">Ordered (album)</button>
+                    <button class="play-order-item" type="button" role="menuitemradio" data-play-order="ordered-library">Ordered (library)</button>
+                    <button class="play-order-item" type="button" role="menuitemradio" data-play-order="shuffle-album">Shuffle (album)</button>
+                    <button class="play-order-item" type="button" role="menuitemradio" data-play-order="shuffle-library">Shuffle (library)</button>
+                </div>
 `;
 
 let tracks: Track[] = [];
@@ -195,13 +204,17 @@ let playbackPollHandle: number | undefined;
 let isSeeking = false;
 let backendReady = false;
 let lastHandledEndEventId = 0;
-let currentSettings: AppSettings = { libraryPath: '', listenBrainzUserToken: '' };
+let currentSettings: AppSettings = { libraryPath: '', listenBrainzUserToken: '', playbackOrder: 'ordered-library' };
 let scrobbleSessionId = 0;
 let nowPlayingSubmittedSessionId = -1;
 let scrobbleSubmittedSessionId = -1;
 let nowPlayingInFlight = false;
 let scrobbleInFlight = false;
 let scrobbleSessionStartedAt = 0;
+let playbackOrderMode: PlaybackOrderMode = 'ordered-library';
+let shuffleHistory: number[] = [];
+let shuffleCursor = -1;
+let shuffleScopeKey = '';
 const libraryNodeByPath = new Map<string, LibraryNode>();
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
@@ -249,6 +262,22 @@ const settingsSave = document.getElementById('settings-save') as HTMLButtonEleme
 const settingsLibraryPath = document.getElementById('settings-library-path') as HTMLInputElement;
 const settingsListenBrainzToken = document.getElementById('settings-listenbrainz-token') as HTMLInputElement;
 const settingsStatus = document.getElementById('settings-status') as HTMLParagraphElement;
+const playOrderMenu = document.getElementById('play-order-menu') as HTMLDivElement;
+
+const playbackOrderLabelByMode: Record<PlaybackOrderMode, string> = {
+    'ordered-album': 'Ordered (album)',
+    'ordered-library': 'Ordered (library)',
+    'shuffle-album': 'Shuffle (album)',
+    'shuffle-library': 'Shuffle (library)',
+};
+
+const asPlaybackOrderMode = (value: string): PlaybackOrderMode => {
+    if (value === 'ordered-album' || value === 'ordered-library' || value === 'shuffle-album' || value === 'shuffle-library') {
+        return value;
+    }
+
+    return 'ordered-library';
+};
 
 const setLibraryPathLabel = (): void => {
     const partialSuffix = libraryIndexTruncated ? ' (partial)' : '';
@@ -573,6 +602,178 @@ const setCoverFlipped = (flipped: boolean): void => {
     coverFlipper.classList.toggle('is-flipped', flipped);
 };
 
+const albumScopeKeyForTrack = (track: Track): string => {
+    const album = track.displayAlbum.trim();
+    const artist = track.displayArtist.trim();
+
+    if (album && album.toLowerCase() !== 'unknown album' && artist && artist.toLowerCase() !== 'unknown artist') {
+        return `${artist.toLowerCase()}::${album.toLowerCase()}`;
+    }
+
+    return `folder::${track.folderPath.toLowerCase()}`;
+};
+
+const parseTrackNumber = (value: string): number | undefined => {
+    const first = value.match(/\d+/)?.[0];
+    if (!first) {
+        return undefined;
+    }
+
+    const parsed = Number(first);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return undefined;
+    }
+
+    return parsed;
+};
+
+const orderedTrackIndexesForScope = (): number[] => {
+    if (tracks.length === 0) {
+        return [];
+    }
+
+    if (playbackOrderMode === 'ordered-library' || playbackOrderMode === 'shuffle-library') {
+        return tracks.map((_, index) => index);
+    }
+
+    const current = tracks[currentTrackIndex];
+    if (!current) {
+        return [];
+    }
+
+    const albumScopeKey = albumScopeKeyForTrack(current);
+    return tracks
+        .map((track, index) => ({ track, index }))
+        .filter(({ track }) => albumScopeKeyForTrack(track) === albumScopeKey)
+        .sort((left, right) => {
+            const leftTrackNo = parseTrackNumber(left.track.displayTrackNumber);
+            const rightTrackNo = parseTrackNumber(right.track.displayTrackNumber);
+
+            if (leftTrackNo !== undefined && rightTrackNo !== undefined && leftTrackNo !== rightTrackNo) {
+                return leftTrackNo - rightTrackNo;
+            }
+
+            return left.track.relativePath.localeCompare(right.track.relativePath, undefined, { sensitivity: 'base' });
+        })
+        .map(({ index }) => index);
+};
+
+const isShuffleMode = (): boolean => playbackOrderMode === 'shuffle-album' || playbackOrderMode === 'shuffle-library';
+
+const currentShuffleScopeKey = (): string => {
+    if (playbackOrderMode === 'shuffle-library') {
+        return 'library';
+    }
+
+    const current = tracks[currentTrackIndex];
+    if (!current) {
+        return 'album::none';
+    }
+
+    return `album::${albumScopeKeyForTrack(current)}`;
+};
+
+const resetShuffleHistory = (): void => {
+    shuffleHistory = [];
+    shuffleCursor = -1;
+    shuffleScopeKey = '';
+};
+
+const pickRandomTrackIndex = (candidates: number[], currentIndex: number): number => {
+    if (candidates.length === 0) {
+        return currentIndex;
+    }
+
+    if (candidates.length === 1) {
+        return candidates[0];
+    }
+
+    const withoutCurrent = candidates.filter((index) => index !== currentIndex);
+    const pool = withoutCurrent.length > 0 ? withoutCurrent : candidates;
+    return pool[Math.floor(Math.random() * pool.length)];
+};
+
+const nextTrackIndexForDirection = (direction: -1 | 1): number | undefined => {
+    const orderedIndexes = orderedTrackIndexesForScope();
+    if (orderedIndexes.length === 0) {
+        return undefined;
+    }
+
+    if (!isShuffleMode()) {
+        const currentPosition = orderedIndexes.indexOf(currentTrackIndex);
+        if (currentPosition < 0) {
+            return orderedIndexes[0];
+        }
+
+        const nextPosition = (currentPosition + direction + orderedIndexes.length) % orderedIndexes.length;
+        return orderedIndexes[nextPosition];
+    }
+
+    const scopeKey = currentShuffleScopeKey();
+    if (shuffleScopeKey !== scopeKey) {
+        shuffleScopeKey = scopeKey;
+        shuffleHistory = [];
+        shuffleCursor = -1;
+    }
+
+    if (shuffleCursor < 0) {
+        shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
+        shuffleCursor = 0;
+    }
+
+    if (direction < 0) {
+        if (shuffleCursor > 0) {
+            shuffleCursor -= 1;
+        }
+
+        return shuffleHistory[shuffleCursor];
+    }
+
+    if (shuffleCursor < shuffleHistory.length - 1) {
+        shuffleCursor += 1;
+        return shuffleHistory[shuffleCursor];
+    }
+
+    const currentIndex = shuffleHistory[shuffleCursor];
+    const nextIndex = pickRandomTrackIndex(orderedIndexes, currentIndex);
+    shuffleHistory.push(nextIndex);
+    shuffleCursor += 1;
+    return nextIndex;
+};
+
+const closePlayOrderMenu = (): void => {
+    playOrderMenu.hidden = true;
+};
+
+const updatePlayOrderMenuState = (): void => {
+    const items = playOrderMenu.querySelectorAll('.play-order-item');
+    items.forEach((item) => {
+        if (!(item instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const mode = item.dataset.playOrder as PlaybackOrderMode | undefined;
+        const selected = mode === playbackOrderMode;
+        item.setAttribute('aria-checked', selected ? 'true' : 'false');
+        item.dataset.selected = selected ? 'true' : 'false';
+    });
+
+    playPause.title = `Playback order: ${playbackOrderLabelByMode[playbackOrderMode]} (right-click to change)`;
+};
+
+const openPlayOrderMenu = (clientX: number, clientY: number): void => {
+    updatePlayOrderMenuState();
+    playOrderMenu.hidden = false;
+
+    const margin = 10;
+    const rect = playOrderMenu.getBoundingClientRect();
+    const clampedX = Math.min(clientX, window.innerWidth - rect.width - margin);
+    const clampedY = Math.min(clientY, window.innerHeight - rect.height - margin);
+
+    playOrderMenu.style.left = `${Math.max(margin, clampedX)}px`;
+    playOrderMenu.style.top = `${Math.max(margin, clampedY)}px`;
+};
+
 const faviconUrlForResource = (resource: string): string | undefined => {
     try {
         const { hostname } = new URL(resource);
@@ -819,6 +1020,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     nowPlayingSubmittedSessionId = -1;
     scrobbleSubmittedSessionId = -1;
     scrobbleSessionStartedAt = 0;
+    resetShuffleHistory();
 
     trackTitle.textContent = 'No track loaded';
     trackAlbum.textContent = 'Unknown Album';
@@ -849,7 +1051,12 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
 const initializeSettings = async (): Promise<void> => {
     try {
         const settings = await GetSettings() as AppSettings;
-        currentSettings = settings;
+        currentSettings = {
+            libraryPath: settings.libraryPath || '',
+            listenBrainzUserToken: settings.listenBrainzUserToken || '',
+            playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
+        };
+        setPlaybackOrderMode(currentSettings.playbackOrder);
         settingsLibraryPath.value = settings.libraryPath || '';
         settingsListenBrainzToken.value = settings.listenBrainzUserToken || '';
 
@@ -968,10 +1175,43 @@ const goToTrack = (direction: -1 | 1): void => {
         return;
     }
 
-    const nextIndex = (currentTrackIndex + direction + tracks.length) % tracks.length;
+    const nextIndex = nextTrackIndexForDirection(direction);
+    if (nextIndex === undefined) {
+        return;
+    }
+
     void loadTrack(nextIndex).then(() => {
         void playCurrentTrack();
     });
+};
+
+const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
+    if (playbackOrderMode === nextMode) {
+        return;
+    }
+
+    playbackOrderMode = nextMode;
+    currentSettings.playbackOrder = nextMode;
+    resetShuffleHistory();
+    updatePlayOrderMenuState();
+};
+
+const savePlaybackOrderSetting = async (): Promise<void> => {
+    try {
+        const savedSettings = await SaveSettings({
+            libraryPath: currentSettings.libraryPath,
+            listenBrainzUserToken: currentSettings.listenBrainzUserToken,
+            playbackOrder: playbackOrderMode,
+        }) as AppSettings;
+
+        currentSettings = {
+            libraryPath: savedSettings.libraryPath || '',
+            listenBrainzUserToken: savedSettings.listenBrainzUserToken || '',
+            playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
+        };
+    } catch (error) {
+        console.error(error);
+    }
 };
 
 const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => {
@@ -1102,6 +1342,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
 
     currentFolderPath = '';
     renderFolder('none');
+    resetShuffleHistory();
     void loadTrack(0);
 
     updatePlayButton();
@@ -1161,9 +1402,14 @@ settingsSave.addEventListener('click', async () => {
         const savedSettings = await SaveSettings({
             libraryPath: requestedLibraryPath,
             listenBrainzUserToken: settingsListenBrainzToken.value,
+            playbackOrder: playbackOrderMode,
         }) as AppSettings;
 
-        currentSettings = savedSettings;
+        currentSettings = {
+            libraryPath: savedSettings.libraryPath || '',
+            listenBrainzUserToken: savedSettings.listenBrainzUserToken || '',
+            playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
+        };
         settingsLibraryPath.value = savedSettings.libraryPath || '';
 
         await applyLibraryPath(savedSettings.libraryPath || '');
@@ -1274,6 +1520,28 @@ playPause.addEventListener('click', () => {
     void pauseCurrentTrack();
 });
 
+playPause.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openPlayOrderMenu(event.clientX, event.clientY);
+});
+
+playOrderMenu.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const nextMode = target.dataset.playOrder as PlaybackOrderMode | undefined;
+    if (!nextMode) {
+        return;
+    }
+
+    setPlaybackOrderMode(nextMode);
+    void savePlaybackOrderSetting();
+    closePlayOrderMenu();
+});
+
 back.addEventListener('click', () => {
     goToTrack(-1);
 });
@@ -1324,6 +1592,10 @@ volumeBtn.addEventListener('click', () => {
 document.addEventListener('click', (e) => {
     const target = e.target as Node;
 
+    if (!playOrderMenu.hidden && !playOrderMenu.contains(target)) {
+        closePlayOrderMenu();
+    }
+
     if (!volumeRow.contains(target)) {
         volumeRow.classList.remove('open');
     }
@@ -1343,7 +1615,20 @@ document.addEventListener('click', (e) => {
     setSidebarOpen(false);
 });
 
+document.addEventListener('scroll', () => {
+    if (!playOrderMenu.hidden) {
+        closePlayOrderMenu();
+    }
+}, { capture: true });
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !playOrderMenu.hidden) {
+        closePlayOrderMenu();
+    }
+});
+
 updatePlayButton();
 updateTrackLabels();
+updatePlayOrderMenuState();
 void initializeBackendPlayback();
 void initializeSettings();
