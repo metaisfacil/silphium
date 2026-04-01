@@ -11,6 +11,7 @@ type LibraryNode = {
     path: string;
     folders: LibraryNode[];
     trackIndexes: number[];
+    textFileIndexes: number[];
 };
 
 type Track = {
@@ -60,6 +61,13 @@ type TrackBlobPayload = {
     data: string;
 };
 
+type TextLibraryFile = {
+    name: string;
+    relativePath: string;
+    folderPath: string;
+    sourceFile: File;
+};
+
 const app = document.querySelector('#app');
 
 if (!app) {
@@ -73,6 +81,16 @@ app.innerHTML = `
     </div>
         ${renderSidebar()}
         ${renderMediaControls()}
+                <div id="text-file-modal" class="text-file-modal" hidden>
+                    <div id="text-file-backdrop" class="text-file-backdrop"></div>
+                    <section class="text-file-dialog" role="dialog" aria-modal="true" aria-labelledby="text-file-title">
+                        <header class="text-file-header">
+                            <p id="text-file-title" class="text-file-title">Text file</p>
+                            <button id="text-file-close" class="text-file-close" type="button" aria-label="Close text file">✕</button>
+                        </header>
+                        <pre class="text-file-content"><code id="text-file-code"></code></pre>
+                    </section>
+                </div>
 `;
 
 const audio = new Audio();
@@ -80,6 +98,7 @@ audio.preload = 'metadata';
 audio.volume = 0.8;
 
 let tracks: Track[] = [];
+let textFiles: TextLibraryFile[] = [];
 let currentTrackIndex = -1;
 let objectUrls: string[] = [];
 let libraryFiles: File[] = [];
@@ -122,6 +141,11 @@ trackAlbum.addEventListener('click', () => openMbLink(trackAlbum));
 trackArtist.addEventListener('click', () => openMbLink(trackArtist));
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
+const textFileModal = document.getElementById('text-file-modal') as HTMLDivElement;
+const textFileBackdrop = document.getElementById('text-file-backdrop') as HTMLDivElement;
+const textFileTitle = document.getElementById('text-file-title') as HTMLParagraphElement;
+const textFileCode = document.getElementById('text-file-code') as HTMLElement;
+const textFileClose = document.getElementById('text-file-close') as HTMLButtonElement;
 
 const setLibraryPathLabel = (): void => {
     if (!libraryRootName) {
@@ -155,7 +179,13 @@ const createFolderPane = (node: LibraryNode): HTMLUListElement => {
         .map(({ trackIndex, track }) => `<li><button class="library-entry track${trackIndex === currentTrackIndex ? ' active' : ''}" data-track-index="${trackIndex}">🎵 ${track.title}</button></li>`)
         .join('');
 
-    const content = `${folderRows}${trackRows}`;
+    const textRows = node.textFileIndexes
+        .map((textFileIndex) => ({ textFileIndex, file: textFiles[textFileIndex] }))
+        .sort((left, right) => left.file.name.localeCompare(right.file.name, undefined, { sensitivity: 'base' }))
+        .map(({ textFileIndex, file }) => `<li><button class="library-entry text-file" data-text-file-index="${textFileIndex}">📄 ${file.name}</button></li>`)
+        .join('');
+
+    const content = `${folderRows}${trackRows}${textRows}`;
     if (!content) {
         pane.innerHTML = '<li class="empty">Folder is empty</li>';
         return pane;
@@ -489,11 +519,36 @@ const getLibraryRootName = (files: File[]): string => {
 };
 
 const isAudioFile = (file: File): boolean => {
+    if (/\.m3u8$/i.test(file.name)) {
+        return false;
+    }
+
     if (file.type.startsWith('audio/')) {
         return true;
     }
 
     return /\.(mp3|m4a|aac|wav|flac|ogg|opus)$/i.test(file.name);
+};
+
+const isTextLibraryFile = (file: File): boolean => /\.(txt|log)$/i.test(file.name);
+
+const closeTextFileModal = (): void => {
+    textFileModal.hidden = true;
+    textFileCode.textContent = '';
+};
+
+const openTextFileModal = async (textFile: TextLibraryFile): Promise<void> => {
+    textFileTitle.textContent = textFile.relativePath || textFile.name;
+    textFileCode.textContent = 'Loading…';
+    textFileModal.hidden = false;
+
+    try {
+        const content = await textFile.sourceFile.text();
+        textFileCode.textContent = content;
+    } catch (error) {
+        console.error(error);
+        textFileCode.textContent = 'Unable to read this file.';
+    }
 };
 
 const isJpgFile = (file: File): boolean => {
@@ -628,12 +683,29 @@ const loadLibraryFiles = (fileList: FileList): void => {
             };
         });
 
+    textFiles = allFiles
+        .filter((file) => isTextLibraryFile(file))
+        .sort((left, right) => getRelativePath(left).localeCompare(getRelativePath(right), undefined, { sensitivity: 'base' }))
+        .map((file) => {
+            const relativePath = getRelativePath(file);
+            const parts = relativePath.split('/');
+            parts.pop();
+
+            return {
+                name: file.name,
+                relativePath,
+                folderPath: parts.join('/'),
+                sourceFile: file,
+            };
+        });
+
     libraryNodeByPath.clear();
     const rootNode: LibraryNode = {
         name: libraryRootName,
         path: '',
         folders: [],
         trackIndexes: [],
+        textFileIndexes: [],
     };
     libraryNodeByPath.set('', rootNode);
 
@@ -648,6 +720,7 @@ const loadLibraryFiles = (fileList: FileList): void => {
             path,
             folders: [],
             trackIndexes: [],
+            textFileIndexes: [],
         };
         libraryNodeByPath.set(path, created);
         parent.folders.push(created);
@@ -665,6 +738,19 @@ const loadLibraryFiles = (fileList: FileList): void => {
         }
 
         parent.trackIndexes.push(index);
+    });
+
+    textFiles.forEach((textFile, index) => {
+        const segments = textFile.folderPath ? textFile.folderPath.split('/') : [];
+        let parent = rootNode;
+        let cumulativePath = '';
+
+        for (const segment of segments) {
+            cumulativePath = cumulativePath ? `${cumulativePath}/${segment}` : segment;
+            parent = getOrCreateFolder(cumulativePath, segment, parent);
+        }
+
+        parent.textFileIndexes.push(index);
     });
 
     if (tracks.length === 0) {
@@ -731,17 +817,47 @@ libraryBrowser.addEventListener('click', (event) => {
     }
 
     const rawIndex = target.dataset.trackIndex;
-    if (rawIndex === undefined) {
+    if (rawIndex !== undefined) {
+        const index = Number(rawIndex);
+        if (!Number.isInteger(index)) {
+            return;
+        }
+
+        loadTrack(index);
+        void playCurrentTrack();
         return;
     }
 
-    const index = Number(rawIndex);
-    if (!Number.isInteger(index)) {
+    const rawTextFileIndex = target.dataset.textFileIndex;
+    if (rawTextFileIndex === undefined) {
         return;
     }
 
-    loadTrack(index);
-    void playCurrentTrack();
+    const textFileIndex = Number(rawTextFileIndex);
+    if (!Number.isInteger(textFileIndex)) {
+        return;
+    }
+
+    const textFile = textFiles[textFileIndex];
+    if (!textFile) {
+        return;
+    }
+
+    void openTextFileModal(textFile);
+});
+
+textFileBackdrop.addEventListener('click', () => {
+    closeTextFileModal();
+});
+
+textFileClose.addEventListener('click', () => {
+    closeTextFileModal();
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !textFileModal.hidden) {
+        closeTextFileModal();
+    }
 });
 
 libraryBack.addEventListener('click', () => {

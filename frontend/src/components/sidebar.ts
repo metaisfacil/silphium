@@ -13,7 +13,7 @@ export const renderSidebar = (): string => `
       <div class="library-header">
         <h2>Library</h2>
         <label for="library-upload" class="upload-btn">Choose Folder</label>
-        <input id="library-upload" type="file" accept="audio/*,.jpg,.jpeg" multiple webkitdirectory>
+        <input id="library-upload" type="file" accept="audio/*,.jpg,.jpeg,.txt,.log" multiple webkitdirectory>
       </div>
       <div class="library-toolbar">
         <button id="library-back" class="library-back" type="button" aria-label="Go to parent folder">←</button>
