@@ -1428,7 +1428,7 @@ sidebarToggle.addEventListener('click', () => {
 const setSidebarOpen = (open: boolean): void => {
     sidebarOpen = open;
     app.classList.toggle('sidebar-open', sidebarOpen);
-    sidebarToggle.textContent = sidebarOpen ? '←' : '→';
+    sidebarToggle.textContent = '‣‣‣';
     sidebarToggle.setAttribute('aria-label', sidebarOpen ? 'Close library' : 'Open library');
     librarySidebar.setAttribute('aria-hidden', sidebarOpen ? 'false' : 'true');
 };
