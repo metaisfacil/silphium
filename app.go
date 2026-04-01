@@ -46,6 +46,7 @@ type LibraryScanResult struct {
 	RootName          string               `json:"rootName"`
 	TrackFiles        []LibraryIndexedFile `json:"trackFiles"`
 	TextFiles         []LibraryIndexedFile `json:"textFiles"`
+	ImageFiles        []LibraryIndexedFile `json:"imageFiles"`
 	CoverPathByFolder map[string]string    `json:"coverPathByFolder"`
 	TotalEntries      int                  `json:"totalEntries"`
 	Truncated         bool                 `json:"truncated"`
@@ -119,6 +120,15 @@ var textExtensions = map[string]struct{}{
 	".log": {},
 }
 
+var imageExtensions = map[string]struct{}{
+	".jpg":  {},
+	".jpeg": {},
+	".png":  {},
+	".gif":  {},
+	".webp": {},
+	".bmp":  {},
+}
+
 func isAudioPath(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext == ".m3u8" {
@@ -130,6 +140,11 @@ func isAudioPath(path string) bool {
 
 func isTextPath(path string) bool {
 	_, ok := textExtensions[strings.ToLower(filepath.Ext(path))]
+	return ok
+}
+
+func isImagePath(path string) bool {
+	_, ok := imageExtensions[strings.ToLower(filepath.Ext(path))]
 	return ok
 }
 
@@ -305,6 +320,7 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 		RootName:          filepath.Base(cleanRoot),
 		TrackFiles:        []LibraryIndexedFile{},
 		TextFiles:         []LibraryIndexedFile{},
+		ImageFiles:        []LibraryIndexedFile{},
 		CoverPathByFolder: map[string]string{},
 		EntryLimit:        maxLibraryEntries,
 	}
@@ -361,7 +377,13 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 			result.TrackFiles = append(result.TrackFiles, indexed)
 		case isTextPath(currentPath):
 			result.TextFiles = append(result.TextFiles, indexed)
-		case isJpegPath(currentPath):
+		case isImagePath(currentPath):
+			result.ImageFiles = append(result.ImageFiles, indexed)
+
+			if !isJpegPath(currentPath) {
+				break
+			}
+
 			folderKey := strings.ToLower(folderPath)
 			name := strings.ToLower(entry.Name())
 			priority := coverPriority(name)
@@ -391,6 +413,12 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 	sort.SliceStable(result.TextFiles, func(i int, j int) bool {
 		left := strings.ToLower(result.TextFiles[i].RelativePath)
 		right := strings.ToLower(result.TextFiles[j].RelativePath)
+		return left < right
+	})
+
+	sort.SliceStable(result.ImageFiles, func(i int, j int) bool {
+		left := strings.ToLower(result.ImageFiles[i].RelativePath)
+		right := strings.ToLower(result.ImageFiles[j].RelativePath)
 		return left < right
 	})
 

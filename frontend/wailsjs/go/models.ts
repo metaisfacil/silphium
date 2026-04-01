@@ -63,6 +63,7 @@ export namespace main {
 	    rootName: string;
 	    trackFiles: LibraryIndexedFile[];
 	    textFiles: LibraryIndexedFile[];
+	    imageFiles: LibraryIndexedFile[];
 	    coverPathByFolder: Record<string, string>;
 	    totalEntries: number;
 	    truncated: boolean;
@@ -78,6 +79,7 @@ export namespace main {
 	        this.rootName = source["rootName"];
 	        this.trackFiles = this.convertValues(source["trackFiles"], LibraryIndexedFile);
 	        this.textFiles = this.convertValues(source["textFiles"], LibraryIndexedFile);
+	        this.imageFiles = this.convertValues(source["imageFiles"], LibraryIndexedFile);
 	        this.coverPathByFolder = source["coverPathByFolder"];
 	        this.totalEntries = source["totalEntries"];
 	        this.truncated = source["truncated"];

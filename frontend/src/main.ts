@@ -32,6 +32,7 @@ type LibraryNode = {
     folders: LibraryNode[];
     trackIndexes: number[];
     textFileIndexes: number[];
+    imageFileIndexes: number[];
 };
 
 type Track = {
@@ -95,6 +96,7 @@ type LibraryScanResult = {
     rootName: string;
     trackFiles: LibraryIndexedFile[];
     textFiles: LibraryIndexedFile[];
+    imageFiles: LibraryIndexedFile[];
     coverPathByFolder: Record<string, string>;
     totalEntries: number;
     truncated: boolean;
@@ -107,6 +109,13 @@ type PlaylistLoadResult = {
 };
 
 type TextLibraryFile = {
+    name: string;
+    path: string;
+    relativePath: string;
+    folderPath: string;
+};
+
+type ImageLibraryFile = {
     name: string;
     path: string;
     relativePath: string;
@@ -152,6 +161,18 @@ app.innerHTML = `
                             <button id="text-file-close" class="text-file-close" type="button" aria-label="Close text file">✕</button>
                         </header>
                         <pre class="text-file-content"><code id="text-file-code"></code></pre>
+                    </section>
+                </div>
+                <div id="image-file-modal" class="image-file-modal" hidden>
+                    <div id="image-file-backdrop" class="image-file-backdrop"></div>
+                    <section class="image-file-dialog" role="dialog" aria-modal="true" aria-labelledby="image-file-title">
+                        <header class="image-file-header">
+                            <p id="image-file-title" class="image-file-title">Image file</p>
+                            <button id="image-file-close" class="image-file-close" type="button" aria-label="Close image file">✕</button>
+                        </header>
+                        <div class="image-file-content">
+                            <img id="image-file-preview" class="image-file-preview" alt="Image preview">
+                        </div>
                     </section>
                 </div>
                 <div id="settings-modal" class="settings-modal" hidden>
@@ -205,6 +226,7 @@ app.innerHTML = `
 
 let tracks: Track[] = [];
 let textFiles: TextLibraryFile[] = [];
+let imageFiles: ImageLibraryFile[] = [];
 let currentTrackIndex = -1;
 let objectUrls: string[] = [];
 let sidebarOpen = false;
@@ -226,6 +248,7 @@ let playbackState: AudioPlaybackState = {
     endEventId: 0,
 };
 let playbackPollHandle: number | undefined;
+let imageModalHideTimer: number | undefined;
 let isSeeking = false;
 let backendReady = false;
 let lastHandledEndEventId = 0;
@@ -286,6 +309,11 @@ const textFileBackdrop = document.getElementById('text-file-backdrop') as HTMLDi
 const textFileTitle = document.getElementById('text-file-title') as HTMLParagraphElement;
 const textFileCode = document.getElementById('text-file-code') as HTMLElement;
 const textFileClose = document.getElementById('text-file-close') as HTMLButtonElement;
+const imageFileModal = document.getElementById('image-file-modal') as HTMLDivElement;
+const imageFileBackdrop = document.getElementById('image-file-backdrop') as HTMLDivElement;
+const imageFileTitle = document.getElementById('image-file-title') as HTMLParagraphElement;
+const imageFileClose = document.getElementById('image-file-close') as HTMLButtonElement;
+const imageFilePreview = document.getElementById('image-file-preview') as HTMLImageElement;
 const settingsModal = document.getElementById('settings-modal') as HTMLDivElement;
 const settingsBackdrop = document.getElementById('settings-backdrop') as HTMLDivElement;
 const settingsClose = document.getElementById('settings-close') as HTMLButtonElement;
@@ -392,7 +420,13 @@ const createFolderPane = (node: LibraryNode): HTMLUListElement => {
         .map(({ textFileIndex, file }) => `<li><button class="library-entry text-file" data-text-file-index="${textFileIndex}">📄 ${file.name}</button></li>`)
         .join('');
 
-    const content = `${folderRows}${trackRows}${textRows}`;
+    const imageRows = node.imageFileIndexes
+        .map((imageFileIndex) => ({ imageFileIndex, file: imageFiles[imageFileIndex] }))
+        .sort((left, right) => left.file.name.localeCompare(right.file.name, undefined, { sensitivity: 'base' }))
+        .map(({ imageFileIndex, file }) => `<li><button class="library-entry image-file" data-image-file-index="${imageFileIndex}">🖼️ ${file.name}</button></li>`)
+        .join('');
+
+    const content = `${folderRows}${trackRows}${textRows}${imageRows}`;
     if (!content) {
         pane.innerHTML = '<li class="empty">Folder is empty</li>';
         return pane;
@@ -625,6 +659,22 @@ const base64ToObjectUrl = (base64: string, mimeType: string): string => {
 };
 
 const mimeTypeForFileName = (name: string): string => {
+    if (/\.png$/i.test(name)) {
+        return 'image/png';
+    }
+
+    if (/\.gif$/i.test(name)) {
+        return 'image/gif';
+    }
+
+    if (/\.webp$/i.test(name)) {
+        return 'image/webp';
+    }
+
+    if (/\.bmp$/i.test(name)) {
+        return 'image/bmp';
+    }
+
     if (/\.jpe?g$/i.test(name)) {
         return 'image/jpeg';
     }
@@ -1342,6 +1392,20 @@ const closeTextFileModal = (): void => {
     textFileCode.textContent = '';
 };
 
+const closeImageFileModal = (): void => {
+    imageFileModal.classList.remove('is-visible');
+
+    if (imageModalHideTimer !== undefined) {
+        window.clearTimeout(imageModalHideTimer);
+    }
+
+    imageModalHideTimer = window.setTimeout(() => {
+        imageFileModal.hidden = true;
+        imageFilePreview.removeAttribute('src');
+        imageModalHideTimer = undefined;
+    }, 220);
+};
+
 const openTextFileModal = async (textFile: TextLibraryFile): Promise<void> => {
     textFileTitle.textContent = textFile.relativePath || textFile.name;
     textFileCode.textContent = 'Loading…';
@@ -1353,6 +1417,31 @@ const openTextFileModal = async (textFile: TextLibraryFile): Promise<void> => {
     } catch (error) {
         console.error(error);
         textFileCode.textContent = 'Unable to read this file.';
+    }
+};
+
+const openImageFileModal = async (imageFile: ImageLibraryFile): Promise<void> => {
+    if (imageModalHideTimer !== undefined) {
+        window.clearTimeout(imageModalHideTimer);
+        imageModalHideTimer = undefined;
+    }
+
+    imageFileTitle.textContent = imageFile.relativePath || imageFile.name;
+    imageFilePreview.removeAttribute('src');
+    imageFileModal.hidden = false;
+    window.requestAnimationFrame(() => {
+        imageFileModal.classList.add('is-visible');
+    });
+
+    try {
+        const base64 = await ReadFileBase64(imageFile.path);
+        if (!base64) {
+            return;
+        }
+
+        imageFilePreview.src = `data:${mimeTypeForFileName(imageFile.name)};base64,${base64}`;
+    } catch (error) {
+        console.error(error);
     }
 };
 
@@ -1388,6 +1477,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     libraryNodeByPath.clear();
     tracks = [];
     textFiles = [];
+    imageFiles = [];
 
     currentTrackIndex = -1;
     libraryRootName = '';
@@ -1777,12 +1867,22 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
             folderPath: file.folderPath,
         }));
 
+    imageFiles = (scanResult.imageFiles || [])
+        .sort((left, right) => left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: 'base' }))
+        .map((file) => ({
+            name: file.name,
+            path: file.path,
+            relativePath: file.relativePath,
+            folderPath: file.folderPath,
+        }));
+
     const rootNode: LibraryNode = {
         name: libraryRootName,
         path: '',
         folders: [],
         trackIndexes: [],
         textFileIndexes: [],
+        imageFileIndexes: [],
     };
     libraryNodeByPath.set('', rootNode);
 
@@ -1798,6 +1898,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
             folders: [],
             trackIndexes: [],
             textFileIndexes: [],
+            imageFileIndexes: [],
         };
         libraryNodeByPath.set(path, created);
         parent.folders.push(created);
@@ -1828,6 +1929,19 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
         }
 
         parent.textFileIndexes.push(index);
+    });
+
+    imageFiles.forEach((imageFile, index) => {
+        const segments = imageFile.folderPath ? imageFile.folderPath.split('/') : [];
+        let parent = rootNode;
+        let cumulativePath = '';
+
+        for (const segment of segments) {
+            cumulativePath = cumulativePath ? `${cumulativePath}/${segment}` : segment;
+            parent = getOrCreateFolder(cumulativePath, segment, parent);
+        }
+
+        parent.imageFileIndexes.push(index);
     });
 
     if (tracks.length === 0) {
@@ -1980,21 +2094,37 @@ libraryBrowser.addEventListener('click', (event) => {
     }
 
     const rawTextFileIndex = target.dataset.textFileIndex;
-    if (rawTextFileIndex === undefined) {
+    if (rawTextFileIndex !== undefined) {
+        const textFileIndex = Number(rawTextFileIndex);
+        if (!Number.isInteger(textFileIndex)) {
+            return;
+        }
+
+        const textFile = textFiles[textFileIndex];
+        if (!textFile) {
+            return;
+        }
+
+        void openTextFileModal(textFile);
         return;
     }
 
-    const textFileIndex = Number(rawTextFileIndex);
-    if (!Number.isInteger(textFileIndex)) {
+    const rawImageFileIndex = target.dataset.imageFileIndex;
+    if (rawImageFileIndex === undefined) {
         return;
     }
 
-    const textFile = textFiles[textFileIndex];
-    if (!textFile) {
+    const imageFileIndex = Number(rawImageFileIndex);
+    if (!Number.isInteger(imageFileIndex)) {
         return;
     }
 
-    void openTextFileModal(textFile);
+    const imageFile = imageFiles[imageFileIndex];
+    if (!imageFile) {
+        return;
+    }
+
+    void openImageFileModal(imageFile);
 });
 
 textFileBackdrop.addEventListener('click', () => {
@@ -2003,6 +2133,14 @@ textFileBackdrop.addEventListener('click', () => {
 
 textFileClose.addEventListener('click', () => {
     closeTextFileModal();
+});
+
+imageFileBackdrop.addEventListener('click', () => {
+    closeImageFileModal();
+});
+
+imageFileClose.addEventListener('click', () => {
+    closeImageFileModal();
 });
 
 document.addEventListener('keydown', (event) => {
@@ -2022,6 +2160,11 @@ document.addEventListener('keydown', (event) => {
 
     if (!textFileModal.hidden) {
         closeTextFileModal();
+        return;
+    }
+
+    if (!imageFileModal.hidden) {
+        closeImageFileModal();
     }
 });
 
@@ -2319,6 +2462,10 @@ document.addEventListener('click', (e) => {
     }
 
     if (textFileModal.contains(target)) {
+        return;
+    }
+
+    if (imageFileModal.contains(target)) {
         return;
     }
 
