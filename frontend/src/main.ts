@@ -1099,6 +1099,7 @@ const renderPlaylistPopup = (): void => {
 
         return `<li class="playlist-row" draggable="true" data-playlist-position="${actualPosition}">
             <button class="playlist-drag-handle" type="button" aria-label="Drag track" title="Drag to reorder">☰</button>
+            <span class="playlist-position-indicator">#${actualPosition + 1}</span>
             <button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}" data-playlist-position="${actualPosition}"><span class="playlist-item-main">${prefix}${label}</span><span class="playlist-item-sub">${secondary}</span></button>
             <button class="playlist-remove" type="button" data-playlist-remove-position="${actualPosition}" aria-label="Remove track" title="Remove track">✕</button>
         </li>`;

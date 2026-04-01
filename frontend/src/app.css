@@ -931,9 +931,18 @@
 
 .playlist-row {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto auto 1fr auto;
     align-items: center;
     gap: 0.2rem;
+}
+
+.playlist-position-indicator {
+    font-size: 0.7rem;
+    opacity: 0.62;
+    white-space: nowrap;
+    min-width: 1.5rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
 }
 
 .playlist-row.is-dragging {
