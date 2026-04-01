@@ -281,6 +281,10 @@ const asPlaybackOrderMode = (value: string): PlaybackOrderMode => {
 
 const setLibraryPathLabel = (): void => {
     const partialSuffix = libraryIndexTruncated ? ' (partial)' : '';
+    const formattedFolderPath = currentFolderPath
+        .split('/')
+        .filter((segment) => segment !== '')
+        .join(' / ');
 
     if (!libraryRootName) {
         libraryPath.textContent = 'No folder selected';
@@ -294,7 +298,7 @@ const setLibraryPathLabel = (): void => {
         return;
     }
 
-    libraryPath.textContent = `${libraryRootName}${partialSuffix} / ${currentFolderPath}`;
+    libraryPath.textContent = `${libraryRootName}${partialSuffix} / ${formattedFolderPath}`;
     libraryBack.disabled = false;
 };
 
@@ -560,6 +564,7 @@ const mimeTypeForFileName = (name: string): string => {
 };
 
 const folderKeyForPath = (folderPath: string): string => folderPath.toLowerCase();
+const silentTrackDurationThresholdSeconds = 30;
 
 const buildDisplayMetadata = (track: Track, tags?: TrackTags): { title: string; album: string; artist: string } => {
     const title = tags?.title?.trim() ? tags.title.trim() : track.title;
@@ -597,35 +602,85 @@ const refreshNowPlayingLabel = (): void => {
     applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds);
 };
 
+const ensureTrackTagsResolved = async (index: number): Promise<void> => {
+    if (index < 0 || index >= tracks.length) {
+        return;
+    }
+
+    const track = tracks[index];
+    if (track.tagsResolved) {
+        return;
+    }
+
+    try {
+        const tagByPath = await ReadTrackTags([track.path]);
+        const tags = tagByPath[track.path] as TrackTags | undefined;
+        const metadata = buildDisplayMetadata(tracks[index], tags);
+        tracks[index] = {
+            ...tracks[index],
+            displayTitle: metadata.title,
+            displayAlbum: metadata.album,
+            displayArtist: metadata.artist,
+            displayTrackNumber: tags?.trackNumber?.trim() || '',
+            displayTrackTotal: tags?.trackTotal?.trim() || '',
+            tagsResolved: true,
+            mbIds: {
+                recordingId: tags?.recordingId || undefined,
+                releaseId: tags?.releaseId || undefined,
+                artistId: tags?.artistIds?.[0] || tags?.artistId || undefined,
+            },
+            artistMbids: (tags?.artistIds && tags.artistIds.length > 0)
+                ? tags.artistIds
+                : (tags?.artistId ? [tags.artistId] : []),
+        };
+
+        if (index === currentTrackIndex) {
+            refreshNowPlayingLabel();
+        }
+    } catch (error) {
+        console.error(error);
+    }
+};
+
+const matchesSilenceTitleHeuristic = (track: Track): boolean => {
+    const titles = [
+        track.displayTitle,
+        track.title,
+        track.name,
+        track.name.replace(/\.[^/.]+$/, ''),
+    ];
+
+    return titles.some((value) => {
+        const normalized = value.trim().toLowerCase();
+        return normalized === '[silence]' || normalized === '(silence)';
+    });
+};
+
+const shouldSkipLoadedTrack = async (): Promise<boolean> => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return false;
+    }
+
+    await ensureTrackTagsResolved(currentTrackIndex);
+
+    const track = tracks[currentTrackIndex];
+    if (!playbackState.loaded || playbackState.sourcePath !== track.path) {
+        return false;
+    }
+
+    if (!Number.isFinite(playbackState.duration) || playbackState.duration <= 0 || playbackState.duration >= silentTrackDurationThresholdSeconds) {
+        return false;
+    }
+
+    return matchesSilenceTitleHeuristic(track);
+};
+
 const setCoverFlipped = (flipped: boolean): void => {
     coverFlipped = flipped;
     coverFlipper.classList.toggle('is-flipped', flipped);
 };
 
-const albumScopeKeyForTrack = (track: Track): string => {
-    const album = track.displayAlbum.trim();
-    const artist = track.displayArtist.trim();
-
-    if (album && album.toLowerCase() !== 'unknown album' && artist && artist.toLowerCase() !== 'unknown artist') {
-        return `${artist.toLowerCase()}::${album.toLowerCase()}`;
-    }
-
-    return `folder::${track.folderPath.toLowerCase()}`;
-};
-
-const parseTrackNumber = (value: string): number | undefined => {
-    const first = value.match(/\d+/)?.[0];
-    if (!first) {
-        return undefined;
-    }
-
-    const parsed = Number(first);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-        return undefined;
-    }
-
-    return parsed;
-};
+const albumScopeKeyForTrack = (track: Track): string => `folder::${track.folderPath.toLowerCase()}`;
 
 const orderedTrackIndexesForScope = (): number[] => {
     if (tracks.length === 0) {
@@ -646,14 +701,10 @@ const orderedTrackIndexesForScope = (): number[] => {
         .map((track, index) => ({ track, index }))
         .filter(({ track }) => albumScopeKeyForTrack(track) === albumScopeKey)
         .sort((left, right) => {
-            const leftTrackNo = parseTrackNumber(left.track.displayTrackNumber);
-            const rightTrackNo = parseTrackNumber(right.track.displayTrackNumber);
-
-            if (leftTrackNo !== undefined && rightTrackNo !== undefined && leftTrackNo !== rightTrackNo) {
-                return leftTrackNo - rightTrackNo;
-            }
-
-            return left.track.relativePath.localeCompare(right.track.relativePath, undefined, { sensitivity: 'base' });
+            return left.track.name.localeCompare(right.track.name, undefined, {
+                sensitivity: 'base',
+                numeric: true,
+            });
         })
         .map(({ index }) => index);
 };
@@ -1149,6 +1200,11 @@ const playCurrentTrack = async (): Promise<void> => {
         return;
     }
 
+    if (await shouldSkipLoadedTrack()) {
+        goToTrack(1);
+        return;
+    }
+
     try {
         const nextState = await AudioPlay() as AudioPlaybackState;
         applyPlaybackState(nextState);
@@ -1175,14 +1231,22 @@ const goToTrack = (direction: -1 | 1): void => {
         return;
     }
 
-    const nextIndex = nextTrackIndexForDirection(direction);
-    if (nextIndex === undefined) {
-        return;
-    }
+    void (async () => {
+        for (let attempt = 0; attempt < tracks.length; attempt += 1) {
+            const nextIndex = nextTrackIndexForDirection(direction);
+            if (nextIndex === undefined) {
+                return;
+            }
 
-    void loadTrack(nextIndex).then(() => {
-        void playCurrentTrack();
-    });
+            await loadTrack(nextIndex);
+            if (!(await shouldSkipLoadedTrack())) {
+                await playCurrentTrack();
+                return;
+            }
+        }
+
+        await playCurrentTrack();
+    })();
 };
 
 const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
