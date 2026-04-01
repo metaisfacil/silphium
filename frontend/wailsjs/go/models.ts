@@ -1,5 +1,67 @@
 export namespace main {
 	
+	export class LibraryIndexedFile {
+	    name: string;
+	    path: string;
+	    relativePath: string;
+	    folderPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryIndexedFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.relativePath = source["relativePath"];
+	        this.folderPath = source["folderPath"];
+	    }
+	}
+	export class LibraryScanResult {
+	    rootPath: string;
+	    rootName: string;
+	    trackFiles: LibraryIndexedFile[];
+	    textFiles: LibraryIndexedFile[];
+	    coverPathByFolder: Record<string, string>;
+	    totalEntries: number;
+	    truncated: boolean;
+	    entryLimit: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryScanResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rootPath = source["rootPath"];
+	        this.rootName = source["rootName"];
+	        this.trackFiles = this.convertValues(source["trackFiles"], LibraryIndexedFile);
+	        this.textFiles = this.convertValues(source["textFiles"], LibraryIndexedFile);
+	        this.coverPathByFolder = source["coverPathByFolder"];
+	        this.totalEntries = source["totalEntries"];
+	        this.truncated = source["truncated"];
+	        this.entryLimit = source["entryLimit"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class MusicBrainzURL {
 	    type: string;
 	    resource: string;

@@ -6,10 +6,26 @@ export function LookupArtistByMBID(arg1) {
   return window['go']['main']['App']['LookupArtistByMBID'](arg1);
 }
 
+export function ReadFileBase64(arg1) {
+  return window['go']['main']['App']['ReadFileBase64'](arg1);
+}
+
+export function ReadTextFile(arg1) {
+  return window['go']['main']['App']['ReadTextFile'](arg1);
+}
+
 export function ReadTrackTags(arg1) {
   return window['go']['main']['App']['ReadTrackTags'](arg1);
 }
 
 export function ReadTrackTagsFromBlobs(arg1) {
   return window['go']['main']['App']['ReadTrackTagsFromBlobs'](arg1);
+}
+
+export function ScanLibraryFolder(arg1) {
+  return window['go']['main']['App']['ScanLibraryFolder'](arg1);
+}
+
+export function SelectLibraryFolder() {
+  return window['go']['main']['App']['SelectLibraryFolder']();
 }

@@ -2,7 +2,14 @@ import './style.css';
 import './app.css';
 import { getMediaControlsElements, renderMediaControls } from './components/media-controls';
 import { getSidebarElements, renderSidebar } from './components/sidebar';
-import { LookupArtistByMBID, ReadTrackTagsFromBlobs } from '../wailsjs/go/main/App';
+import {
+    LookupArtistByMBID,
+    ReadFileBase64,
+    ReadTextFile,
+    ReadTrackTags,
+    ScanLibraryFolder,
+    SelectLibraryFolder,
+} from '../wailsjs/go/main/App';
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 import { type MusicBrainzIds, applyMbLinks, openMbLink } from './musicbrainz';
 
@@ -16,13 +23,14 @@ type LibraryNode = {
 
 type Track = {
     title: string;
-    src: string;
+    name: string;
+    path: string;
+    src?: string;
     relativePath: string;
     folderPath: string;
     displayTitle: string;
     displayAlbum: string;
     displayArtist: string;
-    sourceFile: File;
     tagsResolved: boolean;
     mbIds: MusicBrainzIds;
     artistMbids: string[];
@@ -55,17 +63,29 @@ type ArtistExternalUrl = {
     resource: string;
 };
 
-type TrackBlobPayload = {
-    key: string;
+type LibraryIndexedFile = {
     name: string;
-    data: string;
+    path: string;
+    relativePath: string;
+    folderPath: string;
+};
+
+type LibraryScanResult = {
+    rootPath: string;
+    rootName: string;
+    trackFiles: LibraryIndexedFile[];
+    textFiles: LibraryIndexedFile[];
+    coverPathByFolder: Record<string, string>;
+    totalEntries: number;
+    truncated: boolean;
+    entryLimit: number;
 };
 
 type TextLibraryFile = {
     name: string;
+    path: string;
     relativePath: string;
     folderPath: string;
-    sourceFile: File;
 };
 
 const app = document.querySelector('#app');
@@ -97,23 +117,27 @@ const audio = new Audio();
 audio.preload = 'metadata';
 audio.volume = 0.8;
 
+const TRACK_SOURCE_CACHE_LIMIT = 24;
+
 let tracks: Track[] = [];
 let textFiles: TextLibraryFile[] = [];
 let currentTrackIndex = -1;
 let objectUrls: string[] = [];
-let libraryFiles: File[] = [];
 let sidebarOpen = false;
 let libraryRootName = '';
 let currentFolderPath = '';
+let libraryIndexTruncated = false;
 let tagRequestVersion = 0;
 let artistInfoRequestVersion = 0;
 let activeBackgroundLayer = 0;
 let coverFlipped = false;
 const libraryNodeByPath = new Map<string, LibraryNode>();
+const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
 const artistInfoByMBID = new Map<string, ArtistDetails>();
+const trackSourceCacheOrder: number[] = [];
 
-const { sidebarToggle, librarySidebar, libraryUpload, libraryBack, libraryPath, libraryBrowser } = getSidebarElements(document);
+const { sidebarToggle, librarySidebar, libraryPickFolder, libraryBack, libraryPath, libraryBrowser } = getSidebarElements(document);
 const {
     trackTitle,
     trackAlbum,
@@ -148,6 +172,8 @@ const textFileCode = document.getElementById('text-file-code') as HTMLElement;
 const textFileClose = document.getElementById('text-file-close') as HTMLButtonElement;
 
 const setLibraryPathLabel = (): void => {
+    const partialSuffix = libraryIndexTruncated ? ' (partial)' : '';
+
     if (!libraryRootName) {
         libraryPath.textContent = 'No folder selected';
         libraryBack.disabled = true;
@@ -155,12 +181,12 @@ const setLibraryPathLabel = (): void => {
     }
 
     if (!currentFolderPath) {
-        libraryPath.textContent = libraryRootName;
+        libraryPath.textContent = `${libraryRootName}${partialSuffix}`;
         libraryBack.disabled = true;
         return;
     }
 
-    libraryPath.textContent = `${libraryRootName} / ${currentFolderPath}`;
+    libraryPath.textContent = `${libraryRootName}${partialSuffix} / ${currentFolderPath}`;
     libraryBack.disabled = false;
 };
 
@@ -260,18 +286,46 @@ const updateTrackLabels = (): void => {
     seek.value = String(audio.currentTime);
 };
 
-const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-    const bytes = new Uint8Array(buffer);
-    const chunkSize = 0x8000;
-    let binary = '';
-
-    for (let index = 0; index < bytes.length; index += chunkSize) {
-        const chunk = bytes.subarray(index, index + chunkSize);
-        binary += String.fromCharCode(...chunk);
+const base64ToObjectUrl = (base64: string, mimeType: string): string => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
     }
 
-    return btoa(binary);
+    return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
 };
+
+const mimeTypeForFileName = (name: string): string => {
+    if (/\.mp3$/i.test(name)) {
+        return 'audio/mpeg';
+    }
+    if (/\.m4a$/i.test(name)) {
+        return 'audio/mp4';
+    }
+    if (/\.aac$/i.test(name)) {
+        return 'audio/aac';
+    }
+    if (/\.wav$/i.test(name)) {
+        return 'audio/wav';
+    }
+    if (/\.flac$/i.test(name)) {
+        return 'audio/flac';
+    }
+    if (/\.ogg$/i.test(name)) {
+        return 'audio/ogg';
+    }
+    if (/\.opus$/i.test(name)) {
+        return 'audio/ogg';
+    }
+    if (/\.jpe?g$/i.test(name)) {
+        return 'image/jpeg';
+    }
+
+    return 'application/octet-stream';
+};
+
+const folderKeyForPath = (folderPath: string): string => folderPath.toLowerCase();
 
 const buildDisplayMetadata = (track: Track, tags?: TrackTags): { title: string; album: string; artist: string } => {
     const title = tags?.title?.trim() ? tags.title.trim() : track.title;
@@ -437,6 +491,39 @@ const setBackgroundCover = (coverSrc?: string): void => {
     activeBackgroundLayer = activeBackgroundLayer === 0 ? 1 : 0;
 };
 
+const touchTrackSourceCache = (index: number): void => {
+    const existingPosition = trackSourceCacheOrder.indexOf(index);
+    if (existingPosition >= 0) {
+        trackSourceCacheOrder.splice(existingPosition, 1);
+    }
+    trackSourceCacheOrder.push(index);
+
+    while (trackSourceCacheOrder.length > TRACK_SOURCE_CACHE_LIMIT) {
+        const evictIndex = trackSourceCacheOrder.shift();
+        if (evictIndex === undefined) {
+            return;
+        }
+
+        if (evictIndex === currentTrackIndex) {
+            trackSourceCacheOrder.push(evictIndex);
+            continue;
+        }
+
+        const evictTrack = tracks[evictIndex];
+        const evictSrc = evictTrack?.src;
+        if (!evictTrack || !evictSrc) {
+            continue;
+        }
+
+        URL.revokeObjectURL(evictSrc);
+        objectUrls = objectUrls.filter((url) => url !== evictSrc);
+        tracks[evictIndex] = {
+            ...evictTrack,
+            src: undefined,
+        };
+    }
+};
+
 const hydrateCurrentTrackTag = async (index: number, version: number): Promise<void> => {
     if (index < 0 || index >= tracks.length) {
         return;
@@ -448,19 +535,12 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
     }
 
     try {
-        const rawBuffer = await track.sourceFile.arrayBuffer();
-        const payload: TrackBlobPayload[] = [{
-            key: String(index),
-            name: track.sourceFile.name,
-            data: arrayBufferToBase64(rawBuffer),
-        }];
-
-        const tagByKey = await ReadTrackTagsFromBlobs(payload);
+        const tagByPath = await ReadTrackTags([track.path]);
         if (version !== tagRequestVersion) {
             return;
         }
 
-        const tags = tagByKey[String(index)] as TrackTags | undefined;
+        const tags = tagByPath[track.path] as TrackTags | undefined;
         const metadata = buildDisplayMetadata(tracks[index], tags);
         tracks[index] = {
             ...tracks[index],
@@ -489,49 +569,6 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
     }
 };
 
-const getFolderKey = (file: File): string => {
-    if ('webkitRelativePath' in file && file.webkitRelativePath) {
-        const parts = file.webkitRelativePath.split('/');
-        parts.pop();
-        return parts.join('/').toLowerCase();
-    }
-
-    return '';
-};
-
-const getRelativePath = (file: File): string => {
-    if ('webkitRelativePath' in file && file.webkitRelativePath) {
-        const segments = file.webkitRelativePath.split('/');
-        segments.shift();
-        return segments.join('/');
-    }
-
-    return file.name;
-};
-
-const getLibraryRootName = (files: File[]): string => {
-    const firstWithPath = files.find((file) => file.webkitRelativePath && file.webkitRelativePath.includes('/'));
-    if (!firstWithPath || !firstWithPath.webkitRelativePath) {
-        return 'Selected folder';
-    }
-
-    return firstWithPath.webkitRelativePath.split('/')[0] || 'Selected folder';
-};
-
-const isAudioFile = (file: File): boolean => {
-    if (/\.m3u8$/i.test(file.name)) {
-        return false;
-    }
-
-    if (file.type.startsWith('audio/')) {
-        return true;
-    }
-
-    return /\.(mp3|m4a|aac|wav|flac|ogg|opus)$/i.test(file.name);
-};
-
-const isTextLibraryFile = (file: File): boolean => /\.(txt|log)$/i.test(file.name);
-
 const closeTextFileModal = (): void => {
     textFileModal.hidden = true;
     textFileCode.textContent = '';
@@ -543,48 +580,65 @@ const openTextFileModal = async (textFile: TextLibraryFile): Promise<void> => {
     textFileModal.hidden = false;
 
     try {
-        const content = await textFile.sourceFile.text();
-        textFileCode.textContent = content;
+        const content = await ReadTextFile(textFile.path);
+        textFileCode.textContent = content || 'File is empty.';
     } catch (error) {
         console.error(error);
         textFileCode.textContent = 'Unable to read this file.';
     }
 };
 
-const isJpgFile = (file: File): boolean => {
-    if (file.type === 'image/jpeg') {
-        return true;
-    }
-
-    return /\.jpe?g$/i.test(file.name);
-};
-
-const resolveCoverForTrack = (track: Track): string | undefined => {
-    const folderKey = getFolderKey(track.sourceFile);
+const resolveCoverForTrack = async (track: Track): Promise<string | undefined> => {
+    const folderKey = folderKeyForPath(track.folderPath);
     const cached = coverUrlByFolder.get(folderKey);
     if (cached) {
         return cached;
     }
 
-    const imageFiles = libraryFiles
-        .filter((file) => isJpgFile(file) && getFolderKey(file) === folderKey)
-        .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
-
-    const selectedCover = imageFiles.find((image) => image.name.toLowerCase() === 'cover.jpg')
-        ?? imageFiles.find((image) => image.name.toLowerCase() === 'folder.jpg')
-        ?? imageFiles.find((image) => /^albumart.*\.jpg$/i.test(image.name));
-
-    if (!selectedCover) {
+    const coverPath = coverPathByFolder.get(folderKey);
+    if (!coverPath) {
         return undefined;
     }
 
-    const coverUrl = URL.createObjectURL(selectedCover);
+    const base64 = await ReadFileBase64(coverPath);
+    if (!base64) {
+        return undefined;
+    }
+
+    const coverUrl = base64ToObjectUrl(base64, mimeTypeForFileName(coverPath));
     coverUrlByFolder.set(folderKey, coverUrl);
     objectUrls.push(coverUrl);
     return coverUrl;
 };
 
-const loadTrack = (index: number): void => {
+const ensureTrackSource = async (index: number): Promise<string | undefined> => {
+    const track = tracks[index];
+    if (!track) {
+        return undefined;
+    }
+
+    if (track.src) {
+        touchTrackSourceCache(index);
+        return track.src;
+    }
+
+    const rawBase64 = await ReadFileBase64(track.path);
+    if (!rawBase64) {
+        return undefined;
+    }
+
+    const src = base64ToObjectUrl(rawBase64, mimeTypeForFileName(track.name));
+    objectUrls.push(src);
+    tracks[index] = {
+        ...track,
+        src,
+    };
+    touchTrackSourceCache(index);
+
+    return src;
+};
+
+const loadTrack = async (index: number): Promise<void> => {
     if (index < 0 || index >= tracks.length) {
         return;
     }
@@ -592,9 +646,17 @@ const loadTrack = (index: number): void => {
     currentTrackIndex = index;
     setCoverFlipped(false);
     const track = tracks[currentTrackIndex];
-    audio.src = track.src;
+    if (track.src) {
+        audio.src = track.src;
+    } else {
+        audio.removeAttribute('src');
+    }
     refreshNowPlayingLabel();
-    const coverSrc = resolveCoverForTrack(track);
+    const coverSrc = await resolveCoverForTrack(track);
+    if (index !== currentTrackIndex) {
+        return;
+    }
+
     if (coverSrc) {
         coverArt.src = coverSrc;
         coverArt.classList.add('is-visible');
@@ -618,11 +680,20 @@ const loadTrack = (index: number): void => {
 
 const playCurrentTrack = async (): Promise<void> => {
     if (currentTrackIndex === -1 && tracks.length > 0) {
-        loadTrack(0);
+        await loadTrack(0);
     }
 
     if (currentTrackIndex === -1) {
         return;
+    }
+
+    const source = await ensureTrackSource(currentTrackIndex);
+    if (!source) {
+        return;
+    }
+
+    if (audio.src !== source) {
+        audio.src = source;
     }
 
     try {
@@ -638,68 +709,63 @@ const goToTrack = (direction: -1 | 1): void => {
     }
 
     const nextIndex = (currentTrackIndex + direction + tracks.length) % tracks.length;
-    loadTrack(nextIndex);
-    void playCurrentTrack();
+    void loadTrack(nextIndex).then(() => {
+        void playCurrentTrack();
+    });
 };
 
-const loadLibraryFiles = (fileList: FileList): void => {
-    if (fileList.length === 0) {
+const loadLibraryScan = (scanResult: LibraryScanResult): void => {
+    if (!scanResult.rootPath) {
         return;
     }
+
+    audio.pause();
+    audio.removeAttribute('src');
 
     for (const url of objectUrls) {
         URL.revokeObjectURL(url);
     }
     objectUrls = [];
+    trackSourceCacheOrder.length = 0;
+    coverPathByFolder.clear();
     coverUrlByFolder.clear();
-
-    const allFiles = Array.from(fileList);
-    libraryFiles = allFiles;
-    libraryRootName = getLibraryRootName(allFiles);
-
-    tracks = allFiles
-        .filter((file) => isAudioFile(file))
-        .sort((left, right) => getRelativePath(left).localeCompare(getRelativePath(right), undefined, { sensitivity: 'base' }))
-        .map((file) => {
-            const relativePath = getRelativePath(file);
-            const parts = relativePath.split('/');
-            parts.pop();
-            const folderPath = parts.join('/');
-            const src = URL.createObjectURL(file);
-            objectUrls.push(src);
-
-            return {
-                title: file.name,
-                src,
-                relativePath,
-                folderPath,
-                displayTitle: file.name,
-                displayAlbum: 'Unknown Album',
-                displayArtist: 'Unknown Artist',
-                sourceFile: file,
-                tagsResolved: false,
-                mbIds: {},
-                artistMbids: [],
-            };
-        });
-
-    textFiles = allFiles
-        .filter((file) => isTextLibraryFile(file))
-        .sort((left, right) => getRelativePath(left).localeCompare(getRelativePath(right), undefined, { sensitivity: 'base' }))
-        .map((file) => {
-            const relativePath = getRelativePath(file);
-            const parts = relativePath.split('/');
-            parts.pop();
-
-            return {
-                name: file.name,
-                relativePath,
-                folderPath: parts.join('/'),
-                sourceFile: file,
-            };
-        });
-
+    artistInfoByMBID.clear();
     libraryNodeByPath.clear();
+    tracks = [];
+    textFiles = [];
+
+    for (const [folder, coverPath] of Object.entries(scanResult.coverPathByFolder || {})) {
+        coverPathByFolder.set(folder, coverPath);
+    }
+
+    libraryRootName = scanResult.rootName || 'Selected folder';
+    libraryIndexTruncated = scanResult.truncated;
+
+    tracks = (scanResult.trackFiles || [])
+        .sort((left, right) => left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: 'base' }))
+        .map((file) => ({
+            title: file.name,
+            name: file.name,
+            path: file.path,
+            relativePath: file.relativePath,
+            folderPath: file.folderPath,
+            displayTitle: file.name,
+            displayAlbum: 'Unknown Album',
+            displayArtist: 'Unknown Artist',
+            tagsResolved: false,
+            mbIds: {},
+            artistMbids: [],
+        }));
+
+    textFiles = (scanResult.textFiles || [])
+        .sort((left, right) => left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: 'base' }))
+        .map((file) => ({
+            name: file.name,
+            path: file.path,
+            relativePath: file.relativePath,
+            folderPath: file.folderPath,
+        }));
+
     const rootNode: LibraryNode = {
         name: libraryRootName,
         path: '',
@@ -770,7 +836,8 @@ const loadLibraryFiles = (fileList: FileList): void => {
 
     currentFolderPath = '';
     renderFolder('none');
-    loadTrack(0);
+    void loadTrack(0);
+
     updatePlayButton();
 };
 
@@ -787,12 +854,31 @@ coverFrame.addEventListener('keydown', (event) => {
     setCoverFlipped(!coverFlipped);
 });
 
-libraryUpload.addEventListener('change', () => {
-    if (!libraryUpload.files) {
+libraryPickFolder.addEventListener('click', async () => {
+    if (libraryPickFolder.disabled) {
         return;
     }
 
-    loadLibraryFiles(libraryUpload.files);
+    libraryPickFolder.disabled = true;
+    const previousLabel = libraryPickFolder.textContent;
+    libraryPickFolder.textContent = 'Scanning…';
+
+    try {
+        const selectedFolder = await SelectLibraryFolder();
+        if (!selectedFolder) {
+            return;
+        }
+
+        libraryPath.textContent = 'Scanning folder…';
+        const scanResult = await ScanLibraryFolder(selectedFolder) as LibraryScanResult;
+        loadLibraryScan(scanResult);
+    } catch (error) {
+        console.error(error);
+        libraryPath.textContent = 'Unable to scan folder.';
+    } finally {
+        libraryPickFolder.disabled = false;
+        libraryPickFolder.textContent = previousLabel || 'Choose Folder';
+    }
 });
 
 sidebarToggle.addEventListener('click', () => {
@@ -823,8 +909,9 @@ libraryBrowser.addEventListener('click', (event) => {
             return;
         }
 
-        loadTrack(index);
-        void playCurrentTrack();
+        void loadTrack(index).then(() => {
+            void playCurrentTrack();
+        });
         return;
     }
 

@@ -4,6 +4,14 @@ import {main} from '../models';
 
 export function LookupArtistByMBID(arg1:string):Promise<main.MusicBrainzArtistInfo>;
 
+export function ReadFileBase64(arg1:string):Promise<string>;
+
+export function ReadTextFile(arg1:string):Promise<string>;
+
 export function ReadTrackTags(arg1:Array<string>):Promise<Record<string, main.TrackTags>>;
 
 export function ReadTrackTagsFromBlobs(arg1:Array<main.TrackBlob>):Promise<Record<string, main.TrackTags>>;
+
+export function ScanLibraryFolder(arg1:string):Promise<main.LibraryScanResult>;
+
+export function SelectLibraryFolder():Promise<string>;

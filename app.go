@@ -3,17 +3,40 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	taglib "go.senan.xyz/taglib"
 )
 
 // App struct
 type App struct {
-	ctx context.Context
+	ctx         context.Context
+	libraryRoot string
+}
+
+type LibraryIndexedFile struct {
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	RelativePath string `json:"relativePath"`
+	FolderPath   string `json:"folderPath"`
+}
+
+type LibraryScanResult struct {
+	RootPath          string               `json:"rootPath"`
+	RootName          string               `json:"rootName"`
+	TrackFiles        []LibraryIndexedFile `json:"trackFiles"`
+	TextFiles         []LibraryIndexedFile `json:"textFiles"`
+	CoverPathByFolder map[string]string    `json:"coverPathByFolder"`
+	TotalEntries      int                  `json:"totalEntries"`
+	Truncated         bool                 `json:"truncated"`
+	EntryLimit        int                  `json:"entryLimit"`
 }
 
 type TrackTags struct {
@@ -41,6 +64,241 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+}
+
+const maxLibraryEntries = 250000
+
+var errLibraryScanLimit = errors.New("library scan entry limit reached")
+
+var audioExtensions = map[string]struct{}{
+	".mp3":  {},
+	".m4a":  {},
+	".aac":  {},
+	".wav":  {},
+	".flac": {},
+	".ogg":  {},
+	".opus": {},
+}
+
+var textExtensions = map[string]struct{}{
+	".txt": {},
+	".log": {},
+}
+
+func isAudioPath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".m3u8" {
+		return false
+	}
+	_, ok := audioExtensions[ext]
+	return ok
+}
+
+func isTextPath(path string) bool {
+	_, ok := textExtensions[strings.ToLower(filepath.Ext(path))]
+	return ok
+}
+
+func isJpegPath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".jpg" || ext == ".jpeg"
+}
+
+func folderAndRelative(rootPath string, fullPath string) (string, string, bool) {
+	relativePath, err := filepath.Rel(rootPath, fullPath)
+	if err != nil {
+		return "", "", false
+	}
+
+	relativePath = filepath.ToSlash(relativePath)
+	folderPath := filepath.ToSlash(filepath.Dir(relativePath))
+	if folderPath == "." {
+		folderPath = ""
+	}
+
+	return folderPath, relativePath, true
+}
+
+func coverPriority(name string) int {
+	switch {
+	case strings.EqualFold(name, "cover.jpg"):
+		return 0
+	case strings.EqualFold(name, "folder.jpg"):
+		return 1
+	case strings.HasPrefix(strings.ToLower(name), "albumart"):
+		return 2
+	default:
+		return 3
+	}
+}
+
+func normalizePath(path string) string {
+	return filepath.Clean(strings.TrimSpace(path))
+}
+
+func (a *App) isAllowedLibraryPath(path string) bool {
+	cleanPath := normalizePath(path)
+	if cleanPath == "" {
+		return false
+	}
+
+	absolutePath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return false
+	}
+
+	if strings.TrimSpace(a.libraryRoot) == "" {
+		return true
+	}
+
+	relativeToRoot, err := filepath.Rel(a.libraryRoot, absolutePath)
+	if err != nil {
+		return false
+	}
+
+	if relativeToRoot == "." {
+		return true
+	}
+
+	parentPrefix := ".." + string(filepath.Separator)
+	return relativeToRoot != ".." && !strings.HasPrefix(relativeToRoot, parentPrefix)
+}
+
+func (a *App) SelectLibraryFolder() string {
+	selectedPath, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Music Library Folder",
+	})
+	if err != nil {
+		return ""
+	}
+
+	return selectedPath
+}
+
+func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
+	cleanRoot := normalizePath(path)
+	result := LibraryScanResult{
+		RootPath:          cleanRoot,
+		RootName:          filepath.Base(cleanRoot),
+		TrackFiles:        []LibraryIndexedFile{},
+		TextFiles:         []LibraryIndexedFile{},
+		CoverPathByFolder: map[string]string{},
+		EntryLimit:        maxLibraryEntries,
+	}
+
+	if cleanRoot == "" {
+		return result
+	}
+
+	absoluteRoot, err := filepath.Abs(cleanRoot)
+	if err != nil {
+		return result
+	}
+
+	cleanRoot = filepath.Clean(absoluteRoot)
+	result.RootPath = cleanRoot
+	result.RootName = filepath.Base(cleanRoot)
+
+	selectedCoverPriority := make(map[string]int)
+	selectedCoverName := make(map[string]string)
+
+	scanErr := filepath.WalkDir(cleanRoot, func(currentPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+
+		if currentPath == cleanRoot {
+			return nil
+		}
+
+		result.TotalEntries += 1
+		if result.TotalEntries > maxLibraryEntries {
+			result.Truncated = true
+			return errLibraryScanLimit
+		}
+
+		if entry.IsDir() {
+			return nil
+		}
+
+		folderPath, relativePath, ok := folderAndRelative(cleanRoot, currentPath)
+		if !ok {
+			return nil
+		}
+
+		indexed := LibraryIndexedFile{
+			Name:         entry.Name(),
+			Path:         currentPath,
+			RelativePath: relativePath,
+			FolderPath:   folderPath,
+		}
+
+		switch {
+		case isAudioPath(currentPath):
+			result.TrackFiles = append(result.TrackFiles, indexed)
+		case isTextPath(currentPath):
+			result.TextFiles = append(result.TextFiles, indexed)
+		case isJpegPath(currentPath):
+			folderKey := strings.ToLower(folderPath)
+			name := strings.ToLower(entry.Name())
+			priority := coverPriority(name)
+			currentPriority, hasCurrent := selectedCoverPriority[folderKey]
+			currentName := selectedCoverName[folderKey]
+
+			if !hasCurrent || priority < currentPriority || (priority == currentPriority && name < currentName) {
+				selectedCoverPriority[folderKey] = priority
+				selectedCoverName[folderKey] = name
+				result.CoverPathByFolder[folderKey] = currentPath
+			}
+		}
+
+		return nil
+	})
+
+	if scanErr != nil && !errors.Is(scanErr, errLibraryScanLimit) {
+		return result
+	}
+
+	sort.SliceStable(result.TrackFiles, func(i int, j int) bool {
+		left := strings.ToLower(result.TrackFiles[i].RelativePath)
+		right := strings.ToLower(result.TrackFiles[j].RelativePath)
+		return left < right
+	})
+
+	sort.SliceStable(result.TextFiles, func(i int, j int) bool {
+		left := strings.ToLower(result.TextFiles[i].RelativePath)
+		right := strings.ToLower(result.TextFiles[j].RelativePath)
+		return left < right
+	})
+
+	a.libraryRoot = cleanRoot
+	return result
+}
+
+func (a *App) ReadFileBase64(path string) string {
+	if !a.isAllowedLibraryPath(path) {
+		return ""
+	}
+
+	rawBytes, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	return base64.StdEncoding.EncodeToString(rawBytes)
+}
+
+func (a *App) ReadTextFile(path string) string {
+	if !a.isAllowedLibraryPath(path) {
+		return ""
+	}
+
+	rawBytes, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	return string(rawBytes)
 }
 
 func firstTagValue(tags map[string][]string, keys ...string) string {
@@ -98,7 +356,7 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 	tagByPath := make(map[string]TrackTags, len(paths))
 
 	for _, path := range paths {
-		if strings.TrimSpace(path) == "" {
+		if strings.TrimSpace(path) == "" || !a.isAllowedLibraryPath(path) {
 			continue
 		}
 
