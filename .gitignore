@@ -28,6 +28,9 @@ coverage.out
 .env.*
 !.env.example
 
+# ---- Local app settings ----
+/silphium.settings.json
+
 # ---- OS/editor noise ----
 .DS_Store
 Thumbs.db

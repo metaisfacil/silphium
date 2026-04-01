@@ -1,5 +1,17 @@
 export namespace main {
 	
+	export class AppSettings {
+	    libraryPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.libraryPath = source["libraryPath"];
+	    }
+	}
 	export class AudioPlaybackState {
 	    loaded: boolean;
 	    playing: boolean;

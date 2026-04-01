@@ -16,6 +16,8 @@ export function AudioSetVolume(arg1:number):Promise<main.AudioPlaybackState>;
 
 export function AudioStop():Promise<main.AudioPlaybackState>;
 
+export function GetSettings():Promise<main.AppSettings>;
+
 export function InitializeAudioBackend():Promise<main.AudioPlaybackState>;
 
 export function LookupArtistByMBID(arg1:string):Promise<main.MusicBrainzArtistInfo>;
@@ -27,6 +29,8 @@ export function ReadTextFile(arg1:string):Promise<string>;
 export function ReadTrackTags(arg1:Array<string>):Promise<Record<string, main.TrackTags>>;
 
 export function ReadTrackTagsFromBlobs(arg1:Array<main.TrackBlob>):Promise<Record<string, main.TrackTags>>;
+
+export function SaveSettings(arg1:main.AppSettings):Promise<main.AppSettings>;
 
 export function ScanLibraryFolder(arg1:string):Promise<main.LibraryScanResult>;
 

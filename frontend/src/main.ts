@@ -10,11 +10,13 @@ import {
     AudioSeek,
     AudioSetVolume,
     AudioStop,
+    GetSettings,
     InitializeAudioBackend,
     LookupArtistByMBID,
     ReadFileBase64,
     ReadTextFile,
     ReadTrackTags,
+    SaveSettings,
     ScanLibraryFolder,
     SelectLibraryFolder,
 } from '../wailsjs/go/main/App';
@@ -105,6 +107,10 @@ type AudioPlaybackState = {
     endEventId: number;
 };
 
+type AppSettings = {
+    libraryPath: string;
+};
+
 const app = document.querySelector('#app');
 
 if (!app) {
@@ -126,6 +132,24 @@ app.innerHTML = `
                             <button id="text-file-close" class="text-file-close" type="button" aria-label="Close text file">✕</button>
                         </header>
                         <pre class="text-file-content"><code id="text-file-code"></code></pre>
+                    </section>
+                </div>
+                <div id="settings-modal" class="settings-modal" hidden>
+                    <div id="settings-backdrop" class="settings-backdrop"></div>
+                    <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+                        <header class="settings-header">
+                            <p id="settings-title" class="settings-title">Settings</p>
+                            <button id="settings-close" class="settings-close" type="button" aria-label="Close settings">✕</button>
+                        </header>
+                        <div class="settings-content">
+                            <label class="settings-label" for="settings-library-path">Library Folder</label>
+                            <input id="settings-library-path" class="settings-input" type="text" placeholder="No folder selected">
+                            <p id="settings-status" class="settings-status"></p>
+                            <div class="settings-actions">
+                                <button id="settings-browse" class="upload-btn" type="button">Choose Folder</button>
+                                <button id="settings-save" class="upload-btn" type="button">Save</button>
+                            </div>
+                        </div>
                     </section>
                 </div>
 `;
@@ -155,12 +179,13 @@ let playbackPollHandle: number | undefined;
 let isSeeking = false;
 let backendReady = false;
 let lastHandledEndEventId = 0;
+let currentSettings: AppSettings = { libraryPath: '' };
 const libraryNodeByPath = new Map<string, LibraryNode>();
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
 const artistInfoByMBID = new Map<string, ArtistDetails>();
 
-const { sidebarToggle, librarySidebar, libraryPickFolder, libraryBack, libraryPath, libraryBrowser } = getSidebarElements(document);
+const { sidebarToggle, librarySidebar, librarySettings, libraryBack, libraryPath, libraryBrowser } = getSidebarElements(document);
 const {
     trackTitle,
     trackAlbum,
@@ -193,6 +218,13 @@ const textFileBackdrop = document.getElementById('text-file-backdrop') as HTMLDi
 const textFileTitle = document.getElementById('text-file-title') as HTMLParagraphElement;
 const textFileCode = document.getElementById('text-file-code') as HTMLElement;
 const textFileClose = document.getElementById('text-file-close') as HTMLButtonElement;
+const settingsModal = document.getElementById('settings-modal') as HTMLDivElement;
+const settingsBackdrop = document.getElementById('settings-backdrop') as HTMLDivElement;
+const settingsClose = document.getElementById('settings-close') as HTMLButtonElement;
+const settingsBrowse = document.getElementById('settings-browse') as HTMLButtonElement;
+const settingsSave = document.getElementById('settings-save') as HTMLButtonElement;
+const settingsLibraryPath = document.getElementById('settings-library-path') as HTMLInputElement;
+const settingsStatus = document.getElementById('settings-status') as HTMLParagraphElement;
 
 const setLibraryPathLabel = (): void => {
     const partialSuffix = libraryIndexTruncated ? ' (partial)' : '';
@@ -247,6 +279,7 @@ const createFolderPane = (node: LibraryNode): HTMLUListElement => {
 const renderFolder = (direction: 'none' | 'forward' | 'back'): void => {
     const node = libraryNodeByPath.get(currentFolderPath);
     if (!node) {
+        setLibraryPathLabel();
         libraryBrowser.innerHTML = '';
         return;
     }
@@ -619,6 +652,85 @@ const openTextFileModal = async (textFile: TextLibraryFile): Promise<void> => {
     }
 };
 
+const closeSettingsModal = (): void => {
+    settingsModal.hidden = true;
+    settingsStatus.textContent = '';
+};
+
+const openSettingsModal = (): void => {
+    settingsLibraryPath.value = currentSettings.libraryPath || '';
+    settingsStatus.textContent = '';
+    settingsModal.hidden = false;
+    settingsLibraryPath.focus();
+};
+
+const clearLibrarySelection = async (): Promise<void> => {
+    try {
+        const nextState = await AudioStop() as AudioPlaybackState;
+        applyPlaybackState(nextState);
+    } catch (error) {
+        handleAudioError(error);
+    }
+
+    for (const url of objectUrls) {
+        URL.revokeObjectURL(url);
+    }
+
+    objectUrls = [];
+    coverPathByFolder.clear();
+    coverUrlByFolder.clear();
+    artistInfoByMBID.clear();
+    libraryNodeByPath.clear();
+    tracks = [];
+    textFiles = [];
+
+    currentTrackIndex = -1;
+    libraryRootName = '';
+    currentFolderPath = '';
+    libraryIndexTruncated = false;
+
+    trackTitle.textContent = 'No track loaded';
+    trackAlbum.textContent = 'Unknown Album';
+    trackArtist.textContent = 'Unknown Artist';
+    applyMbLinks(trackTitle, trackAlbum, trackArtist, {});
+
+    coverArt.removeAttribute('src');
+    coverArt.classList.remove('is-visible');
+    setBackgroundCover();
+    setCoverFlipped(false);
+    resetArtistInfoPanel();
+    renderFolder('none');
+};
+
+const applyLibraryPath = async (selectedPath: string): Promise<void> => {
+    const cleanPath = selectedPath.trim();
+    if (!cleanPath) {
+        await clearLibrarySelection();
+        return;
+    }
+
+    libraryPath.textContent = 'Scanning folder…';
+    const scanResult = await ScanLibraryFolder(cleanPath) as LibraryScanResult;
+    await loadLibraryScan(scanResult);
+};
+
+const initializeSettings = async (): Promise<void> => {
+    try {
+        const settings = await GetSettings() as AppSettings;
+        currentSettings = settings;
+        settingsLibraryPath.value = settings.libraryPath || '';
+
+        if (settings.libraryPath) {
+            await applyLibraryPath(settings.libraryPath);
+            return;
+        }
+    } catch (error) {
+        console.error(error);
+    }
+
+    renderFolder('none');
+};
+
 const resolveCoverForTrack = async (track: Track): Promise<string | undefined> => {
     const folderKey = folderKeyForPath(track.folderPath);
     const cached = coverUrlByFolder.get(folderKey);
@@ -868,14 +980,20 @@ coverFrame.addEventListener('keydown', (event) => {
     setCoverFlipped(!coverFlipped);
 });
 
-libraryPickFolder.addEventListener('click', async () => {
-    if (libraryPickFolder.disabled) {
-        return;
-    }
+librarySettings.addEventListener('click', () => {
+    openSettingsModal();
+});
 
-    libraryPickFolder.disabled = true;
-    const previousLabel = libraryPickFolder.textContent;
-    libraryPickFolder.textContent = 'Scanning…';
+settingsBackdrop.addEventListener('click', () => {
+    closeSettingsModal();
+});
+
+settingsClose.addEventListener('click', () => {
+    closeSettingsModal();
+});
+
+settingsBrowse.addEventListener('click', async () => {
+    settingsStatus.textContent = '';
 
     try {
         const selectedFolder = await SelectLibraryFolder();
@@ -883,15 +1001,36 @@ libraryPickFolder.addEventListener('click', async () => {
             return;
         }
 
-        libraryPath.textContent = 'Scanning folder…';
-        const scanResult = await ScanLibraryFolder(selectedFolder) as LibraryScanResult;
-        await loadLibraryScan(scanResult);
+        settingsLibraryPath.value = selectedFolder;
     } catch (error) {
         console.error(error);
-        libraryPath.textContent = 'Unable to scan folder.';
+        settingsStatus.textContent = 'Unable to open folder picker.';
+    }
+});
+
+settingsSave.addEventListener('click', async () => {
+    if (settingsSave.disabled) {
+        return;
+    }
+
+    settingsSave.disabled = true;
+    const requestedLibraryPath = settingsLibraryPath.value;
+    closeSettingsModal();
+
+    try {
+        const savedSettings = await SaveSettings({
+            libraryPath: requestedLibraryPath,
+        }) as AppSettings;
+
+        currentSettings = savedSettings;
+        settingsLibraryPath.value = savedSettings.libraryPath || '';
+
+        await applyLibraryPath(savedSettings.libraryPath || '');
+    } catch (error) {
+        console.error(error);
+        libraryPath.textContent = 'Unable to save settings.';
     } finally {
-        libraryPickFolder.disabled = false;
-        libraryPickFolder.textContent = previousLabel || 'Choose Folder';
+        settingsSave.disabled = false;
     }
 });
 
@@ -956,7 +1095,16 @@ textFileClose.addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !textFileModal.hidden) {
+    if (event.key !== 'Escape') {
+        return;
+    }
+
+    if (!settingsModal.hidden) {
+        closeSettingsModal();
+        return;
+    }
+
+    if (!textFileModal.hidden) {
         closeTextFileModal();
     }
 });
@@ -1037,3 +1185,4 @@ document.addEventListener('click', (e) => {
 updatePlayButton();
 updateTrackLabels();
 void initializeBackendPlayback();
+void initializeSettings();

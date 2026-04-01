@@ -30,6 +30,10 @@ export function AudioStop() {
   return window['go']['main']['App']['AudioStop']();
 }
 
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
+}
+
 export function InitializeAudioBackend() {
   return window['go']['main']['App']['InitializeAudioBackend']();
 }
@@ -52,6 +56,10 @@ export function ReadTrackTags(arg1) {
 
 export function ReadTrackTagsFromBlobs(arg1) {
   return window['go']['main']['App']['ReadTrackTagsFromBlobs'](arg1);
+}
+
+export function SaveSettings(arg1) {
+  return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
 export function ScanLibraryFolder(arg1) {

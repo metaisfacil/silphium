@@ -21,9 +21,12 @@ import (
 
 // App struct
 type App struct {
-	ctx         context.Context
-	libraryRoot string
-	audio       *AudioBackend
+	ctx            context.Context
+	libraryRoot    string
+	audio          *AudioBackend
+	settings       AppSettings
+	settingsPath   string
+	settingsLoaded bool
 }
 
 type LibraryIndexedFile struct {
@@ -71,6 +74,7 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.loadStoredSettings()
 }
 
 func (a *App) audioBackend() *AudioBackend {

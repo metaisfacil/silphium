@@ -479,6 +479,97 @@
     word-spacing: normal;
 }
 
+.settings-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 31;
+    display: grid;
+    place-items: center;
+}
+
+.settings-modal[hidden] {
+    display: none;
+}
+
+.settings-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(2px);
+}
+
+.settings-dialog {
+    position: relative;
+    width: min(560px, calc(100vw - 2rem));
+    display: flex;
+    flex-direction: column;
+    background: rgba(18, 18, 20, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.9rem;
+    overflow: hidden;
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-title {
+    margin: 0;
+    font-size: 0.88rem;
+    opacity: 0.9;
+}
+
+.settings-close {
+    width: 1.8rem;
+    height: 1.8rem;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    cursor: pointer;
+}
+
+.settings-content {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.9rem;
+    text-align: left;
+}
+
+.settings-label {
+    font-size: 0.82rem;
+    opacity: 0.86;
+}
+
+.settings-input {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.22);
+    color: inherit;
+    padding: 0.58rem 0.65rem;
+    font-size: 0.86rem;
+}
+
+.settings-status {
+    margin: 0;
+    min-height: 1.1rem;
+    font-size: 0.78rem;
+    opacity: 0.75;
+}
+
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.55rem;
+}
+
 .track-title {
     font-weight: 700;
     font-size: 1rem;
