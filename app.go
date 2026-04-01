@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -15,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -48,6 +50,11 @@ type LibraryScanResult struct {
 	TotalEntries      int                  `json:"totalEntries"`
 	Truncated         bool                 `json:"truncated"`
 	EntryLimit        int                  `json:"entryLimit"`
+}
+
+type PlaylistLoadResult struct {
+	Name       string             `json:"name"`
+	TrackFiles []LibraryIndexedFile `json:"trackFiles"`
 }
 
 type TrackTags struct {
@@ -200,6 +207,95 @@ func (a *App) SelectLibraryFolder() string {
 	}
 
 	return selectedPath
+}
+
+func (a *App) SelectPlaylistFile() string {
+	selectedPath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Playlist File",
+		Filters: []runtime.FileFilter{{
+			DisplayName: "Playlists",
+			Pattern:     "*.m3u;*.m3u8",
+		}},
+	})
+	if err != nil {
+		return ""
+	}
+
+	return selectedPath
+}
+
+func resolvePlaylistEntryPath(playlistPath string, entry string) (string, bool) {
+	clean := strings.TrimSpace(entry)
+	if clean == "" || strings.HasPrefix(clean, "#") {
+		return "", false
+	}
+
+	if strings.Contains(clean, "://") {
+		return "", false
+	}
+
+	trimmed := strings.TrimLeftFunc(clean, unicode.IsSpace)
+	if trimmed == "" {
+		return "", false
+	}
+
+	if filepath.IsAbs(trimmed) {
+		return filepath.Clean(trimmed), true
+	}
+
+	baseDir := filepath.Dir(playlistPath)
+	return filepath.Clean(filepath.Join(baseDir, trimmed)), true
+}
+
+func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
+	cleanPath := normalizePath(path)
+	result := PlaylistLoadResult{
+		Name:       filepath.Base(cleanPath),
+		TrackFiles: []LibraryIndexedFile{},
+	}
+
+	if cleanPath == "" {
+		return result
+	}
+
+	absolutePath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return result
+	}
+	cleanPath = filepath.Clean(absolutePath)
+	result.Name = filepath.Base(cleanPath)
+
+	fileHandle, err := os.Open(cleanPath)
+	if err != nil {
+		return result
+	}
+	defer fileHandle.Close()
+
+	scanner := bufio.NewScanner(fileHandle)
+	for scanner.Scan() {
+		resolved, ok := resolvePlaylistEntryPath(cleanPath, scanner.Text())
+		if !ok || !isAudioPath(resolved) {
+			continue
+		}
+
+		if !a.isAllowedLibraryPath(resolved) {
+			continue
+		}
+
+		fileInfo, statErr := os.Stat(resolved)
+		if statErr != nil || fileInfo.IsDir() {
+			continue
+		}
+
+		result.TrackFiles = append(result.TrackFiles, LibraryIndexedFile{
+			Name:         filepath.Base(resolved),
+			Path:         resolved,
+			RelativePath: filepath.Base(resolved),
+			FolderPath:   filepath.ToSlash(filepath.Dir(resolved)),
+		})
+	}
+
+	return result
 }
 
 func (a *App) ScanLibraryFolder(path string) LibraryScanResult {

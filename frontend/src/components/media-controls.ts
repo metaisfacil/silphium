@@ -17,6 +17,7 @@ export type MediaControlsElements = {
     currentTimeLabel: HTMLSpanElement;
     trackDurationLabel: HTMLSpanElement;
     seek: HTMLInputElement;
+    playlistBtn: HTMLButtonElement;
     back: HTMLButtonElement;
     playPause: HTMLButtonElement;
     forward: HTMLButtonElement;
@@ -93,6 +94,7 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     currentTimeLabel: root.querySelector('#current-time') as HTMLSpanElement,
     trackDurationLabel: root.querySelector('#track-duration') as HTMLSpanElement,
     seek: root.querySelector('#seek') as HTMLInputElement,
+    playlistBtn: root.querySelector('#playlist-btn') as HTMLButtonElement,
     back: root.querySelector('#back') as HTMLButtonElement,
     playPause: root.querySelector('#play-pause') as HTMLButtonElement,
     forward: root.querySelector('#forward') as HTMLButtonElement,

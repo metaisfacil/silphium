@@ -38,6 +38,10 @@ export function InitializeAudioBackend() {
   return window['go']['main']['App']['InitializeAudioBackend']();
 }
 
+export function LoadPlaylistFile(arg1) {
+  return window['go']['main']['App']['LoadPlaylistFile'](arg1);
+}
+
 export function LookupArtistByMBID(arg1) {
   return window['go']['main']['App']['LookupArtistByMBID'](arg1);
 }
@@ -68,6 +72,10 @@ export function ScanLibraryFolder(arg1) {
 
 export function SelectLibraryFolder() {
   return window['go']['main']['App']['SelectLibraryFolder']();
+}
+
+export function SelectPlaylistFile() {
+  return window['go']['main']['App']['SelectPlaylistFile']();
 }
 
 export function SubmitListenBrainz(arg1, arg2, arg3) {

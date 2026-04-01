@@ -12,6 +12,7 @@ import {
     AudioStop,
     GetSettings,
     InitializeAudioBackend,
+    LoadPlaylistFile,
     LookupArtistByMBID,
     ReadFileBase64,
     ReadTextFile,
@@ -19,6 +20,7 @@ import {
     SaveSettings,
     ScanLibraryFolder,
     SelectLibraryFolder,
+    SelectPlaylistFile,
     SubmitListenBrainz,
 } from '../wailsjs/go/main/App';
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
@@ -97,6 +99,11 @@ type LibraryScanResult = {
     totalEntries: number;
     truncated: boolean;
     entryLimit: number;
+};
+
+type PlaylistLoadResult = {
+    name: string;
+    trackFiles: LibraryIndexedFile[];
 };
 
 type TextLibraryFile = {
@@ -181,6 +188,19 @@ app.innerHTML = `
                     <button class="play-order-item" type="button" role="menuitemradio" data-play-order="shuffle-album">Shuffle (album)</button>
                     <button class="play-order-item" type="button" role="menuitemradio" data-play-order="shuffle-library">Shuffle (library)</button>
                 </div>
+                <div id="playlist-menu" class="playlist-menu" role="menu" aria-label="Playlist options" hidden>
+                    <button id="playlist-load-btn" class="playlist-menu-item" type="button" role="menuitem">Load M3U/M3U8…</button>
+                </div>
+                <div id="playlist-modal" class="playlist-modal" hidden>
+                    <div id="playlist-backdrop" class="playlist-backdrop"></div>
+                    <section class="playlist-dialog" role="dialog" aria-modal="true" aria-labelledby="playlist-title">
+                        <header class="playlist-header">
+                            <p id="playlist-title" class="playlist-title">Playlist</p>
+                            <button id="playlist-close" class="playlist-close" type="button" aria-label="Close playlist">✕</button>
+                        </header>
+                        <ul id="playlist-list" class="playlist-list"></ul>
+                    </section>
+                </div>
 `;
 
 let tracks: Track[] = [];
@@ -190,6 +210,7 @@ let objectUrls: string[] = [];
 let sidebarOpen = false;
 let libraryRootName = '';
 let currentFolderPath = '';
+let sidebarAutoFolderPath = '';
 let libraryIndexTruncated = false;
 let tagRequestVersion = 0;
 let artistInfoRequestVersion = 0;
@@ -219,6 +240,11 @@ let playbackOrderMode: PlaybackOrderMode = 'ordered-library';
 let shuffleHistory: number[] = [];
 let shuffleCursor = -1;
 let shuffleScopeKey = '';
+let loadedPlaylistTrackIndexes: number[] | null = null;
+let loadedPlaylistName = '';
+let editableQueueTrackIndexes: number[] | null = null;
+let playlistHydrationRunId = 0;
+let playlistDragFromPosition: number | null = null;
 const libraryNodeByPath = new Map<string, LibraryNode>();
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
@@ -244,6 +270,7 @@ const {
     currentTimeLabel,
     trackDurationLabel,
     seek,
+    playlistBtn,
     back,
     playPause,
     forward,
@@ -268,6 +295,13 @@ const settingsLibraryPath = document.getElementById('settings-library-path') as 
 const settingsListenBrainzToken = document.getElementById('settings-listenbrainz-token') as HTMLInputElement;
 const settingsStatus = document.getElementById('settings-status') as HTMLParagraphElement;
 const playOrderMenu = document.getElementById('play-order-menu') as HTMLDivElement;
+const playlistMenu = document.getElementById('playlist-menu') as HTMLDivElement;
+const playlistLoadBtn = document.getElementById('playlist-load-btn') as HTMLButtonElement;
+const playlistModal = document.getElementById('playlist-modal') as HTMLDivElement;
+const playlistBackdrop = document.getElementById('playlist-backdrop') as HTMLDivElement;
+const playlistClose = document.getElementById('playlist-close') as HTMLButtonElement;
+const playlistTitle = document.getElementById('playlist-title') as HTMLParagraphElement;
+const playlistList = document.getElementById('playlist-list') as HTMLUListElement;
 
 const playbackOrderLabelByMode: Record<PlaybackOrderMode, string> = {
     'ordered-album': 'Ordered (album)',
@@ -639,6 +673,10 @@ const refreshNowPlayingLabel = (): void => {
     trackArtist.textContent = activeTrack.displayArtist;
     trackTechnical.textContent = activeTrack.displayTechnical;
     applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds);
+
+    if (!playlistModal.hidden) {
+        renderPlaylistPopup();
+    }
 };
 
 const ensureTrackTagsResolved = async (index: number): Promise<void> => {
@@ -784,7 +822,224 @@ const pickRandomTrackIndex = (candidates: number[], currentIndex: number): numbe
     return pool[Math.floor(Math.random() * pool.length)];
 };
 
+const ensureShuffleFutureTracks = (count: number): void => {
+    if (!isShuffleMode()) {
+        return;
+    }
+
+    const orderedIndexes = orderedTrackIndexesForScope();
+    if (orderedIndexes.length === 0) {
+        return;
+    }
+
+    const scopeKey = currentShuffleScopeKey();
+    if (shuffleScopeKey !== scopeKey) {
+        shuffleScopeKey = scopeKey;
+        shuffleHistory = [];
+        shuffleCursor = -1;
+    }
+
+    if (shuffleCursor < 0) {
+        shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
+        shuffleCursor = 0;
+    }
+
+    while (shuffleHistory.length - shuffleCursor - 1 < count) {
+        const currentIndex = shuffleHistory[shuffleHistory.length - 1];
+        const nextIndex = pickRandomTrackIndex(orderedIndexes, currentIndex);
+        shuffleHistory.push(nextIndex);
+    }
+};
+
+const currentSequenceIndexes = (): { indexes: number[]; currentPosition: number } => {
+    if (loadedPlaylistTrackIndexes && loadedPlaylistTrackIndexes.length > 0) {
+        const currentPosition = loadedPlaylistTrackIndexes.indexOf(currentTrackIndex);
+        return {
+            indexes: loadedPlaylistTrackIndexes,
+            currentPosition: currentPosition >= 0 ? currentPosition : 0,
+        };
+    }
+
+    if (editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) {
+        const currentPosition = editableQueueTrackIndexes.indexOf(currentTrackIndex);
+        return {
+            indexes: editableQueueTrackIndexes,
+            currentPosition: currentPosition >= 0 ? currentPosition : 0,
+        };
+    }
+
+    if (isShuffleMode()) {
+        ensureShuffleFutureTracks(50);
+        return {
+            indexes: shuffleHistory,
+            currentPosition: shuffleCursor >= 0 ? shuffleCursor : 0,
+        };
+    }
+
+    const indexes = orderedTrackIndexesForScope();
+    const currentPosition = indexes.indexOf(currentTrackIndex);
+    return {
+        indexes,
+        currentPosition: currentPosition >= 0 ? currentPosition : 0,
+    };
+};
+
+const closePlaylistMenu = (): void => {
+    playlistMenu.hidden = true;
+};
+
+const openPlaylistMenu = (clientX: number, clientY: number): void => {
+    playlistMenu.hidden = false;
+
+    const margin = 10;
+    const rect = playlistMenu.getBoundingClientRect();
+    const clampedX = Math.min(clientX, window.innerWidth - rect.width - margin);
+    const clampedY = Math.min(clientY, window.innerHeight - rect.height - margin);
+
+    playlistMenu.style.left = `${Math.max(margin, clampedX)}px`;
+    playlistMenu.style.top = `${Math.max(margin, clampedY)}px`;
+};
+
+const closePlaylistModal = (): void => {
+    playlistModal.hidden = true;
+    playlistDragFromPosition = null;
+};
+
+const schedulePlaylistPopupRender = (() => {
+    let scheduled = false;
+
+    return (): void => {
+        if (scheduled) {
+            return;
+        }
+
+        scheduled = true;
+        requestAnimationFrame(() => {
+            scheduled = false;
+            if (!playlistModal.hidden) {
+                renderPlaylistPopup();
+            }
+        });
+    };
+})();
+
+const hydratePlaylistTrackMetadataInBackground = (trackIndexes: number[]): void => {
+    const runId = ++playlistHydrationRunId;
+    const pending = Array.from(new Set(trackIndexes)).filter((index) => (
+        index >= 0
+        && index < tracks.length
+        && !tracks[index].tagsResolved
+    ));
+
+    if (pending.length === 0) {
+        return;
+    }
+
+    const workerCount = Math.min(4, pending.length);
+    let cursor = 0;
+
+    const worker = async (): Promise<void> => {
+        while (true) {
+            if (runId !== playlistHydrationRunId) {
+                return;
+            }
+
+            const nextCursor = cursor;
+            cursor += 1;
+            if (nextCursor >= pending.length) {
+                return;
+            }
+
+            await ensureTrackTagsResolved(pending[nextCursor]);
+            if (runId !== playlistHydrationRunId) {
+                return;
+            }
+
+            schedulePlaylistPopupRender();
+        }
+    };
+
+    for (let workerIndex = 0; workerIndex < workerCount; workerIndex += 1) {
+        void worker();
+    }
+};
+
+const renderPlaylistPopup = (): void => {
+    const { indexes, currentPosition } = currentSequenceIndexes();
+    const isExternalPlaylist = loadedPlaylistTrackIndexes !== null;
+    const canEditQueue = true;
+    const start = isExternalPlaylist ? 0 : Math.max(0, currentPosition - 50);
+    const end = isExternalPlaylist ? indexes.length : Math.min(indexes.length, currentPosition + 51);
+    const visibleIndexes = indexes.slice(start, end);
+
+    playlistTitle.textContent = isExternalPlaylist
+        ? `Playlist: ${loadedPlaylistName || 'M3U/M3U8'}`
+        : `Playback Queue (${playbackOrderLabelByMode[playbackOrderMode]})`;
+
+    if (visibleIndexes.length === 0) {
+        playlistList.innerHTML = '<li class="playlist-item-empty">No tracks available</li>';
+        return;
+    }
+
+    const rows = visibleIndexes.map((trackIndex, offset) => {
+        const track = tracks[trackIndex];
+        const actualPosition = start + offset;
+        const activeClass = trackIndex === currentTrackIndex ? ' is-active' : '';
+        const prefix = actualPosition < currentPosition ? '◀ ' : (actualPosition > currentPosition ? '▶ ' : '• ');
+        const label = track?.displayTitle || track?.name || 'Unknown track';
+        const secondary = track?.displayArtist || '';
+
+        if (!canEditQueue) {
+            return `<li><button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}"><span class="playlist-item-main">${prefix}${label}</span><span class="playlist-item-sub">${secondary}</span></button></li>`;
+        }
+
+        return `<li class="playlist-row" draggable="true" data-playlist-position="${actualPosition}">
+            <button class="playlist-drag-handle" type="button" aria-label="Drag track" title="Drag to reorder">☰</button>
+            <button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}" data-playlist-position="${actualPosition}"><span class="playlist-item-main">${prefix}${label}</span><span class="playlist-item-sub">${secondary}</span></button>
+            <button class="playlist-remove" type="button" data-playlist-remove-position="${actualPosition}" aria-label="Remove track" title="Remove track">✕</button>
+        </li>`;
+    }).join('');
+
+    playlistList.innerHTML = rows;
+};
+
+const openPlaylistModal = (): void => {
+    if (loadedPlaylistTrackIndexes && loadedPlaylistTrackIndexes.length > 0) {
+        hydratePlaylistTrackMetadataInBackground(loadedPlaylistTrackIndexes);
+    } else if (editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) {
+        hydratePlaylistTrackMetadataInBackground(editableQueueTrackIndexes);
+    } else {
+        const { indexes, currentPosition } = currentSequenceIndexes();
+        const start = Math.max(0, currentPosition - 50);
+        const end = Math.min(indexes.length, currentPosition + 51);
+        hydratePlaylistTrackMetadataInBackground(indexes.slice(start, end));
+    }
+
+    renderPlaylistPopup();
+    playlistModal.hidden = false;
+};
+
 const nextTrackIndexForDirection = (direction: -1 | 1): number | undefined => {
+    if (loadedPlaylistTrackIndexes && loadedPlaylistTrackIndexes.length > 0) {
+        const currentPosition = loadedPlaylistTrackIndexes.indexOf(currentTrackIndex);
+        if (currentPosition < 0) {
+            return loadedPlaylistTrackIndexes[0];
+        }
+
+        const nextPosition = (currentPosition + direction + loadedPlaylistTrackIndexes.length) % loadedPlaylistTrackIndexes.length;
+        return loadedPlaylistTrackIndexes[nextPosition];
+    }
+
+    if (editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) {
+        const currentPosition = editableQueueTrackIndexes.indexOf(currentTrackIndex);
+        if (currentPosition < 0) {
+            return editableQueueTrackIndexes[0];
+        }
+
+        const nextPosition = (currentPosition + direction + editableQueueTrackIndexes.length) % editableQueueTrackIndexes.length;
+        return editableQueueTrackIndexes[nextPosition];
+    }
+
     const orderedIndexes = orderedTrackIndexesForScope();
     if (orderedIndexes.length === 0) {
         return undefined;
@@ -1107,11 +1362,16 @@ const clearLibrarySelection = async (): Promise<void> => {
     currentTrackIndex = -1;
     libraryRootName = '';
     currentFolderPath = '';
+    sidebarAutoFolderPath = '';
     libraryIndexTruncated = false;
     scrobbleSessionId = 0;
     nowPlayingSubmittedSessionId = -1;
     scrobbleSubmittedSessionId = -1;
     scrobbleSessionStartedAt = 0;
+    loadedPlaylistTrackIndexes = null;
+    loadedPlaylistName = '';
+    editableQueueTrackIndexes = null;
+    playlistHydrationRunId += 1;
     resetShuffleHistory();
 
     trackTitle.textContent = 'No track loaded';
@@ -1199,6 +1459,10 @@ const loadTrack = async (index: number): Promise<void> => {
     scrobbleSubmittedSessionId = -1;
     scrobbleSessionStartedAt = 0;
     const track = tracks[currentTrackIndex];
+
+    if (!sidebarOpen) {
+        sidebarAutoFolderPath = track.folderPath;
+    }
 
     try {
         const nextState = await AudioLoadTrack(track.path) as AudioPlaybackState;
@@ -1298,8 +1562,22 @@ const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
 
     playbackOrderMode = nextMode;
     currentSettings.playbackOrder = nextMode;
+    editableQueueTrackIndexes = null;
     resetShuffleHistory();
     updatePlayOrderMenuState();
+};
+
+const ensureEditableQueue = (): number[] => {
+    if (loadedPlaylistTrackIndexes && loadedPlaylistTrackIndexes.length > 0) {
+        return loadedPlaylistTrackIndexes;
+    }
+
+    if (editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) {
+        return editableQueueTrackIndexes;
+    }
+
+    editableQueueTrackIndexes = currentSequenceIndexes().indexes.slice();
+    return editableQueueTrackIndexes;
 };
 
 const savePlaybackOrderSetting = async (): Promise<void> => {
@@ -1318,6 +1596,73 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
     } catch (error) {
         console.error(error);
     }
+};
+
+const ensureTrackIndexForPath = (file: LibraryIndexedFile, trackIndexByPath: Map<string, number>): number => {
+    const normalizedPath = file.path.toLowerCase();
+    const existingIndex = trackIndexByPath.get(normalizedPath);
+    if (existingIndex !== undefined) {
+        return existingIndex;
+    }
+
+    const createdTrack: Track = {
+        title: file.name,
+        name: file.name,
+        path: file.path,
+        relativePath: file.relativePath || file.name,
+        folderPath: file.folderPath || '',
+        displayTitle: file.name,
+        displayAlbum: 'Unknown Album',
+        displayArtist: 'Unknown Artist',
+        displayTrackNumber: '',
+        displayTrackTotal: '',
+        displayTechnical: '',
+        tagsResolved: false,
+        mbIds: {},
+        artistMbids: [],
+    };
+
+    tracks.push(createdTrack);
+    const createdIndex = tracks.length - 1;
+    trackIndexByPath.set(normalizedPath, createdIndex);
+    return createdIndex;
+};
+
+const yieldToUi = async (): Promise<void> => {
+    await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+    });
+};
+
+const loadPlaylistIntoQueue = async (playlistPath: string): Promise<void> => {
+    const loaded = await LoadPlaylistFile(playlistPath) as PlaylistLoadResult;
+    const nextIndexes: number[] = [];
+    const trackIndexByPath = new Map<string, number>();
+
+    tracks.forEach((track, index) => {
+        trackIndexByPath.set(track.path.toLowerCase(), index);
+    });
+
+    const playlistFiles = loaded.trackFiles || [];
+    const batchSize = 200;
+    for (let index = 0; index < playlistFiles.length; index += 1) {
+        nextIndexes.push(ensureTrackIndexForPath(playlistFiles[index], trackIndexByPath));
+
+        if ((index + 1) % batchSize === 0) {
+            await yieldToUi();
+        }
+    }
+
+    if (nextIndexes.length === 0) {
+        return;
+    }
+
+    loadedPlaylistTrackIndexes = nextIndexes;
+    loadedPlaylistName = loaded.name || '';
+    editableQueueTrackIndexes = null;
+    resetShuffleHistory();
+    hydratePlaylistTrackMetadataInBackground(nextIndexes);
+    await loadTrack(nextIndexes[0]);
 };
 
 const firstTrackIndexFromRandomAlbumFolder = (): number => {
@@ -1361,6 +1706,11 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
     libraryNodeByPath.clear();
     tracks = [];
     textFiles = [];
+    loadedPlaylistTrackIndexes = null;
+    loadedPlaylistName = '';
+    editableQueueTrackIndexes = null;
+    playlistHydrationRunId += 1;
+    sidebarAutoFolderPath = '';
 
     for (const [folder, coverPath] of Object.entries(scanResult.coverPathByFolder || {})) {
         coverPathByFolder.set(folder, coverPath);
@@ -1554,7 +1904,19 @@ sidebarToggle.addEventListener('click', () => {
 });
 
 const setSidebarOpen = (open: boolean): void => {
+    const wasOpen = sidebarOpen;
+
+    if (!open && wasOpen) {
+        sidebarAutoFolderPath = currentFolderPath;
+    }
+
     sidebarOpen = open;
+
+    if (sidebarOpen && !wasOpen) {
+        currentFolderPath = sidebarAutoFolderPath;
+        renderFolder('none');
+    }
+
     app.classList.toggle('sidebar-open', sidebarOpen);
     sidebarToggle.textContent = '‣‣‣';
     sidebarToggle.setAttribute('aria-label', sidebarOpen ? 'Close library' : 'Open library');
@@ -1618,6 +1980,11 @@ document.addEventListener('keydown', (event) => {
         return;
     }
 
+    if (!playlistModal.hidden) {
+        closePlaylistModal();
+        return;
+    }
+
     if (!settingsModal.hidden) {
         closeSettingsModal();
         return;
@@ -1668,6 +2035,175 @@ playOrderMenu.addEventListener('click', (event) => {
     setPlaybackOrderMode(nextMode);
     void savePlaybackOrderSetting();
     closePlayOrderMenu();
+});
+
+playlistBtn.addEventListener('click', () => {
+    openPlaylistModal();
+});
+
+playlistBtn.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openPlaylistMenu(event.clientX, event.clientY);
+});
+
+playlistLoadBtn.addEventListener('click', async () => {
+    closePlaylistMenu();
+
+    try {
+        const selectedPath = await SelectPlaylistFile();
+        if (!selectedPath) {
+            return;
+        }
+
+        await loadPlaylistIntoQueue(selectedPath);
+        openPlaylistModal();
+    } catch (error) {
+        console.error(error);
+    }
+});
+
+playlistBackdrop.addEventListener('click', () => {
+    closePlaylistModal();
+});
+
+playlistClose.addEventListener('click', () => {
+    closePlaylistModal();
+});
+
+playlistList.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+        return;
+    }
+
+    const removeButton = target.closest('[data-playlist-remove-position]');
+    if (removeButton instanceof HTMLButtonElement) {
+        const activeQueue = ensureEditableQueue();
+        const removePosition = Number(removeButton.dataset.playlistRemovePosition);
+        if (!Number.isInteger(removePosition)) {
+            return;
+        }
+
+        activeQueue.splice(removePosition, 1);
+        if (loadedPlaylistTrackIndexes && loadedPlaylistTrackIndexes.length === 0) {
+            loadedPlaylistTrackIndexes = null;
+            loadedPlaylistName = '';
+        }
+
+        if (editableQueueTrackIndexes && editableQueueTrackIndexes.length === 0) {
+            editableQueueTrackIndexes = null;
+        }
+
+        renderPlaylistPopup();
+        return;
+    }
+
+    const button = target.closest('[data-playlist-track-index]');
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const index = Number(button.dataset.playlistTrackIndex);
+    if (!Number.isInteger(index)) {
+        return;
+    }
+
+    void loadTrack(index).then(() => {
+        void playCurrentTrack();
+        renderPlaylistPopup();
+    });
+});
+
+playlistList.addEventListener('dragstart', (event) => {
+    const activeQueue = ensureEditableQueue();
+    if (!activeQueue || activeQueue.length === 0) {
+        return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof Element)) {
+        return;
+    }
+
+    const row = target.closest('.playlist-row');
+    if (!(row instanceof HTMLElement)) {
+        return;
+    }
+
+    const fromPosition = Number(row.dataset.playlistPosition);
+    if (!Number.isInteger(fromPosition)) {
+        return;
+    }
+
+    playlistDragFromPosition = fromPosition;
+    row.classList.add('is-dragging');
+
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(fromPosition));
+    }
+});
+
+playlistList.addEventListener('dragend', () => {
+    playlistDragFromPosition = null;
+    const rows = playlistList.querySelectorAll('.playlist-row.is-dragging');
+    rows.forEach((row) => row.classList.remove('is-dragging'));
+});
+
+playlistList.addEventListener('dragover', (event) => {
+    const activeQueue = loadedPlaylistTrackIndexes ?? editableQueueTrackIndexes;
+    if (!activeQueue || activeQueue.length === 0) {
+        return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof Element)) {
+        return;
+    }
+
+    const row = target.closest('.playlist-row');
+    if (!(row instanceof HTMLElement)) {
+        return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+    }
+});
+
+playlistList.addEventListener('drop', (event) => {
+    const activeQueue = ensureEditableQueue();
+    if (activeQueue.length === 0) {
+        return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof Element)) {
+        return;
+    }
+
+    const row = target.closest('.playlist-row');
+    if (!(row instanceof HTMLElement)) {
+        return;
+    }
+
+    event.preventDefault();
+
+    const toPosition = Number(row.dataset.playlistPosition);
+    const fromPosition = playlistDragFromPosition ?? Number(event.dataTransfer?.getData('text/plain'));
+    if (!Number.isInteger(fromPosition) || !Number.isInteger(toPosition) || fromPosition === toPosition) {
+        return;
+    }
+
+    if (fromPosition < 0 || toPosition < 0 || fromPosition >= activeQueue.length || toPosition >= activeQueue.length) {
+        return;
+    }
+
+    const moved = activeQueue.splice(fromPosition, 1)[0];
+    activeQueue.splice(toPosition, 0, moved);
+    renderPlaylistPopup();
 });
 
 back.addEventListener('click', () => {
@@ -1724,6 +2260,10 @@ document.addEventListener('click', (e) => {
         closePlayOrderMenu();
     }
 
+    if (!playlistMenu.hidden && !playlistMenu.contains(target)) {
+        closePlaylistMenu();
+    }
+
     if (!volumeRow.contains(target)) {
         volumeRow.classList.remove('open');
     }
@@ -1733,6 +2273,10 @@ document.addEventListener('click', (e) => {
     }
 
     if (textFileModal.contains(target)) {
+        return;
+    }
+
+    if (playlistModal.contains(target)) {
         return;
     }
 
@@ -1751,11 +2295,19 @@ document.addEventListener('scroll', () => {
     if (!playOrderMenu.hidden) {
         closePlayOrderMenu();
     }
+
+    if (!playlistMenu.hidden) {
+        closePlaylistMenu();
+    }
 }, { capture: true });
 
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !playOrderMenu.hidden) {
         closePlayOrderMenu();
+    }
+
+    if (event.key === 'Escape' && !playlistMenu.hidden) {
+        closePlaylistMenu();
     }
 });
 

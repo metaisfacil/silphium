@@ -670,6 +670,187 @@
     content: '✓ ';
 }
 
+.playlist-menu {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 40;
+    min-width: 11.5rem;
+    padding: 0.3rem;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(18, 18, 20, 0.98);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+}
+
+.playlist-menu[hidden] {
+    display: none;
+}
+
+.playlist-menu-item {
+    width: 100%;
+    border: none;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.82rem;
+    text-align: left;
+    padding: 0.5rem 0.56rem;
+    cursor: pointer;
+}
+
+.playlist-menu-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.playlist-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 32;
+    display: grid;
+    place-items: center;
+}
+
+.playlist-modal[hidden] {
+    display: none;
+}
+
+.playlist-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(2px);
+}
+
+.playlist-dialog {
+    position: relative;
+    width: min(720px, calc(100vw - 2rem));
+    max-height: calc(100vh - 2.5rem);
+    display: flex;
+    flex-direction: column;
+    background: rgba(18, 18, 20, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.9rem;
+    overflow: hidden;
+}
+
+.playlist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.playlist-title {
+    margin: 0;
+    font-size: 0.86rem;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.playlist-close {
+    width: 1.8rem;
+    height: 1.8rem;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.playlist-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.4rem;
+    overflow: auto;
+}
+
+.playlist-item {
+    width: 100%;
+    border: none;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    padding: 0.4rem 0.55rem;
+    cursor: pointer;
+    display: grid;
+    gap: 0.1rem;
+}
+
+.playlist-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.playlist-row.is-dragging {
+    opacity: 0.55;
+}
+
+.playlist-drag-handle,
+.playlist-remove {
+    border: none;
+    border-radius: 0.45rem;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    width: 1.8rem;
+    height: 1.8rem;
+    cursor: pointer;
+}
+
+.playlist-drag-handle {
+    cursor: grab;
+}
+
+.playlist-drag-handle:active {
+    cursor: grabbing;
+}
+
+.playlist-drag-handle:hover,
+.playlist-remove:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.playlist-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.playlist-item.is-active {
+    background: rgba(255, 255, 255, 0.13);
+}
+
+.playlist-item-main {
+    font-size: 0.82rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.playlist-item-sub {
+    font-size: 0.72rem;
+    opacity: 0.58;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.playlist-item-empty {
+    padding: 0.6rem;
+    opacity: 0.7;
+}
+
 .track-title {
     font-weight: 700;
     font-size: 1rem;
