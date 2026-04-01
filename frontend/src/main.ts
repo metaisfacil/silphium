@@ -1732,6 +1732,10 @@ document.addEventListener('click', (e) => {
         return;
     }
 
+    if (textFileModal.contains(target)) {
+        return;
+    }
+
     if (!sidebarOpen) {
         return;
     }
