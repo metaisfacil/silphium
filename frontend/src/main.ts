@@ -1227,7 +1227,7 @@ const renderArtistInfoPanel = (details: ArtistDetails): void => {
     artistInfoCountry.textContent = `Country: ${details.country || '—'}`;
     artistInfoLifeSpan.textContent = `Life span: ${details.lifeSpan || '—'}`;
     artistInfoGenres.textContent = `Genres: ${details.genres?.length ? details.genres.join(', ') : '—'}`;
-    artistInfoSummary.textContent = details.disambiguation || 'Artist information from MusicBrainz.';
+    artistInfoSummary.textContent = 'Artist information from MusicBrainz.';
     renderArtistUrlIcons(details.urls);
 };
 
