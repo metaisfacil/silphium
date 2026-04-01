@@ -116,6 +116,7 @@
     border: none;
     background: transparent;
     color: inherit;
+    font: inherit;
     border-radius: 999px;
     width: 2rem;
     height: 2rem;
@@ -190,6 +191,7 @@
     border-radius: 8px;
     background: transparent;
     color: inherit;
+    font: inherit;
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
@@ -255,6 +257,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    font: inherit;
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.04em;
