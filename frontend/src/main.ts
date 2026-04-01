@@ -1328,6 +1328,10 @@ document.addEventListener('click', (e) => {
         volumeRow.classList.remove('open');
     }
 
+    if (settingsModal.contains(target)) {
+        return;
+    }
+
     if (!sidebarOpen) {
         return;
     }
