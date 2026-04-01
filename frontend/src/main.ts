@@ -320,24 +320,54 @@ const asPlaybackOrderMode = (value: string): PlaybackOrderMode => {
 
 const setLibraryPathLabel = (): void => {
     const partialSuffix = libraryIndexTruncated ? ' (partial)' : '';
-    const formattedFolderPath = currentFolderPath
+    const folderSegments = currentFolderPath
         .split('/')
-        .filter((segment) => segment !== '')
-        .join(' / ');
+        .filter((segment) => segment !== '');
+
+    const appendText = (value: string): void => {
+        libraryPath.append(document.createTextNode(value));
+    };
+
+    const appendFolderButton = (label: string, folderPath: string): void => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'library-path-segment';
+        button.dataset.folderPath = folderPath;
+        button.textContent = label;
+        libraryPath.append(button);
+    };
+
+    const appendSeparator = (): void => {
+        const separator = document.createElement('span');
+        separator.className = 'library-path-separator';
+        separator.textContent = ' / ';
+        libraryPath.append(separator);
+    };
 
     if (!libraryRootName) {
+        libraryPath.innerHTML = '';
         libraryPath.textContent = 'No folder selected';
         libraryBack.disabled = true;
         return;
     }
 
+    libraryPath.innerHTML = '';
+
     if (!currentFolderPath) {
-        libraryPath.textContent = `${libraryRootName}${partialSuffix}`;
+        appendText(`${libraryRootName}${partialSuffix}`);
         libraryBack.disabled = true;
         return;
     }
 
-    libraryPath.textContent = `${libraryRootName}${partialSuffix} / ${formattedFolderPath}`;
+    appendFolderButton(`${libraryRootName}${partialSuffix}`, '');
+
+    let cumulativePath = '';
+    for (const segment of folderSegments) {
+        appendSeparator();
+        cumulativePath = cumulativePath ? `${cumulativePath}/${segment}` : segment;
+        appendFolderButton(segment, cumulativePath);
+    }
+
     libraryBack.disabled = false;
 };
 
@@ -2006,6 +2036,21 @@ libraryBack.addEventListener('click', () => {
     renderFolder('back');
 });
 
+libraryPath.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const nextPath = target.dataset.folderPath;
+    if (nextPath === undefined || nextPath === currentFolderPath) {
+        return;
+    }
+
+    currentFolderPath = nextPath;
+    renderFolder('none');
+});
+
 playPause.addEventListener('click', () => {
     if (!playbackState.playing) {
         void playCurrentTrack();
@@ -2255,6 +2300,7 @@ volumeBtn.addEventListener('click', () => {
 
 document.addEventListener('click', (e) => {
     const target = e.target as Node;
+    const clickPath = e.composedPath();
 
     if (!playOrderMenu.hidden && !playOrderMenu.contains(target)) {
         closePlayOrderMenu();
@@ -2284,7 +2330,7 @@ document.addEventListener('click', (e) => {
         return;
     }
 
-    if (librarySidebar.contains(target) || sidebarToggle.contains(target)) {
+    if (clickPath.includes(librarySidebar) || clickPath.includes(sidebarToggle)) {
         return;
     }
 
