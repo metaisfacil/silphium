@@ -1,6 +1,21 @@
 import './style.css';
 import './app.css';
+import './components/overlays/overlays.css';
 import { getMediaControlsElements, renderMediaControls } from './components/media-controls';
+import {
+    getImageFileModalElements,
+    getPlayOrderMenuElements,
+    getPlaylistMenuElements,
+    getPlaylistModalElements,
+    getSettingsModalElements,
+    getTextFileModalElements,
+    renderImageFileModal,
+    renderPlayOrderMenu,
+    renderPlaylistMenu,
+    renderPlaylistModal,
+    renderSettingsModal,
+    renderTextFileModal,
+} from './components/overlays';
 import { getSidebarElements, renderSidebar } from './components/sidebar';
 import {
     AudioGetState,
@@ -151,77 +166,14 @@ app.innerHTML = `
       <div id="bg-layer-a" class="bg-layer"></div>
       <div id="bg-layer-b" class="bg-layer"></div>
     </div>
-        ${renderSidebar()}
-        ${renderMediaControls()}
-                <div id="text-file-modal" class="text-file-modal" hidden>
-                    <div id="text-file-backdrop" class="text-file-backdrop"></div>
-                    <section class="text-file-dialog" role="dialog" aria-modal="true" aria-labelledby="text-file-title">
-                        <header class="text-file-header">
-                            <p id="text-file-title" class="text-file-title">Text file</p>
-                            <button id="text-file-close" class="text-file-close" type="button" aria-label="Close text file">✕</button>
-                        </header>
-                        <pre class="text-file-content"><code id="text-file-code"></code></pre>
-                    </section>
-                </div>
-                <div id="image-file-modal" class="image-file-modal" hidden>
-                    <div id="image-file-backdrop" class="image-file-backdrop"></div>
-                    <section class="image-file-dialog" role="dialog" aria-modal="true" aria-labelledby="image-file-title">
-                        <header class="image-file-header">
-                            <p id="image-file-title" class="image-file-title">Image file</p>
-                            <button id="image-file-close" class="image-file-close" type="button" aria-label="Close image file">✕</button>
-                        </header>
-                        <div class="image-file-content">
-                            <img id="image-file-preview" class="image-file-preview" alt="Image preview">
-                        </div>
-                    </section>
-                </div>
-                <div id="settings-modal" class="settings-modal" hidden>
-                    <div id="settings-backdrop" class="settings-backdrop"></div>
-                    <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-                        <header class="settings-header">
-                            <p id="settings-title" class="settings-title">Settings</p>
-                            <button id="settings-close" class="settings-close" type="button" aria-label="Close settings">✕</button>
-                        </header>
-                        <div class="settings-content">
-                            <div class="settings-field">
-                                <label class="settings-label" for="settings-library-path">Library Folder</label>
-                                <p class="settings-hint">Choose the root library folder Silphium scans for files.</p>
-                                <div class="settings-path-row">
-                                    <input id="settings-library-path" class="settings-input" type="text" placeholder="No folder selected">
-                                    <button id="settings-browse" class="settings-browse-btn" type="button" aria-label="Choose folder">...</button>
-                                </div>
-                            </div>
-                            <div class="settings-field">
-                                <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz User Token</label>
-                                <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
-                                <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
-                            </div>
-                            <p id="settings-status" class="settings-status"></p>
-                            <div class="settings-actions">
-                                <button id="settings-save" class="upload-btn" type="button">Save</button>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-                <div id="play-order-menu" class="play-order-menu" role="menu" aria-label="Playback order" hidden>
-                    <button class="play-order-item" type="button" role="menuitemradio" data-play-order="ordered-album">Ordered (album)</button>
-                    <button class="play-order-item" type="button" role="menuitemradio" data-play-order="ordered-library">Ordered (library)</button>
-                    <button class="play-order-item" type="button" role="menuitemradio" data-play-order="shuffle-album">Shuffle (album)</button>
-                    <button class="play-order-item" type="button" role="menuitemradio" data-play-order="shuffle-library">Shuffle (library)</button>
-                </div>
-                <div id="playlist-menu" class="playlist-menu" role="menu" aria-label="Playlist options" hidden>
-                    <button id="playlist-load-btn" class="playlist-menu-item" type="button" role="menuitem">Load M3U/M3U8…</button>
-                </div>
-                <div id="playlist-modal" class="playlist-modal" hidden>
-                    <div id="playlist-backdrop" class="playlist-backdrop"></div>
-                    <section class="playlist-dialog" role="dialog" aria-modal="true" aria-labelledby="playlist-title">
-                        <header class="playlist-header">
-                            <p id="playlist-title" class="playlist-title">Playlist</p>
-                            <button id="playlist-close" class="playlist-close" type="button" aria-label="Close playlist">✕</button>
-                        </header>
-                        <ul id="playlist-list" class="playlist-list"></ul>
-                    </section>
-                </div>
+    ${renderSidebar()}
+    ${renderMediaControls()}
+    ${renderTextFileModal()}
+    ${renderImageFileModal()}
+    ${renderSettingsModal()}
+    ${renderPlayOrderMenu()}
+    ${renderPlaylistMenu()}
+    ${renderPlaylistModal()}
 `;
 
 let tracks: Track[] = [];
@@ -305,32 +257,21 @@ trackAlbum.addEventListener('click', () => openMbLink(trackAlbum));
 trackArtist.addEventListener('click', () => openMbLink(trackArtist));
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
-const textFileModal = document.getElementById('text-file-modal') as HTMLDivElement;
-const textFileBackdrop = document.getElementById('text-file-backdrop') as HTMLDivElement;
-const textFileTitle = document.getElementById('text-file-title') as HTMLParagraphElement;
-const textFileCode = document.getElementById('text-file-code') as HTMLElement;
-const textFileClose = document.getElementById('text-file-close') as HTMLButtonElement;
-const imageFileModal = document.getElementById('image-file-modal') as HTMLDivElement;
-const imageFileBackdrop = document.getElementById('image-file-backdrop') as HTMLDivElement;
-const imageFileTitle = document.getElementById('image-file-title') as HTMLParagraphElement;
-const imageFileClose = document.getElementById('image-file-close') as HTMLButtonElement;
-const imageFilePreview = document.getElementById('image-file-preview') as HTMLImageElement;
-const settingsModal = document.getElementById('settings-modal') as HTMLDivElement;
-const settingsBackdrop = document.getElementById('settings-backdrop') as HTMLDivElement;
-const settingsClose = document.getElementById('settings-close') as HTMLButtonElement;
-const settingsBrowse = document.getElementById('settings-browse') as HTMLButtonElement;
-const settingsSave = document.getElementById('settings-save') as HTMLButtonElement;
-const settingsLibraryPath = document.getElementById('settings-library-path') as HTMLInputElement;
-const settingsListenBrainzToken = document.getElementById('settings-listenbrainz-token') as HTMLInputElement;
-const settingsStatus = document.getElementById('settings-status') as HTMLParagraphElement;
-const playOrderMenu = document.getElementById('play-order-menu') as HTMLDivElement;
-const playlistMenu = document.getElementById('playlist-menu') as HTMLDivElement;
-const playlistLoadBtn = document.getElementById('playlist-load-btn') as HTMLButtonElement;
-const playlistModal = document.getElementById('playlist-modal') as HTMLDivElement;
-const playlistBackdrop = document.getElementById('playlist-backdrop') as HTMLDivElement;
-const playlistClose = document.getElementById('playlist-close') as HTMLButtonElement;
-const playlistTitle = document.getElementById('playlist-title') as HTMLParagraphElement;
-const playlistList = document.getElementById('playlist-list') as HTMLUListElement;
+const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileClose } = getTextFileModalElements(document);
+const { imageFileModal, imageFileBackdrop, imageFileTitle, imageFileClose, imageFilePreview } = getImageFileModalElements(document);
+const {
+    settingsModal,
+    settingsBackdrop,
+    settingsClose,
+    settingsBrowse,
+    settingsSave,
+    settingsLibraryPath,
+    settingsListenBrainzToken,
+    settingsStatus,
+} = getSettingsModalElements(document);
+const { playOrderMenu } = getPlayOrderMenuElements(document);
+const { playlistMenu, playlistLoadBtn } = getPlaylistMenuElements(document);
+const { playlistModal, playlistBackdrop, playlistClose, playlistTitle, playlistList } = getPlaylistModalElements(document);
 
 const playbackOrderLabelByMode: Record<PlaybackOrderMode, string> = {
     'ordered-album': 'Ordered (album)',
