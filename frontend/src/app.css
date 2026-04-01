@@ -534,6 +534,7 @@
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.12);
     color: inherit;
+    font: inherit;
     cursor: pointer;
 }
 
@@ -569,6 +570,7 @@
     border: 1px solid rgba(255, 255, 255, 0.2);
     background: rgba(0, 0, 0, 0.22);
     color: inherit;
+    font: inherit;
     padding: 0.58rem 0.65rem;
     font-size: 0.86rem;
 }
@@ -584,6 +586,7 @@
     border: 1px solid rgba(255, 255, 255, 0.22);
     background: rgba(255, 255, 255, 0.14);
     color: inherit;
+    font: inherit;
     border-radius: 0.55rem;
     width: 2.2rem;
     height: 2.2rem;
