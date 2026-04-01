@@ -473,6 +473,12 @@
     white-space: pre;
 }
 
+.text-file-content,
+.text-file-content code {
+    letter-spacing: normal;
+    word-spacing: normal;
+}
+
 .track-title {
     font-weight: 700;
     font-size: 1rem;
