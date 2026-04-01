@@ -19,6 +19,7 @@ import (
 type App struct {
 	ctx         context.Context
 	libraryRoot string
+	audio       *AudioBackend
 }
 
 type LibraryIndexedFile struct {
@@ -57,13 +58,23 @@ type TrackBlob struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{
+		audio: NewAudioBackend(),
+	}
 }
 
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+}
+
+func (a *App) audioBackend() *AudioBackend {
+	if a.audio == nil {
+		a.audio = NewAudioBackend()
+	}
+
+	return a.audio
 }
 
 const maxLibraryEntries = 250000
@@ -442,4 +453,50 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 	}
 
 	return tagByKey
+}
+
+func (a *App) InitializeAudioBackend() (AudioPlaybackState, error) {
+	backend := a.audioBackend()
+	if err := backend.Initialize(); err != nil {
+		return AudioPlaybackState{}, err
+	}
+
+	return backend.State(), nil
+}
+
+func (a *App) AudioLoadTrack(path string) (AudioPlaybackState, error) {
+	cleanPath := normalizePath(path)
+	if cleanPath == "" {
+		return AudioPlaybackState{}, errors.New("track path is required")
+	}
+
+	if !a.isAllowedLibraryPath(cleanPath) {
+		return AudioPlaybackState{}, errors.New("track path is outside the selected library")
+	}
+
+	return a.audioBackend().LoadTrack(cleanPath)
+}
+
+func (a *App) AudioPlay() (AudioPlaybackState, error) {
+	return a.audioBackend().Play()
+}
+
+func (a *App) AudioPause() (AudioPlaybackState, error) {
+	return a.audioBackend().Pause()
+}
+
+func (a *App) AudioStop() (AudioPlaybackState, error) {
+	return a.audioBackend().Stop()
+}
+
+func (a *App) AudioSeek(seconds float64) (AudioPlaybackState, error) {
+	return a.audioBackend().Seek(seconds)
+}
+
+func (a *App) AudioSetVolume(volume float64) (AudioPlaybackState, error) {
+	return a.audioBackend().SetVolume(volume)
+}
+
+func (a *App) AudioGetState() AudioPlaybackState {
+	return a.audioBackend().State()
 }

@@ -3,6 +3,14 @@ import './app.css';
 import { getMediaControlsElements, renderMediaControls } from './components/media-controls';
 import { getSidebarElements, renderSidebar } from './components/sidebar';
 import {
+    AudioGetState,
+    AudioLoadTrack,
+    AudioPause,
+    AudioPlay,
+    AudioSeek,
+    AudioSetVolume,
+    AudioStop,
+    InitializeAudioBackend,
     LookupArtistByMBID,
     ReadFileBase64,
     ReadTextFile,
@@ -25,7 +33,6 @@ type Track = {
     title: string;
     name: string;
     path: string;
-    src?: string;
     relativePath: string;
     folderPath: string;
     displayTitle: string;
@@ -88,6 +95,16 @@ type TextLibraryFile = {
     folderPath: string;
 };
 
+type AudioPlaybackState = {
+    loaded: boolean;
+    playing: boolean;
+    currentTime: number;
+    duration: number;
+    volume: number;
+    sourcePath: string;
+    endEventId: number;
+};
+
 const app = document.querySelector('#app');
 
 if (!app) {
@@ -113,12 +130,6 @@ app.innerHTML = `
                 </div>
 `;
 
-const audio = new Audio();
-audio.preload = 'metadata';
-audio.volume = 0.8;
-
-const TRACK_SOURCE_CACHE_LIMIT = 24;
-
 let tracks: Track[] = [];
 let textFiles: TextLibraryFile[] = [];
 let currentTrackIndex = -1;
@@ -131,11 +142,23 @@ let tagRequestVersion = 0;
 let artistInfoRequestVersion = 0;
 let activeBackgroundLayer = 0;
 let coverFlipped = false;
+let playbackState: AudioPlaybackState = {
+    loaded: false,
+    playing: false,
+    currentTime: 0,
+    duration: 0,
+    volume: 0.8,
+    sourcePath: '',
+    endEventId: 0,
+};
+let playbackPollHandle: number | undefined;
+let isSeeking = false;
+let backendReady = false;
+let lastHandledEndEventId = 0;
 const libraryNodeByPath = new Map<string, LibraryNode>();
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
 const artistInfoByMBID = new Map<string, ArtistDetails>();
-const trackSourceCacheOrder: number[] = [];
 
 const { sidebarToggle, librarySidebar, libraryPickFolder, libraryBack, libraryPath, libraryBrowser } = getSidebarElements(document);
 const {
@@ -274,16 +297,78 @@ const formatTime = (seconds: number): string => {
 };
 
 const updatePlayButton = (): void => {
-    playPause.textContent = audio.paused ? '▶' : '⏸';
-    playPause.dataset.state = audio.paused ? 'play' : 'pause';
-    playPause.setAttribute('aria-label', audio.paused ? 'Play' : 'Pause');
+    playPause.textContent = playbackState.playing ? '⏸' : '▶';
+    playPause.dataset.state = playbackState.playing ? 'pause' : 'play';
+    playPause.setAttribute('aria-label', playbackState.playing ? 'Pause' : 'Play');
 };
 
 const updateTrackLabels = (): void => {
-    currentTimeLabel.textContent = formatTime(audio.currentTime);
-    trackDurationLabel.textContent = formatTime(audio.duration);
-    seek.max = Number.isFinite(audio.duration) ? String(audio.duration) : '0';
-    seek.value = String(audio.currentTime);
+    currentTimeLabel.textContent = formatTime(playbackState.currentTime);
+    trackDurationLabel.textContent = formatTime(playbackState.duration);
+    seek.max = Number.isFinite(playbackState.duration) ? String(playbackState.duration) : '0';
+    if (!isSeeking) {
+        seek.value = String(playbackState.currentTime);
+    }
+};
+
+const handleAudioError = (error: unknown): void => {
+    console.error(error);
+    const message = error instanceof Error ? error.message : 'Audio backend error';
+    if (!libraryRootName) {
+        libraryPath.textContent = message;
+    }
+};
+
+const maybeHandleTrackEnded = (state: AudioPlaybackState): void => {
+    if (state.endEventId <= lastHandledEndEventId || tracks.length === 0) {
+        return;
+    }
+
+    lastHandledEndEventId = state.endEventId;
+    goToTrack(1);
+};
+
+const applyPlaybackState = (nextState: AudioPlaybackState): void => {
+    playbackState = nextState;
+    updateTrackLabels();
+    updatePlayButton();
+    maybeHandleTrackEnded(nextState);
+};
+
+const syncPlaybackState = async (): Promise<void> => {
+    if (!backendReady) {
+        return;
+    }
+
+    try {
+        const nextState = await AudioGetState() as AudioPlaybackState;
+        applyPlaybackState(nextState);
+    } catch (error) {
+        handleAudioError(error);
+    }
+};
+
+const startPlaybackPolling = (): void => {
+    if (playbackPollHandle !== undefined) {
+        window.clearInterval(playbackPollHandle);
+    }
+
+    playbackPollHandle = window.setInterval(() => {
+        void syncPlaybackState();
+    }, 250);
+};
+
+const initializeBackendPlayback = async (): Promise<void> => {
+    try {
+        const initialState = await InitializeAudioBackend() as AudioPlaybackState;
+        backendReady = true;
+        applyPlaybackState(initialState);
+        volume.value = String(initialState.volume);
+        startPlaybackPolling();
+    } catch (error) {
+        backendReady = false;
+        handleAudioError(error);
+    }
 };
 
 const base64ToObjectUrl = (base64: string, mimeType: string): string => {
@@ -297,27 +382,6 @@ const base64ToObjectUrl = (base64: string, mimeType: string): string => {
 };
 
 const mimeTypeForFileName = (name: string): string => {
-    if (/\.mp3$/i.test(name)) {
-        return 'audio/mpeg';
-    }
-    if (/\.m4a$/i.test(name)) {
-        return 'audio/mp4';
-    }
-    if (/\.aac$/i.test(name)) {
-        return 'audio/aac';
-    }
-    if (/\.wav$/i.test(name)) {
-        return 'audio/wav';
-    }
-    if (/\.flac$/i.test(name)) {
-        return 'audio/flac';
-    }
-    if (/\.ogg$/i.test(name)) {
-        return 'audio/ogg';
-    }
-    if (/\.opus$/i.test(name)) {
-        return 'audio/ogg';
-    }
     if (/\.jpe?g$/i.test(name)) {
         return 'image/jpeg';
     }
@@ -491,39 +555,6 @@ const setBackgroundCover = (coverSrc?: string): void => {
     activeBackgroundLayer = activeBackgroundLayer === 0 ? 1 : 0;
 };
 
-const touchTrackSourceCache = (index: number): void => {
-    const existingPosition = trackSourceCacheOrder.indexOf(index);
-    if (existingPosition >= 0) {
-        trackSourceCacheOrder.splice(existingPosition, 1);
-    }
-    trackSourceCacheOrder.push(index);
-
-    while (trackSourceCacheOrder.length > TRACK_SOURCE_CACHE_LIMIT) {
-        const evictIndex = trackSourceCacheOrder.shift();
-        if (evictIndex === undefined) {
-            return;
-        }
-
-        if (evictIndex === currentTrackIndex) {
-            trackSourceCacheOrder.push(evictIndex);
-            continue;
-        }
-
-        const evictTrack = tracks[evictIndex];
-        const evictSrc = evictTrack?.src;
-        if (!evictTrack || !evictSrc) {
-            continue;
-        }
-
-        URL.revokeObjectURL(evictSrc);
-        objectUrls = objectUrls.filter((url) => url !== evictSrc);
-        tracks[evictIndex] = {
-            ...evictTrack,
-            src: undefined,
-        };
-    }
-};
-
 const hydrateCurrentTrackTag = async (index: number, version: number): Promise<void> => {
     if (index < 0 || index >= tracks.length) {
         return;
@@ -611,33 +642,6 @@ const resolveCoverForTrack = async (track: Track): Promise<string | undefined> =
     return coverUrl;
 };
 
-const ensureTrackSource = async (index: number): Promise<string | undefined> => {
-    const track = tracks[index];
-    if (!track) {
-        return undefined;
-    }
-
-    if (track.src) {
-        touchTrackSourceCache(index);
-        return track.src;
-    }
-
-    const rawBase64 = await ReadFileBase64(track.path);
-    if (!rawBase64) {
-        return undefined;
-    }
-
-    const src = base64ToObjectUrl(rawBase64, mimeTypeForFileName(track.name));
-    objectUrls.push(src);
-    tracks[index] = {
-        ...track,
-        src,
-    };
-    touchTrackSourceCache(index);
-
-    return src;
-};
-
 const loadTrack = async (index: number): Promise<void> => {
     if (index < 0 || index >= tracks.length) {
         return;
@@ -646,11 +650,15 @@ const loadTrack = async (index: number): Promise<void> => {
     currentTrackIndex = index;
     setCoverFlipped(false);
     const track = tracks[currentTrackIndex];
-    if (track.src) {
-        audio.src = track.src;
-    } else {
-        audio.removeAttribute('src');
+
+    try {
+        const nextState = await AudioLoadTrack(track.path) as AudioPlaybackState;
+        applyPlaybackState(nextState);
+    } catch (error) {
+        handleAudioError(error);
+        return;
     }
+
     refreshNowPlayingLabel();
     const coverSrc = await resolveCoverForTrack(track);
     if (index !== currentTrackIndex) {
@@ -666,9 +674,7 @@ const loadTrack = async (index: number): Promise<void> => {
         coverArt.classList.remove('is-visible');
         setBackgroundCover();
     }
-    currentTimeLabel.textContent = '0:00';
-    trackDurationLabel.textContent = '0:00';
-    seek.value = '0';
+
     renderFolder('none');
 
     tagRequestVersion += 1;
@@ -683,23 +689,28 @@ const playCurrentTrack = async (): Promise<void> => {
         await loadTrack(0);
     }
 
-    if (currentTrackIndex === -1) {
+    if (currentTrackIndex === -1 || !backendReady) {
         return;
-    }
-
-    const source = await ensureTrackSource(currentTrackIndex);
-    if (!source) {
-        return;
-    }
-
-    if (audio.src !== source) {
-        audio.src = source;
     }
 
     try {
-        await audio.play();
+        const nextState = await AudioPlay() as AudioPlaybackState;
+        applyPlaybackState(nextState);
     } catch (error) {
-        console.error(error);
+        handleAudioError(error);
+    }
+};
+
+const pauseCurrentTrack = async (): Promise<void> => {
+    if (!backendReady) {
+        return;
+    }
+
+    try {
+        const nextState = await AudioPause() as AudioPlaybackState;
+        applyPlaybackState(nextState);
+    } catch (error) {
+        handleAudioError(error);
     }
 };
 
@@ -714,19 +725,22 @@ const goToTrack = (direction: -1 | 1): void => {
     });
 };
 
-const loadLibraryScan = (scanResult: LibraryScanResult): void => {
+const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => {
     if (!scanResult.rootPath) {
         return;
     }
 
-    audio.pause();
-    audio.removeAttribute('src');
+    try {
+        const nextState = await AudioStop() as AudioPlaybackState;
+        applyPlaybackState(nextState);
+    } catch (error) {
+        handleAudioError(error);
+    }
 
     for (const url of objectUrls) {
         URL.revokeObjectURL(url);
     }
     objectUrls = [];
-    trackSourceCacheOrder.length = 0;
     coverPathByFolder.clear();
     coverUrlByFolder.clear();
     artistInfoByMBID.clear();
@@ -871,7 +885,7 @@ libraryPickFolder.addEventListener('click', async () => {
 
         libraryPath.textContent = 'Scanning folder…';
         const scanResult = await ScanLibraryFolder(selectedFolder) as LibraryScanResult;
-        loadLibraryScan(scanResult);
+        await loadLibraryScan(scanResult);
     } catch (error) {
         console.error(error);
         libraryPath.textContent = 'Unable to scan folder.';
@@ -959,12 +973,12 @@ libraryBack.addEventListener('click', () => {
 });
 
 playPause.addEventListener('click', () => {
-    if (audio.paused) {
+    if (!playbackState.playing) {
         void playCurrentTrack();
         return;
     }
 
-    audio.pause();
+    void pauseCurrentTrack();
 });
 
 back.addEventListener('click', () => {
@@ -976,12 +990,35 @@ forward.addEventListener('click', () => {
 });
 
 seek.addEventListener('input', () => {
-    audio.currentTime = Number(seek.value);
-    currentTimeLabel.textContent = formatTime(audio.currentTime);
+    isSeeking = true;
+    currentTimeLabel.textContent = formatTime(Number(seek.value));
+});
+
+seek.addEventListener('change', () => {
+    isSeeking = false;
+    void (async () => {
+        try {
+            const nextState = await AudioSeek(Number(seek.value)) as AudioPlaybackState;
+            applyPlaybackState(nextState);
+        } catch (error) {
+            handleAudioError(error);
+        }
+    })();
+});
+
+seek.addEventListener('blur', () => {
+    isSeeking = false;
 });
 
 volume.addEventListener('input', () => {
-    audio.volume = Number(volume.value);
+    void (async () => {
+        try {
+            const nextState = await AudioSetVolume(Number(volume.value)) as AudioPlaybackState;
+            applyPlaybackState(nextState);
+        } catch (error) {
+            handleAudioError(error);
+        }
+    })();
 });
 
 const volumeBtn = document.querySelector('#volume-btn') as HTMLButtonElement;
@@ -997,22 +1034,6 @@ document.addEventListener('click', (e) => {
     }
 });
 
-audio.addEventListener('loadedmetadata', () => {
-    updateTrackLabels();
-});
-
-audio.addEventListener('timeupdate', () => {
-    updateTrackLabels();
-});
-
-audio.addEventListener('play', () => {
-    updatePlayButton();
-});
-
-audio.addEventListener('pause', () => {
-    updatePlayButton();
-});
-
-audio.addEventListener('ended', () => {
-    goToTrack(1);
-});
+updatePlayButton();
+updateTrackLabels();
+void initializeBackendPlayback();

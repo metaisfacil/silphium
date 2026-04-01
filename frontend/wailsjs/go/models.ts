@@ -1,5 +1,29 @@
 export namespace main {
 	
+	export class AudioPlaybackState {
+	    loaded: boolean;
+	    playing: boolean;
+	    currentTime: number;
+	    duration: number;
+	    volume: number;
+	    sourcePath: string;
+	    endEventId: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioPlaybackState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.loaded = source["loaded"];
+	        this.playing = source["playing"];
+	        this.currentTime = source["currentTime"];
+	        this.duration = source["duration"];
+	        this.volume = source["volume"];
+	        this.sourcePath = source["sourcePath"];
+	        this.endEventId = source["endEventId"];
+	    }
+	}
 	export class LibraryIndexedFile {
 	    name: string;
 	    path: string;

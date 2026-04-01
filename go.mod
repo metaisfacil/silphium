@@ -1,16 +1,16 @@
 module Silphium
 
-go 1.23.0
-
-toolchain go1.23.4
+go 1.24.0
 
 require (
+	github.com/ebitengine/oto/v3 v3.3.2
 	github.com/wailsapp/wails/v2 v2.11.0
 	go.senan.xyz/taglib v0.11.1
 )
 
 require (
 	github.com/bep/debounce v1.2.1 // indirect
+	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -36,6 +36,6 @@ require (
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 )
