@@ -3,6 +3,7 @@ export type MediaControlsElements = {
     trackAlbum: HTMLParagraphElement;
   trackPosition: HTMLSpanElement;
     trackArtist: HTMLParagraphElement;
+    trackTechnical: HTMLParagraphElement;
     coverFrame: HTMLDivElement;
     coverFlipper: HTMLDivElement;
     artistInfoName: HTMLParagraphElement;
@@ -50,6 +51,7 @@ export const renderMediaControls = (): string => `
           </div>
           <p id="track-album" class="track-line track-album">Unknown Album</p>
           <p id="track-artist" class="track-line track-artist">Unknown Artist</p>
+          <p id="track-technical" class="track-line track-technical"></p>
         </div>
         <div class="time-row">
           <span id="current-time">0:00</span>
@@ -77,6 +79,7 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     trackAlbum: root.querySelector('#track-album') as HTMLParagraphElement,
   trackPosition: root.querySelector('#track-position') as HTMLSpanElement,
     trackArtist: root.querySelector('#track-artist') as HTMLParagraphElement,
+    trackTechnical: root.querySelector('#track-technical') as HTMLParagraphElement,
     coverFrame: root.querySelector('#cover-frame') as HTMLDivElement,
     coverFlipper: root.querySelector('#cover-flipper') as HTMLDivElement,
     artistInfoName: root.querySelector('#artist-info-name') as HTMLParagraphElement,

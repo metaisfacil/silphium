@@ -701,6 +701,12 @@
     opacity: 0.55;
 }
 
+.track-technical {
+    font-size: 0.72rem;
+    opacity: 0.48;
+    margin: 0.5rem;
+}
+
 .track-line[data-mb-url] {
     cursor: pointer;
     text-decoration: underline;

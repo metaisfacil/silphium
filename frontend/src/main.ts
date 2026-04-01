@@ -43,6 +43,7 @@ type Track = {
     displayArtist: string;
     displayTrackNumber: string;
     displayTrackTotal: string;
+    displayTechnical: string;
     tagsResolved: boolean;
     mbIds: MusicBrainzIds;
     artistMbids: string[];
@@ -54,6 +55,9 @@ type TrackTags = {
     title: string;
     trackNumber?: string;
     trackTotal?: string;
+    bitDepth?: number;
+    sampleRate?: number;
+    codec?: string;
     recordingId?: string;
     releaseId?: string;
     artistId?: string;
@@ -226,6 +230,7 @@ const {
     trackAlbum,
     trackPosition,
     trackArtist,
+    trackTechnical,
     coverFrame,
     coverFlipper,
     artistInfoName,
@@ -589,6 +594,39 @@ const taggedTrackPosition = (track: Track): string => {
     return `(${number}/${total})`;
 };
 
+const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, codec?: string): string => {
+    const hasBitDepth = Number.isFinite(bitDepth) && (bitDepth as number) > 0;
+    const hasSampleRate = Number.isFinite(sampleRate) && (sampleRate as number) > 0;
+    const codecLabel = (codec || '').trim().toUpperCase();
+
+    let rateLabel = '';
+    if (hasSampleRate) {
+        const rateKhz = (sampleRate as number) / 1000;
+        rateLabel = Number.isInteger(rateKhz) ? String(rateKhz) : rateKhz.toFixed(1).replace(/\.0$/, '');
+    }
+
+    const technicalParts: string[] = [];
+    if (hasBitDepth || hasSampleRate) {
+        const depthLabel = hasBitDepth ? String(bitDepth) : '?';
+        const ratePart = hasSampleRate ? rateLabel : '?';
+        technicalParts.push(`${depthLabel}/${ratePart}`);
+    }
+
+    if (codecLabel) {
+        technicalParts.push(codecLabel);
+    }
+
+    if (technicalParts.length === 0) {
+        return '';
+    }
+
+    if (technicalParts.length === 1) {
+        return technicalParts[0];
+    }
+
+    return `${technicalParts[0]} ‣ ${technicalParts[1]}`;
+};
+
 const refreshNowPlayingLabel = (): void => {
     if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
         return;
@@ -599,6 +637,7 @@ const refreshNowPlayingLabel = (): void => {
     trackAlbum.textContent = activeTrack.displayAlbum;
     trackPosition.textContent = taggedTrackPosition(activeTrack);
     trackArtist.textContent = activeTrack.displayArtist;
+    trackTechnical.textContent = activeTrack.displayTechnical;
     applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds);
 };
 
@@ -623,6 +662,7 @@ const ensureTrackTagsResolved = async (index: number): Promise<void> => {
             displayArtist: metadata.artist,
             displayTrackNumber: tags?.trackNumber?.trim() || '',
             displayTrackTotal: tags?.trackTotal?.trim() || '',
+            displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
             tagsResolved: true,
             mbIds: {
                 recordingId: tags?.recordingId || undefined,
@@ -989,6 +1029,7 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
             displayArtist: metadata.artist,
             displayTrackNumber: tags?.trackNumber?.trim() || '',
             displayTrackTotal: tags?.trackTotal?.trim() || '',
+            displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
             tagsResolved: true,
             mbIds: {
                 recordingId: tags?.recordingId || undefined,
@@ -1077,6 +1118,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     trackAlbum.textContent = 'Unknown Album';
     trackPosition.textContent = '';
     trackArtist.textContent = 'Unknown Artist';
+    trackTechnical.textContent = '';
     applyMbLinks(trackTitle, trackAlbum, trackArtist, {});
 
     coverArt.removeAttribute('src');
@@ -1321,6 +1363,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
             displayArtist: 'Unknown Artist',
             displayTrackNumber: '',
             displayTrackTotal: '',
+            displayTechnical: '',
             tagsResolved: false,
             mbIds: {},
             artistMbids: [],
@@ -1395,6 +1438,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
         trackAlbum.textContent = 'Unknown Album';
         trackPosition.textContent = '';
         trackArtist.textContent = 'Unknown Artist';
+        trackTechnical.textContent = '';
         coverArt.removeAttribute('src');
         coverArt.classList.remove('is-visible');
         setBackgroundCover();

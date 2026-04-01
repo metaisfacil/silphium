@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
@@ -53,6 +56,9 @@ type TrackTags struct {
 	Title       string   `json:"title"`
 	TrackNumber string   `json:"trackNumber,omitempty"`
 	TrackTotal  string   `json:"trackTotal,omitempty"`
+	BitDepth    int      `json:"bitDepth,omitempty"`
+	SampleRate  int      `json:"sampleRate,omitempty"`
+	Codec       string   `json:"codec,omitempty"`
 	RecordingID string   `json:"recordingId,omitempty"`
 	ReleaseID   string   `json:"releaseId,omitempty"`
 	ArtistID    string   `json:"artistId,omitempty"`
@@ -464,6 +470,88 @@ func extractTrackNumbers(tags map[string][]string) (string, string) {
 	return strings.TrimSpace(number), strings.TrimSpace(total)
 }
 
+type ffprobeAudioStream struct {
+	CodecName        string `json:"codec_name"`
+	SampleRate       string `json:"sample_rate"`
+	BitsPerRawSample string `json:"bits_per_raw_sample"`
+	BitsPerSample    int    `json:"bits_per_sample"`
+	SampleFmt        string `json:"sample_fmt"`
+}
+
+type ffprobeAudioOutput struct {
+	Streams []ffprobeAudioStream `json:"streams"`
+}
+
+func bitDepthFromSampleFmt(sampleFmt string) int {
+	switch strings.ToLower(strings.TrimSpace(sampleFmt)) {
+	case "u8", "u8p":
+		return 8
+	case "s16", "s16p":
+		return 16
+	case "s24", "s24p":
+		return 24
+	case "s32", "s32p", "flt", "fltp":
+		return 32
+	case "dbl", "dblp":
+		return 64
+	default:
+		return 0
+	}
+}
+
+func readTrackTechnicalMetadata(path string) (int, int, string) {
+	ffprobePath, err := exec.LookPath("ffprobe")
+	if err != nil {
+		return 0, 0, ""
+	}
+
+	command := exec.Command(
+		ffprobePath,
+		"-v", "error",
+		"-select_streams", "a:0",
+		"-show_entries", "stream=codec_name,sample_rate,bits_per_raw_sample,bits_per_sample,sample_fmt",
+		"-of", "json",
+		path,
+	)
+
+	rawOutput, err := command.Output()
+	if err != nil {
+		return 0, 0, ""
+	}
+
+	var parsed ffprobeAudioOutput
+	if err := json.Unmarshal(rawOutput, &parsed); err != nil {
+		return 0, 0, ""
+	}
+
+	if len(parsed.Streams) == 0 {
+		return 0, 0, ""
+	}
+
+	stream := parsed.Streams[0]
+	sampleRate := 0
+	if stream.SampleRate != "" {
+		if parsedRate, parseErr := strconv.Atoi(stream.SampleRate); parseErr == nil {
+			sampleRate = parsedRate
+		}
+	}
+
+	bitDepth := 0
+	if stream.BitsPerRawSample != "" {
+		if parsedDepth, parseErr := strconv.Atoi(stream.BitsPerRawSample); parseErr == nil {
+			bitDepth = parsedDepth
+		}
+	}
+	if bitDepth == 0 {
+		bitDepth = stream.BitsPerSample
+	}
+	if bitDepth == 0 {
+		bitDepth = bitDepthFromSampleFmt(stream.SampleFmt)
+	}
+
+	return bitDepth, sampleRate, strings.ToUpper(strings.TrimSpace(stream.CodecName))
+}
+
 var mbidPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b`)
 
 func extractArtistMBIDs(tags map[string][]string) []string {
@@ -516,6 +604,7 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 		title := firstTagValue(tags, "TITLE")
 		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
+		bitDepth, sampleRate, codec := readTrackTechnicalMetadata(path)
 
 		if artist == "" && album == "" && title == "" {
 			continue
@@ -527,6 +616,9 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 			Title:       title,
 			TrackNumber: trackNumber,
 			TrackTotal:  trackTotal,
+			BitDepth:    bitDepth,
+			SampleRate:  sampleRate,
+			Codec:       codec,
 			RecordingID: firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
 			ReleaseID:   firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
 			ArtistID:    firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
@@ -575,6 +667,7 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 		title := firstTagValue(tags, "TITLE")
 		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
+		bitDepth, sampleRate, codec := readTrackTechnicalMetadata(tempPath)
 
 		if artist == "" && album == "" && title == "" {
 			continue
@@ -586,6 +679,9 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 			Title:       title,
 			TrackNumber: trackNumber,
 			TrackTotal:  trackTotal,
+			BitDepth:    bitDepth,
+			SampleRate:  sampleRate,
+			Codec:       codec,
 			RecordingID: firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
 			ReleaseID:   firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
 			ArtistID:    firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
