@@ -268,6 +268,7 @@ let loadedPlaylistName = '';
 let editableQueueTrackIndexes: number[] | null = null;
 let playlistHydrationRunId = 0;
 let playlistDragFromPosition: number | null = null;
+let libraryLoading = false;
 const libraryNodeByPath = new Map<string, LibraryNode>();
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
@@ -344,6 +345,29 @@ const asPlaybackOrderMode = (value: string): PlaybackOrderMode => {
     }
 
     return 'ordered-library';
+};
+
+const refreshSidebarToggleState = (): void => {
+    sidebarToggle.classList.toggle('is-loading', libraryLoading);
+    sidebarToggle.textContent = libraryLoading ? '' : '‣‣‣';
+
+    if (libraryLoading) {
+        sidebarToggle.setAttribute('aria-label', 'Loading library');
+        sidebarToggle.setAttribute('aria-busy', 'true');
+        return;
+    }
+
+    sidebarToggle.setAttribute('aria-busy', 'false');
+    sidebarToggle.setAttribute('aria-label', sidebarOpen ? 'Close library' : 'Open library');
+};
+
+const setLibraryLoading = (loading: boolean): void => {
+    if (libraryLoading === loading) {
+        return;
+    }
+
+    libraryLoading = loading;
+    refreshSidebarToggleState();
 };
 
 const setLibraryPathLabel = (): void => {
@@ -1516,9 +1540,14 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
         return;
     }
 
-    libraryPath.textContent = 'Scanning folder…';
-    const scanResult = await ScanLibraryFolder(cleanPath) as LibraryScanResult;
-    await loadLibraryScan(scanResult);
+    setLibraryLoading(true);
+    try {
+        libraryPath.textContent = 'Scanning folder…';
+        const scanResult = await ScanLibraryFolder(cleanPath) as LibraryScanResult;
+        await loadLibraryScan(scanResult);
+    } finally {
+        setLibraryLoading(false);
+    }
 };
 
 const initializeSettings = async (): Promise<void> => {
@@ -2062,9 +2091,8 @@ const setSidebarOpen = (open: boolean): void => {
     }
 
     app.classList.toggle('sidebar-open', sidebarOpen);
-    sidebarToggle.textContent = '‣‣‣';
-    sidebarToggle.setAttribute('aria-label', sidebarOpen ? 'Close library' : 'Open library');
     librarySidebar.setAttribute('aria-hidden', sidebarOpen ? 'false' : 'true');
+    refreshSidebarToggleState();
 };
 
 libraryBrowser.addEventListener('click', (event) => {
@@ -2507,5 +2535,6 @@ document.addEventListener('keydown', (event) => {
 updatePlayButton();
 updateTrackLabels();
 updatePlayOrderMenuState();
+refreshSidebarToggleState();
 void initializeBackendPlayback();
 void initializeSettings();

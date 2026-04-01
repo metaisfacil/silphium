@@ -45,6 +45,31 @@
     transform: scale(0.92);
 }
 
+.sidebar-toggle.is-loading {
+    cursor: pointer;
+    color: transparent;
+}
+
+.sidebar-toggle.is-loading::after {
+    content: '';
+    width: 1rem;
+    height: 1rem;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: rgba(255, 255, 255, 0.96);
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    pointer-events: none;
+    animation: sidebar-toggle-spin 0.75s linear infinite;
+}
+
+@keyframes sidebar-toggle-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .library-sidebar {
     position: fixed;
     top: 0;
