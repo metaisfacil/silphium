@@ -40,6 +40,8 @@ type Track = {
     displayTitle: string;
     displayAlbum: string;
     displayArtist: string;
+    displayTrackNumber: string;
+    displayTrackTotal: string;
     tagsResolved: boolean;
     mbIds: MusicBrainzIds;
     artistMbids: string[];
@@ -49,6 +51,8 @@ type TrackTags = {
     artist: string;
     album: string;
     title: string;
+    trackNumber?: string;
+    trackTotal?: string;
     recordingId?: string;
     releaseId?: string;
     artistId?: string;
@@ -189,6 +193,7 @@ const { sidebarToggle, librarySidebar, librarySettings, libraryBack, libraryPath
 const {
     trackTitle,
     trackAlbum,
+    trackPosition,
     trackArtist,
     coverFrame,
     coverFlipper,
@@ -432,6 +437,21 @@ const buildDisplayMetadata = (track: Track, tags?: TrackTags): { title: string; 
     return { title, album, artist };
 };
 
+const taggedTrackPosition = (track: Track): string => {
+    const number = track.displayTrackNumber.trim();
+    const total = track.displayTrackTotal.trim();
+
+    if (!number) {
+        return '';
+    }
+
+    if (!total) {
+        return `(${number})`;
+    }
+
+    return `(${number}/${total})`;
+};
+
 const refreshNowPlayingLabel = (): void => {
     if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
         return;
@@ -440,6 +460,7 @@ const refreshNowPlayingLabel = (): void => {
     const activeTrack = tracks[currentTrackIndex];
     trackTitle.textContent = activeTrack.displayTitle;
     trackAlbum.textContent = activeTrack.displayAlbum;
+    trackPosition.textContent = taggedTrackPosition(activeTrack);
     trackArtist.textContent = activeTrack.displayArtist;
     applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds);
 };
@@ -611,6 +632,8 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
             displayTitle: metadata.title,
             displayAlbum: metadata.album,
             displayArtist: metadata.artist,
+            displayTrackNumber: tags?.trackNumber?.trim() || '',
+            displayTrackTotal: tags?.trackTotal?.trim() || '',
             tagsResolved: true,
             mbIds: {
                 recordingId: tags?.recordingId || undefined,
@@ -691,6 +714,7 @@ const clearLibrarySelection = async (): Promise<void> => {
 
     trackTitle.textContent = 'No track loaded';
     trackAlbum.textContent = 'Unknown Album';
+    trackPosition.textContent = '';
     trackArtist.textContent = 'Unknown Artist';
     applyMbLinks(trackTitle, trackAlbum, trackArtist, {});
 
@@ -878,6 +902,8 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
             displayTitle: file.name,
             displayAlbum: 'Unknown Album',
             displayArtist: 'Unknown Artist',
+            displayTrackNumber: '',
+            displayTrackTotal: '',
             tagsResolved: false,
             mbIds: {},
             artistMbids: [],
@@ -950,6 +976,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
         currentFolderPath = '';
         trackTitle.textContent = 'No audio tracks found';
         trackAlbum.textContent = 'Unknown Album';
+        trackPosition.textContent = '';
         trackArtist.textContent = 'Unknown Artist';
         coverArt.removeAttribute('src');
         coverArt.classList.remove('is-visible');
@@ -1035,12 +1062,16 @@ settingsSave.addEventListener('click', async () => {
 });
 
 sidebarToggle.addEventListener('click', () => {
-    sidebarOpen = !sidebarOpen;
+    setSidebarOpen(!sidebarOpen);
+});
+
+const setSidebarOpen = (open: boolean): void => {
+    sidebarOpen = open;
     app.classList.toggle('sidebar-open', sidebarOpen);
     sidebarToggle.textContent = sidebarOpen ? '←' : '→';
     sidebarToggle.setAttribute('aria-label', sidebarOpen ? 'Close library' : 'Open library');
     librarySidebar.setAttribute('aria-hidden', sidebarOpen ? 'false' : 'true');
-});
+};
 
 libraryBrowser.addEventListener('click', (event) => {
     const target = event.target;
@@ -1177,9 +1208,21 @@ volumeBtn.addEventListener('click', () => {
 });
 
 document.addEventListener('click', (e) => {
-    if (!volumeRow.contains(e.target as Node)) {
+    const target = e.target as Node;
+
+    if (!volumeRow.contains(target)) {
         volumeRow.classList.remove('open');
     }
+
+    if (!sidebarOpen) {
+        return;
+    }
+
+    if (librarySidebar.contains(target) || sidebarToggle.contains(target)) {
+        return;
+    }
+
+    setSidebarOpen(false);
 });
 
 updatePlayButton();

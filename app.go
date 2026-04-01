@@ -51,6 +51,8 @@ type TrackTags struct {
 	Artist      string   `json:"artist"`
 	Album       string   `json:"album"`
 	Title       string   `json:"title"`
+	TrackNumber string   `json:"trackNumber,omitempty"`
+	TrackTotal  string   `json:"trackTotal,omitempty"`
 	RecordingID string   `json:"recordingId,omitempty"`
 	ReleaseID   string   `json:"releaseId,omitempty"`
 	ArtistID    string   `json:"artistId,omitempty"`
@@ -428,6 +430,40 @@ func firstTagValue(tags map[string][]string, keys ...string) string {
 	return ""
 }
 
+func splitSlashPair(value string) (string, string) {
+	clean := strings.TrimSpace(value)
+	if clean == "" {
+		return "", ""
+	}
+
+	parts := strings.SplitN(clean, "/", 2)
+	if len(parts) == 1 {
+		return strings.TrimSpace(parts[0]), ""
+	}
+
+	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+}
+
+func extractTrackNumbers(tags map[string][]string) (string, string) {
+	number := firstTagValue(tags, "TRACKNUMBER", "TRACK", "TRCK")
+	total := firstTagValue(tags, "TRACKTOTAL", "TOTALTRACKS", "TOTALTRACKCOUNT")
+
+	numberPart, totalPart := splitSlashPair(number)
+	if numberPart != "" {
+		number = numberPart
+	}
+
+	if total == "" && totalPart != "" {
+		total = totalPart
+	}
+
+	if total != "" {
+		total, _ = splitSlashPair(total)
+	}
+
+	return strings.TrimSpace(number), strings.TrimSpace(total)
+}
+
 var mbidPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b`)
 
 func extractArtistMBIDs(tags map[string][]string) []string {
@@ -478,6 +514,7 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 		artist := firstTagValue(tags, "ARTIST", "ALBUMARTIST")
 		album := firstTagValue(tags, "ALBUM")
 		title := firstTagValue(tags, "TITLE")
+		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
 
 		if artist == "" && album == "" && title == "" {
@@ -488,6 +525,8 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 			Artist:      artist,
 			Album:       album,
 			Title:       title,
+			TrackNumber: trackNumber,
+			TrackTotal:  trackTotal,
 			RecordingID: firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
 			ReleaseID:   firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
 			ArtistID:    firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
@@ -534,6 +573,7 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 		artist := firstTagValue(tags, "ARTIST", "ALBUMARTIST")
 		album := firstTagValue(tags, "ALBUM")
 		title := firstTagValue(tags, "TITLE")
+		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
 
 		if artist == "" && album == "" && title == "" {
@@ -544,6 +584,8 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 			Artist:      artist,
 			Album:       album,
 			Title:       title,
+			TrackNumber: trackNumber,
+			TrackTotal:  trackTotal,
 			RecordingID: firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
 			ReleaseID:   firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
 			ArtistID:    firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),

@@ -580,10 +580,23 @@
     margin-bottom: 0.2rem;
 }
 
+.track-title-row {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    max-width: 100%;
+}
+
 .track-album {
     font-size: 0.85rem;
     opacity: 0.72;
     margin-bottom: 0.1rem;
+}
+
+.track-position {
+    font-size: 0.72rem;
+    opacity: 0.5;
+    white-space: nowrap;
 }
 
 .track-artist {

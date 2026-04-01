@@ -1,6 +1,7 @@
 export type MediaControlsElements = {
     trackTitle: HTMLParagraphElement;
     trackAlbum: HTMLParagraphElement;
+  trackPosition: HTMLSpanElement;
     trackArtist: HTMLParagraphElement;
     coverFrame: HTMLDivElement;
     coverFlipper: HTMLDivElement;
@@ -43,7 +44,10 @@ export const renderMediaControls = (): string => `
           </div>
         </div>
         <div class="track-meta">
-          <p id="track-title" class="track-line track-title">No track loaded</p>
+          <div class="track-title-row">
+            <p id="track-title" class="track-line track-title">No track loaded</p>
+            <span id="track-position" class="track-position"></span>
+          </div>
           <p id="track-album" class="track-line track-album">Unknown Album</p>
           <p id="track-artist" class="track-line track-artist">Unknown Artist</p>
         </div>
@@ -71,6 +75,7 @@ export const renderMediaControls = (): string => `
 export const getMediaControlsElements = (root: ParentNode): MediaControlsElements => ({
     trackTitle: root.querySelector('#track-title') as HTMLParagraphElement,
     trackAlbum: root.querySelector('#track-album') as HTMLParagraphElement,
+  trackPosition: root.querySelector('#track-position') as HTMLSpanElement,
     trackArtist: root.querySelector('#track-artist') as HTMLParagraphElement,
     coverFrame: root.querySelector('#cover-frame') as HTMLDivElement,
     coverFlipper: root.querySelector('#cover-flipper') as HTMLDivElement,
