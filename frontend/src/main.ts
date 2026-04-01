@@ -1070,10 +1070,12 @@ const hydratePlaylistTrackMetadataInBackground = (trackIndexes: number[]): void 
 
 const renderPlaylistPopup = (): void => {
     const { indexes, currentPosition } = currentSequenceIndexes();
+    const activePosition = indexes.indexOf(currentTrackIndex);
+    const anchorPosition = activePosition >= 0 ? activePosition : currentPosition;
     const isExternalPlaylist = loadedPlaylistTrackIndexes !== null;
     const canEditQueue = true;
-    const start = isExternalPlaylist ? 0 : Math.max(0, currentPosition - 50);
-    const end = isExternalPlaylist ? indexes.length : Math.min(indexes.length, currentPosition + 51);
+    const start = isExternalPlaylist ? 0 : Math.max(0, anchorPosition - 50);
+    const end = isExternalPlaylist ? indexes.length : Math.min(indexes.length, anchorPosition + 51);
     const visibleIndexes = indexes.slice(start, end);
 
     playlistTitle.textContent = isExternalPlaylist
@@ -1089,18 +1091,21 @@ const renderPlaylistPopup = (): void => {
         const track = tracks[trackIndex];
         const actualPosition = start + offset;
         const activeClass = trackIndex === currentTrackIndex ? ' is-active' : '';
-        const prefix = actualPosition < currentPosition ? '◀ ' : (actualPosition > currentPosition ? '▶ ' : '• ');
+        const isActiveTrack = trackIndex === currentTrackIndex;
+        const prefix = isActiveTrack
+            ? '• '
+            : (activePosition >= 0 && actualPosition < activePosition ? '◀ ' : '▶ ');
         const label = track?.displayTitle || track?.name || 'Unknown track';
         const secondary = track?.displayArtist || '';
 
         if (!canEditQueue) {
-            return `<li><button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}"><span class="playlist-item-main">${prefix}${label}</span><span class="playlist-item-sub">${secondary}</span></button></li>`;
+            return `<li><button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}"><span class="playlist-item-main"><span class="playlist-item-prefix">${prefix}</span><span class="playlist-item-label">${label}</span></span><span class="playlist-item-sub">${secondary}</span></button></li>`;
         }
 
         return `<li class="playlist-row" draggable="true" data-playlist-position="${actualPosition}">
             <button class="playlist-drag-handle" type="button" aria-label="Drag track" title="Drag to reorder">☰</button>
             <span class="playlist-position-indicator">#${actualPosition + 1}</span>
-            <button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}" data-playlist-position="${actualPosition}"><span class="playlist-item-main">${prefix}${label}</span><span class="playlist-item-sub">${secondary}</span></button>
+            <button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}" data-playlist-position="${actualPosition}"><span class="playlist-item-main"><span class="playlist-item-prefix">${prefix}</span><span class="playlist-item-label">${label}</span></span><span class="playlist-item-sub">${secondary}</span></button>
             <button class="playlist-remove" type="button" data-playlist-remove-position="${actualPosition}" aria-label="Remove track" title="Remove track">✕</button>
         </li>`;
     }).join('');
@@ -1603,6 +1608,7 @@ const loadTrack = async (index: number): Promise<void> => {
     }
 
     currentTrackIndex = index;
+    schedulePlaylistPopupRender();
     setCoverFlipped(false);
     scrobbleSessionId += 1;
     nowPlayingSubmittedSessionId = -1;

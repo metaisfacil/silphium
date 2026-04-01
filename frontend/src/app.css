@@ -984,8 +984,22 @@
 }
 
 .playlist-item-main {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.2rem;
     font-size: 0.82rem;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.playlist-item-prefix {
+    opacity: 0.62;
+    flex: 0 0 auto;
+}
+
+.playlist-item-label {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
 }
