@@ -69,3 +69,7 @@ export function ScanLibraryFolder(arg1) {
 export function SelectLibraryFolder() {
   return window['go']['main']['App']['SelectLibraryFolder']();
 }
+
+export function SubmitListenBrainz(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SubmitListenBrainz'](arg1, arg2, arg3);
+}

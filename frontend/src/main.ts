@@ -19,6 +19,7 @@ import {
     SaveSettings,
     ScanLibraryFolder,
     SelectLibraryFolder,
+    SubmitListenBrainz,
 } from '../wailsjs/go/main/App';
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 import { type MusicBrainzIds, applyMbLinks, openMbLink } from './musicbrainz';
@@ -113,6 +114,7 @@ type AudioPlaybackState = {
 
 type AppSettings = {
     libraryPath: string;
+    listenBrainzUserToken: string;
 };
 
 const app = document.querySelector('#app');
@@ -146,11 +148,21 @@ app.innerHTML = `
                             <button id="settings-close" class="settings-close" type="button" aria-label="Close settings">✕</button>
                         </header>
                         <div class="settings-content">
-                            <label class="settings-label" for="settings-library-path">Library Folder</label>
-                            <input id="settings-library-path" class="settings-input" type="text" placeholder="No folder selected">
+                            <div class="settings-field">
+                                <label class="settings-label" for="settings-library-path">Library Folder</label>
+                                <p class="settings-hint">Choose the root library folder Silphium scans for files.</p>
+                                <div class="settings-path-row">
+                                    <input id="settings-library-path" class="settings-input" type="text" placeholder="No folder selected">
+                                    <button id="settings-browse" class="settings-browse-btn" type="button" aria-label="Choose folder">...</button>
+                                </div>
+                            </div>
+                            <div class="settings-field">
+                                <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz User Token</label>
+                                <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
+                                <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
+                            </div>
                             <p id="settings-status" class="settings-status"></p>
                             <div class="settings-actions">
-                                <button id="settings-browse" class="upload-btn" type="button">Choose Folder</button>
                                 <button id="settings-save" class="upload-btn" type="button">Save</button>
                             </div>
                         </div>
@@ -183,7 +195,13 @@ let playbackPollHandle: number | undefined;
 let isSeeking = false;
 let backendReady = false;
 let lastHandledEndEventId = 0;
-let currentSettings: AppSettings = { libraryPath: '' };
+let currentSettings: AppSettings = { libraryPath: '', listenBrainzUserToken: '' };
+let scrobbleSessionId = 0;
+let nowPlayingSubmittedSessionId = -1;
+let scrobbleSubmittedSessionId = -1;
+let nowPlayingInFlight = false;
+let scrobbleInFlight = false;
+let scrobbleSessionStartedAt = 0;
 const libraryNodeByPath = new Map<string, LibraryNode>();
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
@@ -229,6 +247,7 @@ const settingsClose = document.getElementById('settings-close') as HTMLButtonEle
 const settingsBrowse = document.getElementById('settings-browse') as HTMLButtonElement;
 const settingsSave = document.getElementById('settings-save') as HTMLButtonElement;
 const settingsLibraryPath = document.getElementById('settings-library-path') as HTMLInputElement;
+const settingsListenBrainzToken = document.getElementById('settings-listenbrainz-token') as HTMLInputElement;
 const settingsStatus = document.getElementById('settings-status') as HTMLParagraphElement;
 
 const setLibraryPathLabel = (): void => {
@@ -334,6 +353,89 @@ const formatTime = (seconds: number): string => {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
+const canScrobble = (): boolean => currentSettings.listenBrainzUserToken.trim() !== '';
+
+const currentTrackForPlaybackState = (state: AudioPlaybackState): Track | undefined => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return undefined;
+    }
+
+    const track = tracks[currentTrackIndex];
+    if (!track || state.sourcePath !== track.path) {
+        return undefined;
+    }
+
+    return track;
+};
+
+const buildListenBrainzMetadata = (track: Track): { artistName: string; trackName: string; releaseName: string; recordingMbid?: string; releaseMbid?: string; artistMbids?: string[] } => ({
+    artistName: track.displayArtist || 'Unknown Artist',
+    trackName: track.displayTitle || track.title,
+    releaseName: track.displayAlbum || 'Unknown Album',
+    recordingMbid: track.mbIds.recordingId || undefined,
+    releaseMbid: track.mbIds.releaseId || undefined,
+    artistMbids: track.artistMbids.length > 0 ? track.artistMbids : undefined,
+});
+
+const scrobbleThreshold = (duration: number): number => {
+    if (!Number.isFinite(duration) || duration <= 0) {
+        return Number.POSITIVE_INFINITY;
+    }
+
+    return Math.min(duration / 2, 240);
+};
+
+const maybeSubmitListenBrainz = (state: AudioPlaybackState): void => {
+    if (!canScrobble()) {
+        return;
+    }
+
+    const track = currentTrackForPlaybackState(state);
+    if (!track) {
+        return;
+    }
+
+    if (state.playing && scrobbleSessionStartedAt <= 0) {
+        scrobbleSessionStartedAt = Math.floor(Date.now() / 1000);
+    }
+
+    if (state.playing && nowPlayingSubmittedSessionId !== scrobbleSessionId && !nowPlayingInFlight) {
+        nowPlayingInFlight = true;
+        void SubmitListenBrainz('playing_now', buildListenBrainzMetadata(track), 0)
+            .then(() => {
+                nowPlayingSubmittedSessionId = scrobbleSessionId;
+            })
+            .catch((error) => {
+                console.error(error);
+            })
+            .finally(() => {
+                nowPlayingInFlight = false;
+            });
+    }
+
+    if (scrobbleSubmittedSessionId === scrobbleSessionId || scrobbleInFlight) {
+        return;
+    }
+
+    const threshold = scrobbleThreshold(state.duration);
+    if (state.currentTime < threshold) {
+        return;
+    }
+
+    const listenedAt = scrobbleSessionStartedAt > 0 ? scrobbleSessionStartedAt : Math.floor(Date.now() / 1000);
+    scrobbleInFlight = true;
+    void SubmitListenBrainz('single', buildListenBrainzMetadata(track), listenedAt)
+        .then(() => {
+            scrobbleSubmittedSessionId = scrobbleSessionId;
+        })
+        .catch((error) => {
+            console.error(error);
+        })
+        .finally(() => {
+            scrobbleInFlight = false;
+        });
+};
+
 const updatePlayButton = (): void => {
     playPause.textContent = playbackState.playing ? '⏸' : '▶';
     playPause.dataset.state = playbackState.playing ? 'pause' : 'play';
@@ -370,6 +472,7 @@ const applyPlaybackState = (nextState: AudioPlaybackState): void => {
     playbackState = nextState;
     updateTrackLabels();
     updatePlayButton();
+    maybeSubmitListenBrainz(nextState);
     maybeHandleTrackEnded(nextState);
 };
 
@@ -682,6 +785,7 @@ const closeSettingsModal = (): void => {
 
 const openSettingsModal = (): void => {
     settingsLibraryPath.value = currentSettings.libraryPath || '';
+    settingsListenBrainzToken.value = currentSettings.listenBrainzUserToken || '';
     settingsStatus.textContent = '';
     settingsModal.hidden = false;
     settingsLibraryPath.focus();
@@ -711,6 +815,10 @@ const clearLibrarySelection = async (): Promise<void> => {
     libraryRootName = '';
     currentFolderPath = '';
     libraryIndexTruncated = false;
+    scrobbleSessionId = 0;
+    nowPlayingSubmittedSessionId = -1;
+    scrobbleSubmittedSessionId = -1;
+    scrobbleSessionStartedAt = 0;
 
     trackTitle.textContent = 'No track loaded';
     trackAlbum.textContent = 'Unknown Album';
@@ -743,6 +851,7 @@ const initializeSettings = async (): Promise<void> => {
         const settings = await GetSettings() as AppSettings;
         currentSettings = settings;
         settingsLibraryPath.value = settings.libraryPath || '';
+        settingsListenBrainzToken.value = settings.listenBrainzUserToken || '';
 
         if (settings.libraryPath) {
             await applyLibraryPath(settings.libraryPath);
@@ -785,6 +894,10 @@ const loadTrack = async (index: number): Promise<void> => {
 
     currentTrackIndex = index;
     setCoverFlipped(false);
+    scrobbleSessionId += 1;
+    nowPlayingSubmittedSessionId = -1;
+    scrobbleSubmittedSessionId = -1;
+    scrobbleSessionStartedAt = 0;
     const track = tracks[currentTrackIndex];
 
     try {
@@ -1047,6 +1160,7 @@ settingsSave.addEventListener('click', async () => {
     try {
         const savedSettings = await SaveSettings({
             libraryPath: requestedLibraryPath,
+            listenBrainzUserToken: settingsListenBrainzToken.value,
         }) as AppSettings;
 
         currentSettings = savedSettings;

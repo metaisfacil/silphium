@@ -10,13 +10,15 @@ import (
 const appSettingsFileName = "silphium.settings.json"
 
 type AppSettings struct {
-	LibraryPath string `json:"libraryPath"`
+	LibraryPath           string `json:"libraryPath"`
+	ListenBrainzUserToken string `json:"listenBrainzUserToken"`
 }
 
 func normalizeAppSettings(settings AppSettings) AppSettings {
+	token := strings.TrimSpace(settings.ListenBrainzUserToken)
 	path := strings.TrimSpace(settings.LibraryPath)
 	if path == "" {
-		return AppSettings{}
+		return AppSettings{ListenBrainzUserToken: token}
 	}
 
 	path = normalizePath(path)
@@ -24,7 +26,10 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		path = filepath.Clean(absolutePath)
 	}
 
-	return AppSettings{LibraryPath: path}
+	return AppSettings{
+		LibraryPath:           path,
+		ListenBrainzUserToken: token,
+	}
 }
 
 func defaultSettingsPath() string {

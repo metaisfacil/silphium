@@ -35,3 +35,5 @@ export function SaveSettings(arg1:main.AppSettings):Promise<main.AppSettings>;
 export function ScanLibraryFolder(arg1:string):Promise<main.LibraryScanResult>;
 
 export function SelectLibraryFolder():Promise<string>;
+
+export function SubmitListenBrainz(arg1:string,arg2:main.ListenBrainzTrackMetadata,arg3:number):Promise<void>;

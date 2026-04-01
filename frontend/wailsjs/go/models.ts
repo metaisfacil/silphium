@@ -2,6 +2,7 @@ export namespace main {
 	
 	export class AppSettings {
 	    libraryPath: string;
+	    listenBrainzUserToken: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -10,6 +11,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.libraryPath = source["libraryPath"];
+	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	    }
 	}
 	export class AudioPlaybackState {
@@ -97,6 +99,28 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class ListenBrainzTrackMetadata {
+	    artistName: string;
+	    trackName: string;
+	    releaseName: string;
+	    recordingMbid?: string;
+	    releaseMbid?: string;
+	    artistMbids?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ListenBrainzTrackMetadata(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.artistName = source["artistName"];
+	        this.trackName = source["trackName"];
+	        this.releaseName = source["releaseName"];
+	        this.recordingMbid = source["recordingMbid"];
+	        this.releaseMbid = source["releaseMbid"];
+	        this.artistMbids = source["artistMbids"];
+	    }
 	}
 	export class MusicBrainzURL {
 	    type: string;
