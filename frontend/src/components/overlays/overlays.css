@@ -158,6 +158,11 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    touch-action: none;
+}
+
+.image-file-content.is-panning .image-file-preview {
+    cursor: grabbing;
 }
 
 .image-file-preview {
@@ -169,8 +174,10 @@
     object-fit: contain;
     border-radius: 0.4rem;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
-    cursor: default;
+    cursor: grab;
     transform-origin: center center;
+    user-select: none;
+    -webkit-user-drag: none;
 }
 
 .image-file-preview.is-quarter-turn {

@@ -283,6 +283,15 @@ let imageModalGallery: ImageLibraryFile[] = [];
 let imageModalCurrentIndex = -1;
 let imageModalPage = 0;
 let imageModalRotation = 0;
+let imageModalZoom = 1;
+let imageModalPanX = 0;
+let imageModalPanY = 0;
+let imageModalPanDragging = false;
+let imageModalPanPointerId: number | undefined;
+let imageModalPanStartClientX = 0;
+let imageModalPanStartClientY = 0;
+let imageModalPanStartX = 0;
+let imageModalPanStartY = 0;
 let musicBrainzEntityModalHideTimer: number | undefined;
 let technicalInfoModalHideTimer: number | undefined;
 let isSeeking = false;
@@ -414,6 +423,7 @@ const {
     imageFileTools,
     imageFileRotateLeft,
     imageFileRotateRight,
+    imageFileContent,
     imageFilePreview,
     imageFileThumbsPrev,
     imageFileThumbsNext,
@@ -2119,14 +2129,43 @@ const resolveImageFileDataUrl = async (imageFile: ImageLibraryFile): Promise<str
     return source;
 };
 
-const applyImageModalRotation = (): void => {
-    imageFilePreview.style.transform = `rotate(${imageModalRotation}deg)`;
+const applyImageModalTransform = (): void => {
+    imageFilePreview.style.transformOrigin = 'center center';
+    imageFilePreview.style.transform = `translate(${imageModalPanX}px, ${imageModalPanY}px) rotate(${imageModalRotation}deg) scale(${imageModalZoom})`;
     imageFilePreview.classList.toggle('is-quarter-turn', imageModalRotation % 180 !== 0);
+};
+
+const setImageModalPan = (x: number, y: number): void => {
+    imageModalPanX = x;
+    imageModalPanY = y;
+    applyImageModalTransform();
+};
+
+const resetImageModalZoom = (): void => {
+    imageModalPanDragging = false;
+    imageModalPanPointerId = undefined;
+    imageModalPanStartClientX = 0;
+    imageModalPanStartClientY = 0;
+    imageModalPanStartX = 0;
+    imageModalPanStartY = 0;
+    imageModalPanX = 0;
+    imageModalPanY = 0;
+    imageFileContent.classList.remove('is-panning');
+    setImageModalZoom(1);
 };
 
 const setImageModalRotation = (degrees: number): void => {
     imageModalRotation = ((degrees % 360) + 360) % 360;
-    applyImageModalRotation();
+    applyImageModalTransform();
+};
+
+const setImageModalZoom = (zoom: number): void => {
+    imageModalZoom = Math.min(5, Math.max(1, zoom));
+    if (imageModalZoom <= 1) {
+        imageModalPanX = 0;
+        imageModalPanY = 0;
+    }
+    applyImageModalTransform();
 };
 
 const rotateImageModal = (deltaDegrees: number): void => {
@@ -2135,6 +2174,31 @@ const rotateImageModal = (deltaDegrees: number): void => {
     }
 
     setImageModalRotation(imageModalRotation + deltaDegrees);
+};
+
+const zoomImageModalFromWheel = (deltaY: number, clientX: number, clientY: number): void => {
+    if (imageFileModal.hidden || !imageFilePreview.getAttribute('src')) {
+        return;
+    }
+
+    const previousZoom = imageModalZoom;
+    const unclampedNextZoom = deltaY > 0 ? previousZoom * 0.9 : previousZoom * 1.1;
+    const nextZoom = Math.min(5, Math.max(1, unclampedNextZoom));
+    if (Math.abs(nextZoom - previousZoom) < 0.0001) {
+        return;
+    }
+
+    const contentBounds = imageFileContent.getBoundingClientRect();
+    const cursorOffsetX = clientX - (contentBounds.left + contentBounds.width / 2);
+    const cursorOffsetY = clientY - (contentBounds.top + contentBounds.height / 2);
+    const zoomRatio = nextZoom / previousZoom;
+    const nextPanX = (1 - zoomRatio) * cursorOffsetX + zoomRatio * imageModalPanX;
+    const nextPanY = (1 - zoomRatio) * cursorOffsetY + zoomRatio * imageModalPanY;
+
+    imageModalZoom = nextZoom;
+    imageModalPanX = nextZoom <= 1 ? 0 : nextPanX;
+    imageModalPanY = nextZoom <= 1 ? 0 : nextPanY;
+    applyImageModalTransform();
 };
 
 const renderImageModalThumbs = (loadToken: number): void => {
@@ -2200,6 +2264,7 @@ const setImageModalActiveIndex = async (index: number): Promise<void> => {
 
     imageModalCurrentIndex = index;
     imageModalPage = Math.floor(index / imageModalThumbPageSize);
+    resetImageModalZoom();
     const loadToken = ++imageModalLoadToken;
     renderImageModalThumbs(loadToken);
 
@@ -2221,6 +2286,7 @@ const closeImageFileModal = (): void => {
     imageModalCurrentIndex = -1;
     imageModalPage = 0;
     setImageModalRotation(0);
+    resetImageModalZoom();
     imageModalLoadToken += 1;
     imageFileModal.classList.remove('is-visible');
 
@@ -2263,6 +2329,7 @@ const openImageGalleryModal = async (gallery: ImageLibraryFile[], selectedIndex:
     imageModalCurrentIndex = -1;
     imageModalPage = 0;
     setImageModalRotation(0);
+    resetImageModalZoom();
     imageModalLoadToken += 1;
 
     imageFilePreview.removeAttribute('src');
@@ -2326,6 +2393,7 @@ const openImagePreviewModal = (_title: string, source: string): void => {
     imageModalCurrentIndex = -1;
     imageModalPage = 0;
     setImageModalRotation(0);
+    resetImageModalZoom();
     imageModalLoadToken += 1;
     imageFileThumbsRow.innerHTML = '';
     imageFileThumbsViewport.hidden = true;
@@ -3579,6 +3647,54 @@ imageFileRotateLeft.addEventListener('click', () => {
 imageFileRotateRight.addEventListener('click', () => {
     rotateImageModal(90);
 });
+
+imageFileContent.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    zoomImageModalFromWheel(event.deltaY, event.clientX, event.clientY);
+}, { passive: false });
+
+imageFileContent.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || imageModalZoom <= 1 || !imageFilePreview.getAttribute('src')) {
+        return;
+    }
+
+    event.preventDefault();
+    imageModalPanDragging = true;
+    imageModalPanPointerId = event.pointerId;
+    imageModalPanStartClientX = event.clientX;
+    imageModalPanStartClientY = event.clientY;
+    imageModalPanStartX = imageModalPanX;
+    imageModalPanStartY = imageModalPanY;
+    imageFileContent.setPointerCapture(event.pointerId);
+    imageFileContent.classList.add('is-panning');
+});
+
+imageFileContent.addEventListener('pointermove', (event) => {
+    if (!imageModalPanDragging || imageModalPanPointerId !== event.pointerId) {
+        return;
+    }
+
+    event.preventDefault();
+    const deltaX = event.clientX - imageModalPanStartClientX;
+    const deltaY = event.clientY - imageModalPanStartClientY;
+    setImageModalPan(imageModalPanStartX + deltaX, imageModalPanStartY + deltaY);
+});
+
+const stopImageModalPan = (event: PointerEvent): void => {
+    if (!imageModalPanDragging || imageModalPanPointerId !== event.pointerId) {
+        return;
+    }
+
+    imageModalPanDragging = false;
+    imageModalPanPointerId = undefined;
+    imageFileContent.classList.remove('is-panning');
+    if (imageFileContent.hasPointerCapture(event.pointerId)) {
+        imageFileContent.releasePointerCapture(event.pointerId);
+    }
+};
+
+imageFileContent.addEventListener('pointerup', stopImageModalPan);
+imageFileContent.addEventListener('pointercancel', stopImageModalPan);
 
 imageFileThumbsPrev.addEventListener('click', () => {
     if (imageModalGallery.length === 0 || imageModalPage <= 0) {
