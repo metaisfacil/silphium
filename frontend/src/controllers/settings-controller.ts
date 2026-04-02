@@ -29,19 +29,22 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsPanelGeneral,
         settingsPanelPlaylists,
         settingsBrowse,
+        settingsFavoritePlaylistList,
         settingsAddFavoritePlaylist,
+        settingsRemoveFavoritePlaylist,
         settingsSave,
         settingsLibraryPath,
         settingsListenBrainzToken,
         settingsReleaseDepth,
-        settingsFavoritePlaylists,
         settingsStatus,
     } = elements;
 
-    const normalizeFavoritePlaylists = (rawText: string): string[] => {
+    let favoritePlaylists: string[] = [];
+    let selectedFavoritePlaylistIndex = -1;
+
+    const normalizeFavoritePlaylists = (items: string[]): string[] => {
         const deduped = new Set<string>();
-        const lines = rawText
-            .split(/\r?\n/g)
+        const lines = items
             .map((line) => line.trim())
             .filter((line) => line !== '');
 
@@ -50,6 +53,33 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         return Array.from(deduped);
+    };
+
+    const renderFavoritePlaylistList = (): void => {
+        settingsFavoritePlaylistList.innerHTML = '';
+
+        if (favoritePlaylists.length === 0) {
+            settingsFavoritePlaylistList.innerHTML = '<li class="settings-favorite-empty">No favourite playlists configured.</li>';
+            settingsRemoveFavoritePlaylist.disabled = true;
+            return;
+        }
+
+        favoritePlaylists.forEach((playlistPath, index) => {
+            const item = document.createElement('li');
+            item.className = 'settings-favorite-item';
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `settings-favorite-item-btn${index === selectedFavoritePlaylistIndex ? ' is-selected' : ''}`;
+            button.dataset.favoritePlaylistIndex = String(index);
+            button.title = playlistPath;
+            button.textContent = playlistPath;
+
+            item.append(button);
+            settingsFavoritePlaylistList.append(item);
+        });
+
+        settingsRemoveFavoritePlaylist.disabled = selectedFavoritePlaylistIndex < 0;
     };
 
     const setActiveTab = (tab: 'general' | 'playlists'): void => {
@@ -72,7 +102,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryPath.value = values.libraryPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         settingsReleaseDepth.value = values.releaseDepth > 0 ? String(values.releaseDepth) : '';
-        settingsFavoritePlaylists.value = values.favoritePlaylists.join('\n');
+        favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
+        selectedFavoritePlaylistIndex = -1;
+        renderFavoritePlaylistList();
         settingsStatus.textContent = '';
         setActiveTab('general');
         settingsModal.hidden = false;
@@ -113,7 +145,27 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     settingsTabPlaylists.addEventListener('click', () => {
         setActiveTab('playlists');
-        settingsFavoritePlaylists.focus();
+        settingsFavoritePlaylistList.focus();
+    });
+
+    settingsFavoritePlaylistList.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const button = target.closest('[data-favorite-playlist-index]');
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const nextIndex = Number(button.dataset.favoritePlaylistIndex);
+        if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= favoritePlaylists.length) {
+            return;
+        }
+
+        selectedFavoritePlaylistIndex = nextIndex;
+        renderFavoritePlaylistList();
     });
 
     settingsAddFavoritePlaylist.addEventListener('click', async () => {
@@ -125,13 +177,23 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
                 return;
             }
 
-            const next = new Set(normalizeFavoritePlaylists(settingsFavoritePlaylists.value));
-            next.add(selectedPlaylist.trim());
-            settingsFavoritePlaylists.value = Array.from(next).join('\n');
+            favoritePlaylists = normalizeFavoritePlaylists([...favoritePlaylists, selectedPlaylist]);
+            selectedFavoritePlaylistIndex = favoritePlaylists.findIndex((playlistPath) => playlistPath === selectedPlaylist.trim());
+            renderFavoritePlaylistList();
         } catch (error) {
             console.error(error);
             settingsStatus.textContent = 'Unable to open playlist picker.';
         }
+    });
+
+    settingsRemoveFavoritePlaylist.addEventListener('click', () => {
+        if (selectedFavoritePlaylistIndex < 0 || selectedFavoritePlaylistIndex >= favoritePlaylists.length) {
+            return;
+        }
+
+        favoritePlaylists.splice(selectedFavoritePlaylistIndex, 1);
+        selectedFavoritePlaylistIndex = -1;
+        renderFavoritePlaylistList();
     });
 
     settingsSave.addEventListener('click', async () => {
@@ -144,7 +206,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             libraryPath: settingsLibraryPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
             releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
-            favoritePlaylists: normalizeFavoritePlaylists(settingsFavoritePlaylists.value),
+            favoritePlaylists: favoritePlaylists.slice(),
         };
         close();
 

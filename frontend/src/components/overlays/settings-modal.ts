@@ -7,12 +7,13 @@ export type SettingsModalElements = {
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
     settingsBrowse: HTMLButtonElement;
+    settingsFavoritePlaylistList: HTMLUListElement;
     settingsAddFavoritePlaylist: HTMLButtonElement;
+    settingsRemoveFavoritePlaylist: HTMLButtonElement;
     settingsSave: HTMLButtonElement;
     settingsLibraryPath: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
     settingsReleaseDepth: HTMLInputElement;
-    settingsFavoritePlaylists: HTMLTextAreaElement;
     settingsStatus: HTMLParagraphElement;
 };
 
@@ -51,11 +52,12 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-favourite-playlists">Favourite Playlists</label>
-                        <p class="settings-hint">These playlists will always appear in the playlist modal. One path per line.</p>
-                        <textarea id="settings-favourite-playlists" class="settings-input settings-textarea" rows="6" placeholder="C:\\Music\\favourites.m3u8"></textarea>
-                        <div class="settings-actions-inline">
-                            <button id="settings-add-favorite-playlist" class="settings-inline-btn" type="button">Add from file...</button>
+                        <label class="settings-label" for="settings-favourite-playlist-list">Favourite Playlists</label>
+                        <p class="settings-hint">These playlists will always appear in the playlist modal.</p>
+                        <ul id="settings-favourite-playlist-list" class="settings-favorite-list" role="listbox" aria-label="Favourite playlists"></ul>
+                        <div class="settings-list-actions">
+                            <button id="settings-add-favorite-playlist" class="settings-list-btn" type="button" title="Add favourite playlist" aria-label="Add favourite playlist">+</button>
+                            <button id="settings-remove-favorite-playlist" class="settings-list-btn" type="button" title="Remove selected favourite playlist" aria-label="Remove selected favourite playlist" disabled>-</button>
                         </div>
                     </div>
                 </div>
@@ -77,11 +79,12 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
     settingsBrowse: root.querySelector('#settings-browse') as HTMLButtonElement,
+    settingsFavoritePlaylistList: root.querySelector('#settings-favourite-playlist-list') as HTMLUListElement,
     settingsAddFavoritePlaylist: root.querySelector('#settings-add-favorite-playlist') as HTMLButtonElement,
+    settingsRemoveFavoritePlaylist: root.querySelector('#settings-remove-favorite-playlist') as HTMLButtonElement,
     settingsSave: root.querySelector('#settings-save') as HTMLButtonElement,
     settingsLibraryPath: root.querySelector('#settings-library-path') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsReleaseDepth: root.querySelector('#settings-release-depth') as HTMLInputElement,
-    settingsFavoritePlaylists: root.querySelector('#settings-favourite-playlists') as HTMLTextAreaElement,
     settingsStatus: root.querySelector('#settings-status') as HTMLParagraphElement,
 });

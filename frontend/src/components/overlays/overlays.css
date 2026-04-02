@@ -394,32 +394,84 @@
     font-size: 0.86rem;
 }
 
-.settings-textarea {
-    resize: vertical;
-    min-height: 7.5rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-    font-size: 0.78rem;
-    line-height: 1.4;
+.settings-favorite-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.55rem;
+    background: rgba(0, 0, 0, 0.22);
+    min-height: 9.4rem;
+    max-height: 13rem;
+    overflow: auto;
 }
 
-.settings-actions-inline {
+.settings-favorite-empty {
+    font-size: 0.78rem;
+    opacity: 0.62;
+    padding: 0.25rem 0.3rem;
+}
+
+.settings-favorite-item {
+    margin: 0;
+    padding: 0;
+}
+
+.settings-favorite-item + .settings-favorite-item {
+    margin-top: 0.25rem;
+}
+
+.settings-favorite-item-btn {
+    width: 100%;
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 0.42rem;
+    background: rgba(255, 255, 255, 0.04);
+    color: inherit;
+    font: inherit;
+    font-size: 0.76rem;
+    padding: 0.28rem 0.42rem;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.settings-favorite-item-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-favorite-item-btn.is-selected {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.34);
+}
+
+.settings-list-actions {
     display: flex;
     justify-content: flex-end;
+    gap: 0.35rem;
 }
 
-.settings-inline-btn {
+.settings-list-btn {
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 0.45rem;
     background: rgba(255, 255, 255, 0.08);
     color: inherit;
     font: inherit;
-    font-size: 0.78rem;
-    padding: 0.34rem 0.58rem;
+    font-size: 1rem;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
     cursor: pointer;
 }
 
-.settings-inline-btn:hover {
+.settings-list-btn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.16);
+}
+
+.settings-list-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
 .settings-path-row {
