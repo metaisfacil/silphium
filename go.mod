@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/ebitengine/oto/v3 v3.3.2
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/wailsapp/wails/v2 v2.11.0
 	go.senan.xyz/taglib v0.11.1
 )

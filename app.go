@@ -16,13 +16,18 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	taglib "go.senan.xyz/taglib"
 )
+
+const libraryScanUpdatedEvent = "silphium:library:scan-updated"
 
 // App contains runtime state and service dependencies for the Wails backend.
 type App struct {
@@ -32,6 +37,14 @@ type App struct {
 	settings       AppSettings
 	settingsPath   string
 	settingsLoaded bool
+	watchMu        sync.Mutex
+	libraryWatcher *fsnotify.Watcher
+	watchStop      chan struct{}
+	indexMu        sync.Mutex
+	trackByPath    map[string]LibraryIndexedFile
+	textByPath     map[string]LibraryIndexedFile
+	imageByPath    map[string]LibraryIndexedFile
+	libraryScan    LibraryScanResult
 }
 
 // LibraryIndexedFile represents a discovered file with normalized library-relative metadata.
@@ -109,6 +122,10 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.loadStoredSettings()
+}
+
+func (a *App) shutdown(context.Context) {
+	a.stopLibraryWatcher()
 }
 
 func (a *App) audioBackend() *AudioBackend {
@@ -393,8 +410,7 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 	return result
 }
 
-// ScanLibraryFolder indexes audio, text, and image files under the selected root folder.
-func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
+func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanResult {
 	cleanRoot := normalizePath(path)
 	result := LibraryScanResult{
 		RootPath:          cleanRoot,
@@ -500,7 +516,401 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 	})
 
 	a.libraryRoot = cleanRoot
+	a.setLibraryIndexFromScan(result)
+	if restartWatcher {
+		a.startLibraryWatcher(cleanRoot)
+	}
+
 	return result
+}
+
+// ScanLibraryFolder indexes audio, text, and image files under the selected root folder.
+func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
+	return a.scanLibraryFolder(path, true)
+}
+
+func cloneCoverPathByFolder(input map[string]string) map[string]string {
+	cloned := make(map[string]string, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+
+	return cloned
+}
+
+func (a *App) setLibraryIndexFromScan(scan LibraryScanResult) {
+	a.indexMu.Lock()
+	defer a.indexMu.Unlock()
+
+	a.trackByPath = make(map[string]LibraryIndexedFile, len(scan.TrackFiles))
+	a.textByPath = make(map[string]LibraryIndexedFile, len(scan.TextFiles))
+	a.imageByPath = make(map[string]LibraryIndexedFile, len(scan.ImageFiles))
+
+	for _, entry := range scan.TrackFiles {
+		a.trackByPath[entry.Path] = entry
+	}
+	for _, entry := range scan.TextFiles {
+		a.textByPath[entry.Path] = entry
+	}
+	for _, entry := range scan.ImageFiles {
+		a.imageByPath[entry.Path] = entry
+	}
+
+	a.libraryScan = scan
+	a.libraryScan.CoverPathByFolder = cloneCoverPathByFolder(scan.CoverPathByFolder)
+}
+
+func (a *App) removePathAndDescendants(path string) {
+	delete(a.trackByPath, path)
+	delete(a.textByPath, path)
+	delete(a.imageByPath, path)
+
+	prefix := path + string(filepath.Separator)
+	for candidatePath := range a.trackByPath {
+		if strings.HasPrefix(candidatePath, prefix) {
+			delete(a.trackByPath, candidatePath)
+		}
+	}
+	for candidatePath := range a.textByPath {
+		if strings.HasPrefix(candidatePath, prefix) {
+			delete(a.textByPath, candidatePath)
+		}
+	}
+	for candidatePath := range a.imageByPath {
+		if strings.HasPrefix(candidatePath, prefix) {
+			delete(a.imageByPath, candidatePath)
+		}
+	}
+}
+
+func indexFileForRoot(rootPath string, fullPath string, fileName string) (LibraryIndexedFile, bool) {
+	folderPath, relativePath, ok := folderAndRelative(rootPath, fullPath)
+	if !ok {
+		return LibraryIndexedFile{}, false
+	}
+
+	return LibraryIndexedFile{
+		Name:         fileName,
+		Path:         fullPath,
+		RelativePath: relativePath,
+		FolderPath:   folderPath,
+	}, true
+}
+
+func (a *App) addOrUpdateIndexedFile(rootPath string, fullPath string, fileName string) {
+	a.removePathAndDescendants(fullPath)
+
+	indexed, ok := indexFileForRoot(rootPath, fullPath, fileName)
+	if !ok {
+		return
+	}
+
+	switch {
+	case isAudioPath(fullPath):
+		a.trackByPath[fullPath] = indexed
+	case isTextPath(fullPath):
+		a.textByPath[fullPath] = indexed
+	case isImagePath(fullPath):
+		a.imageByPath[fullPath] = indexed
+	}
+}
+
+func (a *App) addOrUpdatePathRecursive(rootPath string, targetPath string) {
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		a.removePathAndDescendants(targetPath)
+		return
+	}
+
+	if !info.IsDir() {
+		a.addOrUpdateIndexedFile(rootPath, targetPath, info.Name())
+		return
+	}
+
+	a.removePathAndDescendants(targetPath)
+	_ = filepath.WalkDir(targetPath, func(currentPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return nil
+		}
+
+		a.addOrUpdateIndexedFile(rootPath, currentPath, entry.Name())
+		return nil
+	})
+}
+
+func (a *App) rebuildCoverPathByFolderLocked() map[string]string {
+	selectedCoverPriority := make(map[string]int)
+	selectedCoverName := make(map[string]string)
+	coverPathByFolder := make(map[string]string)
+
+	for _, entry := range a.imageByPath {
+		if !isJpegPath(entry.Path) {
+			continue
+		}
+
+		folderKey := strings.ToLower(entry.FolderPath)
+		name := strings.ToLower(entry.Name)
+		priority := coverPriority(name)
+		currentPriority, hasCurrent := selectedCoverPriority[folderKey]
+		currentName := selectedCoverName[folderKey]
+
+		if !hasCurrent || priority < currentPriority || (priority == currentPriority && name < currentName) {
+			selectedCoverPriority[folderKey] = priority
+			selectedCoverName[folderKey] = name
+			coverPathByFolder[folderKey] = entry.Path
+		}
+	}
+
+	return coverPathByFolder
+}
+
+func (a *App) snapshotLibraryScanLocked(rootPath string) LibraryScanResult {
+	trackFiles := make([]LibraryIndexedFile, 0, len(a.trackByPath))
+	for _, entry := range a.trackByPath {
+		trackFiles = append(trackFiles, entry)
+	}
+
+	textFiles := make([]LibraryIndexedFile, 0, len(a.textByPath))
+	for _, entry := range a.textByPath {
+		textFiles = append(textFiles, entry)
+	}
+
+	imageFiles := make([]LibraryIndexedFile, 0, len(a.imageByPath))
+	for _, entry := range a.imageByPath {
+		imageFiles = append(imageFiles, entry)
+	}
+
+	sort.SliceStable(trackFiles, func(i int, j int) bool {
+		left := strings.ToLower(trackFiles[i].RelativePath)
+		right := strings.ToLower(trackFiles[j].RelativePath)
+		return left < right
+	})
+
+	sort.SliceStable(textFiles, func(i int, j int) bool {
+		left := strings.ToLower(textFiles[i].RelativePath)
+		right := strings.ToLower(textFiles[j].RelativePath)
+		return left < right
+	})
+
+	sort.SliceStable(imageFiles, func(i int, j int) bool {
+		left := strings.ToLower(imageFiles[i].RelativePath)
+		right := strings.ToLower(imageFiles[j].RelativePath)
+		return left < right
+	})
+
+	coverPathByFolder := a.rebuildCoverPathByFolderLocked()
+	return LibraryScanResult{
+		RootPath:          rootPath,
+		RootName:          filepath.Base(rootPath),
+		TrackFiles:        trackFiles,
+		TextFiles:         textFiles,
+		ImageFiles:        imageFiles,
+		CoverPathByFolder: coverPathByFolder,
+		TotalEntries:      len(trackFiles) + len(textFiles) + len(imageFiles),
+		Truncated:         a.libraryScan.Truncated,
+		EntryLimit:        a.libraryScan.EntryLimit,
+	}
+}
+
+func (a *App) applyIncrementalLibraryChanges(rootPath string, changedPaths []string) (LibraryScanResult, bool) {
+	a.indexMu.Lock()
+	defer a.indexMu.Unlock()
+
+	if len(changedPaths) == 0 {
+		return LibraryScanResult{}, false
+	}
+
+	hasChanges := false
+	for _, changedPath := range changedPaths {
+		cleanChangedPath := normalizePath(changedPath)
+		if cleanChangedPath == "" {
+			continue
+		}
+
+		absoluteChangedPath, err := filepath.Abs(cleanChangedPath)
+		if err != nil {
+			continue
+		}
+
+		normalizedChangedPath := filepath.Clean(absoluteChangedPath)
+		if relToRoot, relErr := filepath.Rel(rootPath, normalizedChangedPath); relErr != nil || strings.HasPrefix(relToRoot, "..") {
+			continue
+		}
+
+		a.addOrUpdatePathRecursive(rootPath, normalizedChangedPath)
+		hasChanges = true
+	}
+
+	if !hasChanges {
+		return LibraryScanResult{}, false
+	}
+
+	snapshot := a.snapshotLibraryScanLocked(rootPath)
+	a.libraryScan = snapshot
+	return snapshot, true
+}
+
+func isRelevantWatchEvent(event fsnotify.Event) bool {
+	interestingOps := fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Rename
+	return event.Op&interestingOps != 0
+}
+
+func addLibraryWatchesRecursive(watcher *fsnotify.Watcher, rootPath string) {
+	_ = filepath.WalkDir(rootPath, func(currentPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+
+		if !entry.IsDir() {
+			return nil
+		}
+
+		_ = watcher.Add(currentPath)
+		return nil
+	})
+}
+
+func (a *App) startLibraryWatcher(rootPath string) {
+	normalizedRoot := normalizePath(rootPath)
+	if normalizedRoot == "" {
+		a.stopLibraryWatcher()
+		return
+	}
+
+	absRoot, err := filepath.Abs(normalizedRoot)
+	if err != nil {
+		return
+	}
+
+	cleanRoot := filepath.Clean(absRoot)
+	if info, statErr := os.Stat(cleanRoot); statErr != nil || !info.IsDir() {
+		return
+	}
+
+	a.indexMu.Lock()
+	indexMissing := a.libraryScan.RootPath != cleanRoot || a.trackByPath == nil || a.textByPath == nil || a.imageByPath == nil
+	a.indexMu.Unlock()
+	if indexMissing {
+		_ = a.scanLibraryFolder(cleanRoot, false)
+	}
+
+	watcher, watcherErr := fsnotify.NewWatcher()
+	if watcherErr != nil {
+		return
+	}
+
+	addLibraryWatchesRecursive(watcher, cleanRoot)
+	stopCh := make(chan struct{})
+
+	a.watchMu.Lock()
+	previousWatcher := a.libraryWatcher
+	previousStopCh := a.watchStop
+	a.libraryWatcher = watcher
+	a.watchStop = stopCh
+	a.watchMu.Unlock()
+
+	if previousStopCh != nil {
+		close(previousStopCh)
+	}
+	if previousWatcher != nil {
+		_ = previousWatcher.Close()
+	}
+
+	go func(root string, activeWatcher *fsnotify.Watcher, activeStopCh chan struct{}) {
+		defer func() {
+			_ = activeWatcher.Close()
+		}()
+
+		const debounceDuration = 500 * time.Millisecond
+		var timer *time.Timer
+		var timerC <-chan time.Time
+		pendingPaths := make(map[string]struct{})
+
+		resetDebounce := func() {
+			if timer == nil {
+				timer = time.NewTimer(debounceDuration)
+				timerC = timer.C
+				return
+			}
+
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+
+			timer.Reset(debounceDuration)
+			timerC = timer.C
+		}
+
+		for {
+			select {
+			case <-activeStopCh:
+				if timer != nil {
+					timer.Stop()
+				}
+				return
+
+			case event, ok := <-activeWatcher.Events:
+				if !ok {
+					if timer != nil {
+						timer.Stop()
+					}
+					return
+				}
+
+				if event.Op&fsnotify.Create != 0 {
+					if info, statErr := os.Stat(event.Name); statErr == nil && info.IsDir() {
+						addLibraryWatchesRecursive(activeWatcher, event.Name)
+					}
+				}
+
+				if isRelevantWatchEvent(event) {
+					pendingPaths[event.Name] = struct{}{}
+					resetDebounce()
+				}
+
+			case <-timerC:
+				timerC = nil
+				changedPaths := make([]string, 0, len(pendingPaths))
+				for changedPath := range pendingPaths {
+					changedPaths = append(changedPaths, changedPath)
+				}
+				pendingPaths = make(map[string]struct{})
+
+				scan, changed := a.applyIncrementalLibraryChanges(root, changedPaths)
+				if changed && a.ctx != nil {
+					runtime.EventsEmit(a.ctx, libraryScanUpdatedEvent, scan)
+				}
+
+			case _, ok := <-activeWatcher.Errors:
+				if !ok {
+					if timer != nil {
+						timer.Stop()
+					}
+					return
+				}
+			}
+		}
+	}(cleanRoot, watcher, stopCh)
+}
+
+func (a *App) stopLibraryWatcher() {
+	a.watchMu.Lock()
+	watcher := a.libraryWatcher
+	stopCh := a.watchStop
+	a.libraryWatcher = nil
+	a.watchStop = nil
+	a.watchMu.Unlock()
+
+	if stopCh != nil {
+		close(stopCh)
+	}
+
+	if watcher != nil {
+		_ = watcher.Close()
+	}
 }
 
 // ReadFileBase64 reads a file from the allowed library scope and returns its base64 content.

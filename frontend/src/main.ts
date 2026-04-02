@@ -58,7 +58,7 @@ import {
     SelectPlaylistSaveFile,
     SubmitListenBrainz,
 } from '../wailsjs/go/main/App';
-import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
+import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime';
 import { applyMbLinks, openMbLink } from './musicbrainz';
 import type {
     AppSettings,
@@ -938,6 +938,23 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
     }
 };
 
+const handleLibraryScanUpdatedEvent = async (scanResult: LibraryScanResult): Promise<void> => {
+    const expectedRootPath = currentSettings.libraryPath.trim();
+    if (!expectedRootPath) {
+        return;
+    }
+
+    if (!scanResult || !scanResult.rootPath) {
+        return;
+    }
+
+    if (scanResult.rootPath.trim().toLowerCase() !== expectedRootPath.toLowerCase()) {
+        return;
+    }
+
+    await loadLibraryScan(scanResult, { autoSelectStartingTrack: false });
+};
+
 const initializeSettings = async (): Promise<void> => {
     try {
         const settings = await GetSettings() as AppSettings;
@@ -1731,6 +1748,12 @@ const cardResizeObserver = new ResizeObserver(() => {
     updateLyricsPanelVisibility();
 });
 cardResizeObserver.observe(playerCard);
+
+EventsOn('silphium:library:scan-updated', (scanResult: LibraryScanResult) => {
+    void handleLibraryScanUpdatedEvent(scanResult).catch((error) => {
+        console.error(error);
+    });
+});
 
 updatePlayButton();
 updateTrackLabels();
