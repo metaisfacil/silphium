@@ -147,13 +147,21 @@
     min-height: 2rem;
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    position: relative;
+    width: 100%;
     text-align: left;
     font-size: 0.9rem;
     line-height: 1.2;
     opacity: 0.85;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 1.25rem, black 100%);
+    mask-image: linear-gradient(to right, transparent 0, black 1.25rem, black 100%);
+}
+
+.library-path > * {
+    flex: 0 0 auto;
 }
 
 .library-path-segment {
