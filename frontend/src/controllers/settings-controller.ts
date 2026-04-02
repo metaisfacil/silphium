@@ -39,6 +39,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsStatus,
     } = elements;
 
+    const settingsModalTransitionMs = 220;
+    let hideTimer: number | undefined;
+
     let favoritePlaylists: string[] = [];
     let selectedFavoritePlaylistIndex = -1;
 
@@ -93,11 +96,25 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     };
 
     const close = (): void => {
-        settingsModal.hidden = true;
-        settingsStatus.textContent = '';
+        settingsModal.classList.remove('is-visible');
+
+        if (hideTimer !== undefined) {
+            window.clearTimeout(hideTimer);
+        }
+
+        hideTimer = window.setTimeout(() => {
+            settingsModal.hidden = true;
+            settingsStatus.textContent = '';
+            hideTimer = undefined;
+        }, settingsModalTransitionMs);
     };
 
     const open = (): void => {
+        if (hideTimer !== undefined) {
+            window.clearTimeout(hideTimer);
+            hideTimer = undefined;
+        }
+
         const values = options.getValues();
         settingsLibraryPath.value = values.libraryPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
@@ -108,6 +125,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsStatus.textContent = '';
         setActiveTab('general');
         settingsModal.hidden = false;
+        window.requestAnimationFrame(() => {
+            settingsModal.classList.add('is-visible');
+        });
         settingsLibraryPath.focus();
     };
 
