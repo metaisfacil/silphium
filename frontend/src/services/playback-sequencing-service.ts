@@ -8,10 +8,10 @@ type PlaybackSequencingServiceOptions = {
 };
 
 const playbackOrderLabelByMode: Record<PlaybackOrderMode, string> = {
-    'ordered-album': 'Ordered (album)',
-    'ordered-library': 'Ordered (library)',
-    'shuffle-album': 'Shuffle (album)',
-    'shuffle-library': 'Shuffle (library)',
+    'ordered-album': 'Ordered: Album',
+    'ordered-library': 'Ordered: Library',
+    'shuffle-album': 'Shuffle: Album',
+    'shuffle-library': 'Shuffle: Library',
 };
 
 export type PlaybackSequencingService = ReturnType<typeof createPlaybackSequencingService>;
