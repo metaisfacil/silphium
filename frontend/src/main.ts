@@ -1030,6 +1030,31 @@ const handleAudioError = (error: unknown): void => {
     }
 };
 
+const errorMessage = (error: unknown): string => {
+    if (error instanceof Error) {
+        return error.message || '';
+    }
+
+    if (typeof error === 'string') {
+        return error;
+    }
+
+    return '';
+};
+
+const isMissingTrackLoadError = (error: unknown): boolean => {
+    const message = errorMessage(error).toLowerCase();
+    if (!message) {
+        return false;
+    }
+
+    return message.includes('no such file')
+        || message.includes('not found')
+        || message.includes('cannot find the file')
+        || message.includes('does not exist')
+        || message.includes('path not found');
+};
+
 const maybeHandleTrackEnded = (state: AudioPlaybackState): void => {
     if (state.endEventId <= lastHandledEndEventId || tracks.length === 0) {
         return;
@@ -2478,7 +2503,7 @@ const resolveCoverForTrack = async (track: Track): Promise<string | undefined> =
     return coverUrl;
 };
 
-const loadTrack = async (index: number): Promise<void> => {
+const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promise<void> => {
     if (index < 0 || index >= tracks.length) {
         return;
     }
@@ -2500,6 +2525,36 @@ const loadTrack = async (index: number): Promise<void> => {
         const nextState = await AudioLoadTrack(track.path) as AudioPlaybackState;
         applyPlaybackState(nextState);
     } catch (error) {
+        if (allowMissingTrackRecovery && isMissingTrackLoadError(error) && currentSettings.libraryPath.trim() !== '') {
+            const failedTrackPath = track.path.toLowerCase();
+            const failedRelativePath = track.relativePath.toLowerCase();
+            const failedName = track.name.toLowerCase();
+
+            setLibraryLoading(true);
+            try {
+                libraryPath.textContent = 'Track missing. Rescanning folder…';
+                const scanResult = await ScanLibraryFolder(currentSettings.libraryPath.trim()) as LibraryScanResult;
+                await loadLibraryScan(scanResult, { autoSelectStartingTrack: false });
+
+                let recoveredIndex = tracks.findIndex((candidate) => candidate.path.toLowerCase() === failedTrackPath);
+                if (recoveredIndex < 0) {
+                    recoveredIndex = tracks.findIndex((candidate) => candidate.relativePath.toLowerCase() === failedRelativePath);
+                }
+                if (recoveredIndex < 0) {
+                    recoveredIndex = tracks.findIndex((candidate) => candidate.name.toLowerCase() === failedName);
+                }
+
+                if (recoveredIndex >= 0) {
+                    await loadTrack(recoveredIndex, false);
+                    return;
+                }
+            } catch (rescanError) {
+                console.error(rescanError);
+            } finally {
+                setLibraryLoading(false);
+            }
+        }
+
         handleAudioError(error);
         return;
     }
@@ -2704,7 +2759,7 @@ const firstTrackIndexFromRandomAlbumFolder = (): number => {
     return orderedTrackIndexes[0] ?? 0;
 };
 
-const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => {
+const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSelectStartingTrack?: boolean }): Promise<void> => {
     if (!scanResult.rootPath) {
         return;
     }
@@ -2873,8 +2928,11 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
     currentFolderPath = '';
     renderFolder('none');
     resetShuffleHistory();
-    const startingTrackIndex = firstTrackIndexFromRandomAlbumFolder();
-    void loadTrack(startingTrackIndex);
+
+    if (options?.autoSelectStartingTrack !== false) {
+        const startingTrackIndex = firstTrackIndexFromRandomAlbumFolder();
+        void loadTrack(startingTrackIndex);
+    }
 
     updatePlayButton();
 };
