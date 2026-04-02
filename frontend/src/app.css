@@ -676,6 +676,33 @@
     backface-visibility: hidden;
 }
 
+.cover-front {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.45);
+    line-height: 0;
+}
+
+.cover-art-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
+    filter: blur(28px) brightness(0.28) saturate(0.82);
+    transform: scale(1.2) translateZ(0);
+    display: none;
+    z-index: 0;
+    pointer-events: none;
+}
+
+.cover-art-bg.is-visible {
+    display: block;
+}
+
 .cover-back {
     transform: rotateY(180deg);
     display: grid;
@@ -753,9 +780,12 @@
 }
 
 .cover-art {
+    position: absolute;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
+    object-position: center center;
+    z-index: 1;
     display: none;
 }
 

@@ -18,6 +18,7 @@ export type MediaControlsElements = {
     artistInfoGenres: HTMLParagraphElement;
     artistInfoSummary: HTMLParagraphElement;
     artistInfoLinks: HTMLDivElement;
+    coverArtBackground: HTMLImageElement;
     coverArt: HTMLImageElement;
     currentTimeLabel: HTMLSpanElement;
     trackDurationLabel: HTMLSpanElement;
@@ -36,6 +37,7 @@ export const renderMediaControls = (): string => `
         <div id="cover-frame" class="cover-frame" role="button" tabindex="0" aria-label="Flip cover art">
           <div id="cover-flipper" class="cover-flipper">
             <div class="cover-face cover-front">
+              <img id="cover-art-bg" class="cover-art-bg" alt="" aria-hidden="true">
               <img id="cover-art" class="cover-art" alt="Album cover art">
             </div>
             <div class="cover-face cover-back">
@@ -106,6 +108,7 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     artistInfoGenres: root.querySelector('#artist-info-genres') as HTMLParagraphElement,
     artistInfoSummary: root.querySelector('#artist-info-summary') as HTMLParagraphElement,
     artistInfoLinks: root.querySelector('#artist-info-links') as HTMLDivElement,
+    coverArtBackground: root.querySelector('#cover-art-bg') as HTMLImageElement,
     coverArt: root.querySelector('#cover-art') as HTMLImageElement,
     currentTimeLabel: root.querySelector('#current-time') as HTMLSpanElement,
     trackDurationLabel: root.querySelector('#track-duration') as HTMLSpanElement,

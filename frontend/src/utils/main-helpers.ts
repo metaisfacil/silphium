@@ -46,6 +46,10 @@ export const base64ToObjectUrl = (base64: string, mimeType: string): string => {
     return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
 };
 
+export const base64ToDataUrl = (base64: string, mimeType: string): string => {
+    return `data:${mimeType};base64,${base64}`;
+};
+
 export const mimeTypeForFileName = (name: string): string => {
     if (/\.png$/i.test(name)) {
         return 'image/png';

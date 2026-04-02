@@ -190,6 +190,7 @@ const {
     artistInfoGenres,
     artistInfoSummary,
     artistInfoLinks,
+    coverArtBackground,
     coverArt,
     currentTimeLabel,
     trackDurationLabel,
@@ -981,6 +982,8 @@ const clearLibrarySelection = async (): Promise<void> => {
     applyMbLinks(trackTitle, trackAlbum, trackArtist, {});
 
     coverArt.removeAttribute('src');
+    coverArtBackground.removeAttribute('src');
+    coverArtBackground.classList.remove('is-visible');
     coverArt.classList.remove('is-visible');
     setBackgroundCover();
     setCoverFlipped(false);
@@ -1143,10 +1146,14 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
     }
 
     if (coverSrc) {
+        coverArtBackground.src = coverSrc;
+        coverArtBackground.classList.add('is-visible');
         coverArt.src = coverSrc;
         coverArt.classList.add('is-visible');
         setBackgroundCover(coverSrc);
     } else {
+        coverArtBackground.removeAttribute('src');
+        coverArtBackground.classList.remove('is-visible');
         coverArt.removeAttribute('src');
         coverArt.classList.remove('is-visible');
         setBackgroundCover();
@@ -1335,6 +1342,8 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         playerLane.classList.remove('lyrics-visible');
         lyricsPanel.setAttribute('aria-hidden', 'true');
         coverArt.removeAttribute('src');
+        coverArtBackground.removeAttribute('src');
+        coverArtBackground.classList.remove('is-visible');
         coverArt.classList.remove('is-visible');
         setBackgroundCover();
         setCoverFlipped(false);
