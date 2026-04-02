@@ -278,6 +278,116 @@
     margin-top: 0.1rem;
 }
 
+.technical-info-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 31;
+    display: grid;
+    place-items: center;
+}
+
+.technical-info-modal[hidden] {
+    display: none;
+}
+
+.technical-info-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+
+.technical-info-dialog {
+    position: relative;
+    width: min(560px, calc(100vw - 2rem));
+    max-height: calc(100vh - 2.5rem);
+    display: flex;
+    flex-direction: column;
+    background: rgba(18, 18, 20, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.9rem;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.technical-info-modal.is-visible .technical-info-backdrop {
+    opacity: 1;
+}
+
+.technical-info-modal.is-visible .technical-info-dialog {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.technical-info-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.technical-info-title {
+    margin: 0;
+    font-size: 0.84rem;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.technical-info-close {
+    width: 1.8rem;
+    height: 1.8rem;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.technical-info-content {
+    overflow: auto;
+    padding: 0.85rem 0.95rem 0.95rem;
+    text-align: left;
+}
+
+.technical-info-grid {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 0.75rem;
+    row-gap: 0.45rem;
+    align-items: baseline;
+}
+
+.technical-info-label {
+    margin: 0;
+    font-size: 0.76rem;
+    font-weight: 700;
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+.technical-info-value {
+    margin: 0;
+    font-size: 0.79rem;
+    line-height: 1.35;
+    opacity: 0.9;
+    overflow-wrap: anywhere;
+}
+
+.technical-info-empty {
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.72;
+}
+
 .play-order-menu {
     position: fixed;
     left: 0;

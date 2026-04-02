@@ -6,7 +6,7 @@ export type MediaControlsElements = {
     trackAlbum: HTMLParagraphElement;
   trackPosition: HTMLSpanElement;
     trackArtist: HTMLParagraphElement;
-    trackTechnical: HTMLSpanElement;
+    trackTechnical: HTMLButtonElement;
     lyricsPanel: HTMLElement;
     lyricsContent: HTMLPreElement;
     coverFrame: HTMLDivElement;
@@ -61,7 +61,7 @@ export const renderMediaControls = (): string => `
         </div>
         <div class="time-row">
           <span id="current-time">0:00</span>
-          <span id="track-technical" class="track-technical"></span>
+          <button id="track-technical" class="track-technical" type="button" aria-label="Show track technical details" disabled></button>
           <span id="track-duration">0:00</span>
         </div>
         <input id="seek" class="slider" type="range" min="0" max="0" value="0" step="0.1">
@@ -94,7 +94,7 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     trackAlbum: root.querySelector('#track-album') as HTMLParagraphElement,
   trackPosition: root.querySelector('#track-position') as HTMLSpanElement,
     trackArtist: root.querySelector('#track-artist') as HTMLParagraphElement,
-    trackTechnical: root.querySelector('#track-technical') as HTMLSpanElement,
+    trackTechnical: root.querySelector('#track-technical') as HTMLButtonElement,
     lyricsPanel: root.querySelector('#lyrics-panel') as HTMLElement,
     lyricsContent: root.querySelector('#lyrics-content') as HTMLPreElement,
     coverFrame: root.querySelector('#cover-frame') as HTMLDivElement,

@@ -675,13 +675,31 @@
 }
 
 .track-technical {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
     font-size: clamp(0.68rem, 2.4cqw, 0.86rem);
     opacity: 0.48;
     margin: 0;
+    padding: 0;
     text-align: center;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.track-technical:hover:not(:disabled) {
+    opacity: 0.75;
+    text-decoration: underline;
+    text-decoration-color: rgba(255, 255, 255, 0.35);
+    text-underline-offset: 2px;
+}
+
+.track-technical:disabled {
+    cursor: default;
+    opacity: 0.32;
 }
 
 .track-line[data-mb-url] {

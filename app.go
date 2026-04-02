@@ -69,6 +69,16 @@ type TrackTags struct {
 	BitDepth       int      `json:"bitDepth,omitempty"`
 	SampleRate     int      `json:"sampleRate,omitempty"`
 	Codec          string   `json:"codec,omitempty"`
+	CodecLong      string   `json:"codecLong,omitempty"`
+	CodecProfile   string   `json:"codecProfile,omitempty"`
+	SampleFormat   string   `json:"sampleFormat,omitempty"`
+	Channels       int      `json:"channels,omitempty"`
+	ChannelLayout  string   `json:"channelLayout,omitempty"`
+	BitRate        int      `json:"bitRate,omitempty"`
+	OverallBitRate int      `json:"overallBitRate,omitempty"`
+	DurationSecs   float64  `json:"durationSeconds,omitempty"`
+	Container      string   `json:"container,omitempty"`
+	FileSizeBytes  int64    `json:"fileSizeBytes,omitempty"`
 	RecordingID    string   `json:"recordingId,omitempty"`
 	ReleaseID      string   `json:"releaseId,omitempty"`
 	ArtistID       string   `json:"artistId,omitempty"`
@@ -598,14 +608,44 @@ func extractTrackNumbers(tags map[string][]string) (string, string) {
 
 type ffprobeAudioStream struct {
 	CodecName        string `json:"codec_name"`
+	CodecLongName    string `json:"codec_long_name"`
+	Profile          string `json:"profile"`
 	SampleRate       string `json:"sample_rate"`
 	BitsPerRawSample string `json:"bits_per_raw_sample"`
 	BitsPerSample    int    `json:"bits_per_sample"`
 	SampleFmt        string `json:"sample_fmt"`
+	Channels         int    `json:"channels"`
+	ChannelLayout    string `json:"channel_layout"`
+	BitRate          string `json:"bit_rate"`
+	Duration         string `json:"duration"`
+}
+
+type ffprobeFormatOutput struct {
+	FormatName string `json:"format_name"`
+	BitRate    string `json:"bit_rate"`
+	Duration   string `json:"duration"`
+	Size       string `json:"size"`
 }
 
 type ffprobeAudioOutput struct {
 	Streams []ffprobeAudioStream `json:"streams"`
+	Format  ffprobeFormatOutput  `json:"format"`
+}
+
+type TrackTechnicalMetadata struct {
+	BitDepth        int
+	SampleRate      int
+	Codec           string
+	CodecLong       string
+	CodecProfile    string
+	SampleFormat    string
+	Channels        int
+	ChannelLayout   string
+	BitRate         int
+	OverallBitRate  int
+	DurationSeconds float64
+	Container       string
+	FileSizeBytes   int64
 }
 
 func bitDepthFromSampleFmt(sampleFmt string) int {
@@ -625,42 +665,99 @@ func bitDepthFromSampleFmt(sampleFmt string) int {
 	}
 }
 
-func readTrackTechnicalMetadata(path string) (int, int, string) {
+func parseIntValue(value string) int {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0
+	}
+
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0
+	}
+
+	return parsed
+}
+
+func parseInt64Value(value string) int64 {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0
+	}
+
+	parsed, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return parsed
+}
+
+func parseFloatValue(value string) float64 {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0
+	}
+
+	parsed, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return 0
+	}
+
+	return parsed
+}
+
+func readTrackTechnicalMetadata(path string) TrackTechnicalMetadata {
+	metadata := TrackTechnicalMetadata{}
+
+	if fileInfo, statErr := os.Stat(path); statErr == nil && !fileInfo.IsDir() {
+		metadata.FileSizeBytes = fileInfo.Size()
+	}
+
 	ffprobePath, err := exec.LookPath("ffprobe")
 	if err != nil {
-		return 0, 0, ""
+		return metadata
 	}
 
 	command := exec.Command(
 		ffprobePath,
 		"-v", "error",
 		"-select_streams", "a:0",
-		"-show_entries", "stream=codec_name,sample_rate,bits_per_raw_sample,bits_per_sample,sample_fmt",
+		"-show_entries", "stream=codec_name,codec_long_name,profile,sample_rate,bits_per_raw_sample,bits_per_sample,sample_fmt,channels,channel_layout,bit_rate,duration:format=format_name,bit_rate,duration,size",
 		"-of", "json",
 		path,
 	)
 
 	rawOutput, err := command.Output()
 	if err != nil {
-		return 0, 0, ""
+		return metadata
 	}
 
 	var parsed ffprobeAudioOutput
 	if err := json.Unmarshal(rawOutput, &parsed); err != nil {
-		return 0, 0, ""
+		return metadata
+	}
+
+	metadata.Container = strings.TrimSpace(parsed.Format.FormatName)
+	metadata.OverallBitRate = parseIntValue(parsed.Format.BitRate)
+	metadata.DurationSeconds = parseFloatValue(parsed.Format.Duration)
+	if metadata.FileSizeBytes == 0 {
+		metadata.FileSizeBytes = parseInt64Value(parsed.Format.Size)
 	}
 
 	if len(parsed.Streams) == 0 {
-		return 0, 0, ""
+		return metadata
 	}
 
 	stream := parsed.Streams[0]
-	sampleRate := 0
-	if stream.SampleRate != "" {
-		if parsedRate, parseErr := strconv.Atoi(stream.SampleRate); parseErr == nil {
-			sampleRate = parsedRate
-		}
-	}
+	metadata.SampleRate = parseIntValue(stream.SampleRate)
+	metadata.Codec = strings.ToUpper(strings.TrimSpace(stream.CodecName))
+	metadata.CodecLong = strings.TrimSpace(stream.CodecLongName)
+	metadata.CodecProfile = strings.TrimSpace(stream.Profile)
+	metadata.SampleFormat = strings.TrimSpace(stream.SampleFmt)
+	metadata.Channels = stream.Channels
+	metadata.ChannelLayout = strings.TrimSpace(stream.ChannelLayout)
+	metadata.BitRate = parseIntValue(stream.BitRate)
 
 	bitDepth := 0
 	if stream.BitsPerRawSample != "" {
@@ -674,8 +771,13 @@ func readTrackTechnicalMetadata(path string) (int, int, string) {
 	if bitDepth == 0 {
 		bitDepth = bitDepthFromSampleFmt(stream.SampleFmt)
 	}
+	metadata.BitDepth = bitDepth
 
-	return bitDepth, sampleRate, strings.ToUpper(strings.TrimSpace(stream.CodecName))
+	if metadata.DurationSeconds == 0 {
+		metadata.DurationSeconds = parseFloatValue(stream.Duration)
+	}
+
+	return metadata
 }
 
 var mbidPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b`)
@@ -730,11 +832,11 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 		title := firstTagValue(tags, "TITLE")
 		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
-		bitDepth, sampleRate, codec := readTrackTechnicalMetadata(path)
+		technical := readTrackTechnicalMetadata(path)
 		lyrics := firstTagValue(tags, "LYRICS")
 		unsyncedLyrics := firstTagValue(tags, "UNSYNCEDLYRICS")
 
-		if artist == "" && album == "" && title == "" && trackNumber == "" && trackTotal == "" && bitDepth == 0 && sampleRate == 0 && codec == "" && lyrics == "" && unsyncedLyrics == "" {
+		if artist == "" && album == "" && title == "" && trackNumber == "" && trackTotal == "" && technical.BitDepth == 0 && technical.SampleRate == 0 && technical.Codec == "" && technical.BitRate == 0 && technical.OverallBitRate == 0 && technical.DurationSeconds == 0 && technical.Container == "" && technical.FileSizeBytes == 0 && lyrics == "" && unsyncedLyrics == "" {
 			continue
 		}
 
@@ -746,9 +848,19 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 			UnsyncedLyrics: unsyncedLyrics,
 			TrackNumber:    trackNumber,
 			TrackTotal:     trackTotal,
-			BitDepth:       bitDepth,
-			SampleRate:     sampleRate,
-			Codec:          codec,
+			BitDepth:       technical.BitDepth,
+			SampleRate:     technical.SampleRate,
+			Codec:          technical.Codec,
+			CodecLong:      technical.CodecLong,
+			CodecProfile:   technical.CodecProfile,
+			SampleFormat:   technical.SampleFormat,
+			Channels:       technical.Channels,
+			ChannelLayout:  technical.ChannelLayout,
+			BitRate:        technical.BitRate,
+			OverallBitRate: technical.OverallBitRate,
+			DurationSecs:   technical.DurationSeconds,
+			Container:      technical.Container,
+			FileSizeBytes:  technical.FileSizeBytes,
 			RecordingID:    firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
 			ReleaseID:      firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
 			ArtistID:       firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
@@ -787,8 +899,8 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 		}
 
 		tags, err := taglib.ReadTags(tempPath)
-		_ = os.Remove(tempPath)
 		if err != nil {
+			_ = os.Remove(tempPath)
 			continue
 		}
 
@@ -797,11 +909,12 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 		title := firstTagValue(tags, "TITLE")
 		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
-		bitDepth, sampleRate, codec := readTrackTechnicalMetadata(tempPath)
+		technical := readTrackTechnicalMetadata(tempPath)
+		_ = os.Remove(tempPath)
 		lyrics := firstTagValue(tags, "LYRICS")
 		unsyncedLyrics := firstTagValue(tags, "UNSYNCEDLYRICS")
 
-		if artist == "" && album == "" && title == "" && trackNumber == "" && trackTotal == "" && bitDepth == 0 && sampleRate == 0 && codec == "" && lyrics == "" && unsyncedLyrics == "" {
+		if artist == "" && album == "" && title == "" && trackNumber == "" && trackTotal == "" && technical.BitDepth == 0 && technical.SampleRate == 0 && technical.Codec == "" && technical.BitRate == 0 && technical.OverallBitRate == 0 && technical.DurationSeconds == 0 && technical.Container == "" && technical.FileSizeBytes == 0 && lyrics == "" && unsyncedLyrics == "" {
 			continue
 		}
 
@@ -813,9 +926,19 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 			UnsyncedLyrics: unsyncedLyrics,
 			TrackNumber:    trackNumber,
 			TrackTotal:     trackTotal,
-			BitDepth:       bitDepth,
-			SampleRate:     sampleRate,
-			Codec:          codec,
+			BitDepth:       technical.BitDepth,
+			SampleRate:     technical.SampleRate,
+			Codec:          technical.Codec,
+			CodecLong:      technical.CodecLong,
+			CodecProfile:   technical.CodecProfile,
+			SampleFormat:   technical.SampleFormat,
+			Channels:       technical.Channels,
+			ChannelLayout:  technical.ChannelLayout,
+			BitRate:        technical.BitRate,
+			OverallBitRate: technical.OverallBitRate,
+			DurationSecs:   technical.DurationSeconds,
+			Container:      technical.Container,
+			FileSizeBytes:  technical.FileSizeBytes,
 			RecordingID:    firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
 			ReleaseID:      firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
 			ArtistID:       firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),

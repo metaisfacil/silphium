@@ -10,6 +10,7 @@ import {
     getPlaylistMenuElements,
     getPlaylistModalElements,
     getSettingsModalElements,
+    getTechnicalInfoModalElements,
     getTextFileModalElements,
     getTrackMetaMenuElements,
     renderImageFileModal,
@@ -17,6 +18,7 @@ import {
     renderPlaylistMenu,
     renderPlaylistModal,
     renderSettingsModal,
+    renderTechnicalInfoModal,
     renderTextFileModal,
     renderTrackMetaMenu,
 } from './components/overlays';
@@ -77,8 +79,25 @@ type Track = {
     displayTechnical: string;
     displayLyrics: string;
     tagsResolved: boolean;
+    technicalDetails: TrackTechnicalDetails;
     mbIds: MusicBrainzIds;
     artistMbids: string[];
+};
+
+type TrackTechnicalDetails = {
+    bitDepth?: number;
+    sampleRate?: number;
+    codec?: string;
+    codecLong?: string;
+    codecProfile?: string;
+    sampleFormat?: string;
+    channels?: number;
+    channelLayout?: string;
+    bitRate?: number;
+    overallBitRate?: number;
+    durationSeconds?: number;
+    container?: string;
+    fileSizeBytes?: number;
 };
 
 type TrackTags = {
@@ -92,6 +111,16 @@ type TrackTags = {
     bitDepth?: number;
     sampleRate?: number;
     codec?: string;
+    codecLong?: string;
+    codecProfile?: string;
+    sampleFormat?: string;
+    channels?: number;
+    channelLayout?: string;
+    bitRate?: number;
+    overallBitRate?: number;
+    durationSeconds?: number;
+    container?: string;
+    fileSizeBytes?: number;
     recordingId?: string;
     releaseId?: string;
     artistId?: string;
@@ -186,6 +215,7 @@ app.innerHTML = `
     ${renderMediaControls()}
     ${renderTextFileModal()}
     ${renderImageFileModal()}
+    ${renderTechnicalInfoModal()}
     ${renderSettingsModal()}
     ${renderPlayOrderMenu()}
     ${renderTrackMetaMenu()}
@@ -218,6 +248,7 @@ let playbackState: AudioPlaybackState = {
 };
 let playbackPollHandle: number | undefined;
 let imageModalHideTimer: number | undefined;
+let technicalInfoModalHideTimer: number | undefined;
 let isSeeking = false;
 let backendReady = false;
 let lastHandledEndEventId = 0;
@@ -247,6 +278,7 @@ const coverUrlByFolder = new Map<string, string>();
 const artistInfoByMBID = new Map<string, ArtistDetails>();
 const librarySearchDebounceMs = 140;
 const librarySearchBatchSize = 300;
+const technicalInfoModalTransitionMs = 220;
 
 const { sidebarToggle, librarySidebar, librarySettings, libraryBack, libraryPath, librarySearch, libraryBrowser } = getSidebarElements(document);
 const {
@@ -322,6 +354,7 @@ const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
 const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileClose } = getTextFileModalElements(document);
 const { imageFileModal, imageFileBackdrop, imageFilePreview } = getImageFileModalElements(document);
+const { technicalInfoModal, technicalInfoBackdrop, technicalInfoTitle, technicalInfoContent, technicalInfoClose } = getTechnicalInfoModalElements(document);
 const settingsElements = getSettingsModalElements(document);
 const { playOrderMenu } = getPlayOrderMenuElements(document);
 const { trackMetaMenu, trackMetaOpenMbBtn, trackMetaParentFolderBtn } = getTrackMetaMenuElements(document);
@@ -1093,6 +1126,22 @@ const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, codec?:
     return `${technicalParts[0]} ‣ ${technicalParts[1]}`;
 };
 
+const technicalDetailsFromTags = (tags?: TrackTags): TrackTechnicalDetails => ({
+    bitDepth: Number.isFinite(tags?.bitDepth) && (tags?.bitDepth as number) > 0 ? (tags?.bitDepth as number) : undefined,
+    sampleRate: Number.isFinite(tags?.sampleRate) && (tags?.sampleRate as number) > 0 ? (tags?.sampleRate as number) : undefined,
+    codec: tags?.codec?.trim() || undefined,
+    codecLong: tags?.codecLong?.trim() || undefined,
+    codecProfile: tags?.codecProfile?.trim() || undefined,
+    sampleFormat: tags?.sampleFormat?.trim() || undefined,
+    channels: Number.isFinite(tags?.channels) && (tags?.channels as number) > 0 ? (tags?.channels as number) : undefined,
+    channelLayout: tags?.channelLayout?.trim() || undefined,
+    bitRate: Number.isFinite(tags?.bitRate) && (tags?.bitRate as number) > 0 ? (tags?.bitRate as number) : undefined,
+    overallBitRate: Number.isFinite(tags?.overallBitRate) && (tags?.overallBitRate as number) > 0 ? (tags?.overallBitRate as number) : undefined,
+    durationSeconds: Number.isFinite(tags?.durationSeconds) && (tags?.durationSeconds as number) > 0 ? (tags?.durationSeconds as number) : undefined,
+    container: tags?.container?.trim() || undefined,
+    fileSizeBytes: Number.isFinite(tags?.fileSizeBytes) && (tags?.fileSizeBytes as number) > 0 ? (tags?.fileSizeBytes as number) : undefined,
+});
+
 const stripSyncedLyricTiming = (lyrics: string): string => {
     return lyrics
         .split(/\r?\n/)
@@ -1164,7 +1213,8 @@ const refreshNowPlayingLabel = (): void => {
     trackAlbum.textContent = activeTrack.displayAlbum;
     trackPosition.textContent = taggedTrackPosition(activeTrack);
     trackArtist.textContent = activeTrack.displayArtist;
-    trackTechnical.textContent = activeTrack.displayTechnical;
+    trackTechnical.textContent = activeTrack.displayTechnical || 'Details';
+    trackTechnical.disabled = false;
     refreshLyricsPanel();
     applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds);
 
@@ -1194,6 +1244,7 @@ const ensureTrackTagsResolved = async (index: number): Promise<void> => {
             displayTrackNumber: tags?.trackNumber?.trim() || '',
             displayTrackTotal: tags?.trackTotal?.trim() || '',
             displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
+            technicalDetails: technicalDetailsFromTags(tags),
             tagsResolved: true,
             mbIds: {
                 recordingId: tags?.recordingId || undefined,
@@ -1684,6 +1735,7 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
             displayTrackNumber: tags?.trackNumber?.trim() || '',
             displayTrackTotal: tags?.trackTotal?.trim() || '',
             displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
+            technicalDetails: technicalDetailsFromTags(tags),
             tagsResolved: true,
             mbIds: {
                 recordingId: tags?.recordingId || undefined,
@@ -1776,7 +1828,166 @@ const openImagePreviewModal = (_title: string, source: string): void => {
     });
 };
 
+const formatDurationWithSeconds = (durationSeconds: number): string => {
+    const durationLabel = formatTime(durationSeconds);
+    const secondsLabel = durationSeconds.toFixed(3).replace(/\.000$/, '');
+    return `${durationLabel} (${secondsLabel} s)`;
+};
+
+const formatBitRateValue = (bitRate: number): string => {
+    if (bitRate >= 1_000_000) {
+        return `${(bitRate / 1_000_000).toFixed(2).replace(/\.00$/, '').replace(/0$/, '')} Mbps`;
+    }
+
+    return `${Math.round(bitRate / 1_000)} kbps`;
+};
+
+const formatFileSizeValue = (fileSizeBytes: number): string => {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = fileSizeBytes;
+    let unitIndex = 0;
+
+    while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex += 1;
+    }
+
+    const decimals = unitIndex === 0 ? 0 : 2;
+    return `${size.toFixed(decimals).replace(/\.00$/, '')} ${units[unitIndex]} (${fileSizeBytes.toLocaleString()} bytes)`;
+};
+
+const buildTechnicalInfoRows = (track: Track): Array<{ label: string; value: string }> => {
+    const details = track.technicalDetails;
+    const rows: Array<{ label: string; value: string }> = [
+        { label: 'File name', value: track.name },
+        { label: 'Full path', value: track.path },
+    ];
+
+    if (details.container) {
+        rows.push({ label: 'Container', value: details.container });
+    }
+
+    if (details.codec) {
+        rows.push({ label: 'Codec', value: details.codec });
+    }
+
+    if (details.codecLong) {
+        rows.push({ label: 'Codec description', value: details.codecLong });
+    }
+
+    if (details.codecProfile) {
+        rows.push({ label: 'Codec profile', value: details.codecProfile });
+    }
+
+    if (details.sampleFormat) {
+        rows.push({ label: 'Sample format', value: details.sampleFormat });
+    }
+
+    if (details.bitDepth) {
+        rows.push({ label: 'Bit depth', value: `${details.bitDepth}-bit` });
+    }
+
+    if (details.sampleRate) {
+        rows.push({ label: 'Sample rate', value: `${details.sampleRate.toLocaleString()} Hz` });
+    }
+
+    if (details.channels) {
+        rows.push({ label: 'Channels', value: String(details.channels) });
+    }
+
+    if (details.channelLayout) {
+        rows.push({ label: 'Channel layout', value: details.channelLayout });
+    }
+
+    if (details.bitRate) {
+        rows.push({ label: 'Audio bitrate', value: formatBitRateValue(details.bitRate) });
+    }
+
+    if (details.overallBitRate) {
+        rows.push({ label: 'Overall bitrate', value: formatBitRateValue(details.overallBitRate) });
+    }
+
+    if (details.durationSeconds) {
+        rows.push({ label: 'Duration', value: formatDurationWithSeconds(details.durationSeconds) });
+    }
+
+    if (details.fileSizeBytes) {
+        rows.push({ label: 'File size', value: formatFileSizeValue(details.fileSizeBytes) });
+    }
+
+    return rows;
+};
+
+const renderTechnicalInfoContent = (track: Track): void => {
+    technicalInfoContent.innerHTML = '';
+
+    const rows = buildTechnicalInfoRows(track);
+    if (rows.length === 0) {
+        technicalInfoContent.innerHTML = '<p class="technical-info-empty">No technical information available for this track.</p>';
+        return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'technical-info-grid';
+
+    for (const row of rows) {
+        const label = document.createElement('p');
+        label.className = 'technical-info-label';
+        label.textContent = row.label;
+
+        const value = document.createElement('p');
+        value.className = 'technical-info-value';
+        value.textContent = row.value;
+
+        grid.append(label, value);
+    }
+
+    technicalInfoContent.append(grid);
+};
+
+const closeTechnicalInfoModal = (): void => {
+    technicalInfoModal.classList.remove('is-visible');
+
+    if (technicalInfoModalHideTimer !== undefined) {
+        window.clearTimeout(technicalInfoModalHideTimer);
+    }
+
+    technicalInfoModalHideTimer = window.setTimeout(() => {
+        technicalInfoModal.hidden = true;
+        technicalInfoModalHideTimer = undefined;
+    }, technicalInfoModalTransitionMs);
+};
+
+const openTechnicalInfoModal = async (): Promise<void> => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return;
+    }
+
+    if (technicalInfoModalHideTimer !== undefined) {
+        window.clearTimeout(technicalInfoModalHideTimer);
+        technicalInfoModalHideTimer = undefined;
+    }
+
+    const selectedTrackIndex = currentTrackIndex;
+    technicalInfoTitle.textContent = 'Technical info';
+    technicalInfoContent.innerHTML = '<p class="technical-info-empty">Loading technical information...</p>';
+    technicalInfoModal.hidden = false;
+    window.requestAnimationFrame(() => {
+        technicalInfoModal.classList.add('is-visible');
+    });
+
+    await ensureTrackTagsResolved(selectedTrackIndex);
+
+    if (selectedTrackIndex >= tracks.length) {
+        return;
+    }
+
+    renderTechnicalInfoContent(tracks[selectedTrackIndex]);
+};
+
 const clearLibrarySelection = async (): Promise<void> => {
+    closeTechnicalInfoModal();
+
     try {
         const nextState = await AudioStop() as AudioPlaybackState;
         applyPlaybackState(nextState);
@@ -1815,6 +2026,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     trackPosition.textContent = '';
     trackArtist.textContent = 'Unknown Artist';
     trackTechnical.textContent = '';
+    trackTechnical.disabled = true;
     lyricsContent.textContent = '';
     playerLane.classList.remove('lyrics-visible');
     lyricsPanel.setAttribute('aria-hidden', 'true');
@@ -2049,6 +2261,7 @@ const ensureTrackIndexForPath = (file: LibraryIndexedFile, trackIndexByPath: Map
         displayTechnical: '',
         displayLyrics: '',
         tagsResolved: false,
+        technicalDetails: {},
         mbIds: {},
         artistMbids: [],
     };
@@ -2118,6 +2331,8 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
         return;
     }
 
+    closeTechnicalInfoModal();
+
     try {
         const nextState = await AudioStop() as AudioPlaybackState;
         applyPlaybackState(nextState);
@@ -2163,6 +2378,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
             displayTechnical: '',
             displayLyrics: '',
             tagsResolved: false,
+            technicalDetails: {},
             mbIds: {},
             artistMbids: [],
         }));
@@ -2261,6 +2477,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
         trackPosition.textContent = '';
         trackArtist.textContent = 'Unknown Artist';
         trackTechnical.textContent = '';
+        trackTechnical.disabled = true;
         lyricsContent.textContent = '';
         playerLane.classList.remove('lyrics-visible');
         lyricsPanel.setAttribute('aria-hidden', 'true');
@@ -2366,6 +2583,10 @@ coverFrame.addEventListener('keydown', (event) => {
         ? `${activeTrack.displayArtist} - ${activeTrack.displayAlbum}`
         : 'Cover art';
     openImagePreviewModal(title, coverArt.src);
+});
+
+trackTechnical.addEventListener('click', () => {
+    void openTechnicalInfoModal();
 });
 
 sidebarToggle.addEventListener('click', () => {
@@ -2494,6 +2715,14 @@ imageFilePreview.addEventListener('click', () => {
     closeImageFileModal();
 });
 
+technicalInfoBackdrop.addEventListener('click', () => {
+    closeTechnicalInfoModal();
+});
+
+technicalInfoClose.addEventListener('click', () => {
+    closeTechnicalInfoModal();
+});
+
 document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') {
         return;
@@ -2504,6 +2733,11 @@ document.addEventListener('keydown', (event) => {
     }
 
     if (settingsController.handleEscape()) {
+        return;
+    }
+
+    if (!technicalInfoModal.hidden) {
+        closeTechnicalInfoModal();
         return;
     }
 
@@ -2681,6 +2915,10 @@ document.addEventListener('click', (e) => {
     }
 
     if (settingsController.handleDocumentClick(target)) {
+        return;
+    }
+
+    if (technicalInfoModal.contains(target)) {
         return;
     }
 
