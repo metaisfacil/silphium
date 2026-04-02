@@ -77,6 +77,14 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             };
         }
 
+        const playlistSequence = loadedPlaylistSequence();
+        if (playlistSequence) {
+            return {
+                indexes: playlistSequence.indexes,
+                currentPosition: playlistSequence.currentPosition,
+            };
+        }
+
         return options.getBaseSequence();
     };
 
@@ -274,12 +282,41 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return loadedPlaylistTrackIndexes;
         }
 
-        if (editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) {
+        return mutableQueueSequence();
+    };
+
+    const mutableQueueSequence = (): number[] => {
+        if (editableQueueTrackIndexes) {
             return editableQueueTrackIndexes;
         }
 
-        editableQueueTrackIndexes = options.getBaseSequence().indexes.slice();
+        editableQueueTrackIndexes = queueSequence().indexes.slice();
         return editableQueueTrackIndexes;
+    };
+
+    const enqueueTracks = (trackIndexes: number[], placement: 'next' | 'end'): void => {
+        const normalizedTrackIndexes = trackIndexes.filter((trackIndex) => (
+            Number.isInteger(trackIndex)
+            && trackIndex >= 0
+            && trackIndex < options.getTrackCount()
+        ));
+
+        if (normalizedTrackIndexes.length === 0) {
+            return;
+        }
+
+        const queue = mutableQueueSequence();
+        if (placement === 'next') {
+            const currentTrackIndex = options.getCurrentTrackIndex();
+            const currentPosition = queue.indexOf(currentTrackIndex);
+            const insertAt = currentPosition >= 0 ? currentPosition + 1 : 0;
+            queue.splice(insertAt, 0, ...normalizedTrackIndexes);
+        } else {
+            queue.push(...normalizedTrackIndexes);
+        }
+
+        hydrateTrackMetadataInBackground(normalizedTrackIndexes);
+        scheduleRender();
     };
 
     const getNextTrackIndex = (direction: PlaylistDirection): number | undefined => {
@@ -299,14 +336,15 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             }
         }
 
-        if (editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) {
-            const currentPosition = editableQueueTrackIndexes.indexOf(currentTrackIndex);
+        const queueIndexes = queueSequence().indexes;
+        if ((editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) || hasLoadedPlaylist()) {
+            const currentPosition = queueIndexes.indexOf(currentTrackIndex);
             if (currentPosition < 0) {
-                return editableQueueTrackIndexes[0];
+                return queueIndexes[0];
             }
 
-            const nextPosition = (currentPosition + direction + editableQueueTrackIndexes.length) % editableQueueTrackIndexes.length;
-            return editableQueueTrackIndexes[nextPosition];
+            const nextPosition = (currentPosition + direction + queueIndexes.length) % queueIndexes.length;
+            return queueIndexes[nextPosition];
         }
 
         return undefined;
@@ -343,6 +381,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
             loadedPlaylistTrackIndexes = loadedPlaylist.trackIndexes;
             loadedPlaylistName = loadedPlaylist.name || '';
+            editableQueueTrackIndexes = null;
             selectedSource = 'playlist';
             dragFromPosition = null;
             options.onExternalPlaylistLoaded();
@@ -527,16 +566,17 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 return loadedPlaylistSequence();
             }
 
-            if (editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) {
-                const currentTrackIndex = options.getCurrentTrackIndex();
-                const currentPosition = editableQueueTrackIndexes.indexOf(currentTrackIndex);
-                return {
-                    indexes: editableQueueTrackIndexes,
-                    currentPosition: currentPosition >= 0 ? currentPosition : 0,
-                };
+            if ((editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) || hasLoadedPlaylist()) {
+                return queueSequence();
             }
 
             return null;
+        },
+        addToQueueEnd: (trackIndexes: number[]) => {
+            enqueueTracks(trackIndexes, 'end');
+        },
+        addToQueueNext: (trackIndexes: number[]) => {
+            enqueueTracks(trackIndexes, 'next');
         },
         handleDocumentClick: (target: Node): boolean => {
             if (!playlistMenu.hidden && !playlistMenu.contains(target)) {

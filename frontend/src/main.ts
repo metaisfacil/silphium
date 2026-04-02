@@ -10,6 +10,7 @@ import {
     getPlayOrderMenuElements,
     getPlaylistMenuElements,
     getPlaylistModalElements,
+    getSidebarQueueMenuElements,
     getSettingsModalElements,
     getTechnicalInfoModalElements,
     getTextFileModalElements,
@@ -19,6 +20,7 @@ import {
     renderPlayOrderMenu,
     renderPlaylistMenu,
     renderPlaylistModal,
+    renderSidebarQueueMenu,
     renderSettingsModal,
     renderTechnicalInfoModal,
     renderTextFileModal,
@@ -246,6 +248,7 @@ app.innerHTML = `
     ${renderSettingsModal()}
     ${renderPlayOrderMenu()}
     ${renderTrackMetaMenu()}
+    ${renderSidebarQueueMenu()}
     ${renderPlaylistMenu()}
     ${renderPlaylistModal()}
 `;
@@ -292,6 +295,7 @@ let shuffleHistory: number[] = [];
 let shuffleCursor = -1;
 let shuffleScopeKey = '';
 let trackMetaMenuTarget: HTMLParagraphElement | null = null;
+let sidebarQueueTrackIndexes: number[] = [];
 let libraryLoading = false;
 let librarySearchQuery = '';
 let librarySearchPending = false;
@@ -409,6 +413,7 @@ const { technicalInfoModal, technicalInfoBackdrop, technicalInfoTitle, technical
 const settingsElements = getSettingsModalElements(document);
 const { playOrderMenu } = getPlayOrderMenuElements(document);
 const { trackMetaMenu, trackMetaOpenMbBtn, trackMetaParentFolderBtn } = getTrackMetaMenuElements(document);
+const { sidebarQueueMenu, sidebarQueueAddNext, sidebarQueueEnd } = getSidebarQueueMenuElements(document);
 const playlistMenuElements = getPlaylistMenuElements(document);
 const playlistModalElements = getPlaylistModalElements(document);
 let settingsController: SettingsController;
@@ -846,6 +851,76 @@ const appendSearchTreeRows = (list: HTMLUListElement, node: LibrarySearchTreeNod
         row.append(button);
         list.append(row);
     }
+};
+
+const trackRelativePathWithinFolder = (track: Track, folderPath: string): string => {
+    if (!folderPath) {
+        return track.relativePath;
+    }
+
+    const normalizedFolderPrefix = `${folderPath.toLowerCase()}/`;
+    const normalizedRelativePath = track.relativePath.toLowerCase();
+    if (!normalizedRelativePath.startsWith(normalizedFolderPrefix)) {
+        return track.relativePath;
+    }
+
+    return track.relativePath.slice(folderPath.length + 1);
+};
+
+const collectFolderTrackIndexes = (folderPath: string): number[] => {
+    const folderNode = libraryNodeByPath.get(folderPath);
+    if (!folderNode) {
+        return [];
+    }
+
+    const collected: number[] = [];
+    const stack: LibraryNode[] = [folderNode];
+    while (stack.length > 0) {
+        const node = stack.pop() as LibraryNode;
+        collected.push(...node.trackIndexes);
+        for (const child of node.folders) {
+            stack.push(child);
+        }
+    }
+
+    const uniqueIndexes = Array.from(new Set(collected)).filter((trackIndex) => (
+        Number.isInteger(trackIndex)
+        && trackIndex >= 0
+        && trackIndex < tracks.length
+    ));
+
+    uniqueIndexes.sort((leftIndex, rightIndex) => {
+        const leftTrack = tracks[leftIndex];
+        const rightTrack = tracks[rightIndex];
+        return trackRelativePathWithinFolder(leftTrack, folderPath).localeCompare(
+            trackRelativePathWithinFolder(rightTrack, folderPath),
+            undefined,
+            {
+                sensitivity: 'base',
+                numeric: true,
+            },
+        );
+    });
+
+    return uniqueIndexes;
+};
+
+const sidebarQueueTrackIndexesForTarget = (target: HTMLButtonElement): number[] => {
+    const trackIndexValue = target.dataset.trackIndex;
+    if (trackIndexValue !== undefined) {
+        const trackIndex = Number(trackIndexValue);
+        if (Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < tracks.length) {
+            return [trackIndex];
+        }
+        return [];
+    }
+
+    const folderPath = target.dataset.folderPath ?? target.dataset.searchFolderPath;
+    if (folderPath === undefined) {
+        return [];
+    }
+
+    return collectFolderTrackIndexes(folderPath);
 };
 
 const createLibrarySearchPane = (): HTMLUListElement => {
@@ -1646,6 +1721,32 @@ const closeTrackMetaMenu = (): void => {
     trackMetaMenuTarget = null;
 };
 
+const closeSidebarQueueMenu = (): void => {
+    sidebarQueueMenu.hidden = true;
+    sidebarQueueTrackIndexes = [];
+};
+
+const openSidebarQueueMenu = (clientX: number, clientY: number, trackIndexes: number[]): void => {
+    if (trackIndexes.length === 0) {
+        return;
+    }
+
+    closePlayOrderMenu();
+    closeTrackMetaMenu();
+    playlistController.closeMenu();
+
+    sidebarQueueTrackIndexes = trackIndexes;
+    sidebarQueueMenu.hidden = false;
+
+    const margin = 10;
+    const rect = sidebarQueueMenu.getBoundingClientRect();
+    const clampedX = Math.min(clientX, window.innerWidth - rect.width - margin);
+    const clampedY = Math.min(clientY, window.innerHeight - rect.height - margin);
+
+    sidebarQueueMenu.style.left = `${Math.max(margin, clampedX)}px`;
+    sidebarQueueMenu.style.top = `${Math.max(margin, clampedY)}px`;
+};
+
 const openTrackMetaMenu = (clientX: number, clientY: number, includeFolderAction: boolean): void => {
     if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
         return;
@@ -2418,6 +2519,7 @@ const openTechnicalInfoModal = async (): Promise<void> => {
 };
 
 const clearLibrarySelection = async (): Promise<void> => {
+    closeSidebarQueueMenu();
     closeMusicBrainzEntityModal();
     closeTechnicalInfoModal();
 
@@ -2798,6 +2900,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         return;
     }
 
+    closeSidebarQueueMenu();
     closeMusicBrainzEntityModal();
     closeTechnicalInfoModal();
 
@@ -3074,6 +3177,7 @@ const setSidebarOpen = (open: boolean): void => {
     const wasOpen = sidebarOpen;
 
     if (!open && wasOpen) {
+        closeSidebarQueueMenu();
         sidebarAutoFolderPath = currentFolderPath;
     }
 
@@ -3176,6 +3280,45 @@ libraryBrowser.addEventListener('click', (event) => {
     void openImageFileModal(imageFile);
 });
 
+libraryBrowser.addEventListener('contextmenu', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+        return;
+    }
+
+    const button = target.closest('button');
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const trackIndexes = sidebarQueueTrackIndexesForTarget(button);
+    if (trackIndexes.length === 0) {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    openSidebarQueueMenu(event.clientX, event.clientY, trackIndexes);
+});
+
+sidebarQueueAddNext.addEventListener('click', () => {
+    if (sidebarQueueTrackIndexes.length === 0) {
+        return;
+    }
+
+    playlistController.addToQueueNext(sidebarQueueTrackIndexes);
+    closeSidebarQueueMenu();
+});
+
+sidebarQueueEnd.addEventListener('click', () => {
+    if (sidebarQueueTrackIndexes.length === 0) {
+        return;
+    }
+
+    playlistController.addToQueueEnd(sidebarQueueTrackIndexes);
+    closeSidebarQueueMenu();
+});
+
 textFileBackdrop.addEventListener('click', () => {
     closeTextFileModal();
 });
@@ -3218,6 +3361,11 @@ document.addEventListener('keydown', (event) => {
     }
 
     if (settingsController.handleEscape()) {
+        return;
+    }
+
+    if (!sidebarQueueMenu.hidden) {
+        closeSidebarQueueMenu();
         return;
     }
 
@@ -3396,6 +3544,10 @@ document.addEventListener('click', (e) => {
         closeTrackMetaMenu();
     }
 
+    if (!sidebarQueueMenu.hidden && !sidebarQueueMenu.contains(target)) {
+        closeSidebarQueueMenu();
+    }
+
     if (!volumeRow.contains(target)) {
         volumeRow.classList.remove('open');
     }
@@ -3409,6 +3561,10 @@ document.addEventListener('click', (e) => {
     }
 
     if (musicBrainzEntityModal.contains(target)) {
+        return;
+    }
+
+    if (sidebarQueueMenu.contains(target)) {
         return;
     }
 
@@ -3441,6 +3597,10 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('contextmenu', (event) => {
     const target = event.target as Node;
+    if (!sidebarQueueMenu.hidden && !sidebarQueueMenu.contains(target)) {
+        closeSidebarQueueMenu();
+    }
+
     if (trackTitle.contains(target) || trackAlbum.contains(target) || trackArtist.contains(target) || trackMetaMenu.contains(target)) {
         return;
     }
@@ -3453,6 +3613,10 @@ document.addEventListener('contextmenu', (event) => {
 document.addEventListener('scroll', () => {
     if (!playOrderMenu.hidden) {
         closePlayOrderMenu();
+    }
+
+    if (!sidebarQueueMenu.hidden) {
+        closeSidebarQueueMenu();
     }
 
     if (!trackMetaMenu.hidden) {
