@@ -396,26 +396,14 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    gap: var(--player-lane-gap);
+    gap: 0;
     width: min(100%, calc((100vh - 4rem) * 0.75));
-    transition: width 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-.player-lane::before {
-    content: '';
-    flex: 0 0 0;
-    width: 0;
-    min-width: 0;
-    transition: flex-basis 320ms cubic-bezier(0.22, 0.61, 0.36, 1), width 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    transition: width 320ms cubic-bezier(0.22, 0.61, 0.36, 1), gap 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .player-lane.lyrics-visible {
-    width: min(100%, calc(((100vh - 4rem) * 0.75) + (var(--lyrics-panel-width, 0px) * 2) + (var(--player-lane-gap) * 2)));
-}
-
-.player-lane.lyrics-visible::before {
-    flex-basis: var(--lyrics-panel-width, 0px);
-    width: var(--lyrics-panel-width, 0px);
+    gap: var(--player-lane-gap);
+    width: min(100%, calc(((100vh - 4rem) * 0.75) + var(--lyrics-panel-width, 0px) + var(--player-lane-gap)));
 }
 
 .player-card {

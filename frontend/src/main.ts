@@ -423,14 +423,21 @@ const updateLyricsPanelVisibility = (): void => {
     const shellStyles = getComputedStyle(playerShell);
     const horizontalPadding = (parseFloat(shellStyles.paddingLeft) || 0) + (parseFloat(shellStyles.paddingRight) || 0);
     const verticalPadding = (parseFloat(shellStyles.paddingTop) || 0) + (parseFloat(shellStyles.paddingBottom) || 0);
+    const wasLyricsVisible = playerLane.classList.contains('lyrics-visible');
+    if (!wasLyricsVisible) {
+        playerLane.classList.add('lyrics-visible');
+    }
     const laneStyles = getComputedStyle(playerLane);
     const laneGap = parseFloat(laneStyles.gap || laneStyles.columnGap || '0') || 0;
+    if (!wasLyricsVisible) {
+        playerLane.classList.remove('lyrics-visible');
+    }
 
     const availableWidth = Math.max(0, window.innerWidth - horizontalPadding);
     const targetCardWidth = Math.max(0, (window.innerHeight - verticalPadding) * 0.75);
     const singleCardWidth = Math.min(availableWidth, targetCardWidth);
     const measuredCardHeight = playerCard.getBoundingClientRect().height;
-    const requiredWidth = singleCardWidth + (lyricsPanelWidth * 2) + (laneGap * 2) + visibilityBuffer;
+    const requiredWidth = singleCardWidth + lyricsPanelWidth + laneGap + visibilityBuffer;
     const canShow = hasActiveTrackLyrics() && singleCardWidth > 0 && availableWidth >= requiredWidth;
 
     playerLane.style.setProperty('--lyrics-panel-width', `${lyricsPanelWidth}px`);
