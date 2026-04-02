@@ -1,15 +1,24 @@
 .PHONY: build dev icon
 
 ifeq ($(OS),Windows_NT)
+ifneq (,$(wildcard .venv/Scripts/python.exe))
 PYTHON_ICON = .venv/Scripts/python.exe
 else
+PYTHON_ICON = python
+endif
+else
+ifneq (,$(wildcard .venv/bin/python))
 PYTHON_ICON = .venv/bin/python
+else
+PYTHON_ICON = python3
+endif
 endif
 ICON_INSET = 0.85
 
 ifeq ($(OS),Windows_NT)
 icon:
-	@echo Skipping icon generation on Windows. Using existing build/windows/icon.ico.
+	$(PYTHON_ICON) scripts/generate_windows_icon.py --svg silphium.svg --app-png build/appicon.png --ico build/windows/icon.ico --inset $(ICON_INSET)
+	@echo "Updated build/windows/icon.ico"
 else
 icon:
 	rm -f build/appicon.png build/appicon.source.png
