@@ -7,6 +7,7 @@ export type MediaControlsElements = {
     trackPosition: HTMLSpanElement;
     trackArtist: HTMLParagraphElement;
     trackTechnical: HTMLButtonElement;
+    trackTechnicalAlt: HTMLButtonElement;
     trackArtistHeader: HTMLParagraphElement;
     trackReleaseAlbum: HTMLSpanElement;
     trackReleaseLabel: HTMLSpanElement;
@@ -59,6 +60,7 @@ export const renderMediaControls = (): string => `
                 <p id="artist-info-summary" class="artist-info-summary">Flip back after MBID lookup to see details.</p>
                 <div id="artist-info-links" class="artist-info-links"></div>
               </div>
+              <button id="track-technical-alt" class="track-technical" type="button" aria-label="Show track technical details" disabled></button>
             </div>
           </div>
         </div>
@@ -117,6 +119,7 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     trackPosition: root.querySelector('#track-position') as HTMLSpanElement,
     trackArtist: root.querySelector('#track-artist') as HTMLParagraphElement,
     trackTechnical: root.querySelector('#track-technical') as HTMLButtonElement,
+    trackTechnicalAlt: root.querySelector('#track-technical-alt') as HTMLButtonElement,
     trackArtistHeader: root.querySelector('#track-artist-header') as HTMLParagraphElement,
     trackReleaseAlbum: root.querySelector('#track-release-album') as HTMLSpanElement,
     trackReleaseLabel: root.querySelector('#track-release-label') as HTMLSpanElement,

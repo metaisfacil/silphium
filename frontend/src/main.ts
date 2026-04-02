@@ -198,6 +198,7 @@ const {
     trackPosition,
     trackArtist,
     trackTechnical,
+    trackTechnicalAlt,
     trackArtistHeader,
     trackReleaseAlbum,
     trackReleaseLabel,
@@ -733,6 +734,8 @@ const refreshNowPlayingLabel = (): void => {
     trackArtist.textContent = activeTrack.displayArtist;
     trackTechnical.textContent = activeTrack.displayTechnical || 'Details';
     trackTechnical.disabled = false;
+    trackTechnicalAlt.textContent = activeTrack.displayTechnical || 'Details';
+    trackTechnicalAlt.disabled = false;
     trackReleaseAlbum.textContent = activeTrack.displayAlbum;
     trackTitleInline.textContent = activeTrack.displayTitle;
     const num = activeTrack.displayTrackNumber.trim();
@@ -1231,6 +1234,8 @@ const clearLibrarySelection = async (): Promise<void> => {
     trackArtist.textContent = 'Unknown Artist';
     trackTechnical.textContent = '';
     trackTechnical.disabled = true;
+    trackTechnicalAlt.textContent = '';
+    trackTechnicalAlt.disabled = true;
     trackArtistHeader.textContent = '';
     trackReleaseAlbum.textContent = '';
     trackReleaseLabel.textContent = '';
@@ -1706,6 +1711,8 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         trackArtist.textContent = 'Unknown Artist';
         trackTechnical.textContent = '';
         trackTechnical.disabled = true;
+        trackTechnicalAlt.textContent = '';
+        trackTechnicalAlt.disabled = true;
         trackArtistHeader.textContent = '';
         trackReleaseAlbum.textContent = '';
         trackReleaseLabel.textContent = '';
@@ -1896,7 +1903,12 @@ libraryController = createLibraryController({
     },
 });
 
-coverFrame.addEventListener('click', () => {
+const coverFront = coverFrame.querySelector('.cover-front') as HTMLElement;
+
+coverFront.addEventListener('click', () => {
+    if (coverFlipped) {
+        return;
+    }
     openCoverImageModal();
 });
 
@@ -1920,6 +1932,11 @@ coverFrame.addEventListener('keydown', (event) => {
 });
 
 trackTechnical.addEventListener('click', () => {
+    void openTechnicalInfoModal();
+});
+
+trackTechnicalAlt.addEventListener('click', (event) => {
+    event.stopPropagation();
     void openTechnicalInfoModal();
 });
 
