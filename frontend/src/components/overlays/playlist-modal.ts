@@ -5,6 +5,8 @@ export type PlaylistModalElements = {
     playlistTitle: HTMLParagraphElement;
     playlistSource: HTMLSelectElement;
     playlistList: HTMLUListElement;
+    playlistAddCurrent: HTMLButtonElement;
+    playlistSaveAs: HTMLButtonElement;
 };
 
 export const renderPlaylistModal = (): string => `
@@ -17,6 +19,10 @@ export const renderPlaylistModal = (): string => `
                 <button id="playlist-close" class="playlist-close" type="button" aria-label="Close playlist">✕</button>
             </header>
             <ul id="playlist-list" class="playlist-list"></ul>
+            <footer class="playlist-actions">
+                <button id="playlist-add-current" class="playlist-action-btn" type="button" title="Add to current" aria-label="Add to current">+</button>
+                <button id="playlist-save-as" class="playlist-action-btn" type="button" title="Save" aria-label="Save">💾</button>
+            </footer>
         </section>
     </div>
 `;
@@ -28,4 +34,6 @@ export const getPlaylistModalElements = (root: ParentNode): PlaylistModalElement
     playlistTitle: root.querySelector('#playlist-title') as HTMLParagraphElement,
     playlistSource: root.querySelector('#playlist-source') as HTMLSelectElement,
     playlistList: root.querySelector('#playlist-list') as HTMLUListElement,
+    playlistAddCurrent: root.querySelector('#playlist-add-current') as HTMLButtonElement,
+    playlistSaveAs: root.querySelector('#playlist-save-as') as HTMLButtonElement,
 });

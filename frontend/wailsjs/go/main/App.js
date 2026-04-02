@@ -66,6 +66,10 @@ export function ReadTrackTagsFromBlobs(arg1) {
   return window['go']['main']['App']['ReadTrackTagsFromBlobs'](arg1);
 }
 
+export function SavePlaylistFile(arg1, arg2) {
+  return window['go']['main']['App']['SavePlaylistFile'](arg1, arg2);
+}
+
 export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
@@ -80,6 +84,10 @@ export function SelectLibraryFolder() {
 
 export function SelectPlaylistFile() {
   return window['go']['main']['App']['SelectPlaylistFile']();
+}
+
+export function SelectPlaylistSaveFile() {
+  return window['go']['main']['App']['SelectPlaylistSaveFile']();
 }
 
 export function SubmitListenBrainz(arg1, arg2, arg3) {

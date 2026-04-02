@@ -930,6 +930,7 @@
     margin: 0;
     font-size: 0.86rem;
     opacity: 0.9;
+    text-align: left;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -982,6 +983,31 @@
     margin: 0;
     padding: 0.4rem;
     overflow: auto;
+}
+
+.playlist-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.45rem;
+    padding: 0.55rem 0.7rem 0.7rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.playlist-action-btn {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.45rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    font: inherit;
+    font-size: 0.9rem;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    cursor: pointer;
+}
+
+.playlist-action-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
 }
 
 .playlist-item {

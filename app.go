@@ -259,6 +259,69 @@ func (a *App) SelectPlaylistFile() string {
 	return selectedPath
 }
 
+// SelectPlaylistSaveFile opens a save dialog and returns a target M3U/M3U8 path.
+func (a *App) SelectPlaylistSaveFile() string {
+	selectedPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title: "Save Playlist As",
+		DefaultFilename: "playlist.m3u8",
+		Filters: []runtime.FileFilter{{
+			DisplayName: "Playlists",
+			Pattern:     "*.m3u;*.m3u8",
+		}},
+	})
+	if err != nil {
+		return ""
+	}
+
+	cleanPath := strings.TrimSpace(selectedPath)
+	if cleanPath == "" {
+		return ""
+	}
+
+	ext := strings.ToLower(filepath.Ext(cleanPath))
+	if ext != ".m3u" && ext != ".m3u8" {
+		cleanPath += ".m3u8"
+	}
+
+	return cleanPath
+}
+
+// SavePlaylistFile writes the provided track paths to an M3U/M3U8 playlist file.
+func (a *App) SavePlaylistFile(path string, trackPaths []string) bool {
+	cleanPath := normalizePath(path)
+	if cleanPath == "" || len(trackPaths) == 0 {
+		return false
+	}
+
+	absolutePath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return false
+	}
+	cleanPath = filepath.Clean(absolutePath)
+
+	if mkdirErr := os.MkdirAll(filepath.Dir(cleanPath), 0o755); mkdirErr != nil {
+		return false
+	}
+
+	var builder strings.Builder
+	builder.WriteString("#EXTM3U\n")
+	for _, trackPath := range trackPaths {
+		trimmed := strings.TrimSpace(trackPath)
+		if trimmed == "" {
+			continue
+		}
+
+		builder.WriteString(trimmed)
+		builder.WriteByte('\n')
+	}
+
+	if writeErr := os.WriteFile(cleanPath, []byte(builder.String()), 0o644); writeErr != nil {
+		return false
+	}
+
+	return true
+}
+
 func resolvePlaylistEntryPath(playlistPath string, entry string) (string, bool) {
 	clean := strings.TrimSpace(entry)
 	if clean == "" || strings.HasPrefix(clean, "#") {

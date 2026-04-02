@@ -27,13 +27,16 @@ type PlaylistControllerOptions = {
     menu: PlaylistMenuElements;
     modal: PlaylistModalElements;
     getTrack: (index: number) => PlaylistTrackView | undefined;
+    getTrackPath: (index: number) => string;
     getTrackCount: () => number;
     getCurrentTrackIndex: () => number;
     getPlaybackOrderLabel: () => string;
     getBaseSequence: () => PlaylistSequence;
     ensureTrackTagsResolved: (index: number) => Promise<void>;
     selectPlaylistFile: () => Promise<string>;
+    selectPlaylistSaveFile: () => Promise<string>;
     loadPlaylistData: (playlistPath: string) => Promise<LoadedPlaylistData | null>;
+    savePlaylistData: (playlistPath: string, trackPaths: string[]) => Promise<boolean>;
     onTrackChosen: (index: number) => Promise<void>;
     onExternalPlaylistLoaded: () => void;
 };
@@ -43,7 +46,16 @@ export type PlaylistController = ReturnType<typeof createPlaylistController>;
 export const createPlaylistController = (options: PlaylistControllerOptions) => {
     const { trigger, menu, modal } = options;
     const { playlistMenu, playlistLoadBtn } = menu;
-    const { playlistModal, playlistBackdrop, playlistClose, playlistTitle, playlistSource, playlistList } = modal;
+    const {
+        playlistModal,
+        playlistBackdrop,
+        playlistClose,
+        playlistTitle,
+        playlistSource,
+        playlistList,
+        playlistAddCurrent,
+        playlistSaveAs,
+    } = modal;
 
     let loadedPlaylistTrackIndexes: number[] | null = null;
     let loadedPlaylistName = '';
@@ -393,6 +405,41 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
     };
 
+    const addCurrentTrackToEnd = (): void => {
+        const currentTrackIndex = options.getCurrentTrackIndex();
+        if (currentTrackIndex < 0 || currentTrackIndex >= options.getTrackCount()) {
+            return;
+        }
+
+        const activeQueue = mutableCurrentSequence();
+        activeQueue.push(currentTrackIndex);
+        hydrateTrackMetadataInBackground([currentTrackIndex]);
+        renderPlaylist();
+    };
+
+    const saveCurrentSequenceAsPlaylist = async (): Promise<void> => {
+        const selectedPath = await options.selectPlaylistSaveFile();
+        if (!selectedPath) {
+            return;
+        }
+
+        const trackPaths = currentSequence().indexes
+            .map((trackIndex) => options.getTrackPath(trackIndex))
+            .filter((path) => path !== '');
+
+        if (trackPaths.length === 0) {
+            return;
+        }
+
+        const saved = await options.savePlaylistData(selectedPath, trackPaths);
+        if (!saved) {
+            return;
+        }
+
+        loadedPlaylistName = selectedPath.split(/[\\/]/).pop() || selectedPath;
+        updateHeaderSourceControl();
+    };
+
     trigger.addEventListener('click', () => {
         openModal();
     });
@@ -419,6 +466,16 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     playlistClose.addEventListener('click', () => {
         closeModal();
+    });
+
+    playlistAddCurrent.addEventListener('click', () => {
+        addCurrentTrackToEnd();
+    });
+
+    playlistSaveAs.addEventListener('click', () => {
+        void saveCurrentSequenceAsPlaylist().catch((error) => {
+            console.error(error);
+        });
     });
 
     playlistList.addEventListener('click', (event) => {

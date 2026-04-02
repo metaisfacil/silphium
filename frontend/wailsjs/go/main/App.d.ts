@@ -34,6 +34,8 @@ export function ReadTrackTags(arg1:Array<string>):Promise<Record<string, main.Tr
 
 export function ReadTrackTagsFromBlobs(arg1:Array<main.TrackBlob>):Promise<Record<string, main.TrackTags>>;
 
+export function SavePlaylistFile(arg1:string,arg2:Array<string>):Promise<boolean>;
+
 export function SaveSettings(arg1:main.AppSettings):Promise<main.AppSettings>;
 
 export function ScanLibraryFolder(arg1:string):Promise<main.LibraryScanResult>;
@@ -41,5 +43,7 @@ export function ScanLibraryFolder(arg1:string):Promise<main.LibraryScanResult>;
 export function SelectLibraryFolder():Promise<string>;
 
 export function SelectPlaylistFile():Promise<string>;
+
+export function SelectPlaylistSaveFile():Promise<string>;
 
 export function SubmitListenBrainz(arg1:string,arg2:main.ListenBrainzTrackMetadata,arg3:number):Promise<void>;

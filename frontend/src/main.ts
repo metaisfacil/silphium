@@ -42,10 +42,12 @@ import {
     ReadFileBase64,
     ReadTextFile,
     ReadTrackTags,
+    SavePlaylistFile,
     SaveSettings,
     ScanLibraryFolder,
     SelectLibraryFolder,
     SelectPlaylistFile,
+    SelectPlaylistSaveFile,
     SubmitListenBrainz,
 } from '../wailsjs/go/main/App';
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
@@ -3436,13 +3438,16 @@ playlistController = createPlaylistController({
     menu: playlistMenuElements,
     modal: playlistModalElements,
     getTrack: (index: number) => tracks[index],
+    getTrackPath: (index: number) => tracks[index]?.path || '',
     getTrackCount: () => tracks.length,
     getCurrentTrackIndex: () => currentTrackIndex,
     getPlaybackOrderLabel: () => playbackOrderLabelByMode[playbackOrderMode],
     getBaseSequence: () => baseSequenceIndexes(),
     ensureTrackTagsResolved,
     selectPlaylistFile: SelectPlaylistFile,
+    selectPlaylistSaveFile: SelectPlaylistSaveFile,
     loadPlaylistData,
+    savePlaylistData: (playlistPath: string, trackPaths: string[]) => SavePlaylistFile(playlistPath, trackPaths),
     onTrackChosen: async (index: number): Promise<void> => {
         await loadTrack(index);
         await playCurrentTrack();
