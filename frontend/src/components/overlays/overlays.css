@@ -375,6 +375,7 @@
 .settings-panel {
     display: grid;
     gap: 0.95rem;
+    padding-left: 0.2rem;
     padding-right: 0.5rem;
     min-height: 0;
     overflow-y: auto;
@@ -443,6 +444,12 @@
     font: inherit;
     padding: 0.58rem 0.65rem;
     font-size: 0.86rem;
+}
+
+.settings-input:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.34);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
 .settings-favorite-list {
