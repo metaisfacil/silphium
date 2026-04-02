@@ -87,6 +87,7 @@ import {
     mbidForTrackEntity,
     renderMusicBrainzEntityContent,
 } from './utils/musicbrainz-entity-helpers';
+import { scheduleMusicBrainzRequest } from './utils/musicbrainz-request-scheduler';
 
 const app = document.querySelector('#app') as HTMLElement | null;
 
@@ -1397,7 +1398,9 @@ artistInfoController = createArtistInfoController({
     getTracks: () => tracks,
     getCurrentTrackIndex: () => currentTrackIndex,
     getRequestVersion: () => artistInfoRequestVersion,
-    lookupArtistByMBID: LookupArtistByMBID,
+    lookupArtistByMBID: (mbid: string) => scheduleMusicBrainzRequest(async () => (
+        await LookupArtistByMBID(mbid)
+    )),
     openUrl: BrowserOpenURL,
 });
 

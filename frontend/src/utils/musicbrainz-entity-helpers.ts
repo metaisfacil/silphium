@@ -3,6 +3,7 @@ import {
     LookupTrackMusicBrainzMetadata,
 } from '../../wailsjs/go/main/App';
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
+import { scheduleMusicBrainzRequest } from './musicbrainz-request-scheduler';
 import type {
     MusicBrainzEntityInfo,
     MusicBrainzEntityType,
@@ -41,7 +42,9 @@ export const lookupMusicBrainzTrackMetadata = async (recordingId: string, releas
     }
 
     try {
-        return await LookupTrackMusicBrainzMetadata(cleanRecordingId, cleanReleaseId) as MusicBrainzTrackMetadata;
+        return await scheduleMusicBrainzRequest(async () => (
+            await LookupTrackMusicBrainzMetadata(cleanRecordingId, cleanReleaseId) as MusicBrainzTrackMetadata
+        ));
     } catch (error) {
         console.error(error);
         return emptyMusicBrainzTrackMetadata(cleanRecordingId, cleanReleaseId);
@@ -50,7 +53,9 @@ export const lookupMusicBrainzTrackMetadata = async (recordingId: string, releas
 
 export const lookupMusicBrainzEntity = async (entityType: MusicBrainzEntityType, mbid: string): Promise<MusicBrainzEntityInfo> => {
     try {
-        return await LookupMusicBrainzEntity(entityType, mbid) as MusicBrainzEntityInfo;
+        return await scheduleMusicBrainzRequest(async () => (
+            await LookupMusicBrainzEntity(entityType, mbid) as MusicBrainzEntityInfo
+        ));
     } catch (error) {
         console.error(error);
         return emptyMusicBrainzEntityInfo(entityType, mbid);
