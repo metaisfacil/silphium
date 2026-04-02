@@ -1792,7 +1792,7 @@ document.addEventListener('click', (e) => {
         return;
     }
 
-    if (clickPath.includes(librarySidebar) || clickPath.includes(sidebarToggle)) {
+    if (clickPath.includes(librarySidebar) || clickPath.includes(sidebarToggle) || clickPath.includes(libraryAbout)) {
         return;
     }
 

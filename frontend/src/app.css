@@ -181,6 +181,29 @@
     animation: sidebar-toggle-spin 0.75s linear infinite;
 }
 
+.about-toggle {
+    position: fixed;
+    top: 0.9rem;
+    right: 0.9rem;
+    z-index: 20;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transition: background 150ms ease, transform 100ms ease;
+}
+
+.about-toggle:hover {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.about-toggle:active {
+    transform: scale(0.92);
+}
+
 @keyframes sidebar-toggle-spin {
     to {
         transform: rotate(360deg);
