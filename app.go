@@ -119,10 +119,6 @@ func (a *App) audioBackend() *AudioBackend {
 	return a.audio
 }
 
-const maxLibraryEntries = 250000
-
-var errLibraryScanLimit = errors.New("library scan entry limit reached")
-
 var audioExtensions = map[string]struct{}{
 	".mp3":  {},
 	".m4a":  {},
@@ -407,7 +403,7 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 		TextFiles:         []LibraryIndexedFile{},
 		ImageFiles:        []LibraryIndexedFile{},
 		CoverPathByFolder: map[string]string{},
-		EntryLimit:        maxLibraryEntries,
+		EntryLimit:        0,
 	}
 
 	if cleanRoot == "" {
@@ -436,10 +432,6 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 		}
 
 		result.TotalEntries++
-		if result.TotalEntries > maxLibraryEntries {
-			result.Truncated = true
-			return errLibraryScanLimit
-		}
 
 		if entry.IsDir() {
 			return nil
@@ -485,7 +477,7 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 		return nil
 	})
 
-	if scanErr != nil && !errors.Is(scanErr, errLibraryScanLimit) {
+	if scanErr != nil {
 		return result
 	}
 
