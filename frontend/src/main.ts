@@ -224,9 +224,10 @@ const suppressTrackMetaClicks = (): void => {
 };
 
 const shouldSuppressTrackMetaClick = (): boolean => Date.now() < suppressTrackMetaClickUntil;
+const shouldBlockTrackMetaModalOpen = (): boolean => shouldSuppressTrackMetaClick() || app.classList.contains('sidebar-open');
 
 trackTitle.addEventListener('click', (event) => {
-    if (shouldSuppressTrackMetaClick()) {
+    if (shouldBlockTrackMetaModalOpen()) {
         return;
     }
 
@@ -244,7 +245,7 @@ trackTitle.addEventListener('contextmenu', (event) => {
     openTrackMetaMenu(event.clientX, event.clientY, true);
 });
 trackAlbum.addEventListener('click', (event) => {
-    if (shouldSuppressTrackMetaClick()) {
+    if (shouldBlockTrackMetaModalOpen()) {
         return;
     }
 
@@ -262,7 +263,7 @@ trackAlbum.addEventListener('contextmenu', (event) => {
     openTrackMetaMenu(event.clientX, event.clientY, false);
 });
 trackArtist.addEventListener('click', (event) => {
-    if (shouldSuppressTrackMetaClick()) {
+    if (shouldBlockTrackMetaModalOpen()) {
         return;
     }
 
