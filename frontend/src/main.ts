@@ -2194,6 +2194,7 @@ const buildTechnicalInfoRows = (track: Track): Array<{ label: string; value: str
 
 const renderTechnicalInfoContent = (track: Track): void => {
     technicalInfoContent.innerHTML = '';
+    technicalInfoContent.style.removeProperty('--technical-info-first-column-width');
 
     const rows = buildTechnicalInfoRows(track);
     if (rows.length === 0) {
@@ -2255,6 +2256,16 @@ const renderTechnicalInfoContent = (track: Track): void => {
 
     tagSection.append(tagList);
     technicalInfoContent.append(tagSection);
+
+    const firstColumnCells = technicalInfoContent.querySelectorAll<HTMLElement>('.technical-info-label, .technical-info-tag-key');
+    let firstColumnWidth = 0;
+    for (let index = 0; index < firstColumnCells.length; index += 1) {
+        const cell = firstColumnCells[index];
+        firstColumnWidth = Math.max(firstColumnWidth, cell.scrollWidth);
+    }
+    if (firstColumnWidth > 0) {
+        technicalInfoContent.style.setProperty('--technical-info-first-column-width', `${firstColumnWidth}px`);
+    }
 };
 
 const emptyMusicBrainzEntityInfo = (entityType: MusicBrainzEntityType, mbid: string): MusicBrainzEntityInfo => ({

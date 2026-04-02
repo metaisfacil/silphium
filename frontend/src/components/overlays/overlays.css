@@ -356,11 +356,12 @@
     overflow: auto;
     padding: 0.85rem 0.95rem 0.95rem;
     text-align: left;
+    --technical-info-first-column-width: 0;
 }
 
 .technical-info-grid {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-columns: var(--technical-info-first-column-width) minmax(0, 1fr);
     column-gap: 0.75rem;
     row-gap: 0.45rem;
     align-items: baseline;
@@ -609,7 +610,7 @@
 
 .technical-info-tag-list {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-columns: var(--technical-info-first-column-width) minmax(0, 1fr);
     column-gap: 0.7rem;
     row-gap: 0.45rem;
     align-items: start;
