@@ -59,30 +59,31 @@ type PlaylistLoadResult struct {
 }
 
 type TrackTags struct {
-	Artist         string   `json:"artist"`
-	Album          string   `json:"album"`
-	Title          string   `json:"title"`
-	Lyrics         string   `json:"lyrics,omitempty"`
-	UnsyncedLyrics string   `json:"unsyncedLyrics,omitempty"`
-	TrackNumber    string   `json:"trackNumber,omitempty"`
-	TrackTotal     string   `json:"trackTotal,omitempty"`
-	BitDepth       int      `json:"bitDepth,omitempty"`
-	SampleRate     int      `json:"sampleRate,omitempty"`
-	Codec          string   `json:"codec,omitempty"`
-	CodecLong      string   `json:"codecLong,omitempty"`
-	CodecProfile   string   `json:"codecProfile,omitempty"`
-	SampleFormat   string   `json:"sampleFormat,omitempty"`
-	Channels       int      `json:"channels,omitempty"`
-	ChannelLayout  string   `json:"channelLayout,omitempty"`
-	BitRate        int      `json:"bitRate,omitempty"`
-	OverallBitRate int      `json:"overallBitRate,omitempty"`
-	DurationSecs   float64  `json:"durationSeconds,omitempty"`
-	Container      string   `json:"container,omitempty"`
-	FileSizeBytes  int64    `json:"fileSizeBytes,omitempty"`
-	RecordingID    string   `json:"recordingId,omitempty"`
-	ReleaseID      string   `json:"releaseId,omitempty"`
-	ArtistID       string   `json:"artistId,omitempty"`
-	ArtistIDs      []string `json:"artistIds,omitempty"`
+	Artist         string              `json:"artist"`
+	Album          string              `json:"album"`
+	Title          string              `json:"title"`
+	AllTags        map[string][]string `json:"allTags,omitempty"`
+	Lyrics         string              `json:"lyrics,omitempty"`
+	UnsyncedLyrics string              `json:"unsyncedLyrics,omitempty"`
+	TrackNumber    string              `json:"trackNumber,omitempty"`
+	TrackTotal     string              `json:"trackTotal,omitempty"`
+	BitDepth       int                 `json:"bitDepth,omitempty"`
+	SampleRate     int                 `json:"sampleRate,omitempty"`
+	Codec          string              `json:"codec,omitempty"`
+	CodecLong      string              `json:"codecLong,omitempty"`
+	CodecProfile   string              `json:"codecProfile,omitempty"`
+	SampleFormat   string              `json:"sampleFormat,omitempty"`
+	Channels       int                 `json:"channels,omitempty"`
+	ChannelLayout  string              `json:"channelLayout,omitempty"`
+	BitRate        int                 `json:"bitRate,omitempty"`
+	OverallBitRate int                 `json:"overallBitRate,omitempty"`
+	DurationSecs   float64             `json:"durationSeconds,omitempty"`
+	Container      string              `json:"container,omitempty"`
+	FileSizeBytes  int64               `json:"fileSizeBytes,omitempty"`
+	RecordingID    string              `json:"recordingId,omitempty"`
+	ReleaseID      string              `json:"releaseId,omitempty"`
+	ArtistID       string              `json:"artistId,omitempty"`
+	ArtistIDs      []string            `json:"artistIds,omitempty"`
 }
 
 type TrackBlob struct {
@@ -572,6 +573,42 @@ func firstTagValue(tags map[string][]string, keys ...string) string {
 	return ""
 }
 
+func collectAllTags(tags map[string][]string) map[string][]string {
+	if len(tags) == 0 {
+		return nil
+	}
+
+	collected := make(map[string][]string, len(tags))
+	for key, values := range tags {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			continue
+		}
+
+		trimmedValues := make([]string, 0, len(values))
+		for _, value := range values {
+			trimmedValue := strings.TrimSpace(value)
+			if trimmedValue == "" {
+				continue
+			}
+
+			trimmedValues = append(trimmedValues, trimmedValue)
+		}
+
+		if len(trimmedValues) == 0 {
+			continue
+		}
+
+		collected[trimmedKey] = trimmedValues
+	}
+
+	if len(collected) == 0 {
+		return nil
+	}
+
+	return collected
+}
+
 func splitSlashPair(value string) (string, string) {
 	clean := strings.TrimSpace(value)
 	if clean == "" {
@@ -830,13 +867,14 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 		artist := firstTagValue(tags, "ARTIST", "ALBUMARTIST")
 		album := firstTagValue(tags, "ALBUM")
 		title := firstTagValue(tags, "TITLE")
+		allTags := collectAllTags(tags)
 		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
 		technical := readTrackTechnicalMetadata(path)
 		lyrics := firstTagValue(tags, "LYRICS")
 		unsyncedLyrics := firstTagValue(tags, "UNSYNCEDLYRICS")
 
-		if artist == "" && album == "" && title == "" && trackNumber == "" && trackTotal == "" && technical.BitDepth == 0 && technical.SampleRate == 0 && technical.Codec == "" && technical.BitRate == 0 && technical.OverallBitRate == 0 && technical.DurationSeconds == 0 && technical.Container == "" && technical.FileSizeBytes == 0 && lyrics == "" && unsyncedLyrics == "" {
+		if artist == "" && album == "" && title == "" && len(allTags) == 0 && trackNumber == "" && trackTotal == "" && technical.BitDepth == 0 && technical.SampleRate == 0 && technical.Codec == "" && technical.BitRate == 0 && technical.OverallBitRate == 0 && technical.DurationSeconds == 0 && technical.Container == "" && technical.FileSizeBytes == 0 && lyrics == "" && unsyncedLyrics == "" {
 			continue
 		}
 
@@ -844,6 +882,7 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 			Artist:         artist,
 			Album:          album,
 			Title:          title,
+			AllTags:        allTags,
 			Lyrics:         lyrics,
 			UnsyncedLyrics: unsyncedLyrics,
 			TrackNumber:    trackNumber,
@@ -907,6 +946,7 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 		artist := firstTagValue(tags, "ARTIST", "ALBUMARTIST")
 		album := firstTagValue(tags, "ALBUM")
 		title := firstTagValue(tags, "TITLE")
+		allTags := collectAllTags(tags)
 		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
 		technical := readTrackTechnicalMetadata(tempPath)
@@ -914,7 +954,7 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 		lyrics := firstTagValue(tags, "LYRICS")
 		unsyncedLyrics := firstTagValue(tags, "UNSYNCEDLYRICS")
 
-		if artist == "" && album == "" && title == "" && trackNumber == "" && trackTotal == "" && technical.BitDepth == 0 && technical.SampleRate == 0 && technical.Codec == "" && technical.BitRate == 0 && technical.OverallBitRate == 0 && technical.DurationSeconds == 0 && technical.Container == "" && technical.FileSizeBytes == 0 && lyrics == "" && unsyncedLyrics == "" {
+		if artist == "" && album == "" && title == "" && len(allTags) == 0 && trackNumber == "" && trackTotal == "" && technical.BitDepth == 0 && technical.SampleRate == 0 && technical.Codec == "" && technical.BitRate == 0 && technical.OverallBitRate == 0 && technical.DurationSeconds == 0 && technical.Container == "" && technical.FileSizeBytes == 0 && lyrics == "" && unsyncedLyrics == "" {
 			continue
 		}
 
@@ -922,6 +962,7 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 			Artist:         artist,
 			Album:          album,
 			Title:          title,
+			AllTags:        allTags,
 			Lyrics:         lyrics,
 			UnsyncedLyrics: unsyncedLyrics,
 			TrackNumber:    trackNumber,

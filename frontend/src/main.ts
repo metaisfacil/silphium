@@ -80,6 +80,7 @@ type Track = {
     displayLyrics: string;
     tagsResolved: boolean;
     technicalDetails: TrackTechnicalDetails;
+    allFileTags: Record<string, string[]>;
     mbIds: MusicBrainzIds;
     artistMbids: string[];
 };
@@ -104,6 +105,7 @@ type TrackTags = {
     artist: string;
     album: string;
     title: string;
+    allTags?: Record<string, string[]>;
     lyrics?: string;
     unsyncedLyrics?: string;
     trackNumber?: string;
@@ -1142,6 +1144,29 @@ const technicalDetailsFromTags = (tags?: TrackTags): TrackTechnicalDetails => ({
     fileSizeBytes: Number.isFinite(tags?.fileSizeBytes) && (tags?.fileSizeBytes as number) > 0 ? (tags?.fileSizeBytes as number) : undefined,
 });
 
+const allFileTagsFromTags = (tags?: TrackTags): Record<string, string[]> => {
+    const source = tags?.allTags;
+    if (!source) {
+        return {};
+    }
+
+    const normalizedEntries = Object.entries(source)
+        .map(([key, values]) => {
+            const normalizedKey = key.trim();
+            const normalizedValues = values
+                .map((value) => value.trim())
+                .filter((value) => value !== '');
+            return [normalizedKey, normalizedValues] as const;
+        })
+        .filter(([key, values]) => key !== '' && values.length > 0);
+
+    if (normalizedEntries.length === 0) {
+        return {};
+    }
+
+    return Object.fromEntries(normalizedEntries);
+};
+
 const stripSyncedLyricTiming = (lyrics: string): string => {
     return lyrics
         .split(/\r?\n/)
@@ -1245,6 +1270,7 @@ const ensureTrackTagsResolved = async (index: number): Promise<void> => {
             displayTrackTotal: tags?.trackTotal?.trim() || '',
             displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
             technicalDetails: technicalDetailsFromTags(tags),
+            allFileTags: allFileTagsFromTags(tags),
             tagsResolved: true,
             mbIds: {
                 recordingId: tags?.recordingId || undefined,
@@ -1736,6 +1762,7 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
             displayTrackTotal: tags?.trackTotal?.trim() || '',
             displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
             technicalDetails: technicalDetailsFromTags(tags),
+            allFileTags: allFileTagsFromTags(tags),
             tagsResolved: true,
             mbIds: {
                 recordingId: tags?.recordingId || undefined,
@@ -1943,6 +1970,44 @@ const renderTechnicalInfoContent = (track: Track): void => {
     }
 
     technicalInfoContent.append(grid);
+
+    const tagSection = document.createElement('section');
+    tagSection.className = 'technical-info-tag-section';
+
+    const tagTitle = document.createElement('p');
+    tagTitle.className = 'technical-info-tag-title';
+    tagTitle.textContent = 'All file tags';
+    tagSection.append(tagTitle);
+
+    const sortedTagEntries = Object.entries(track.allFileTags)
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey, undefined, { sensitivity: 'base' }));
+
+    if (sortedTagEntries.length === 0) {
+        const emptyTags = document.createElement('p');
+        emptyTags.className = 'technical-info-empty';
+        emptyTags.textContent = 'No tag values found in this file.';
+        tagSection.append(emptyTags);
+        technicalInfoContent.append(tagSection);
+        return;
+    }
+
+    const tagList = document.createElement('div');
+    tagList.className = 'technical-info-tag-list';
+
+    for (const [tagKey, values] of sortedTagEntries) {
+        const keyElement = document.createElement('p');
+        keyElement.className = 'technical-info-tag-key';
+        keyElement.textContent = tagKey;
+
+        const valueElement = document.createElement('p');
+        valueElement.className = 'technical-info-tag-value';
+        valueElement.textContent = values.join('\n');
+
+        tagList.append(keyElement, valueElement);
+    }
+
+    tagSection.append(tagList);
+    technicalInfoContent.append(tagSection);
 };
 
 const closeTechnicalInfoModal = (): void => {
@@ -2262,6 +2327,7 @@ const ensureTrackIndexForPath = (file: LibraryIndexedFile, trackIndexByPath: Map
         displayLyrics: '',
         tagsResolved: false,
         technicalDetails: {},
+        allFileTags: {},
         mbIds: {},
         artistMbids: [],
     };
@@ -2379,6 +2445,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
             displayLyrics: '',
             tagsResolved: false,
             technicalDetails: {},
+            allFileTags: {},
             mbIds: {},
             artistMbids: [],
         }));

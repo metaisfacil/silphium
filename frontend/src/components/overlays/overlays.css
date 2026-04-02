@@ -388,6 +388,44 @@
     opacity: 0.72;
 }
 
+.technical-info-tag-section {
+    margin-top: 0.9rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.technical-info-tag-title {
+    margin: 0 0 0.6rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    opacity: 0.82;
+}
+
+.technical-info-tag-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 0.7rem;
+    row-gap: 0.45rem;
+    align-items: start;
+}
+
+.technical-info-tag-key {
+    margin: 0;
+    font-size: 0.74rem;
+    font-weight: 700;
+    opacity: 0.68;
+    white-space: nowrap;
+}
+
+.technical-info-tag-value {
+    margin: 0;
+    font-size: 0.76rem;
+    line-height: 1.35;
+    opacity: 0.92;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .play-order-menu {
     position: fixed;
     left: 0;
