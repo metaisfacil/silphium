@@ -14,9 +14,11 @@ type AppSettings struct {
 	LibraryPath           string `json:"libraryPath"`
 	ListenBrainzUserToken string `json:"listenBrainzUserToken"`
 	PlaybackOrder         string `json:"playbackOrder"`
+	ReleaseDepth          int    `json:"releaseDepth,omitempty"`
 }
 
 const defaultPlaybackOrder = "ordered-library"
+const maxReleaseDepth = 64
 
 func normalizePlaybackOrder(value string) string {
 	switch strings.TrimSpace(value) {
@@ -31,8 +33,15 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	token := strings.TrimSpace(settings.ListenBrainzUserToken)
 	path := strings.TrimSpace(settings.LibraryPath)
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
+	releaseDepth := settings.ReleaseDepth
+	if releaseDepth < 0 {
+		releaseDepth = 0
+	}
+	if releaseDepth > maxReleaseDepth {
+		releaseDepth = maxReleaseDepth
+	}
 	if path == "" {
-		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder}
+		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth}
 	}
 
 	path = normalizePath(path)
@@ -44,6 +53,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		LibraryPath:           path,
 		ListenBrainzUserToken: token,
 		PlaybackOrder:         playbackOrder,
+		ReleaseDepth:          releaseDepth,
 	}
 }
 

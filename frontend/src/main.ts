@@ -201,6 +201,7 @@ type AppSettings = {
     libraryPath: string;
     listenBrainzUserToken: string;
     playbackOrder: PlaybackOrderMode;
+    releaseDepth: number;
 };
 
 type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
@@ -279,7 +280,7 @@ let technicalInfoModalHideTimer: number | undefined;
 let isSeeking = false;
 let backendReady = false;
 let lastHandledEndEventId = 0;
-let currentSettings: AppSettings = { libraryPath: '', listenBrainzUserToken: '', playbackOrder: 'ordered-library' };
+let currentSettings: AppSettings = { libraryPath: '', listenBrainzUserToken: '', playbackOrder: 'ordered-library', releaseDepth: 0 };
 let scrobbleSessionId = 0;
 let nowPlayingSubmittedSessionId = -1;
 let scrobbleSubmittedSessionId = -1;
@@ -426,6 +427,18 @@ const asPlaybackOrderMode = (value: string): PlaybackOrderMode => {
     }
 
     return 'ordered-library';
+};
+
+const asReleaseDepth = (value: unknown): number => {
+    const numeric = typeof value === 'number'
+        ? value
+        : Number.parseInt(String(value ?? ''), 10);
+
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+        return 0;
+    }
+
+    return Math.min(Math.floor(numeric), 64);
 };
 
 const refreshSidebarToggleState = (): void => {
@@ -1443,7 +1456,25 @@ const setCoverFlipped = (flipped: boolean): void => {
     coverFlipper.classList.toggle('is-flipped', flipped);
 };
 
-const albumScopeKeyForTrack = (track: Track): string => `folder::${track.folderPath.toLowerCase()}`;
+const albumScopePathForTrack = (track: Track): string => {
+    const folderPath = track.folderPath || '';
+    const releaseDepth = asReleaseDepth(currentSettings.releaseDepth);
+    if (releaseDepth <= 0) {
+        return folderPath.toLowerCase();
+    }
+
+    const segments = folderPath
+        .split('/')
+        .filter((segment) => segment !== '');
+
+    if (segments.length === 0) {
+        return '';
+    }
+
+    return segments.slice(0, releaseDepth).join('/').toLowerCase();
+};
+
+const albumScopeKeyForTrack = (track: Track): string => `folder::${albumScopePathForTrack(track)}`;
 
 const orderedTrackIndexesForScope = (): number[] => {
     if (tracks.length === 0) {
@@ -2466,6 +2497,7 @@ const initializeSettings = async (): Promise<void> => {
             libraryPath: settings.libraryPath || '',
             listenBrainzUserToken: settings.listenBrainzUserToken || '',
             playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
+            releaseDepth: asReleaseDepth(settings.releaseDepth),
         };
         setPlaybackOrderMode(currentSettings.playbackOrder);
 
@@ -2660,12 +2692,14 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             libraryPath: currentSettings.libraryPath,
             listenBrainzUserToken: currentSettings.listenBrainzUserToken,
             playbackOrder: playbackOrderMode,
+            releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
         }) as AppSettings;
 
         currentSettings = {
             libraryPath: savedSettings.libraryPath || '',
             listenBrainzUserToken: savedSettings.listenBrainzUserToken || '',
             playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
+            releaseDepth: asReleaseDepth(savedSettings.releaseDepth),
         };
     } catch (error) {
         console.error(error);
@@ -2943,21 +2977,26 @@ settingsController = createSettingsController({
     getValues: () => ({
         libraryPath: currentSettings.libraryPath,
         listenBrainzUserToken: currentSettings.listenBrainzUserToken,
+        releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
     }),
     selectLibraryFolder: SelectLibraryFolder,
-    save: async ({ libraryPath: requestedLibraryPath, listenBrainzUserToken }): Promise<void> => {
+    save: async ({ libraryPath: requestedLibraryPath, listenBrainzUserToken, releaseDepth }): Promise<void> => {
         try {
             const savedSettings = await SaveSettings({
                 libraryPath: requestedLibraryPath,
                 listenBrainzUserToken,
                 playbackOrder: playbackOrderMode,
+                releaseDepth: asReleaseDepth(releaseDepth),
             }) as AppSettings;
 
             currentSettings = {
                 libraryPath: savedSettings.libraryPath || '',
                 listenBrainzUserToken: savedSettings.listenBrainzUserToken || '',
                 playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
+                releaseDepth: asReleaseDepth(savedSettings.releaseDepth),
             };
+
+            resetShuffleHistory();
 
             await applyLibraryPath(savedSettings.libraryPath || '');
         } catch (error) {

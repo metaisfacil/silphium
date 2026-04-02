@@ -3,6 +3,7 @@ import type { SettingsModalElements } from '../components/overlays/settings-moda
 export type SettingsFormValues = {
     libraryPath: string;
     listenBrainzUserToken: string;
+    releaseDepth: number;
 };
 
 type SettingsControllerOptions = {
@@ -25,6 +26,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsSave,
         settingsLibraryPath,
         settingsListenBrainzToken,
+        settingsReleaseDepth,
         settingsStatus,
     } = elements;
 
@@ -37,6 +39,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const values = options.getValues();
         settingsLibraryPath.value = values.libraryPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
+        settingsReleaseDepth.value = values.releaseDepth > 0 ? String(values.releaseDepth) : '';
         settingsStatus.textContent = '';
         settingsModal.hidden = false;
         settingsLibraryPath.focus();
@@ -79,6 +82,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const formValues: SettingsFormValues = {
             libraryPath: settingsLibraryPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
+            releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
         };
         close();
 

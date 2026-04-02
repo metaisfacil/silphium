@@ -4,6 +4,7 @@ export namespace main {
 	    libraryPath: string;
 	    listenBrainzUserToken: string;
 	    playbackOrder: string;
+	    releaseDepth?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -14,6 +15,7 @@ export namespace main {
 	        this.libraryPath = source["libraryPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	        this.playbackOrder = source["playbackOrder"];
+	        this.releaseDepth = source["releaseDepth"];
 	    }
 	}
 	export class AudioPlaybackState {

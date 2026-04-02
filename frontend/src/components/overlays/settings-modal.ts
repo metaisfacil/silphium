@@ -6,6 +6,7 @@ export type SettingsModalElements = {
     settingsSave: HTMLButtonElement;
     settingsLibraryPath: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
+    settingsReleaseDepth: HTMLInputElement;
     settingsStatus: HTMLParagraphElement;
 };
 
@@ -31,6 +32,11 @@ export const renderSettingsModal = (): string => `
                     <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
                     <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
                 </div>
+                <div class="settings-field">
+                    <label class="settings-label" for="settings-release-depth">Release Folder Depth</label>
+                    <p class="settings-hint">Depth from the library root where each release starts.</p>
+                    <input id="settings-release-depth" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="Optional">
+                </div>
                 <p id="settings-status" class="settings-status"></p>
                 <div class="settings-actions">
                     <button id="settings-save" class="upload-btn" type="button">Save</button>
@@ -48,5 +54,6 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsSave: root.querySelector('#settings-save') as HTMLButtonElement,
     settingsLibraryPath: root.querySelector('#settings-library-path') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
+    settingsReleaseDepth: root.querySelector('#settings-release-depth') as HTMLInputElement,
     settingsStatus: root.querySelector('#settings-status') as HTMLParagraphElement,
 });
