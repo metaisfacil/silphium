@@ -2052,7 +2052,21 @@ libraryPath.addEventListener('click', (event) => {
         return;
     }
 
+    const segmentCount = (path: string): number => path.split('/').filter((segment) => segment !== '').length;
+    const nextDepth = segmentCount(nextPath);
+    const currentDepth = segmentCount(currentFolderPath);
+
     currentFolderPath = nextPath;
+    if (nextDepth < currentDepth) {
+        renderFolder('back');
+        return;
+    }
+
+    if (nextDepth > currentDepth) {
+        renderFolder('forward');
+        return;
+    }
+
     renderFolder('none');
 });
 
