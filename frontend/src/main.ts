@@ -216,7 +216,20 @@ const setCtrlHeldState = (held: boolean): void => {
     app.classList.toggle('ctrl-held', held);
 };
 
+const trackMetaClickSuppressDurationMs = 280;
+let suppressTrackMetaClickUntil = 0;
+
+const suppressTrackMetaClicks = (): void => {
+    suppressTrackMetaClickUntil = Date.now() + trackMetaClickSuppressDurationMs;
+};
+
+const shouldSuppressTrackMetaClick = (): boolean => Date.now() < suppressTrackMetaClickUntil;
+
 trackTitle.addEventListener('click', (event) => {
+    if (shouldSuppressTrackMetaClick()) {
+        return;
+    }
+
     if (event.ctrlKey) {
         openMbOnCtrlClick(event, trackTitle);
         return;
@@ -231,6 +244,10 @@ trackTitle.addEventListener('contextmenu', (event) => {
     openTrackMetaMenu(event.clientX, event.clientY, true);
 });
 trackAlbum.addEventListener('click', (event) => {
+    if (shouldSuppressTrackMetaClick()) {
+        return;
+    }
+
     if (event.ctrlKey) {
         openMbOnCtrlClick(event, trackAlbum);
         return;
@@ -245,6 +262,10 @@ trackAlbum.addEventListener('contextmenu', (event) => {
     openTrackMetaMenu(event.clientX, event.clientY, false);
 });
 trackArtist.addEventListener('click', (event) => {
+    if (shouldSuppressTrackMetaClick()) {
+        return;
+    }
+
     if (event.ctrlKey) {
         openMbOnCtrlClick(event, trackArtist);
         return;
@@ -1462,28 +1483,40 @@ sidebarQueueEnd.addEventListener('click', () => {
 });
 
 textFileBackdrop.addEventListener('click', () => {
+    suppressTrackMetaClicks();
     closeTextFileModal();
 });
 
 textFileClose.addEventListener('click', () => {
+    suppressTrackMetaClicks();
     closeTextFileModal();
 });
 
 musicBrainzEntityBackdrop.addEventListener('click', () => {
+    suppressTrackMetaClicks();
     closeMusicBrainzEntityModal();
 });
 
 musicBrainzEntityClose.addEventListener('click', () => {
+    suppressTrackMetaClicks();
     closeMusicBrainzEntityModal();
 });
 
 technicalInfoBackdrop.addEventListener('click', () => {
+    suppressTrackMetaClicks();
     closeTechnicalInfoModal();
 });
 
 technicalInfoClose.addEventListener('click', () => {
+    suppressTrackMetaClicks();
     closeTechnicalInfoModal();
 });
+
+settingsElements.settingsBackdrop.addEventListener('click', suppressTrackMetaClicks);
+settingsElements.settingsClose.addEventListener('click', suppressTrackMetaClicks);
+playlistModalElements.playlistBackdrop.addEventListener('click', suppressTrackMetaClicks);
+playlistModalElements.playlistClose.addEventListener('click', suppressTrackMetaClicks);
+imageModalElements.imageFileBackdrop.addEventListener('click', suppressTrackMetaClicks);
 
 document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') {
