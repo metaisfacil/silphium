@@ -107,6 +107,7 @@ type TrackTags = {
     artist: string;
     album: string;
     title: string;
+    version?: string;
     allTags?: Record<string, string[]>;
     lyrics?: string;
     unsyncedLyrics?: string;
@@ -1119,9 +1120,51 @@ const mimeTypeForFileName = (name: string): string => {
 const folderKeyForPath = (folderPath: string): string => folderPath.toLowerCase();
 const silentTrackDurationThresholdSeconds = 30;
 
+const trackVersionFromTags = (tags?: TrackTags): string => {
+    const directVersion = tags?.version?.trim() || '';
+    if (directVersion) {
+        return directVersion;
+    }
+
+    const allTags = tags?.allTags;
+    if (!allTags) {
+        return '';
+    }
+
+    for (const [key, values] of Object.entries(allTags)) {
+        if (key.trim().toLowerCase() !== 'version') {
+            continue;
+        }
+
+        for (const value of values) {
+            const cleaned = value.trim();
+            if (cleaned) {
+                return cleaned;
+            }
+        }
+    }
+
+    return '';
+};
+
+const formatAlbumWithVersion = (album: string, version: string): string => {
+    const cleanVersion = version.trim();
+    if (!cleanVersion) {
+        return album;
+    }
+
+    const bracketedVersion = `(${cleanVersion})`;
+    if (album.toLowerCase().endsWith(bracketedVersion.toLowerCase())) {
+        return album;
+    }
+
+    return `${album} ${bracketedVersion}`;
+};
+
 const buildDisplayMetadata = (track: Track, tags?: TrackTags): { title: string; album: string; artist: string } => {
     const title = tags?.title?.trim() ? tags.title.trim() : track.title;
-    const album = tags?.album?.trim() ? tags.album.trim() : 'Unknown Album';
+    const baseAlbum = tags?.album?.trim() ? tags.album.trim() : 'Unknown Album';
+    const album = formatAlbumWithVersion(baseAlbum, trackVersionFromTags(tags));
     const artist = tags?.artist?.trim() ? tags.artist.trim() : 'Unknown Artist';
 
     return { title, album, artist };
