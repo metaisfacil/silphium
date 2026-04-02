@@ -285,7 +285,7 @@ func (a *App) SelectPlaylistSaveFile() string {
 // SavePlaylistFile writes the provided track paths to an M3U/M3U8 playlist file.
 func (a *App) SavePlaylistFile(path string, trackPaths []string) bool {
 	cleanPath := normalizePath(path)
-	if cleanPath == "" || len(trackPaths) == 0 {
+	if cleanPath == "" {
 		return false
 	}
 

@@ -7,6 +7,7 @@ export type PlaylistModalElements = {
     playlistHydrationProgress: HTMLParagraphElement;
     playlistHydrationCount: HTMLSpanElement;
     playlistList: HTMLUListElement;
+    playlistCreate: HTMLButtonElement;
     playlistAddCurrent: HTMLButtonElement;
     playlistSaveAs: HTMLButtonElement;
 };
@@ -28,6 +29,7 @@ export const renderPlaylistModal = (): string => `
             </header>
             <ul id="playlist-list" class="playlist-list"></ul>
             <footer class="playlist-actions">
+                <button id="playlist-create" class="playlist-action-btn" type="button" title="Create new playlist" aria-label="Create new playlist">📄</button>
                 <button id="playlist-add-current" class="playlist-action-btn" type="button" title="Add to current" aria-label="Add to current">+</button>
                 <button id="playlist-save-as" class="playlist-action-btn" type="button" title="Save" aria-label="Save">💾</button>
             </footer>
@@ -44,6 +46,7 @@ export const getPlaylistModalElements = (root: ParentNode): PlaylistModalElement
     playlistHydrationProgress: root.querySelector('#playlist-hydration-progress') as HTMLParagraphElement,
     playlistHydrationCount: root.querySelector('#playlist-hydration-count') as HTMLSpanElement,
     playlistList: root.querySelector('#playlist-list') as HTMLUListElement,
+    playlistCreate: root.querySelector('#playlist-create') as HTMLButtonElement,
     playlistAddCurrent: root.querySelector('#playlist-add-current') as HTMLButtonElement,
     playlistSaveAs: root.querySelector('#playlist-save-as') as HTMLButtonElement,
 });

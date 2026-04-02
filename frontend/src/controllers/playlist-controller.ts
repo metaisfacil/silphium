@@ -56,6 +56,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistHydrationProgress,
         playlistHydrationCount,
         playlistList,
+        playlistCreate,
         playlistAddCurrent,
         playlistSaveAs,
     } = modal;
@@ -537,6 +538,23 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         updateHeaderSourceControl();
     };
 
+    const createNewPlaylist = async (): Promise<void> => {
+        const selectedPath = await options.selectPlaylistSaveFile();
+        if (!selectedPath) {
+            return;
+        }
+
+        const saved = await options.savePlaylistData(selectedPath, []);
+        if (!saved) {
+            return;
+        }
+
+        loadedPlaylistName = selectedPath.split(/[\\/]/).pop() || selectedPath;
+        loadedPlaylistPath = selectedPath;
+        selectedFavoriteIndex = null;
+        updateHeaderSourceControl();
+    };
+
     const loadFavouritePlaylist = async (playlistPath: string): Promise<void> => {
         if (!playlistPath) {
             return;
@@ -636,6 +654,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     playlistAddCurrent.addEventListener('click', () => {
         addCurrentTrackToEnd();
+    });
+
+    playlistCreate.addEventListener('click', () => {
+        void createNewPlaylist().catch((error) => {
+            console.error(error);
+        });
     });
 
     playlistSaveAs.addEventListener('click', () => {
