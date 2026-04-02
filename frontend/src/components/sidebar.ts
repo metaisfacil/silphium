@@ -12,7 +12,7 @@ export const renderSidebar = (): string => `
     <aside id="library-sidebar" class="library-sidebar" aria-hidden="true">
       <div class="library-header">
         <h2>Library</h2>
-        <button id="library-settings" class="upload-btn" type="button">Settings</button>
+        <button id="library-settings" class="upload-btn" type="button" aria-label="Settings" title="Settings">⚙</button>
       </div>
       <div class="library-toolbar">
         <button id="library-back" class="library-back" type="button" aria-label="Go to parent folder">❮</button>
