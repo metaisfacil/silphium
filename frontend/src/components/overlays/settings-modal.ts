@@ -56,7 +56,7 @@ export const renderSettingsModal = (): string => `
                             <input id="settings-prefer-musicbrainz-metadata" class="settings-checkbox" type="checkbox">
                             <span class="settings-label">Prefer MusicBrainz metadata when MBIDs are present</span>
                         </label>
-                        <p class="settings-hint">Track labels are replaced by MusicBrainz title/album/artist after lookup.</p>
+                        <p class="settings-hint">Track labels are replaced on-the-fly by MusicBrainz lookup.</p>
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
