@@ -79,8 +79,8 @@ export const renderSettingsModal = (): string => `
                         <label class="settings-label" for="settings-player-card-layout">Player Card Layout</label>
                         <p class="settings-hint">Choose how track metadata is arranged on the player card.</p>
                         <select id="settings-player-card-layout" class="settings-input settings-select">
-                            <option value="default">Default — Title, Album, Artist</option>
-                            <option value="release">Release-Focused — Artist, Cover, Label &amp; Year</option>
+                            <option value="default">Default — Title, album, artist</option>
+                            <option value="release">Release-focused — Artist, cover, label &amp; year</option>
                         </select>
                     </div>
                 </div>
