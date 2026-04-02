@@ -1,0 +1,204 @@
+import {
+    LookupMusicBrainzEntity,
+    LookupTrackMusicBrainzMetadata,
+} from '../../wailsjs/go/main/App';
+import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
+import type {
+    MusicBrainzEntityInfo,
+    MusicBrainzEntityType,
+    MusicBrainzTrackMetadata,
+    Track,
+} from '../types/app-types';
+
+export const emptyMusicBrainzEntityInfo = (entityType: MusicBrainzEntityType, mbid: string): MusicBrainzEntityInfo => ({
+    found: false,
+    entityType,
+    mbid,
+    title: '',
+    subtitle: '',
+    summary: '',
+    facts: [],
+    tags: [],
+    urls: [],
+    rawJson: '',
+});
+
+const emptyMusicBrainzTrackMetadata = (recordingId: string, releaseId: string): MusicBrainzTrackMetadata => ({
+    found: false,
+    recordingId,
+    releaseId,
+    title: '',
+    album: '',
+    artist: '',
+});
+
+export const lookupMusicBrainzTrackMetadata = async (recordingId: string, releaseId: string): Promise<MusicBrainzTrackMetadata> => {
+    const cleanRecordingId = recordingId.trim();
+    const cleanReleaseId = releaseId.trim();
+    if (!cleanRecordingId && !cleanReleaseId) {
+        return emptyMusicBrainzTrackMetadata(cleanRecordingId, cleanReleaseId);
+    }
+
+    try {
+        return await LookupTrackMusicBrainzMetadata(cleanRecordingId, cleanReleaseId) as MusicBrainzTrackMetadata;
+    } catch (error) {
+        console.error(error);
+        return emptyMusicBrainzTrackMetadata(cleanRecordingId, cleanReleaseId);
+    }
+};
+
+export const lookupMusicBrainzEntity = async (entityType: MusicBrainzEntityType, mbid: string): Promise<MusicBrainzEntityInfo> => {
+    try {
+        return await LookupMusicBrainzEntity(entityType, mbid) as MusicBrainzEntityInfo;
+    } catch (error) {
+        console.error(error);
+        return emptyMusicBrainzEntityInfo(entityType, mbid);
+    }
+};
+
+export const mbidForTrackEntity = (track: Track, entityType: MusicBrainzEntityType): string => {
+    if (entityType === 'recording') {
+        return track.mbIds.recordingId || '';
+    }
+
+    if (entityType === 'release') {
+        return track.mbIds.releaseId || '';
+    }
+
+    return track.mbIds.artistId || track.artistMbids[0] || '';
+};
+
+export const faviconUrlForResource = (resource: string): string | undefined => {
+    try {
+        const parsed = new URL(resource);
+        return `${parsed.origin}/favicon.ico`;
+    } catch {
+        return undefined;
+    }
+};
+
+export const renderMusicBrainzEntityContent = (
+    entity: MusicBrainzEntityInfo,
+    titleElement: HTMLElement,
+    contentElement: HTMLElement,
+): void => {
+    contentElement.innerHTML = '';
+
+    titleElement.textContent = 'MusicBrainz info';
+
+    const details = [...entity.facts];
+    const disambiguation = entity.summary?.trim() || '';
+    if (disambiguation) {
+        details.push({
+            label: 'Disambiguation',
+            value: disambiguation,
+        });
+    }
+
+    if (details.length > 0) {
+        const factsTitle = document.createElement('p');
+        factsTitle.className = 'mb-entity-section-title';
+        factsTitle.textContent = 'Details';
+        contentElement.append(factsTitle);
+
+        const facts = document.createElement('div');
+        facts.className = 'mb-entity-facts';
+        for (const fact of details) {
+            const label = document.createElement('p');
+            label.className = 'mb-entity-fact-label';
+            label.textContent = fact.label;
+
+            const value = document.createElement('p');
+            value.className = 'mb-entity-fact-value';
+            value.textContent = fact.value;
+
+            facts.append(label, value);
+        }
+
+        contentElement.append(facts);
+    }
+
+    if (entity.tags.length > 0) {
+        const tagsTitle = document.createElement('p');
+        tagsTitle.className = 'mb-entity-section-title';
+        tagsTitle.textContent = 'Tags / genres';
+        contentElement.append(tagsTitle);
+
+        const tags = document.createElement('div');
+        tags.className = 'mb-entity-tags';
+        for (const tag of entity.tags) {
+            const chip = document.createElement('p');
+            chip.className = 'mb-entity-tag';
+            chip.textContent = tag;
+            tags.append(chip);
+        }
+
+        contentElement.append(tags);
+    }
+
+    if (entity.urls.length > 0) {
+        const linksTitle = document.createElement('p');
+        linksTitle.className = 'mb-entity-section-title';
+        linksTitle.textContent = 'Links';
+        contentElement.append(linksTitle);
+
+        const links = document.createElement('ul');
+        links.className = 'mb-entity-links';
+        for (const url of entity.urls) {
+            const listItem = document.createElement('li');
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'artist-link-btn';
+
+            const fallback = document.createElement('span');
+            fallback.className = 'artist-link-fallback';
+            fallback.textContent = '🔗';
+
+            const faviconUrl = faviconUrlForResource(url.resource);
+            if (faviconUrl) {
+                const icon = document.createElement('img');
+                icon.className = 'artist-link-icon';
+                icon.alt = '';
+                icon.loading = 'lazy';
+                icon.decoding = 'async';
+                icon.referrerPolicy = 'no-referrer';
+                icon.src = faviconUrl;
+                icon.addEventListener('error', () => {
+                    icon.remove();
+                    fallback.hidden = false;
+                });
+                fallback.hidden = true;
+                button.append(icon, fallback);
+            } else {
+                fallback.hidden = false;
+                button.append(fallback);
+            }
+
+            button.title = `${url.type || 'Link'}: ${url.resource}`;
+            button.setAttribute('aria-label', button.title);
+            button.addEventListener('click', () => {
+                void BrowserOpenURL(url.resource);
+            });
+
+            listItem.append(button);
+            links.append(listItem);
+        }
+
+        contentElement.append(links);
+    }
+
+    const rawDetails = document.createElement('details');
+    rawDetails.className = 'mb-entity-raw-details';
+
+    const rawSummary = document.createElement('summary');
+    rawSummary.className = 'mb-entity-raw-summary';
+    rawSummary.textContent = 'Raw payload';
+    rawDetails.append(rawSummary);
+
+    const raw = document.createElement('pre');
+    raw.className = 'mb-entity-raw';
+    raw.textContent = entity.rawJson || 'No payload returned.';
+    rawDetails.append(raw);
+    contentElement.append(rawDetails);
+};
