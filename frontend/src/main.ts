@@ -425,6 +425,7 @@ const {
     imageFileRotateRight,
     imageFileContent,
     imageFilePreview,
+    imageFileThumbs,
     imageFileThumbsPrev,
     imageFileThumbsNext,
     imageFileThumbsViewport,
@@ -2205,12 +2206,14 @@ const renderImageModalThumbs = (loadToken: number): void => {
     imageFileThumbsRow.innerHTML = '';
 
     if (imageModalGallery.length === 0 || imageModalCurrentIndex < 0) {
+        imageFileThumbs.hidden = true;
         imageFileThumbsViewport.hidden = true;
         imageFileThumbsPrev.hidden = true;
         imageFileThumbsNext.hidden = true;
         return;
     }
 
+    imageFileThumbs.hidden = false;
     imageFileThumbsViewport.hidden = false;
 
     const pageCount = Math.max(1, Math.ceil(imageModalGallery.length / imageModalThumbPageSize));
@@ -2298,6 +2301,7 @@ const closeImageFileModal = (): void => {
         imageFileModal.hidden = true;
         imageFilePreview.removeAttribute('src');
         imageFileThumbsRow.innerHTML = '';
+        imageFileThumbs.hidden = true;
         imageFileThumbsViewport.hidden = true;
         imageFileThumbsPrev.hidden = true;
         imageFileThumbsNext.hidden = true;
@@ -2396,6 +2400,7 @@ const openImagePreviewModal = (_title: string, source: string): void => {
     resetImageModalZoom();
     imageModalLoadToken += 1;
     imageFileThumbsRow.innerHTML = '';
+    imageFileThumbs.hidden = true;
     imageFileThumbsViewport.hidden = true;
     imageFileThumbsPrev.hidden = true;
     imageFileThumbsNext.hidden = true;

@@ -6,6 +6,7 @@ export type ImageFileModalElements = {
     imageFileRotateRight: HTMLButtonElement;
     imageFileContent: HTMLDivElement;
     imageFilePreview: HTMLImageElement;
+    imageFileThumbs: HTMLDivElement;
     imageFileThumbsPrev: HTMLButtonElement;
     imageFileThumbsNext: HTMLButtonElement;
     imageFileThumbsViewport: HTMLDivElement;
@@ -23,7 +24,7 @@ export const renderImageFileModal = (): string => `
             <div id="image-file-content" class="image-file-content">
                 <img id="image-file-preview" class="image-file-preview" alt="Image preview">
             </div>
-            <div class="image-file-thumbs" aria-label="Related images">
+            <div id="image-file-thumbs" class="image-file-thumbs" aria-label="Related images">
                 <button id="image-file-thumbs-prev" class="image-file-thumbs-nav" type="button" aria-label="Previous images">‹</button>
                 <div id="image-file-thumbs-viewport" class="image-file-thumbs-viewport">
                     <div id="image-file-thumbs-row" class="image-file-thumbs-row"></div>
@@ -42,6 +43,7 @@ export const getImageFileModalElements = (root: ParentNode): ImageFileModalEleme
     imageFileRotateRight: root.querySelector('#image-file-rotate-right') as HTMLButtonElement,
     imageFileContent: root.querySelector('#image-file-content') as HTMLDivElement,
     imageFilePreview: root.querySelector('#image-file-preview') as HTMLImageElement,
+    imageFileThumbs: root.querySelector('#image-file-thumbs') as HTMLDivElement,
     imageFileThumbsPrev: root.querySelector('#image-file-thumbs-prev') as HTMLButtonElement,
     imageFileThumbsNext: root.querySelector('#image-file-thumbs-next') as HTMLButtonElement,
     imageFileThumbsViewport: root.querySelector('#image-file-thumbs-viewport') as HTMLDivElement,
