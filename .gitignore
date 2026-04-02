@@ -2,6 +2,7 @@
 /Silphium
 /build/bin/
 /build/bin/**
+*.exe
 
 # ---- Frontend (Vite/Node) ----
 /node_modules/
