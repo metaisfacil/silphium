@@ -627,7 +627,17 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         const nextPane = createFolderPane(node);
-        const currentPane = libraryBrowser.querySelector('.library-list-pane.current') as HTMLUListElement | null;
+        const existingPanes = Array.from(libraryBrowser.querySelectorAll('.library-list-pane')) as HTMLUListElement[];
+        if (existingPanes.length > 1) {
+            // Keep only the newest pane as the visual baseline when rapid clicks overlap transitions.
+            existingPanes.slice(0, -1).forEach((pane) => pane.remove());
+        }
+
+        const currentPane = (libraryBrowser.querySelector('.library-list-pane:last-of-type') as HTMLUListElement | null);
+        if (currentPane) {
+            currentPane.classList.remove('from-right', 'from-left', 'to-left', 'to-right');
+            currentPane.classList.add('current');
+        }
 
         if (!currentPane || direction === 'none') {
             libraryBrowser.innerHTML = '';
@@ -636,6 +646,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             return;
         }
 
+        currentPane.classList.remove('current');
         nextPane.classList.add('current');
         if (direction === 'forward') {
             nextPane.classList.add('from-right');
