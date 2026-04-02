@@ -294,6 +294,7 @@
 .settings-dialog {
     position: relative;
     width: min(560px, calc(100vw - 6rem));
+    max-height: calc(100vh - 2.5rem);
     display: flex;
     flex-direction: column;
     background: rgba(18, 18, 20, 0.96);
@@ -342,8 +343,10 @@
 
 .settings-content {
     display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
     gap: 0.95rem;
     padding: 1rem;
+    height: min(27rem, calc(100vh - 9rem));
     text-align: left;
 }
 
@@ -372,6 +375,10 @@
 .settings-panel {
     display: grid;
     gap: 0.95rem;
+    padding-right: 0.5rem;
+    min-height: 0;
+    overflow-y: auto;
+    align-content: start;
     animation: settings-panel-fade-in 180ms ease;
 }
 
