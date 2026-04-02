@@ -121,6 +121,34 @@
     transform: translateY(0) scale(1);
 }
 
+.image-file-tools {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.42rem 0.8rem 0.3rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.16);
+}
+
+.image-file-tool-btn {
+    width: 1.7rem;
+    height: 1.45rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.4rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 0.86rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease;
+}
+
+.image-file-tool-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
 .image-file-content {
     width: fit-content;
     max-width: calc(100vw - 3.6rem);
@@ -129,7 +157,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: auto;
+    overflow: hidden;
 }
 
 .image-file-preview {
@@ -141,13 +169,20 @@
     object-fit: contain;
     border-radius: 0.4rem;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
-    cursor: zoom-out;
+    cursor: default;
+    transform-origin: center center;
+}
+
+.image-file-preview.is-quarter-turn {
+    max-width: calc(100vh - 14.4rem);
+    max-height: calc(100vw - 4.2rem);
 }
 
 .image-file-thumbs {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto auto auto;
     align-items: center;
+    justify-content: center;
     gap: 0.5rem;
     padding: 0 0.8rem 0.8rem;
 }

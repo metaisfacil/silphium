@@ -282,6 +282,7 @@ let imageModalLoadToken = 0;
 let imageModalGallery: ImageLibraryFile[] = [];
 let imageModalCurrentIndex = -1;
 let imageModalPage = 0;
+let imageModalRotation = 0;
 let musicBrainzEntityModalHideTimer: number | undefined;
 let technicalInfoModalHideTimer: number | undefined;
 let isSeeking = false;
@@ -410,6 +411,9 @@ const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileCl
 const {
     imageFileModal,
     imageFileBackdrop,
+    imageFileTools,
+    imageFileRotateLeft,
+    imageFileRotateRight,
     imageFilePreview,
     imageFileThumbsPrev,
     imageFileThumbsNext,
@@ -2115,6 +2119,24 @@ const resolveImageFileDataUrl = async (imageFile: ImageLibraryFile): Promise<str
     return source;
 };
 
+const applyImageModalRotation = (): void => {
+    imageFilePreview.style.transform = `rotate(${imageModalRotation}deg)`;
+    imageFilePreview.classList.toggle('is-quarter-turn', imageModalRotation % 180 !== 0);
+};
+
+const setImageModalRotation = (degrees: number): void => {
+    imageModalRotation = ((degrees % 360) + 360) % 360;
+    applyImageModalRotation();
+};
+
+const rotateImageModal = (deltaDegrees: number): void => {
+    if (imageFileModal.hidden || !imageFilePreview.getAttribute('src')) {
+        return;
+    }
+
+    setImageModalRotation(imageModalRotation + deltaDegrees);
+};
+
 const renderImageModalThumbs = (loadToken: number): void => {
     imageFileThumbsRow.innerHTML = '';
 
@@ -2198,6 +2220,7 @@ const closeImageFileModal = (): void => {
     imageModalGallery = [];
     imageModalCurrentIndex = -1;
     imageModalPage = 0;
+    setImageModalRotation(0);
     imageModalLoadToken += 1;
     imageFileModal.classList.remove('is-visible');
 
@@ -2239,6 +2262,7 @@ const openImageGalleryModal = async (gallery: ImageLibraryFile[], selectedIndex:
     imageModalGallery = gallery;
     imageModalCurrentIndex = -1;
     imageModalPage = 0;
+    setImageModalRotation(0);
     imageModalLoadToken += 1;
 
     imageFilePreview.removeAttribute('src');
@@ -2301,6 +2325,7 @@ const openImagePreviewModal = (_title: string, source: string): void => {
     imageModalGallery = [];
     imageModalCurrentIndex = -1;
     imageModalPage = 0;
+    setImageModalRotation(0);
     imageModalLoadToken += 1;
     imageFileThumbsRow.innerHTML = '';
     imageFileThumbsViewport.hidden = true;
@@ -3543,6 +3568,18 @@ imageFileBackdrop.addEventListener('click', () => {
     closeImageFileModal();
 });
 
+imageFileTools.addEventListener('click', (event) => {
+    event.stopPropagation();
+});
+
+imageFileRotateLeft.addEventListener('click', () => {
+    rotateImageModal(-90);
+});
+
+imageFileRotateRight.addEventListener('click', () => {
+    rotateImageModal(90);
+});
+
 imageFileThumbsPrev.addEventListener('click', () => {
     if (imageModalGallery.length === 0 || imageModalPage <= 0) {
         return;
@@ -3588,10 +3625,6 @@ imageFileThumbsRow.addEventListener('click', (event) => {
     }
 
     void setImageModalActiveIndex(index);
-});
-
-imageFilePreview.addEventListener('click', () => {
-    closeImageFileModal();
 });
 
 musicBrainzEntityBackdrop.addEventListener('click', () => {
