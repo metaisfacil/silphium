@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// MusicBrainzArtistInfo contains enriched artist details returned by MusicBrainz lookup.
 type MusicBrainzArtistInfo struct {
 	Found          bool             `json:"found"`
 	MBID           string           `json:"mbid"`
@@ -23,16 +24,19 @@ type MusicBrainzArtistInfo struct {
 	URLs           []MusicBrainzURL `json:"urls"`
 }
 
+// MusicBrainzURL describes an external URL relation attached to a MusicBrainz entity.
 type MusicBrainzURL struct {
 	Type     string `json:"type"`
 	Resource string `json:"resource"`
 }
 
+// MusicBrainzEntityFact is a label/value fact row shown in MusicBrainz entity details.
 type MusicBrainzEntityFact struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
 }
 
+// MusicBrainzEntityInfo contains normalized lookup data for recording, release, or artist entities.
 type MusicBrainzEntityInfo struct {
 	Found      bool                    `json:"found"`
 	EntityType string                  `json:"entityType"`
@@ -325,6 +329,7 @@ func prettyJSON(raw []byte) string {
 	return output.String()
 }
 
+// LookupArtistByMBID fetches artist metadata from MusicBrainz for the provided MBID.
 func (a *App) LookupArtistByMBID(mbid string) MusicBrainzArtistInfo {
 	cleanMBID := strings.ToLower(strings.TrimSpace(mbid))
 	if !mbidPattern.MatchString(cleanMBID) {
@@ -479,6 +484,7 @@ func (a *App) LookupArtistByMBID(mbid string) MusicBrainzArtistInfo {
 	}
 }
 
+// LookupMusicBrainzEntity fetches recording, release, or artist metadata by entity type and MBID.
 func (a *App) LookupMusicBrainzEntity(entityType string, mbid string) MusicBrainzEntityInfo {
 	cleanEntityType := strings.ToLower(strings.TrimSpace(entityType))
 	cleanMBID := strings.ToLower(strings.TrimSpace(mbid))

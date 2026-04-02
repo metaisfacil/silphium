@@ -24,7 +24,7 @@ import (
 	taglib "go.senan.xyz/taglib"
 )
 
-// App struct
+// App contains runtime state and service dependencies for the Wails backend.
 type App struct {
 	ctx            context.Context
 	libraryRoot    string
@@ -34,6 +34,7 @@ type App struct {
 	settingsLoaded bool
 }
 
+// LibraryIndexedFile represents a discovered file with normalized library-relative metadata.
 type LibraryIndexedFile struct {
 	Name         string `json:"name"`
 	Path         string `json:"path"`
@@ -41,6 +42,7 @@ type LibraryIndexedFile struct {
 	FolderPath   string `json:"folderPath"`
 }
 
+// LibraryScanResult contains indexed library content and scan metadata.
 type LibraryScanResult struct {
 	RootPath          string               `json:"rootPath"`
 	RootName          string               `json:"rootName"`
@@ -53,11 +55,13 @@ type LibraryScanResult struct {
 	EntryLimit        int                  `json:"entryLimit"`
 }
 
+// PlaylistLoadResult contains parsed playlist metadata and indexed tracks.
 type PlaylistLoadResult struct {
 	Name       string               `json:"name"`
 	TrackFiles []LibraryIndexedFile `json:"trackFiles"`
 }
 
+// TrackTags contains resolved textual, technical, and MusicBrainz metadata for a track.
 type TrackTags struct {
 	Artist         string              `json:"artist"`
 	Album          string              `json:"album"`
@@ -86,6 +90,7 @@ type TrackTags struct {
 	ArtistIDs      []string            `json:"artistIds,omitempty"`
 }
 
+// TrackBlob carries in-memory file data used for tag extraction without disk references.
 type TrackBlob struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
@@ -226,6 +231,7 @@ func (a *App) isAllowedLibraryPath(path string) bool {
 	return relativeToRoot != ".." && !strings.HasPrefix(relativeToRoot, parentPrefix)
 }
 
+// SelectLibraryFolder opens a directory picker and returns the selected library path.
 func (a *App) SelectLibraryFolder() string {
 	selectedPath, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Select Music Library Folder",
@@ -237,6 +243,7 @@ func (a *App) SelectLibraryFolder() string {
 	return selectedPath
 }
 
+// SelectPlaylistFile opens a file picker and returns a selected M3U/M3U8 playlist path.
 func (a *App) SelectPlaylistFile() string {
 	selectedPath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Select Playlist File",
@@ -275,6 +282,7 @@ func resolvePlaylistEntryPath(playlistPath string, entry string) (string, bool) 
 	return filepath.Clean(filepath.Join(baseDir, trimmed)), true
 }
 
+// LoadPlaylistFile parses a playlist and returns valid audio entries within the allowed library scope.
 func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 	cleanPath := normalizePath(path)
 	result := PlaylistLoadResult{
@@ -326,6 +334,7 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 	return result
 }
 
+// ScanLibraryFolder indexes audio, text, and image files under the selected root folder.
 func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 	cleanRoot := normalizePath(path)
 	result := LibraryScanResult{
@@ -363,7 +372,7 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 			return nil
 		}
 
-		result.TotalEntries += 1
+		result.TotalEntries++
 		if result.TotalEntries > maxLibraryEntries {
 			result.Truncated = true
 			return errLibraryScanLimit
@@ -439,6 +448,7 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 	return result
 }
 
+// ReadFileBase64 reads a file from the allowed library scope and returns its base64 content.
 func (a *App) ReadFileBase64(path string) string {
 	if !a.isAllowedLibraryPath(path) {
 		return ""
@@ -452,6 +462,7 @@ func (a *App) ReadFileBase64(path string) string {
 	return base64.StdEncoding.EncodeToString(rawBytes)
 }
 
+// ReadTextFile reads and decodes a text file from the allowed library scope.
 func (a *App) ReadTextFile(path string) string {
 	if !a.isAllowedLibraryPath(path) {
 		return ""
@@ -536,16 +547,16 @@ func utf16ZeroRatios(rawBytes []byte) (float64, float64) {
 
 	for index, value := range rawBytes {
 		if index%2 == 0 {
-			evenTotal += 1
+			evenTotal++
 			if value == 0 {
-				evenZeros += 1
+				evenZeros++
 			}
 			continue
 		}
 
-		oddTotal += 1
+		oddTotal++
 		if value == 0 {
-			oddZeros += 1
+			oddZeros++
 		}
 	}
 
@@ -669,6 +680,7 @@ type ffprobeAudioOutput struct {
 	Format  ffprobeFormatOutput  `json:"format"`
 }
 
+// TrackTechnicalMetadata contains parsed ffprobe-derived technical audio properties.
 type TrackTechnicalMetadata struct {
 	BitDepth        int
 	SampleRate      int
@@ -851,6 +863,7 @@ func extractArtistMBIDs(tags map[string][]string) []string {
 	return mbids
 }
 
+// ReadTrackTags reads tag and technical metadata for track files by path.
 func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 	tagByPath := make(map[string]TrackTags, len(paths))
 
@@ -910,6 +923,7 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 	return tagByPath
 }
 
+// ReadTrackTagsFromBlobs reads tag and technical metadata from in-memory track blobs.
 func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 	tagByKey := make(map[string]TrackTags, len(blobs))
 
@@ -990,6 +1004,7 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 	return tagByKey
 }
 
+// InitializeAudioBackend initializes the audio backend and returns its current state.
 func (a *App) InitializeAudioBackend() (AudioPlaybackState, error) {
 	backend := a.audioBackend()
 	if err := backend.Initialize(); err != nil {
@@ -999,6 +1014,7 @@ func (a *App) InitializeAudioBackend() (AudioPlaybackState, error) {
 	return backend.State(), nil
 }
 
+// AudioLoadTrack loads a track path into the audio backend.
 func (a *App) AudioLoadTrack(path string) (AudioPlaybackState, error) {
 	cleanPath := normalizePath(path)
 	if cleanPath == "" {
@@ -1012,26 +1028,32 @@ func (a *App) AudioLoadTrack(path string) (AudioPlaybackState, error) {
 	return a.audioBackend().LoadTrack(cleanPath)
 }
 
+// AudioPlay starts playback of the currently loaded track.
 func (a *App) AudioPlay() (AudioPlaybackState, error) {
 	return a.audioBackend().Play()
 }
 
+// AudioPause pauses playback of the currently loaded track.
 func (a *App) AudioPause() (AudioPlaybackState, error) {
 	return a.audioBackend().Pause()
 }
 
+// AudioStop stops playback and unloads the current track.
 func (a *App) AudioStop() (AudioPlaybackState, error) {
 	return a.audioBackend().Stop()
 }
 
+// AudioSeek moves playback to the given position in seconds.
 func (a *App) AudioSeek(seconds float64) (AudioPlaybackState, error) {
 	return a.audioBackend().Seek(seconds)
 }
 
+// AudioSetVolume sets playback volume in the range [0, 1].
 func (a *App) AudioSetVolume(volume float64) (AudioPlaybackState, error) {
 	return a.audioBackend().SetVolume(volume)
 }
 
+// AudioGetState returns the current audio playback state.
 func (a *App) AudioGetState() AudioPlaybackState {
 	return a.audioBackend().State()
 }

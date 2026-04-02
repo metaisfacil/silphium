@@ -13,6 +13,7 @@ import (
 
 const listenBrainzSubmitURL = "https://api.listenbrainz.org/1/submit-listens"
 
+// ListenBrainzTrackMetadata is the frontend-facing metadata shape for listen submissions.
 type ListenBrainzTrackMetadata struct {
 	ArtistName    string   `json:"artistName"`
 	TrackName     string   `json:"trackName"`
@@ -52,6 +53,7 @@ type listenBrainzSubmitResponse struct {
 	Message string `json:"message"`
 }
 
+// SubmitListenBrainz sends a playing_now or single listen event to the ListenBrainz API.
 func (a *App) SubmitListenBrainz(listenType string, metadata ListenBrainzTrackMetadata, listenedAt int64) error {
 	a.ensureSettingsLoaded()
 

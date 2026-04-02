@@ -9,6 +9,7 @@ import (
 
 const appSettingsFileName = "silphium.settings.json"
 
+// AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
 	LibraryPath           string `json:"libraryPath"`
 	ListenBrainzUserToken string `json:"listenBrainzUserToken"`
@@ -112,11 +113,13 @@ func (a *App) ensureSettingsLoaded() {
 	a.loadStoredSettings()
 }
 
+// GetSettings returns the currently persisted application settings.
 func (a *App) GetSettings() AppSettings {
 	a.ensureSettingsLoaded()
 	return a.settings
 }
 
+// SaveSettings validates, persists, and returns normalized application settings.
 func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	a.ensureSettingsLoaded()
 

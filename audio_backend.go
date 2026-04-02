@@ -22,6 +22,7 @@ const (
 
 var audioBytesPerSecond = audioSampleRate * audioBytesPerFrame
 
+// AudioPlaybackState reports the current playback state exposed to the frontend.
 type AudioPlaybackState struct {
 	Loaded      bool    `json:"loaded"`
 	Playing     bool    `json:"playing"`
@@ -32,6 +33,7 @@ type AudioPlaybackState struct {
 	EndEventID  uint64  `json:"endEventId"`
 }
 
+// AudioBackend manages decoded PCM playback and transport controls.
 type AudioBackend struct {
 	mutex       sync.Mutex
 	ffmpegPath  string
@@ -47,10 +49,12 @@ type AudioBackend struct {
 	endEventID  uint64
 }
 
+// NewAudioBackend creates an audio backend with default playback volume.
 func NewAudioBackend() *AudioBackend {
 	return &AudioBackend{volume: 0.8}
 }
 
+// Initialize prepares ffmpeg and the audio output context.
 func (b *AudioBackend) Initialize() error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -85,6 +89,7 @@ func (b *AudioBackend) Initialize() error {
 	return nil
 }
 
+// LoadTrack decodes and loads a track into the playback backend.
 func (b *AudioBackend) LoadTrack(path string) (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
@@ -115,6 +120,7 @@ func (b *AudioBackend) LoadTrack(path string) (AudioPlaybackState, error) {
 	return b.snapshotLocked(), nil
 }
 
+// Play starts playback of the currently loaded track.
 func (b *AudioBackend) Play() (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
@@ -144,6 +150,7 @@ func (b *AudioBackend) Play() (AudioPlaybackState, error) {
 	return b.snapshotLocked(), nil
 }
 
+// Pause pauses playback of the currently loaded track.
 func (b *AudioBackend) Pause() (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
@@ -164,6 +171,7 @@ func (b *AudioBackend) Pause() (AudioPlaybackState, error) {
 	return b.snapshotLocked(), nil
 }
 
+// Stop stops playback and unloads the current track.
 func (b *AudioBackend) Stop() (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
@@ -176,6 +184,7 @@ func (b *AudioBackend) Stop() (AudioPlaybackState, error) {
 	return b.snapshotLocked(), nil
 }
 
+// Seek updates playback position in seconds.
 func (b *AudioBackend) Seek(seconds float64) (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
@@ -195,6 +204,7 @@ func (b *AudioBackend) Seek(seconds float64) (AudioPlaybackState, error) {
 	return b.snapshotLocked(), nil
 }
 
+// SetVolume sets the playback volume in the range [0, 1].
 func (b *AudioBackend) SetVolume(volume float64) (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
@@ -222,6 +232,7 @@ func (b *AudioBackend) SetVolume(volume float64) (AudioPlaybackState, error) {
 	return b.snapshotLocked(), nil
 }
 
+// State returns the current playback snapshot.
 func (b *AudioBackend) State() AudioPlaybackState {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -306,7 +317,7 @@ func (b *AudioBackend) syncPositionLocked() {
 		b.position = b.duration
 		b.playing = false
 		b.playStarted = time.Time{}
-		b.endEventID += 1
+		b.endEventID++
 		if b.player != nil {
 			b.player.Pause()
 		}
