@@ -1776,7 +1776,7 @@ playlistController = createPlaylistController({
     trigger: playlistBtn,
     menu: playlistMenuElements,
     modal: playlistModalElements,
-    getTrack: (index) => tracks[index],
+    getTrack: (index: number) => tracks[index],
     getTrackCount: () => tracks.length,
     getCurrentTrackIndex: () => currentTrackIndex,
     getPlaybackOrderLabel: () => playbackOrderLabelByMode[playbackOrderMode],

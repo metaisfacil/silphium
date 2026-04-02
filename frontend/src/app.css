@@ -6,6 +6,29 @@
     z-index: 0;
 }
 
+* {
+    scrollbar-color: rgba(255, 255, 255, 0.22) rgba(0, 0, 0, 0.44);
+}
+
+*::-webkit-scrollbar {
+    width: 0.7rem;
+    height: 0.7rem;
+}
+
+*::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.44);
+}
+
+*::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.22);
+    border: 2px solid rgba(0, 0, 0, 0.44);
+    border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.34);
+}
+
 .bg-layer {
     position: absolute;
     inset: -12%;
