@@ -20,7 +20,7 @@ func main() {
 		Title:     "Silphium",
 		Width:     500,
 		Height:    768,
-		MinWidth:  400,
+		MinWidth:  450,
 		MinHeight: 700,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
