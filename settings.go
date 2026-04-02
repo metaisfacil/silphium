@@ -11,11 +11,12 @@ const appSettingsFileName = "silphium.settings.json"
 
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
-	LibraryPath           string   `json:"libraryPath"`
-	ListenBrainzUserToken string   `json:"listenBrainzUserToken"`
-	PlaybackOrder         string   `json:"playbackOrder"`
-	ReleaseDepth          int      `json:"releaseDepth,omitempty"`
-	FavoritePlaylists     []string `json:"favoritePlaylists,omitempty"`
+	LibraryPath               string   `json:"libraryPath"`
+	ListenBrainzUserToken     string   `json:"listenBrainzUserToken"`
+	PlaybackOrder             string   `json:"playbackOrder"`
+	ReleaseDepth              int      `json:"releaseDepth,omitempty"`
+	FavoritePlaylists         []string `json:"favoritePlaylists,omitempty"`
+	PreferMusicBrainzMetadata bool     `json:"preferMusicBrainzMetadata"`
 }
 
 const defaultPlaybackOrder = "ordered-library"
@@ -35,6 +36,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	path := strings.TrimSpace(settings.LibraryPath)
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
 	releaseDepth := settings.ReleaseDepth
+	preferMusicBrainzMetadata := settings.PreferMusicBrainzMetadata
 	favoritePlaylists := make([]string, 0, len(settings.FavoritePlaylists))
 	seenFavoritePlaylists := make(map[string]struct{})
 	for _, candidate := range settings.FavoritePlaylists {
@@ -62,7 +64,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		releaseDepth = maxReleaseDepth
 	}
 	if path == "" {
-		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth, FavoritePlaylists: favoritePlaylists}
+		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth, FavoritePlaylists: favoritePlaylists, PreferMusicBrainzMetadata: preferMusicBrainzMetadata}
 	}
 
 	path = normalizePath(path)
@@ -71,11 +73,12 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	}
 
 	return AppSettings{
-		LibraryPath:           path,
-		ListenBrainzUserToken: token,
-		PlaybackOrder:         playbackOrder,
-		ReleaseDepth:          releaseDepth,
-		FavoritePlaylists:     favoritePlaylists,
+		LibraryPath:               path,
+		ListenBrainzUserToken:     token,
+		PlaybackOrder:             playbackOrder,
+		ReleaseDepth:              releaseDepth,
+		FavoritePlaylists:         favoritePlaylists,
+		PreferMusicBrainzMetadata: preferMusicBrainzMetadata,
 	}
 }
 

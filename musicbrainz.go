@@ -50,6 +50,16 @@ type MusicBrainzEntityInfo struct {
 	RawJSON    string                  `json:"rawJson"`
 }
 
+// MusicBrainzTrackMetadata contains normalized display metadata for a track lookup.
+type MusicBrainzTrackMetadata struct {
+	Found       bool   `json:"found"`
+	RecordingID string `json:"recordingId"`
+	ReleaseID   string `json:"releaseId"`
+	Title       string `json:"title"`
+	Album       string `json:"album"`
+	Artist      string `json:"artist"`
+}
+
 const musicBrainzUserAgent = "Silphium/1.0 (metaisfacil@users.noreply.github.com)"
 
 func fetchMusicBrainzJSON(requestURL string) ([]byte, bool) {
@@ -123,6 +133,18 @@ func objectString(object map[string]any, key string) string {
 	}
 
 	return asString(object[key])
+}
+
+func objectRawString(object map[string]any, key string) string {
+	if object == nil {
+		return ""
+	}
+
+	if parsed, ok := object[key].(string); ok {
+		return parsed
+	}
+
+	return ""
 }
 
 func objectNumber(object map[string]any, key string) (float64, bool) {
@@ -215,8 +237,8 @@ func musicBrainzArtistCredit(payload map[string]any) string {
 	parts := make([]string, 0)
 	for _, entry := range asArray(payload["artist-credit"]) {
 		if textEntry, ok := entry.(string); ok {
-			if trimmed := strings.TrimSpace(textEntry); trimmed != "" {
-				parts = append(parts, trimmed)
+			if strings.TrimSpace(textEntry) != "" {
+				parts = append(parts, textEntry)
 			}
 			continue
 		}
@@ -234,11 +256,22 @@ func musicBrainzArtistCredit(payload map[string]any) string {
 			continue
 		}
 
-		joinPhrase := objectString(entryMap, "joinphrase")
+		joinPhrase := objectRawString(entryMap, "joinphrase")
 		parts = append(parts, fmt.Sprintf("%s%s", name, joinPhrase))
 	}
 
 	return strings.TrimSpace(strings.Join(parts, ""))
+}
+
+func firstMusicBrainzReleaseTitle(payload map[string]any) string {
+	for _, releaseValue := range asArray(payload["releases"]) {
+		releaseTitle := objectString(asObject(releaseValue), "title")
+		if releaseTitle != "" {
+			return releaseTitle
+		}
+	}
+
+	return ""
 }
 
 func collectMusicBrainzTagNames(payload map[string]any) []string {
@@ -482,6 +515,68 @@ func (a *App) LookupArtistByMBID(mbid string) MusicBrainzArtistInfo {
 		Genres:         genreNames,
 		URLs:           urls,
 	}
+}
+
+// LookupTrackMusicBrainzMetadata fetches display metadata for a track using recording and release MBIDs.
+func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID string) MusicBrainzTrackMetadata {
+	cleanRecordingID := strings.ToLower(strings.TrimSpace(recordingID))
+	cleanReleaseID := strings.ToLower(strings.TrimSpace(releaseID))
+
+	if !mbidPattern.MatchString(cleanRecordingID) {
+		cleanRecordingID = ""
+	}
+	if !mbidPattern.MatchString(cleanReleaseID) {
+		cleanReleaseID = ""
+	}
+
+	result := MusicBrainzTrackMetadata{
+		Found:       false,
+		RecordingID: cleanRecordingID,
+		ReleaseID:   cleanReleaseID,
+	}
+
+	if cleanRecordingID == "" && cleanReleaseID == "" {
+		return result
+	}
+
+	recordingPayload := map[string]any{}
+	releasePayload := map[string]any{}
+
+	if cleanRecordingID != "" {
+		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/recording/%s?fmt=json&inc=artists+releases", cleanRecordingID)
+		if responseBody, ok := fetchMusicBrainzJSON(requestURL); ok {
+			if err := json.Unmarshal(responseBody, &recordingPayload); err != nil {
+				recordingPayload = map[string]any{}
+			}
+		}
+	}
+
+	if cleanReleaseID != "" {
+		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=artists", cleanReleaseID)
+		if responseBody, ok := fetchMusicBrainzJSON(requestURL); ok {
+			if err := json.Unmarshal(responseBody, &releasePayload); err != nil {
+				releasePayload = map[string]any{}
+			}
+		}
+	}
+
+	title := objectString(recordingPayload, "title")
+	album := objectString(releasePayload, "title")
+	if album == "" {
+		album = firstMusicBrainzReleaseTitle(recordingPayload)
+	}
+
+	artist := musicBrainzArtistCredit(recordingPayload)
+	if artist == "" {
+		artist = musicBrainzArtistCredit(releasePayload)
+	}
+
+	result.Title = title
+	result.Album = album
+	result.Artist = artist
+	result.Found = result.Title != "" || result.Album != "" || result.Artist != ""
+
+	return result
 }
 
 // LookupMusicBrainzEntity fetches recording, release, or artist metadata by entity type and MBID.

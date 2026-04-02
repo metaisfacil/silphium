@@ -730,6 +730,13 @@
     transition: text-decoration-color 150ms ease;
 }
 
+.track-artist-link[data-mb-url] {
+    color: inherit;
+    cursor: inherit;
+    text-decoration: none;
+    transition: text-decoration-color 150ms ease;
+}
+
 #app.ctrl-held .track-line[data-mb-url] {
     cursor: pointer;
     text-decoration: underline;
@@ -737,7 +744,18 @@
     text-underline-offset: 2px;
 }
 
+#app.ctrl-held .track-artist-link[data-mb-url] {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: rgba(255, 255, 255, 0.3);
+    text-underline-offset: 2px;
+}
+
 #app.ctrl-held .track-line[data-mb-url]:hover {
+    text-decoration-color: rgba(255, 255, 255, 0.75);
+}
+
+#app.ctrl-held .track-artist-link[data-mb-url]:hover {
     text-decoration-color: rgba(255, 255, 255, 0.75);
 }
 

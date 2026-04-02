@@ -26,6 +26,8 @@ export function LookupArtistByMBID(arg1:string):Promise<main.MusicBrainzArtistIn
 
 export function LookupMusicBrainzEntity(arg1:string,arg2:string):Promise<main.MusicBrainzEntityInfo>;
 
+export function LookupTrackMusicBrainzMetadata(arg1:string,arg2:string):Promise<main.MusicBrainzTrackMetadata>;
+
 export function ReadFileBase64(arg1:string):Promise<string>;
 
 export function ReadTextFile(arg1:string):Promise<string>;

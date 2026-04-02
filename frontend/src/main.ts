@@ -39,6 +39,7 @@ import {
     InitializeAudioBackend,
     LoadPlaylistFile,
     LookupArtistByMBID,
+    LookupTrackMusicBrainzMetadata,
     ReadFileBase64,
     ReadTextFile,
     ReadTrackTags,
@@ -85,6 +86,7 @@ type Track = {
     displayTechnical: string;
     displayLyrics: string;
     tagsResolved: boolean;
+    mbMetadataResolved: boolean;
     technicalDetails: TrackTechnicalDetails;
     allFileTags: Record<string, string[]>;
     mbIds: MusicBrainzIds;
@@ -207,6 +209,7 @@ type AppSettings = {
     playbackOrder: PlaybackOrderMode;
     releaseDepth: number;
     favoritePlaylists: string[];
+    preferMusicBrainzMetadata: boolean;
 };
 
 type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
@@ -229,6 +232,15 @@ type MusicBrainzEntityInfo = {
     tags: string[];
     urls: ArtistExternalUrl[];
     rawJson: string;
+};
+
+type MusicBrainzTrackMetadata = {
+    found: boolean;
+    recordingId: string;
+    releaseId: string;
+    title: string;
+    album: string;
+    artist: string;
 };
 
 const app = document.querySelector('#app');
@@ -300,7 +312,14 @@ let technicalInfoModalHideTimer: number | undefined;
 let isSeeking = false;
 let backendReady = false;
 let lastHandledEndEventId = 0;
-let currentSettings: AppSettings = { libraryPath: '', listenBrainzUserToken: '', playbackOrder: 'ordered-library', releaseDepth: 0, favoritePlaylists: [] };
+let currentSettings: AppSettings = {
+    libraryPath: '',
+    listenBrainzUserToken: '',
+    playbackOrder: 'ordered-library',
+    releaseDepth: 0,
+    favoritePlaylists: [],
+    preferMusicBrainzMetadata: false,
+};
 let scrobbleSessionId = 0;
 let nowPlayingSubmittedSessionId = -1;
 let scrobbleSubmittedSessionId = -1;
@@ -311,7 +330,7 @@ let playbackOrderMode: PlaybackOrderMode = 'ordered-library';
 let shuffleHistory: number[] = [];
 let shuffleCursor = -1;
 let shuffleScopeKey = '';
-let trackMetaMenuTarget: HTMLParagraphElement | null = null;
+let trackMetaMenuTarget: HTMLElement | null = null;
 let sidebarQueueTrackIndexes: number[] = [];
 let libraryLoading = false;
 let librarySearchQuery = '';
@@ -363,12 +382,23 @@ const {
     forward,
     volume,
 } = getMediaControlsElements(document);
-const openMbOnCtrlClick = (event: MouseEvent, target: HTMLParagraphElement): void => {
+const openMbOnCtrlClick = (event: MouseEvent, target: HTMLElement): void => {
     if (!event.ctrlKey) {
         return;
     }
 
-    openMbLink(target);
+    const eventTarget = event.target;
+    if (eventTarget instanceof HTMLElement) {
+        const nestedLink = eventTarget.closest('[data-mb-url]');
+        if (nestedLink instanceof HTMLElement && target.contains(nestedLink)) {
+            openMbLink(nestedLink);
+            return;
+        }
+    }
+
+    if (target.dataset.mbUrl) {
+        openMbLink(target);
+    }
 };
 
 const setCtrlHeldState = (held: boolean): void => {
@@ -414,7 +444,16 @@ trackArtist.addEventListener('click', (event) => {
 trackArtist.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    trackMetaMenuTarget = trackArtist;
+
+    const eventTarget = event.target;
+    const nestedLink = eventTarget instanceof HTMLElement
+        ? eventTarget.closest('[data-mb-url]')
+        : null;
+    const firstArtistLink = trackArtist.querySelector('[data-mb-url]');
+    trackMetaMenuTarget = nestedLink instanceof HTMLElement && trackArtist.contains(nestedLink)
+        ? nestedLink
+        : (firstArtistLink instanceof HTMLElement ? firstArtistLink : trackArtist);
+
     openTrackMetaMenu(event.clientX, event.clientY, false);
 });
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
@@ -1476,9 +1515,64 @@ const refreshNowPlayingLabel = (): void => {
     trackTechnical.textContent = activeTrack.displayTechnical || 'Details';
     trackTechnical.disabled = false;
     refreshLyricsPanel();
-    applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds);
+    applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds, {
+        artistText: activeTrack.displayArtist,
+        artistMbids: activeTrack.artistMbids,
+    });
 
     playlistController.scheduleRender();
+};
+
+const hydrateCurrentTrackMusicBrainzMetadata = async (index: number, version: number): Promise<void> => {
+    if (!currentSettings.preferMusicBrainzMetadata) {
+        return;
+    }
+
+    if (index < 0 || index >= tracks.length) {
+        return;
+    }
+
+    const track = tracks[index];
+    if (!track.tagsResolved || track.mbMetadataResolved) {
+        return;
+    }
+
+    const recordingId = track.mbIds.recordingId || '';
+    const releaseId = track.mbIds.releaseId || '';
+    if (!recordingId && !releaseId) {
+        tracks[index] = {
+            ...track,
+            mbMetadataResolved: true,
+        };
+        return;
+    }
+
+    try {
+        const metadata = await lookupMusicBrainzTrackMetadata(recordingId, releaseId);
+        if (version !== tagRequestVersion || index !== currentTrackIndex) {
+            return;
+        }
+
+        const latestTrack = tracks[index];
+        if (!latestTrack) {
+            return;
+        }
+
+        tracks[index] = {
+            ...latestTrack,
+            displayTitle: metadata.title.trim() || latestTrack.displayTitle,
+            displayAlbum: metadata.album.trim() || latestTrack.displayAlbum,
+            displayArtist: metadata.artist.trim() || latestTrack.displayArtist,
+            mbMetadataResolved: true,
+        };
+
+        if (index === currentTrackIndex) {
+            refreshNowPlayingLabel();
+            renderFolder('none');
+        }
+    } catch (error) {
+        console.error(error);
+    }
 };
 
 const ensureTrackTagsResolved = async (index: number): Promise<void> => {
@@ -1507,6 +1601,7 @@ const ensureTrackTagsResolved = async (index: number): Promise<void> => {
             technicalDetails: technicalDetailsFromTags(tags),
             allFileTags: allFileTagsFromTags(tags),
             tagsResolved: true,
+            mbMetadataResolved: false,
             mbIds: {
                 recordingId: tags?.recordingId || undefined,
                 releaseId: tags?.releaseId || undefined,
@@ -2020,6 +2115,7 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
 
     const track = tracks[index];
     if (track.tagsResolved) {
+        void hydrateCurrentTrackMusicBrainzMetadata(index, version);
         return;
     }
 
@@ -2043,6 +2139,7 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
             technicalDetails: technicalDetailsFromTags(tags),
             allFileTags: allFileTagsFromTags(tags),
             tagsResolved: true,
+            mbMetadataResolved: false,
             mbIds: {
                 recordingId: tags?.recordingId || undefined,
                 releaseId: tags?.releaseId || undefined,
@@ -2059,6 +2156,8 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
             artistInfoRequestVersion += 1;
             void hydrateCurrentArtistInfo(index, artistInfoRequestVersion);
         }
+
+        void hydrateCurrentTrackMusicBrainzMetadata(index, version);
     } catch (error) {
         console.error(error);
     }
@@ -2594,6 +2693,30 @@ const emptyMusicBrainzEntityInfo = (entityType: MusicBrainzEntityType, mbid: str
     rawJson: '',
 });
 
+const emptyMusicBrainzTrackMetadata = (recordingId: string, releaseId: string): MusicBrainzTrackMetadata => ({
+    found: false,
+    recordingId,
+    releaseId,
+    title: '',
+    album: '',
+    artist: '',
+});
+
+const lookupMusicBrainzTrackMetadata = async (recordingId: string, releaseId: string): Promise<MusicBrainzTrackMetadata> => {
+    const cleanRecordingId = recordingId.trim();
+    const cleanReleaseId = releaseId.trim();
+    if (!cleanRecordingId && !cleanReleaseId) {
+        return emptyMusicBrainzTrackMetadata(cleanRecordingId, cleanReleaseId);
+    }
+
+    try {
+        return await LookupTrackMusicBrainzMetadata(cleanRecordingId, cleanReleaseId) as MusicBrainzTrackMetadata;
+    } catch (error) {
+        console.error(error);
+        return emptyMusicBrainzTrackMetadata(cleanRecordingId, cleanReleaseId);
+    }
+};
+
 const lookupMusicBrainzEntity = async (entityType: MusicBrainzEntityType, mbid: string): Promise<MusicBrainzEntityInfo> => {
     const appApi = (window as {
         go?: {
@@ -2926,6 +3049,7 @@ const initializeSettings = async (): Promise<void> => {
             playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
             releaseDepth: asReleaseDepth(settings.releaseDepth),
             favoritePlaylists: Array.isArray(settings.favoritePlaylists) ? settings.favoritePlaylists : [],
+            preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
         };
         setPlaybackOrderMode(currentSettings.playbackOrder);
 
@@ -2976,6 +3100,10 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
     scrobbleSubmittedSessionId = -1;
     scrobbleSessionStartedAt = 0;
     const track = tracks[currentTrackIndex];
+
+    if (currentSettings.preferMusicBrainzMetadata) {
+        track.mbMetadataResolved = false;
+    }
 
     if (!sidebarOpen) {
         sidebarAutoFolderPath = track.folderPath;
@@ -3122,6 +3250,7 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             playbackOrder: playbackOrderMode,
             releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
             favoritePlaylists: currentSettings.favoritePlaylists,
+            preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
         }) as AppSettings;
 
         currentSettings = {
@@ -3130,6 +3259,7 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
             releaseDepth: asReleaseDepth(savedSettings.releaseDepth),
             favoritePlaylists: Array.isArray(savedSettings.favoritePlaylists) ? savedSettings.favoritePlaylists : [],
+            preferMusicBrainzMetadata: !!savedSettings.preferMusicBrainzMetadata,
         };
     } catch (error) {
         console.error(error);
@@ -3157,6 +3287,7 @@ const ensureTrackIndexForPath = (file: LibraryIndexedFile, trackIndexByPath: Map
         displayTechnical: '',
         displayLyrics: '',
         tagsResolved: false,
+        mbMetadataResolved: false,
         technicalDetails: {},
         allFileTags: {},
         mbIds: {},
@@ -3277,6 +3408,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
             displayTechnical: '',
             displayLyrics: '',
             tagsResolved: false,
+            mbMetadataResolved: false,
             technicalDetails: {},
             allFileTags: {},
             mbIds: {},
@@ -3410,10 +3542,17 @@ settingsController = createSettingsController({
         listenBrainzUserToken: currentSettings.listenBrainzUserToken,
         releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
         favoritePlaylists: currentSettings.favoritePlaylists,
+        preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
     }),
     selectLibraryFolder: SelectLibraryFolder,
     selectPlaylistFile: SelectPlaylistFile,
-    save: async ({ libraryPath: requestedLibraryPath, listenBrainzUserToken, releaseDepth, favoritePlaylists }): Promise<void> => {
+    save: async ({
+        libraryPath: requestedLibraryPath,
+        listenBrainzUserToken,
+        releaseDepth,
+        favoritePlaylists,
+        preferMusicBrainzMetadata,
+    }): Promise<void> => {
         try {
             const savedSettings = await SaveSettings({
                 libraryPath: requestedLibraryPath,
@@ -3421,6 +3560,7 @@ settingsController = createSettingsController({
                 playbackOrder: playbackOrderMode,
                 releaseDepth: asReleaseDepth(releaseDepth),
                 favoritePlaylists,
+                preferMusicBrainzMetadata,
             }) as AppSettings;
 
             currentSettings = {
@@ -3429,6 +3569,7 @@ settingsController = createSettingsController({
                 playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
                 releaseDepth: asReleaseDepth(savedSettings.releaseDepth),
                 favoritePlaylists: Array.isArray(savedSettings.favoritePlaylists) ? savedSettings.favoritePlaylists : [],
+                preferMusicBrainzMetadata: !!savedSettings.preferMusicBrainzMetadata,
             };
 
             playlistController.refreshFavorites();

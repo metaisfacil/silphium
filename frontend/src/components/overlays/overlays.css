@@ -396,10 +396,27 @@
     gap: 0.55rem;
 }
 
+.settings-toggle-field {
+    gap: 0.42rem;
+}
+
 .settings-label {
     margin: 0;
     font-size: 0.82rem;
     opacity: 0.86;
+}
+
+.settings-checkbox-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.52rem;
+    cursor: pointer;
+}
+
+.settings-checkbox {
+    margin: 0;
+    width: 0.96rem;
+    height: 0.96rem;
 }
 
 .settings-hint {

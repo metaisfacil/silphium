@@ -5,6 +5,7 @@ export type SettingsFormValues = {
     listenBrainzUserToken: string;
     releaseDepth: number;
     favoritePlaylists: string[];
+    preferMusicBrainzMetadata: boolean;
 };
 
 type SettingsControllerOptions = {
@@ -36,6 +37,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryPath,
         settingsListenBrainzToken,
         settingsReleaseDepth,
+        settingsPreferMusicBrainzMetadata,
         settingsStatus,
     } = elements;
 
@@ -119,6 +121,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryPath.value = values.libraryPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         settingsReleaseDepth.value = values.releaseDepth > 0 ? String(values.releaseDepth) : '';
+        settingsPreferMusicBrainzMetadata.checked = !!values.preferMusicBrainzMetadata;
         favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
         selectedFavoritePlaylistIndex = -1;
         renderFavoritePlaylistList();
@@ -227,6 +230,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             listenBrainzUserToken: settingsListenBrainzToken.value,
             releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
             favoritePlaylists: favoritePlaylists.slice(),
+            preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
         };
         close();
 

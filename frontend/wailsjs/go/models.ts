@@ -6,6 +6,7 @@ export namespace main {
 	    playbackOrder: string;
 	    releaseDepth?: number;
 	    favoritePlaylists?: string[];
+	    preferMusicBrainzMetadata: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -18,6 +19,7 @@ export namespace main {
 	        this.playbackOrder = source["playbackOrder"];
 	        this.releaseDepth = source["releaseDepth"];
 	        this.favoritePlaylists = source["favoritePlaylists"];
+	        this.preferMusicBrainzMetadata = source["preferMusicBrainzMetadata"];
 	    }
 	}
 	export class AudioPlaybackState {
@@ -251,6 +253,28 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class MusicBrainzTrackMetadata {
+	    found: boolean;
+	    recordingId: string;
+	    releaseId: string;
+	    title: string;
+	    album: string;
+	    artist: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MusicBrainzTrackMetadata(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.found = source["found"];
+	        this.recordingId = source["recordingId"];
+	        this.releaseId = source["releaseId"];
+	        this.title = source["title"];
+	        this.album = source["album"];
+	        this.artist = source["artist"];
+	    }
 	}
 	
 	export class PlaylistLoadResult {

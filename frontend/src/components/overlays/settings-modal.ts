@@ -14,6 +14,7 @@ export type SettingsModalElements = {
     settingsLibraryPath: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
     settingsReleaseDepth: HTMLInputElement;
+    settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsStatus: HTMLParagraphElement;
 };
 
@@ -48,6 +49,13 @@ export const renderSettingsModal = (): string => `
                         <label class="settings-label" for="settings-release-depth">Release Folder Depth</label>
                         <p class="settings-hint">Depth from the library root where each release starts.</p>
                         <input id="settings-release-depth" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="Optional">
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-prefer-musicbrainz-metadata">
+                            <input id="settings-prefer-musicbrainz-metadata" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Prefer MusicBrainz metadata when MBIDs are present</span>
+                        </label>
+                        <p class="settings-hint">Track labels use file tags immediately, then switch to MusicBrainz title/album/artist after lookup.</p>
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
@@ -86,5 +94,6 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsLibraryPath: root.querySelector('#settings-library-path') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsReleaseDepth: root.querySelector('#settings-release-depth') as HTMLInputElement,
+    settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsStatus: root.querySelector('#settings-status') as HTMLParagraphElement,
 });
