@@ -1,4 +1,5 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
+import type { PlayerCardLayout } from '../types/app-types';
 
 export type SettingsFormValues = {
     libraryPath: string;
@@ -16,6 +17,8 @@ type SettingsControllerOptions = {
     selectPlaylistFile: () => Promise<string>;
     save: (values: SettingsFormValues) => Promise<void>;
     forceReload: (values: SettingsFormValues) => Promise<void>;
+    getPlayerCardLayout: () => PlayerCardLayout;
+    setPlayerCardLayout: (layout: PlayerCardLayout) => void;
 };
 
 export type SettingsController = ReturnType<typeof createSettingsController>;
@@ -28,8 +31,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsClose,
         settingsTabGeneral,
         settingsTabPlaylists,
+        settingsTabUi,
         settingsPanelGeneral,
         settingsPanelPlaylists,
+        settingsPanelUi,
         settingsBrowse,
         settingsFavoritePlaylistList,
         settingsAddFavoritePlaylist,
@@ -40,6 +45,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsListenBrainzToken,
         settingsReleaseDepth,
         settingsPreferMusicBrainzMetadata,
+        settingsPlayerCardLayout,
         settingsStatus,
     } = elements;
 
@@ -89,14 +95,19 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsRemoveFavoritePlaylist.disabled = selectedFavoritePlaylistIndex < 0;
     };
 
-    const setActiveTab = (tab: 'general' | 'playlists'): void => {
+    const setActiveTab = (tab: 'general' | 'playlists' | 'ui'): void => {
         const generalActive = tab === 'general';
+        const playlistsActive = tab === 'playlists';
+        const uiActive = tab === 'ui';
         settingsTabGeneral.classList.toggle('is-active', generalActive);
-        settingsTabPlaylists.classList.toggle('is-active', !generalActive);
+        settingsTabPlaylists.classList.toggle('is-active', playlistsActive);
+        settingsTabUi.classList.toggle('is-active', uiActive);
         settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
-        settingsTabPlaylists.setAttribute('aria-selected', generalActive ? 'false' : 'true');
+        settingsTabPlaylists.setAttribute('aria-selected', playlistsActive ? 'true' : 'false');
+        settingsTabUi.setAttribute('aria-selected', uiActive ? 'true' : 'false');
         settingsPanelGeneral.hidden = !generalActive;
-        settingsPanelPlaylists.hidden = generalActive;
+        settingsPanelPlaylists.hidden = !playlistsActive;
+        settingsPanelUi.hidden = !uiActive;
     };
 
     const close = (): void => {
@@ -124,6 +135,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         settingsReleaseDepth.value = values.releaseDepth > 0 ? String(values.releaseDepth) : '';
         settingsPreferMusicBrainzMetadata.checked = !!values.preferMusicBrainzMetadata;
+        settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
         selectedFavoritePlaylistIndex = -1;
         renderFavoritePlaylistList();
@@ -171,6 +183,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     settingsTabPlaylists.addEventListener('click', () => {
         setActiveTab('playlists');
         settingsFavoritePlaylistList.focus();
+    });
+
+    settingsTabUi.addEventListener('click', () => {
+        setActiveTab('ui');
+    });
+
+    settingsPlayerCardLayout.addEventListener('change', () => {
+        const layout = settingsPlayerCardLayout.value === 'release' ? 'release' : 'default';
+        options.setPlayerCardLayout(layout);
     });
 
     settingsFavoritePlaylistList.addEventListener('click', (event) => {

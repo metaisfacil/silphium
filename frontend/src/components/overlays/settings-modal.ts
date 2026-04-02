@@ -4,8 +4,10 @@ export type SettingsModalElements = {
     settingsClose: HTMLButtonElement;
     settingsTabGeneral: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
+    settingsTabUi: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
+    settingsPanelUi: HTMLDivElement;
     settingsBrowse: HTMLButtonElement;
     settingsFavoritePlaylistList: HTMLUListElement;
     settingsAddFavoritePlaylist: HTMLButtonElement;
@@ -16,6 +18,7 @@ export type SettingsModalElements = {
     settingsListenBrainzToken: HTMLInputElement;
     settingsReleaseDepth: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
+    settingsPlayerCardLayout: HTMLSelectElement;
     settingsStatus: HTMLParagraphElement;
 };
 
@@ -31,6 +34,7 @@ export const renderSettingsModal = (): string => `
                 <div class="settings-tabs" role="tablist" aria-label="Settings sections">
                     <button id="settings-tab-general" class="settings-tab is-active" type="button" role="tab" aria-controls="settings-panel-general" aria-selected="true">General</button>
                     <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
+                    <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
                 </div>
                 <div id="settings-panel-general" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-field">
@@ -70,6 +74,16 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                 </div>
+                <div id="settings-panel-ui" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-ui" hidden>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-player-card-layout">Player Card Layout</label>
+                        <p class="settings-hint">Choose how track metadata is arranged on the player card.</p>
+                        <select id="settings-player-card-layout" class="settings-input settings-select">
+                            <option value="default">Default — Title, Album, Artist</option>
+                            <option value="release">Release-Focused — Artist, Cover, Label &amp; Year</option>
+                        </select>
+                    </div>
+                </div>
                 <p id="settings-status" class="settings-status"></p>
                 <div class="settings-actions">
                     <button id="settings-force-reload" class="settings-secondary-btn" type="button">Force Reload</button>
@@ -86,8 +100,10 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsClose: root.querySelector('#settings-close') as HTMLButtonElement,
     settingsTabGeneral: root.querySelector('#settings-tab-general') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
+    settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
+    settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,
     settingsBrowse: root.querySelector('#settings-browse') as HTMLButtonElement,
     settingsFavoritePlaylistList: root.querySelector('#settings-favourite-playlist-list') as HTMLUListElement,
     settingsAddFavoritePlaylist: root.querySelector('#settings-add-favorite-playlist') as HTMLButtonElement,
@@ -98,5 +114,6 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsReleaseDepth: root.querySelector('#settings-release-depth') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
+    settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsStatus: root.querySelector('#settings-status') as HTMLParagraphElement,
 });

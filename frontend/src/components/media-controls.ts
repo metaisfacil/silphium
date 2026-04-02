@@ -4,9 +4,17 @@ export type MediaControlsElements = {
     playerCard: HTMLElement;
     trackTitle: HTMLParagraphElement;
     trackAlbum: HTMLParagraphElement;
-  trackPosition: HTMLSpanElement;
+    trackPosition: HTMLSpanElement;
     trackArtist: HTMLParagraphElement;
     trackTechnical: HTMLButtonElement;
+    trackArtistHeader: HTMLParagraphElement;
+    trackReleaseAlbum: HTMLSpanElement;
+    trackReleaseLabel: HTMLSpanElement;
+    trackReleaseYear: HTMLSpanElement;
+    trackReleaseCat: HTMLSpanElement;
+    trackTitleInline: HTMLSpanElement;
+    trackPositionInline: HTMLSpanElement;
+    trackGenreInline: HTMLSpanElement;
     lyricsPanel: HTMLElement;
     lyricsContent: HTMLPreElement;
     coverFrame: HTMLDivElement;
@@ -34,6 +42,7 @@ export const renderMediaControls = (): string => `
     <main class="player-shell">
       <div id="player-lane" class="player-lane">
       <section id="player-card" class="player-card">
+        <p id="track-artist-header" class="track-artist-header"></p>
         <div id="cover-frame" class="cover-frame" role="button" tabindex="0" aria-label="Flip cover art">
           <div id="cover-flipper" class="cover-flipper">
             <div class="cover-face cover-front">
@@ -53,6 +62,12 @@ export const renderMediaControls = (): string => `
             </div>
           </div>
         </div>
+        <div class="track-release-meta">
+          <span id="track-release-album" class="track-release-album"></span>
+          <span id="track-release-label" class="track-release-label"></span>
+          <span id="track-release-year" class="track-release-year"></span>
+          <span id="track-release-cat" class="track-release-cat"></span>
+        </div>
         <div class="track-meta">
           <div class="track-title-row">
             <p id="track-title" class="track-line track-title">Unknown Title</p>
@@ -63,7 +78,12 @@ export const renderMediaControls = (): string => `
         </div>
         <div class="time-row">
           <span id="current-time">0:00</span>
-          <button id="track-technical" class="track-technical" type="button" aria-label="Show track technical details" disabled></button>
+          <span class="track-time-center">
+            <button id="track-technical" class="track-technical" type="button" aria-label="Show track technical details" disabled></button>
+            <span id="track-title-inline" class="track-title-inline"></span>
+            <span id="track-position-inline" class="track-position-inline"></span>
+            <span id="track-genre-inline" class="track-genre-inline"></span>
+          </span>
           <span id="track-duration">0:00</span>
         </div>
         <input id="seek" class="slider" type="range" min="0" max="0" value="0" step="0.1">
@@ -94,9 +114,17 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     playerCard: root.querySelector('#player-card') as HTMLElement,
     trackTitle: root.querySelector('#track-title') as HTMLParagraphElement,
     trackAlbum: root.querySelector('#track-album') as HTMLParagraphElement,
-  trackPosition: root.querySelector('#track-position') as HTMLSpanElement,
+    trackPosition: root.querySelector('#track-position') as HTMLSpanElement,
     trackArtist: root.querySelector('#track-artist') as HTMLParagraphElement,
     trackTechnical: root.querySelector('#track-technical') as HTMLButtonElement,
+    trackArtistHeader: root.querySelector('#track-artist-header') as HTMLParagraphElement,
+    trackReleaseAlbum: root.querySelector('#track-release-album') as HTMLSpanElement,
+    trackReleaseLabel: root.querySelector('#track-release-label') as HTMLSpanElement,
+    trackReleaseYear: root.querySelector('#track-release-year') as HTMLSpanElement,
+    trackReleaseCat: root.querySelector('#track-release-cat') as HTMLSpanElement,
+    trackTitleInline: root.querySelector('#track-title-inline') as HTMLSpanElement,
+    trackPositionInline: root.querySelector('#track-position-inline') as HTMLSpanElement,
+    trackGenreInline: root.querySelector('#track-genre-inline') as HTMLSpanElement,
     lyricsPanel: root.querySelector('#lyrics-panel') as HTMLElement,
     lyricsContent: root.querySelector('#lyrics-content') as HTMLPreElement,
     coverFrame: root.querySelector('#cover-frame') as HTMLDivElement,

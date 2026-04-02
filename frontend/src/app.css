@@ -884,7 +884,10 @@
     opacity: 0.32;
 }
 
-.track-line[data-mb-url] {
+.track-line[data-mb-url],
+.track-release-album[data-mb-url],
+.track-title-inline[data-mb-url],
+.track-artist-header[data-mb-url] {
     cursor: inherit;
     text-decoration: none;
     transition: text-decoration-color 150ms ease;
@@ -897,7 +900,10 @@
     transition: text-decoration-color 150ms ease;
 }
 
-#app.ctrl-held .track-line[data-mb-url] {
+#app.ctrl-held .track-line[data-mb-url],
+#app.ctrl-held .track-release-album[data-mb-url],
+#app.ctrl-held .track-title-inline[data-mb-url],
+#app.ctrl-held .track-artist-header[data-mb-url] {
     cursor: pointer;
     text-decoration: underline;
     text-decoration-color: rgba(255, 255, 255, 0.3);
@@ -911,12 +917,203 @@
     text-underline-offset: 2px;
 }
 
-#app.ctrl-held .track-line[data-mb-url]:hover {
+#app.ctrl-held .track-line[data-mb-url]:hover,
+#app.ctrl-held .track-release-album[data-mb-url]:hover,
+#app.ctrl-held .track-title-inline[data-mb-url]:hover,
+#app.ctrl-held .track-artist-header[data-mb-url]:hover {
     text-decoration-color: rgba(255, 255, 255, 0.75);
 }
 
 #app.ctrl-held .track-artist-link[data-mb-url]:hover {
     text-decoration-color: rgba(255, 255, 255, 0.75);
+}
+
+/* New elements hidden by default — shown only in the release layout */
+.track-artist-header {
+    display: none;
+}
+
+.track-release-meta {
+    display: none;
+}
+
+.track-title-inline,
+.track-position-inline,
+.track-genre-inline {
+    display: none;
+}
+
+/* Release layout */
+.player-card.layout-release {
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+}
+
+.player-card.layout-release .track-artist-header {
+    display: block;
+    grid-row: 1;
+    margin: 0;
+    text-align: center;
+    font-size: clamp(0.9rem, 3.6cqw, 1.15rem);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.9;
+    min-height: 1.3em;
+    min-width: 0;
+}
+
+.player-card.layout-release #cover-frame {
+    grid-row: 2;
+}
+
+.player-card.layout-release .track-release-meta {
+    display: grid;
+    grid-row: 3;
+    grid-template-columns: 1fr minmax(0, 50%);
+    grid-template-rows: auto auto;
+    column-gap: 0.5rem;
+    row-gap: 0.18rem;
+}
+
+.track-release-album {
+    font-size: clamp(0.82rem, calc(1.6cqh + 0.55cqw), 1rem);
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: end;
+    min-height: 1.3em;
+    min-width: 0;
+}
+
+.track-release-label {
+    font-size: clamp(0.82rem, calc(1.6cqh + 0.55cqw), 1rem);
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+    min-height: 1.3em;
+    min-width: 0;
+}
+
+.track-release-year {
+    font-size: clamp(0.72rem, 2.4cqw, 0.86rem);
+    opacity: 0.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 1.3em;
+    min-width: 0;
+}
+
+.track-release-cat {
+    font-size: clamp(0.72rem, 2.4cqw, 0.86rem);
+    opacity: 0.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 1.3em;
+    min-width: 0;
+}
+
+.player-card.layout-release .track-meta {
+    display: none;
+}
+
+/* Time row: 2-row grid — genre sits above duration on the right;
+   current-time and song title occupy the bottom row. */
+.player-card.layout-release .time-row {
+    grid-row: 4;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+}
+
+.player-card.layout-release #seek {
+    grid-row: 5;
+}
+
+.player-card.layout-release .controls-row {
+    grid-row: 6;
+}
+
+.player-card.layout-release #track-technical {
+    display: none;
+}
+
+/* track-time-center is transparent in both layouts */
+.track-time-center {
+    display: contents;
+}
+
+/* Explicitly place each time-row child in the release layout */
+.player-card.layout-release #current-time {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+}
+
+.player-card.layout-release .track-title-inline {
+    display: block;
+    grid-column: 2;
+    grid-row: 2;
+    text-align: center;
+    justify-self: stretch;
+    align-self: center;
+    min-width: 0;
+}
+
+.player-card.layout-release .track-position-inline {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+    text-align: center;
+    justify-self: center;
+    min-height: 1.3em;
+}
+
+.player-card.layout-release .track-genre-inline {
+    display: block;
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    text-align: right;
+    min-height: 1.3em;
+}
+
+.player-card.layout-release #track-duration {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+}
+
+.track-title-inline {
+    font-weight: 600;
+    font-size: clamp(0.72rem, 2.6cqw, 0.9rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.track-genre-inline {
+    font-size: clamp(0.68rem, 2.2cqw, 0.82rem);
+    opacity: 0.65;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .time-row {

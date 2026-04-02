@@ -196,6 +196,8 @@ export type AudioPlaybackState = {
 
 export type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
 
+export type PlayerCardLayout = 'default' | 'release';
+
 export type AppSettings = {
     libraryPath: string;
     listenBrainzUserToken: string;

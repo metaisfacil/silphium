@@ -84,6 +84,7 @@ import type {
     LibraryScanResult,
     LibrarySearchPage,
     MusicBrainzEntityType,
+    PlayerCardLayout,
     PlaybackOrderMode,
     PlaylistLoadResult,
     TextLibraryFile,
@@ -197,6 +198,14 @@ const {
     trackPosition,
     trackArtist,
     trackTechnical,
+    trackArtistHeader,
+    trackReleaseAlbum,
+    trackReleaseLabel,
+    trackReleaseYear,
+    trackReleaseCat,
+    trackTitleInline,
+    trackPositionInline,
+    trackGenreInline,
     lyricsPanel,
     lyricsContent,
     coverFrame,
@@ -240,6 +249,43 @@ const openMbOnCtrlClick = (event: MouseEvent, target: HTMLElement): void => {
 
 const setCtrlHeldState = (held: boolean): void => {
     app.classList.toggle('ctrl-held', held);
+};
+
+const PLAYER_CARD_LAYOUT_KEY = 'playerCardLayout';
+
+const getStoredLayout = (): PlayerCardLayout =>
+    localStorage.getItem(PLAYER_CARD_LAYOUT_KEY) === 'release' ? 'release' : 'default';
+
+const applyPlayerCardLayout = (layout: PlayerCardLayout): void => {
+    playerCard.classList.toggle('layout-release', layout === 'release');
+    localStorage.setItem(PLAYER_CARD_LAYOUT_KEY, layout);
+};
+
+const getFirstTag = (tags: Record<string, string[]>, ...keys: string[]): string => {
+    for (const key of keys) {
+        for (const [k, v] of Object.entries(tags)) {
+            if (k.toLowerCase() === key && v.length > 0 && v[0]) {
+                return v[0];
+            }
+        }
+    }
+    return '';
+};
+
+const getReleaseLabel = (tags: Record<string, string[]>): string =>
+    getFirstTag(tags, 'organization', 'label', 'publisher');
+
+const getReleaseCat = (tags: Record<string, string[]>): string =>
+    getFirstTag(tags, 'catalognumber', 'catalogid', 'catalog');
+
+const containsNonLatinChars = (text: string): boolean =>
+    /[^\u0000-\u024F\u1E00-\u1EFF]/u.test(text);
+
+const formatSortArtist = (artist: string, sortName: string): string => {
+    if (!sortName || sortName === artist || !containsNonLatinChars(artist)) {
+        return artist;
+    }
+    return `${sortName} (${artist})`;
 };
 
 const trackMetaClickSuppressDurationMs = 280;
@@ -312,6 +358,69 @@ trackArtist.addEventListener('contextmenu', (event) => {
     trackMetaMenuTarget = nestedLink instanceof HTMLElement && trackArtist.contains(nestedLink)
         ? nestedLink
         : (firstArtistLink instanceof HTMLElement ? firstArtistLink : trackArtist);
+
+    openTrackMetaMenu(event.clientX, event.clientY, false);
+});
+trackTitleInline.addEventListener('click', (event) => {
+    if (shouldBlockTrackMetaModalOpen()) {
+        return;
+    }
+
+    if (event.ctrlKey) {
+        openMbOnCtrlClick(event, trackTitleInline);
+        return;
+    }
+
+    void openMusicBrainzEntityForCurrentTrack('recording');
+});
+trackTitleInline.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    trackMetaMenuTarget = trackTitleInline;
+    openTrackMetaMenu(event.clientX, event.clientY, true);
+});
+trackReleaseAlbum.addEventListener('click', (event) => {
+    if (shouldBlockTrackMetaModalOpen()) {
+        return;
+    }
+
+    if (event.ctrlKey) {
+        openMbOnCtrlClick(event, trackReleaseAlbum);
+        return;
+    }
+
+    void openMusicBrainzEntityForCurrentTrack('release');
+});
+trackReleaseAlbum.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    trackMetaMenuTarget = trackReleaseAlbum;
+    openTrackMetaMenu(event.clientX, event.clientY, false);
+});
+trackArtistHeader.addEventListener('click', (event) => {
+    if (shouldBlockTrackMetaModalOpen()) {
+        return;
+    }
+
+    if (event.ctrlKey) {
+        openMbOnCtrlClick(event, trackArtistHeader);
+        return;
+    }
+
+    void openMusicBrainzEntityForCurrentTrack('artist');
+});
+trackArtistHeader.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const eventTarget = event.target;
+    const nestedLink = eventTarget instanceof HTMLElement
+        ? eventTarget.closest('[data-mb-url]')
+        : null;
+    const firstArtistLink = trackArtistHeader.querySelector('[data-mb-url]');
+    trackMetaMenuTarget = nestedLink instanceof HTMLElement && trackArtistHeader.contains(nestedLink)
+        ? nestedLink
+        : (firstArtistLink instanceof HTMLElement ? firstArtistLink : trackArtistHeader);
 
     openTrackMetaMenu(event.clientX, event.clientY, false);
 });
@@ -624,11 +733,28 @@ const refreshNowPlayingLabel = (): void => {
     trackArtist.textContent = activeTrack.displayArtist;
     trackTechnical.textContent = activeTrack.displayTechnical || 'Details';
     trackTechnical.disabled = false;
+    trackReleaseAlbum.textContent = activeTrack.displayAlbum;
+    trackTitleInline.textContent = activeTrack.displayTitle;
+    const num = activeTrack.displayTrackNumber.trim();
+    const total = activeTrack.displayTrackTotal.trim();
+    trackPositionInline.textContent = num && total ? `${num}/${total}` : num || '';
+    const fileTags = activeTrack.allFileTags;
+    trackReleaseLabel.textContent = getReleaseLabel(fileTags);
+    trackReleaseCat.textContent = getReleaseCat(fileTags);
+    trackReleaseYear.textContent = getFirstTag(fileTags, 'date', 'year', 'originaldate', 'releasedate');
+    trackGenreInline.textContent = getFirstTag(fileTags, 'genre');
+    const artistSortName = getFirstTag(fileTags, 'artistsort', 'sortartist', 'artist_sort');
+    const headerArtistText = formatSortArtist(activeTrack.displayArtist, artistSortName);
     refreshLyricsPanel();
-    applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds, {
+    const mbLinkOptions = {
         artistText: activeTrack.displayArtist,
         artistMbids: activeTrack.artistMbids,
         artistCredits: activeTrack.mbArtistCredits,
+    };
+    applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds, mbLinkOptions);
+    applyMbLinks(trackTitleInline, trackReleaseAlbum, trackArtistHeader, activeTrack.mbIds, {
+        ...mbLinkOptions,
+        artistText: headerArtistText,
     });
 
     playlistController.scheduleRender();
@@ -1105,10 +1231,19 @@ const clearLibrarySelection = async (): Promise<void> => {
     trackArtist.textContent = 'Unknown Artist';
     trackTechnical.textContent = '';
     trackTechnical.disabled = true;
+    trackArtistHeader.textContent = '';
+    trackReleaseAlbum.textContent = '';
+    trackReleaseLabel.textContent = '';
+    trackReleaseCat.textContent = '';
+    trackReleaseYear.textContent = '';
+    trackTitleInline.textContent = '';
+    trackPositionInline.textContent = '';
+    trackGenreInline.textContent = '';
     lyricsContent.textContent = '';
     playerLane.classList.remove('lyrics-visible');
     lyricsPanel.setAttribute('aria-hidden', 'true');
     applyMbLinks(trackTitle, trackAlbum, trackArtist, {});
+    applyMbLinks(trackTitleInline, trackReleaseAlbum, trackArtistHeader, {});
 
     coverArt.removeAttribute('src');
     coverArtBackground.removeAttribute('src');
@@ -1179,6 +1314,8 @@ const handleLibraryScanUpdatedEvent = async (scanResult: LibraryScanResult): Pro
 };
 
 const initializeSettings = async (): Promise<void> => {
+    applyPlayerCardLayout(getStoredLayout());
+
     try {
         const settings = await GetSettings() as AppSettings;
         currentSettings = {
@@ -1569,6 +1706,13 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         trackArtist.textContent = 'Unknown Artist';
         trackTechnical.textContent = '';
         trackTechnical.disabled = true;
+        trackArtistHeader.textContent = '';
+        trackReleaseAlbum.textContent = '';
+        trackReleaseLabel.textContent = '';
+    trackReleaseCat.textContent = '';
+        trackReleaseYear.textContent = '';
+        trackTitleInline.textContent = '';
+        trackGenreInline.textContent = '';
         lyricsContent.textContent = '';
         playerLane.classList.remove('lyrics-visible');
         lyricsPanel.setAttribute('aria-hidden', 'true');
@@ -1647,6 +1791,8 @@ settingsController = createSettingsController({
     forceReload: async ({ libraryPath: requestedLibraryPath }): Promise<void> => {
         await applyLibraryPath(requestedLibraryPath || '');
     },
+    getPlayerCardLayout: getStoredLayout,
+    setPlayerCardLayout: applyPlayerCardLayout,
 });
 
 playlistController = createPlaylistController({
@@ -2061,7 +2207,7 @@ document.addEventListener('contextmenu', (event) => {
         closeSidebarQueueMenu();
     }
 
-    if (trackTitle.contains(target) || trackAlbum.contains(target) || trackArtist.contains(target) || trackMetaMenu.contains(target)) {
+    if (trackTitle.contains(target) || trackAlbum.contains(target) || trackArtist.contains(target) || trackTitleInline.contains(target) || trackReleaseAlbum.contains(target) || trackArtistHeader.contains(target) || trackMetaMenu.contains(target)) {
         return;
     }
 
