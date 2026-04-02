@@ -181,6 +181,25 @@
     animation: sidebar-toggle-spin 0.75s linear infinite;
 }
 
+.sidebar-toggle.is-loading.has-loading-eta {
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 2rem;
+    padding: 0.44rem 0.72rem 0.44rem 2.22rem;
+    color: rgba(255, 255, 255, 0.92);
+    background: rgba(0, 0, 0, 0.36);
+    line-height: 1;
+    font-size: 0.72rem;
+    letter-spacing: 0.01em;
+}
+
+.sidebar-toggle.is-loading.has-loading-eta::after {
+    inset: calc(50% - 0.5rem) auto auto 0.62rem;
+    margin: 0;
+}
+
 .about-toggle {
     position: fixed;
     top: 0.9rem;

@@ -63,6 +63,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     let sidebarAutoFolderPath = '';
     let libraryIndexTruncated = false;
     let libraryLoading = false;
+    let libraryLoadingEtaSeconds: number | null = null;
+    let libraryLoadingStatusLabel = '';
     let librarySearchQuery = '';
     let librarySearchPending = false;
     let librarySearchResultQuery = '';
@@ -83,12 +85,44 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     const getTextFiles = (): TextLibraryFile[] => options.getTextFiles();
     const getImageFiles = (): ImageLibraryFile[] => options.getImageFiles();
 
+    const formatLibraryLoadingEtaLabel = (): string => {
+        if (libraryLoadingEtaSeconds === null || !Number.isFinite(libraryLoadingEtaSeconds) || libraryLoadingEtaSeconds <= 0) {
+            return '';
+        }
+
+        const wholeSeconds = Math.max(1, Math.ceil(libraryLoadingEtaSeconds));
+        if (wholeSeconds < 60) {
+            return `~${wholeSeconds}s`;
+        }
+
+        const minutes = Math.floor(wholeSeconds / 60);
+        const seconds = wholeSeconds % 60;
+        if (seconds === 0) {
+            return `~${minutes}m`;
+        }
+
+        return `~${minutes}m ${seconds}s`;
+    };
+
+    const loadingIndicatorLabel = (): string => {
+        if (libraryLoadingStatusLabel) {
+            return libraryLoadingStatusLabel;
+        }
+
+        return formatLibraryLoadingEtaLabel();
+    };
+
     const refreshSidebarToggleState = (): void => {
         sidebarToggle.classList.toggle('is-loading', libraryLoading);
-        sidebarToggle.textContent = libraryLoading ? '' : '‣‣‣';
+        const loadingEtaLabel = libraryLoading && !sidebarOpen ? loadingIndicatorLabel() : '';
+        sidebarToggle.classList.toggle('has-loading-eta', loadingEtaLabel !== '');
+        sidebarToggle.textContent = libraryLoading ? loadingEtaLabel : '‣‣‣';
 
         if (libraryLoading) {
-            sidebarToggle.setAttribute('aria-label', 'Loading library');
+            const ariaLabel = loadingEtaLabel
+                ? `Loading library, ${loadingEtaLabel.startsWith('~') ? `about ${loadingEtaLabel.slice(1)} remaining` : loadingEtaLabel}`
+                : 'Loading library';
+            sidebarToggle.setAttribute('aria-label', ariaLabel);
             sidebarToggle.setAttribute('aria-busy', 'true');
             return;
         }
@@ -103,6 +137,33 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         libraryLoading = loading;
+        if (!loading) {
+            libraryLoadingEtaSeconds = null;
+            libraryLoadingStatusLabel = '';
+        }
+        refreshSidebarToggleState();
+    };
+
+    const setLibraryLoadingEtaSeconds = (secondsRemaining: number | null): void => {
+        const normalized = (secondsRemaining === null || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0)
+            ? null
+            : Math.ceil(secondsRemaining);
+
+        if (libraryLoadingEtaSeconds === normalized) {
+            return;
+        }
+
+        libraryLoadingEtaSeconds = normalized;
+        refreshSidebarToggleState();
+    };
+
+    const setLibraryLoadingStatusLabel = (label: string): void => {
+        const normalized = label.trim();
+        if (libraryLoadingStatusLabel === normalized) {
+            return;
+        }
+
+        libraryLoadingStatusLabel = normalized;
         refreshSidebarToggleState();
     };
 
@@ -1176,6 +1237,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             currentFolderPath = path;
         },
         setLibraryLoading,
+        setLibraryLoadingEtaSeconds,
+        setLibraryLoadingStatusLabel,
         setLibraryPathMessage: (message: string) => {
             libraryPath.innerHTML = '';
             libraryPath.textContent = message;

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 )
 
 const libraryScanUpdatedEvent = "silphium:library:scan-updated"
+const libraryScanProgressEvent = "silphium:library:scan-progress"
 
 // AppVersion is set at build time via -ldflags "-X main.AppVersion=...".
 var AppVersion = "dev"
@@ -48,6 +50,7 @@ type App struct {
 	textByPath     map[string]LibraryIndexedFile
 	imageByPath    map[string]LibraryIndexedFile
 	libraryScan    LibraryScanResult
+	scanFinalizeMs float64
 }
 
 // LibraryIndexedFile represents a discovered file with normalized library-relative metadata.
@@ -69,6 +72,16 @@ type LibraryScanResult struct {
 	TotalEntries      int                  `json:"totalEntries"`
 	Truncated         bool                 `json:"truncated"`
 	EntryLimit        int                  `json:"entryLimit"`
+}
+
+// LibraryScanProgress reports scan progress and an ETA for long-running scans.
+type LibraryScanProgress struct {
+	RootPath       string `json:"rootPath"`
+	EntriesScanned int    `json:"entriesScanned"`
+	TotalEntries   int    `json:"totalEntries"`
+	ElapsedMs      int64  `json:"elapsedMs"`
+	EtaSeconds     int    `json:"etaSeconds"`
+	Phase          string `json:"phase"`
 }
 
 // PlaylistLoadResult contains parsed playlist metadata and indexed tracks.
@@ -442,6 +455,120 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	result.RootPath = cleanRoot
 	result.RootName = filepath.Base(cleanRoot)
 
+	totalEntries := 0
+	_ = filepath.WalkDir(cleanRoot, func(currentPath string, _ fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+
+		if currentPath == cleanRoot {
+			return nil
+		}
+
+		totalEntries++
+		return nil
+	})
+
+	scanStartedAt := time.Now()
+	lastProgressEmit := time.Time{}
+	scannedEntries := 0
+	finalizationStartedAt := time.Time{}
+	finalizationBudgetMs := 0.0
+
+	a.indexMu.Lock()
+	learnedFinalizeMs := a.scanFinalizeMs
+	a.indexMu.Unlock()
+
+	estimateFinalizationBudgetMs := func(elapsed time.Duration, entriesDone int) float64 {
+		if learnedFinalizeMs > 0 {
+			return learnedFinalizeMs
+		}
+
+		if totalEntries <= 0 {
+			return 8000
+		}
+
+		if entriesDone <= 0 {
+			entriesDone = 1
+		}
+
+		progress := float64(entriesDone) / float64(totalEntries)
+		if progress < 0.02 {
+			progress = 0.02
+		}
+
+		estimatedScanTotalMs := float64(elapsed.Milliseconds()) / progress
+		fallback := estimatedScanTotalMs * 0.22
+		if fallback < 4000 {
+			fallback = 4000
+		}
+		if fallback > 180000 {
+			fallback = 180000
+		}
+
+		return fallback
+	}
+
+	emitProgress := func(force bool, phase string) {
+		if a.ctx == nil || totalEntries <= 0 {
+			return
+		}
+
+		now := time.Now()
+		if !force {
+			if !lastProgressEmit.IsZero() && now.Sub(lastProgressEmit) < 120*time.Millisecond {
+				return
+			}
+		}
+
+		elapsed := now.Sub(scanStartedAt)
+		etaSeconds := 0
+		if phase == "scanning" {
+			remainingScanSeconds := 0.0
+			if scannedEntries < totalEntries {
+				elapsedSeconds := elapsed.Seconds()
+				if elapsedSeconds > 0 && scannedEntries > 0 {
+					rate := float64(scannedEntries) / elapsedSeconds
+					if rate > 0 {
+						remainingEntries := totalEntries - scannedEntries
+						remainingScanSeconds = float64(remainingEntries) / rate
+					}
+				}
+			}
+
+			remainingFinalizeSeconds := estimateFinalizationBudgetMs(elapsed, scannedEntries) / 1000
+			etaSeconds = int(math.Ceil(remainingScanSeconds + remainingFinalizeSeconds))
+		} else if phase == "finalizing" {
+			if finalizationBudgetMs <= 0 {
+				finalizationBudgetMs = estimateFinalizationBudgetMs(elapsed, scannedEntries)
+			}
+
+			elapsedFinalizationMs := 0.0
+			if !finalizationStartedAt.IsZero() {
+				elapsedFinalizationMs = float64(now.Sub(finalizationStartedAt).Milliseconds())
+			}
+
+			remainingMs := finalizationBudgetMs - elapsedFinalizationMs
+			if remainingMs < 0 {
+				remainingMs = 0
+			}
+
+			etaSeconds = int(math.Ceil(remainingMs / 1000))
+		}
+
+		runtime.EventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
+			RootPath:       cleanRoot,
+			EntriesScanned: scannedEntries,
+			TotalEntries:   totalEntries,
+			ElapsedMs:      elapsed.Milliseconds(),
+			EtaSeconds:     etaSeconds,
+			Phase:          phase,
+		})
+		lastProgressEmit = now
+	}
+
+	emitProgress(true, "scanning")
+
 	selectedCoverPriority := make(map[string]int)
 	selectedCoverName := make(map[string]string)
 
@@ -455,6 +582,8 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		}
 
 		result.TotalEntries++
+		scannedEntries++
+		emitProgress(false, "scanning")
 
 		if entry.IsDir() {
 			return nil
@@ -501,8 +630,16 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	})
 
 	if scanErr != nil {
+		finalizationStartedAt = time.Now()
+		finalizationBudgetMs = estimateFinalizationBudgetMs(finalizationStartedAt.Sub(scanStartedAt), scannedEntries)
+		emitProgress(true, "finalizing")
 		return result
 	}
+
+	scannedEntries = totalEntries
+	finalizationStartedAt = time.Now()
+	finalizationBudgetMs = estimateFinalizationBudgetMs(finalizationStartedAt.Sub(scanStartedAt), scannedEntries)
+	emitProgress(true, "finalizing")
 
 	sort.SliceStable(result.TrackFiles, func(i int, j int) bool {
 		left := strings.ToLower(result.TrackFiles[i].RelativePath)
@@ -526,6 +663,17 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	a.setLibraryIndexFromScan(result)
 	if restartWatcher {
 		a.startLibraryWatcher(cleanRoot)
+	}
+
+	actualFinalizationMs := float64(time.Since(finalizationStartedAt).Milliseconds())
+	if actualFinalizationMs > 0 {
+		a.indexMu.Lock()
+		if a.scanFinalizeMs <= 0 {
+			a.scanFinalizeMs = actualFinalizationMs
+		} else {
+			a.scanFinalizeMs = (a.scanFinalizeMs * 0.72) + (actualFinalizationMs * 0.28)
+		}
+		a.indexMu.Unlock()
 	}
 
 	return result

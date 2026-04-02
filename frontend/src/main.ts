@@ -67,6 +67,7 @@ import type {
     AppSettings,
     AudioPlaybackState,
     ImageLibraryFile,
+    LibraryScanProgress,
     LibraryScanResult,
     MusicBrainzEntityType,
     PlaybackOrderMode,
@@ -322,6 +323,35 @@ let playlistController: PlaylistController;
 let artistInfoController: ArtistInfoController;
 let imageModalController: ImageModalController;
 let libraryController: LibraryController;
+let libraryClientFinalizeEstimateMs = 0;
+let activeLibraryLoadScanResolvedAtMs: number | null = null;
+
+const beginLibraryLoadTracking = (): void => {
+    activeLibraryLoadScanResolvedAtMs = null;
+};
+
+const markLibraryScanResolved = (): void => {
+    activeLibraryLoadScanResolvedAtMs = performance.now();
+};
+
+const finishLibraryLoadTracking = (): void => {
+    if (activeLibraryLoadScanResolvedAtMs === null) {
+        return;
+    }
+
+    const clientFinalizeMs = Math.max(0, performance.now() - activeLibraryLoadScanResolvedAtMs);
+    activeLibraryLoadScanResolvedAtMs = null;
+    if (!Number.isFinite(clientFinalizeMs) || clientFinalizeMs <= 0) {
+        return;
+    }
+
+    if (libraryClientFinalizeEstimateMs <= 0) {
+        libraryClientFinalizeEstimateMs = clientFinalizeMs;
+        return;
+    }
+
+    libraryClientFinalizeEstimateMs = (libraryClientFinalizeEstimateMs * 0.7) + (clientFinalizeMs * 0.3);
+};
 
 const canScrobble = (): boolean => currentSettings.listenBrainzUserToken.trim() !== '';
 
@@ -991,6 +1021,22 @@ const clearLibrarySelection = async (): Promise<void> => {
     libraryController.renderFolder('none');
 };
 
+const updateLibraryLoadingEtaFromProgress = (progress: LibraryScanProgress): void => {
+    libraryController.setLibraryLoadingStatusLabel('');
+    const clientTailSeconds = libraryClientFinalizeEstimateMs > 0
+        ? Math.max(1, Math.ceil(libraryClientFinalizeEstimateMs / 1000))
+        : 0;
+
+    if (!progress || !Number.isFinite(progress.etaSeconds)) {
+        libraryController.setLibraryLoadingEtaSeconds(clientTailSeconds > 0 ? clientTailSeconds : null);
+        return;
+    }
+
+    const backendSeconds = Math.max(0, Math.ceil(progress.etaSeconds));
+    const blendedEtaSeconds = backendSeconds + clientTailSeconds;
+    libraryController.setLibraryLoadingEtaSeconds(blendedEtaSeconds > 0 ? blendedEtaSeconds : null);
+};
+
 const applyLibraryPath = async (selectedPath: string): Promise<void> => {
     const cleanPath = selectedPath.trim();
     if (!cleanPath) {
@@ -998,12 +1044,20 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
         return;
     }
 
+    beginLibraryLoadTracking();
     libraryController.setLibraryLoading(true);
+    libraryController.setLibraryLoadingEtaSeconds(null);
+    libraryController.setLibraryLoadingStatusLabel('');
     try {
         libraryController.setLibraryPathMessage('Scanning folder…');
         const scanResult = await ScanLibraryFolder(cleanPath) as LibraryScanResult;
+        markLibraryScanResolved();
+        if (libraryClientFinalizeEstimateMs > 0) {
+            libraryController.setLibraryLoadingEtaSeconds(Math.max(1, Math.ceil(libraryClientFinalizeEstimateMs / 1000)));
+        }
         await loadLibraryScan(scanResult);
     } finally {
+        finishLibraryLoadTracking();
         libraryController.setLibraryLoading(false);
     }
 };
@@ -1110,10 +1164,17 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
             const failedRelativePath = track.relativePath.toLowerCase();
             const failedName = track.name.toLowerCase();
 
+            beginLibraryLoadTracking();
             libraryController.setLibraryLoading(true);
+            libraryController.setLibraryLoadingEtaSeconds(null);
+            libraryController.setLibraryLoadingStatusLabel('');
             try {
                 libraryController.setLibraryPathMessage('Track missing. Rescanning folder…');
                 const scanResult = await ScanLibraryFolder(currentSettings.libraryPath.trim()) as LibraryScanResult;
+                markLibraryScanResolved();
+                if (libraryClientFinalizeEstimateMs > 0) {
+                    libraryController.setLibraryLoadingEtaSeconds(Math.max(1, Math.ceil(libraryClientFinalizeEstimateMs / 1000)));
+                }
                 await loadLibraryScan(scanResult, { autoSelectStartingTrack: false });
 
                 let recoveredIndex = tracks.findIndex((candidate) => candidate.path.toLowerCase() === failedTrackPath);
@@ -1131,6 +1192,7 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
             } catch (rescanError) {
                 console.error(rescanError);
             } finally {
+                finishLibraryLoadTracking();
                 libraryController.setLibraryLoading(false);
             }
         }
@@ -1408,12 +1470,13 @@ settingsController = createSettingsController({
             playlistController.refreshFavorites();
 
             resetShuffleHistory();
-
-            await applyLibraryPath(savedSettings.libraryPath || '');
         } catch (error) {
             console.error(error);
             libraryController.setLibraryPathMessage('Unable to save settings.');
         }
+    },
+    forceReload: async ({ libraryPath: requestedLibraryPath }): Promise<void> => {
+        await applyLibraryPath(requestedLibraryPath || '');
     },
 });
 
@@ -1882,6 +1945,10 @@ EventsOn('silphium:library:scan-updated', (scanResult: LibraryScanResult) => {
     void handleLibraryScanUpdatedEvent(scanResult).catch((error) => {
         console.error(error);
     });
+});
+
+EventsOn('silphium:library:scan-progress', (scanProgress: LibraryScanProgress) => {
+    updateLibraryLoadingEtaFromProgress(scanProgress);
 });
 
 updatePlayButton();

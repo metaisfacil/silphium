@@ -121,6 +121,15 @@ export type LibraryScanResult = {
     entryLimit: number;
 };
 
+export type LibraryScanProgress = {
+    rootPath: string;
+    entriesScanned: number;
+    totalEntries: number;
+    elapsedMs: number;
+    etaSeconds: number;
+    phase: 'scanning' | 'finalizing';
+};
+
 export type PlaylistLoadResult = {
     name: string;
     trackFiles: LibraryIndexedFile[];

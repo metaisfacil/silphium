@@ -10,6 +10,7 @@ export type SettingsModalElements = {
     settingsFavoritePlaylistList: HTMLUListElement;
     settingsAddFavoritePlaylist: HTMLButtonElement;
     settingsRemoveFavoritePlaylist: HTMLButtonElement;
+    settingsForceReload: HTMLButtonElement;
     settingsSave: HTMLButtonElement;
     settingsLibraryPath: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
@@ -71,6 +72,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <p id="settings-status" class="settings-status"></p>
                 <div class="settings-actions">
+                    <button id="settings-force-reload" class="settings-secondary-btn" type="button">Force Reload</button>
                     <button id="settings-save" class="upload-btn" type="button">Save</button>
                 </div>
             </div>
@@ -90,6 +92,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsFavoritePlaylistList: root.querySelector('#settings-favourite-playlist-list') as HTMLUListElement,
     settingsAddFavoritePlaylist: root.querySelector('#settings-add-favorite-playlist') as HTMLButtonElement,
     settingsRemoveFavoritePlaylist: root.querySelector('#settings-remove-favorite-playlist') as HTMLButtonElement,
+    settingsForceReload: root.querySelector('#settings-force-reload') as HTMLButtonElement,
     settingsSave: root.querySelector('#settings-save') as HTMLButtonElement,
     settingsLibraryPath: root.querySelector('#settings-library-path') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,

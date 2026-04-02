@@ -15,6 +15,7 @@ type SettingsControllerOptions = {
     selectLibraryFolder: () => Promise<string>;
     selectPlaylistFile: () => Promise<string>;
     save: (values: SettingsFormValues) => Promise<void>;
+    forceReload: (values: SettingsFormValues) => Promise<void>;
 };
 
 export type SettingsController = ReturnType<typeof createSettingsController>;
@@ -33,6 +34,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsFavoritePlaylistList,
         settingsAddFavoritePlaylist,
         settingsRemoveFavoritePlaylist,
+        settingsForceReload,
         settingsSave,
         settingsLibraryPath,
         settingsListenBrainzToken,
@@ -225,6 +227,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         settingsSave.disabled = true;
+        settingsForceReload.disabled = true;
         const formValues: SettingsFormValues = {
             libraryPath: settingsLibraryPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
@@ -237,6 +240,37 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         try {
             await options.save(formValues);
         } finally {
+            settingsSave.disabled = false;
+            settingsForceReload.disabled = false;
+        }
+    });
+
+    settingsForceReload.addEventListener('click', async () => {
+        if (settingsForceReload.disabled || settingsSave.disabled) {
+            return;
+        }
+
+        const formValues: SettingsFormValues = {
+            libraryPath: settingsLibraryPath.value,
+            listenBrainzUserToken: settingsListenBrainzToken.value,
+            releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
+            favoritePlaylists: favoritePlaylists.slice(),
+            preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
+        };
+
+        settingsStatus.textContent = 'Reloading library...';
+        settingsForceReload.disabled = true;
+        settingsSave.disabled = true;
+
+        try {
+            await options.save(formValues);
+            await options.forceReload(formValues);
+            settingsStatus.textContent = 'Library reloaded.';
+        } catch (error) {
+            console.error(error);
+            settingsStatus.textContent = 'Unable to force reload library.';
+        } finally {
+            settingsForceReload.disabled = false;
             settingsSave.disabled = false;
         }
     });
