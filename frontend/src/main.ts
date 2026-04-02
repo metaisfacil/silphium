@@ -6,6 +6,7 @@ import { createSettingsController, type SettingsController } from './controllers
 import { getMediaControlsElements, renderMediaControls } from './components/media-controls';
 import {
     getImageFileModalElements,
+    getMusicBrainzEntityModalElements,
     getPlayOrderMenuElements,
     getPlaylistMenuElements,
     getPlaylistModalElements,
@@ -14,6 +15,7 @@ import {
     getTextFileModalElements,
     getTrackMetaMenuElements,
     renderImageFileModal,
+    renderMusicBrainzEntityModal,
     renderPlayOrderMenu,
     renderPlaylistMenu,
     renderPlaylistModal,
@@ -202,6 +204,26 @@ type AppSettings = {
 
 type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
 
+type MusicBrainzEntityType = 'recording' | 'release' | 'artist';
+
+type MusicBrainzEntityFact = {
+    label: string;
+    value: string;
+};
+
+type MusicBrainzEntityInfo = {
+    found: boolean;
+    entityType: string;
+    mbid: string;
+    title: string;
+    subtitle: string;
+    summary: string;
+    facts: MusicBrainzEntityFact[];
+    tags: string[];
+    urls: ArtistExternalUrl[];
+    rawJson: string;
+};
+
 const app = document.querySelector('#app');
 
 if (!app) {
@@ -217,6 +239,7 @@ app.innerHTML = `
     ${renderMediaControls()}
     ${renderTextFileModal()}
     ${renderImageFileModal()}
+    ${renderMusicBrainzEntityModal()}
     ${renderTechnicalInfoModal()}
     ${renderSettingsModal()}
     ${renderPlayOrderMenu()}
@@ -250,6 +273,7 @@ let playbackState: AudioPlaybackState = {
 };
 let playbackPollHandle: number | undefined;
 let imageModalHideTimer: number | undefined;
+let musicBrainzEntityModalHideTimer: number | undefined;
 let technicalInfoModalHideTimer: number | undefined;
 let isSeeking = false;
 let backendReady = false;
@@ -280,6 +304,7 @@ const coverUrlByFolder = new Map<string, string>();
 const artistInfoByMBID = new Map<string, ArtistDetails>();
 const librarySearchDebounceMs = 140;
 const librarySearchBatchSize = 300;
+const musicBrainzEntityModalTransitionMs = 220;
 const technicalInfoModalTransitionMs = 220;
 
 const { sidebarToggle, librarySidebar, librarySettings, libraryBack, libraryPath, librarySearch, libraryBrowser } = getSidebarElements(document);
@@ -326,7 +351,12 @@ const setCtrlHeldState = (held: boolean): void => {
 };
 
 trackTitle.addEventListener('click', (event) => {
-    openMbOnCtrlClick(event, trackTitle);
+    if (event.ctrlKey) {
+        openMbOnCtrlClick(event, trackTitle);
+        return;
+    }
+
+    void openMusicBrainzEntityForCurrentTrack('recording');
 });
 trackTitle.addEventListener('contextmenu', (event) => {
     event.preventDefault();
@@ -335,7 +365,12 @@ trackTitle.addEventListener('contextmenu', (event) => {
     openTrackMetaMenu(event.clientX, event.clientY, true);
 });
 trackAlbum.addEventListener('click', (event) => {
-    openMbOnCtrlClick(event, trackAlbum);
+    if (event.ctrlKey) {
+        openMbOnCtrlClick(event, trackAlbum);
+        return;
+    }
+
+    void openMusicBrainzEntityForCurrentTrack('release');
 });
 trackAlbum.addEventListener('contextmenu', (event) => {
     event.preventDefault();
@@ -344,7 +379,12 @@ trackAlbum.addEventListener('contextmenu', (event) => {
     openTrackMetaMenu(event.clientX, event.clientY, false);
 });
 trackArtist.addEventListener('click', (event) => {
-    openMbOnCtrlClick(event, trackArtist);
+    if (event.ctrlKey) {
+        openMbOnCtrlClick(event, trackArtist);
+        return;
+    }
+
+    void openMusicBrainzEntityForCurrentTrack('artist');
 });
 trackArtist.addEventListener('contextmenu', (event) => {
     event.preventDefault();
@@ -356,6 +396,13 @@ const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
 const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileClose } = getTextFileModalElements(document);
 const { imageFileModal, imageFileBackdrop, imageFilePreview } = getImageFileModalElements(document);
+const {
+    musicBrainzEntityModal,
+    musicBrainzEntityBackdrop,
+    musicBrainzEntityTitle,
+    musicBrainzEntityContent,
+    musicBrainzEntityClose,
+} = getMusicBrainzEntityModalElements(document);
 const { technicalInfoModal, technicalInfoBackdrop, technicalInfoTitle, technicalInfoContent, technicalInfoClose } = getTechnicalInfoModalElements(document);
 const settingsElements = getSettingsModalElements(document);
 const { playOrderMenu } = getPlayOrderMenuElements(document);
@@ -2010,6 +2057,227 @@ const renderTechnicalInfoContent = (track: Track): void => {
     technicalInfoContent.append(tagSection);
 };
 
+const emptyMusicBrainzEntityInfo = (entityType: MusicBrainzEntityType, mbid: string): MusicBrainzEntityInfo => ({
+    found: false,
+    entityType,
+    mbid,
+    title: '',
+    subtitle: '',
+    summary: '',
+    facts: [],
+    tags: [],
+    urls: [],
+    rawJson: '',
+});
+
+const lookupMusicBrainzEntity = async (entityType: MusicBrainzEntityType, mbid: string): Promise<MusicBrainzEntityInfo> => {
+    const appApi = (window as {
+        go?: {
+            main?: {
+                App?: {
+                    LookupMusicBrainzEntity?: (type: string, id: string) => Promise<MusicBrainzEntityInfo>;
+                };
+            };
+        };
+    }).go?.main?.App;
+
+    if (!appApi?.LookupMusicBrainzEntity) {
+        return emptyMusicBrainzEntityInfo(entityType, mbid);
+    }
+
+    try {
+        return await appApi.LookupMusicBrainzEntity(entityType, mbid);
+    } catch (error) {
+        console.error(error);
+        return emptyMusicBrainzEntityInfo(entityType, mbid);
+    }
+};
+
+const mbidForTrackEntity = (track: Track, entityType: MusicBrainzEntityType): string => {
+    if (entityType === 'recording') {
+        return track.mbIds.recordingId || '';
+    }
+
+    if (entityType === 'release') {
+        return track.mbIds.releaseId || '';
+    }
+
+    return track.mbIds.artistId || track.artistMbids[0] || '';
+};
+
+const closeMusicBrainzEntityModal = (): void => {
+    musicBrainzEntityModal.classList.remove('is-visible');
+
+    if (musicBrainzEntityModalHideTimer !== undefined) {
+        window.clearTimeout(musicBrainzEntityModalHideTimer);
+    }
+
+    musicBrainzEntityModalHideTimer = window.setTimeout(() => {
+        musicBrainzEntityModal.hidden = true;
+        musicBrainzEntityModalHideTimer = undefined;
+    }, musicBrainzEntityModalTransitionMs);
+};
+
+const renderMusicBrainzEntityContent = (entity: MusicBrainzEntityInfo): void => {
+    musicBrainzEntityContent.innerHTML = '';
+
+    musicBrainzEntityTitle.textContent = 'MusicBrainz info';
+
+    const details = [...entity.facts];
+    const disambiguation = entity.summary?.trim() || '';
+    if (disambiguation) {
+        details.push({
+            label: 'Disambiguation',
+            value: disambiguation,
+        });
+    }
+
+    if (details.length > 0) {
+        const factsTitle = document.createElement('p');
+        factsTitle.className = 'mb-entity-section-title';
+        factsTitle.textContent = 'Details';
+        musicBrainzEntityContent.append(factsTitle);
+
+        const facts = document.createElement('div');
+        facts.className = 'mb-entity-facts';
+        for (const fact of details) {
+            const label = document.createElement('p');
+            label.className = 'mb-entity-fact-label';
+            label.textContent = fact.label;
+
+            const value = document.createElement('p');
+            value.className = 'mb-entity-fact-value';
+            value.textContent = fact.value;
+
+            facts.append(label, value);
+        }
+
+        musicBrainzEntityContent.append(facts);
+    }
+
+    if (entity.tags.length > 0) {
+        const tagsTitle = document.createElement('p');
+        tagsTitle.className = 'mb-entity-section-title';
+        tagsTitle.textContent = 'Tags / genres';
+        musicBrainzEntityContent.append(tagsTitle);
+
+        const tags = document.createElement('div');
+        tags.className = 'mb-entity-tags';
+        for (const tag of entity.tags) {
+            const chip = document.createElement('p');
+            chip.className = 'mb-entity-tag';
+            chip.textContent = tag;
+            tags.append(chip);
+        }
+
+        musicBrainzEntityContent.append(tags);
+    }
+
+    if (entity.urls.length > 0) {
+        const linksTitle = document.createElement('p');
+        linksTitle.className = 'mb-entity-section-title';
+        linksTitle.textContent = 'Links';
+        musicBrainzEntityContent.append(linksTitle);
+
+        const links = document.createElement('ul');
+        links.className = 'mb-entity-links';
+        for (const url of entity.urls) {
+            const listItem = document.createElement('li');
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'artist-link-btn';
+
+            const fallback = document.createElement('span');
+            fallback.className = 'artist-link-fallback';
+            fallback.textContent = '🔗';
+
+            const faviconUrl = faviconUrlForResource(url.resource);
+            if (faviconUrl) {
+                const icon = document.createElement('img');
+                icon.className = 'artist-link-icon';
+                icon.alt = '';
+                icon.loading = 'lazy';
+                icon.decoding = 'async';
+                icon.referrerPolicy = 'no-referrer';
+                icon.src = faviconUrl;
+                icon.addEventListener('error', () => {
+                    icon.remove();
+                    fallback.hidden = false;
+                });
+                fallback.hidden = true;
+                button.append(icon, fallback);
+            } else {
+                fallback.hidden = false;
+                button.append(fallback);
+            }
+
+            button.title = `${url.type || 'Link'}: ${url.resource}`;
+            button.setAttribute('aria-label', button.title);
+            button.addEventListener('click', () => {
+                void BrowserOpenURL(url.resource);
+            });
+
+            listItem.append(button);
+            links.append(listItem);
+        }
+
+        musicBrainzEntityContent.append(links);
+    }
+
+    const rawDetails = document.createElement('details');
+    rawDetails.className = 'mb-entity-raw-details';
+
+    const rawSummary = document.createElement('summary');
+    rawSummary.className = 'mb-entity-raw-summary';
+    rawSummary.textContent = 'Raw payload';
+    rawDetails.append(rawSummary);
+
+    const raw = document.createElement('pre');
+    raw.className = 'mb-entity-raw';
+    raw.textContent = entity.rawJson || 'No payload returned.';
+    rawDetails.append(raw);
+    musicBrainzEntityContent.append(rawDetails);
+};
+
+const openMusicBrainzEntityForCurrentTrack = async (entityType: MusicBrainzEntityType): Promise<void> => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return;
+    }
+
+    const selectedTrackIndex = currentTrackIndex;
+    await ensureTrackTagsResolved(selectedTrackIndex);
+
+    if (selectedTrackIndex < 0 || selectedTrackIndex >= tracks.length) {
+        return;
+    }
+
+    const mbid = mbidForTrackEntity(tracks[selectedTrackIndex], entityType).trim();
+    if (!mbid) {
+        return;
+    }
+
+    if (musicBrainzEntityModalHideTimer !== undefined) {
+        window.clearTimeout(musicBrainzEntityModalHideTimer);
+        musicBrainzEntityModalHideTimer = undefined;
+    }
+
+    musicBrainzEntityTitle.textContent = 'MusicBrainz info';
+    musicBrainzEntityContent.innerHTML = '<p class="mb-entity-empty">Loading from MusicBrainz...</p>';
+    musicBrainzEntityModal.hidden = false;
+    window.requestAnimationFrame(() => {
+        musicBrainzEntityModal.classList.add('is-visible');
+    });
+
+    const entityInfo = await lookupMusicBrainzEntity(entityType, mbid);
+    if (!entityInfo.found) {
+        musicBrainzEntityContent.innerHTML = '<p class="mb-entity-empty">No details found for this MusicBrainz ID.</p>';
+        return;
+    }
+
+    renderMusicBrainzEntityContent(entityInfo);
+};
+
 const closeTechnicalInfoModal = (): void => {
     technicalInfoModal.classList.remove('is-visible');
 
@@ -2051,6 +2319,7 @@ const openTechnicalInfoModal = async (): Promise<void> => {
 };
 
 const clearLibrarySelection = async (): Promise<void> => {
+    closeMusicBrainzEntityModal();
     closeTechnicalInfoModal();
 
     try {
@@ -2397,6 +2666,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
         return;
     }
 
+    closeMusicBrainzEntityModal();
     closeTechnicalInfoModal();
 
     try {
@@ -2782,6 +3052,14 @@ imageFilePreview.addEventListener('click', () => {
     closeImageFileModal();
 });
 
+musicBrainzEntityBackdrop.addEventListener('click', () => {
+    closeMusicBrainzEntityModal();
+});
+
+musicBrainzEntityClose.addEventListener('click', () => {
+    closeMusicBrainzEntityModal();
+});
+
 technicalInfoBackdrop.addEventListener('click', () => {
     closeTechnicalInfoModal();
 });
@@ -2800,6 +3078,11 @@ document.addEventListener('keydown', (event) => {
     }
 
     if (settingsController.handleEscape()) {
+        return;
+    }
+
+    if (!musicBrainzEntityModal.hidden) {
+        closeMusicBrainzEntityModal();
         return;
     }
 
@@ -2982,6 +3265,10 @@ document.addEventListener('click', (e) => {
     }
 
     if (settingsController.handleDocumentClick(target)) {
+        return;
+    }
+
+    if (musicBrainzEntityModal.contains(target)) {
         return;
     }
 

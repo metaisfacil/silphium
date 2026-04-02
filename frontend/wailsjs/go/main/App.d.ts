@@ -24,6 +24,8 @@ export function LoadPlaylistFile(arg1:string):Promise<main.PlaylistLoadResult>;
 
 export function LookupArtistByMBID(arg1:string):Promise<main.MusicBrainzArtistInfo>;
 
+export function LookupMusicBrainzEntity(arg1:string,arg2:string):Promise<main.MusicBrainzEntityInfo>;
+
 export function ReadFileBase64(arg1:string):Promise<string>;
 
 export function ReadTextFile(arg1:string):Promise<string>;

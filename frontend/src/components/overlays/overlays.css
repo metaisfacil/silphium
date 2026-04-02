@@ -388,6 +388,212 @@
     opacity: 0.72;
 }
 
+.mb-entity-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 31;
+    display: grid;
+    place-items: center;
+}
+
+.mb-entity-modal[hidden] {
+    display: none;
+}
+
+.mb-entity-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+
+.mb-entity-dialog {
+    position: relative;
+    width: min(860px, calc(100vw - 2rem));
+    max-height: calc(100vh - 2.5rem);
+    display: flex;
+    flex-direction: column;
+    background: rgba(18, 18, 20, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.9rem;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.mb-entity-modal.is-visible .mb-entity-backdrop {
+    opacity: 1;
+}
+
+.mb-entity-modal.is-visible .mb-entity-dialog {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.mb-entity-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mb-entity-title {
+    margin: 0;
+    font-size: 0.84rem;
+    opacity: 0.9;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mb-entity-close {
+    width: 1.8rem;
+    height: 1.8rem;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.mb-entity-content {
+    overflow: auto;
+    padding: 0.85rem 0.95rem 0.95rem;
+    text-align: left;
+}
+
+.mb-entity-content > :first-child {
+    margin-top: 0;
+}
+
+.mb-entity-content > :last-child {
+    margin-bottom: 0;
+}
+
+.mb-entity-section-title {
+    margin: 0.95rem 0 0.5rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    opacity: 0.78;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.mb-entity-facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 0.75rem;
+    row-gap: 0.45rem;
+    align-items: start;
+}
+
+.mb-entity-fact-label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    opacity: 0.68;
+    white-space: nowrap;
+}
+
+.mb-entity-fact-value {
+    margin: 0;
+    font-size: 0.79rem;
+    line-height: 1.35;
+    opacity: 0.92;
+    overflow-wrap: anywhere;
+}
+
+.mb-entity-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.32rem;
+}
+
+.mb-entity-tag {
+    margin: 0;
+    padding: 0.16rem 0.46rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    font-size: 0.72rem;
+    opacity: 0.9;
+}
+
+.mb-entity-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.mb-entity-links > li {
+    margin: 0;
+    padding: 0;
+}
+
+.mb-entity-raw-details {
+    margin-top: 0.95rem;
+}
+
+.mb-entity-raw-summary {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    opacity: 0.78;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.mb-entity-raw-summary::-webkit-details-marker {
+    display: none;
+}
+
+.mb-entity-raw-summary::after {
+    content: '▸';
+}
+
+.mb-entity-raw-details[open] > .mb-entity-raw-summary {
+    margin-bottom: 0.5rem;
+}
+
+.mb-entity-raw-details[open] > .mb-entity-raw-summary::after {
+    content: '▾';
+}
+
+.mb-entity-raw {
+    margin: 0;
+    max-height: min(38vh, 460px);
+    overflow: auto;
+    padding: 0.7rem 0.76rem;
+    border-radius: 0.55rem;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    white-space: pre;
+}
+
+.mb-entity-empty {
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.72;
+}
+
 .technical-info-tag-section {
     margin-top: 0.9rem;
     padding-top: 0.75rem;
