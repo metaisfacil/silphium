@@ -1,4 +1,4 @@
-import type { MusicBrainzIds } from '../musicbrainz';
+import type { MusicBrainzArtistCredit, MusicBrainzIds } from '../musicbrainz';
 
 export type LibraryNode = {
     name: string;
@@ -53,6 +53,7 @@ export type Track = {
     allFileTags: Record<string, string[]>;
     mbIds: MusicBrainzIds;
     artistMbids: string[];
+    mbArtistCredits: MusicBrainzArtistCredit[];
 };
 
 export type TrackTags = {
@@ -187,4 +188,5 @@ export type MusicBrainzTrackMetadata = {
     title: string;
     album: string;
     artist: string;
+    artistCredits: MusicBrainzArtistCredit[];
 };

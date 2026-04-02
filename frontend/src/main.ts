@@ -470,6 +470,7 @@ const refreshNowPlayingLabel = (): void => {
     applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds, {
         artistText: activeTrack.displayArtist,
         artistMbids: activeTrack.artistMbids,
+        artistCredits: activeTrack.mbArtistCredits,
     });
 
     playlistController.scheduleRender();

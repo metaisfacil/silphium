@@ -51,6 +51,7 @@ const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
     allFileTags: {},
     mbIds: {},
     artistMbids: [],
+    mbArtistCredits: [],
 });
 
 const ensureTrackIndexForPath = (tracks: Track[], file: LibraryIndexedFile, trackIndexByPath: Map<string, number>): number => {

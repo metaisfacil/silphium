@@ -30,6 +30,7 @@ const emptyMusicBrainzTrackMetadata = (recordingId: string, releaseId: string): 
     title: '',
     album: '',
     artist: '',
+    artistCredits: [],
 });
 
 export const lookupMusicBrainzTrackMetadata = async (recordingId: string, releaseId: string): Promise<MusicBrainzTrackMetadata> => {

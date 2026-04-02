@@ -74,6 +74,7 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
                 artistMbids: (tags?.artistIds && tags.artistIds.length > 0)
                     ? tags.artistIds
                     : (tags?.artistId ? [tags.artistId] : []),
+                mbArtistCredits: [],
             });
 
             return { resolved: true, updated: true };
@@ -124,6 +125,10 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
                 displayTitle: metadata.title.trim() || latestTrack.displayTitle,
                 displayAlbum: metadata.album.trim() || latestTrack.displayAlbum,
                 displayArtist: metadata.artist.trim() || latestTrack.displayArtist,
+                artistMbids: metadata.artistCredits
+                    .map((credit) => credit.artistId?.trim() || '')
+                    .filter((artistId) => artistId !== ''),
+                mbArtistCredits: metadata.artistCredits,
                 mbMetadataResolved: true,
             });
             return true;

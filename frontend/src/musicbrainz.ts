@@ -1,7 +1,6 @@
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 
 const MB_BASE = 'https://musicbrainz.org';
-const artistJoinPhrasePattern = /\s+featuring\s*|\s+feat(?!uring)\.?\s*|\s+ft\.?\s*|\s+and\s+|\s*&\s*|\s*,\s*|\s*;\s*|\s*\/\s*|\s+\+\s*|\s+x\s+/gi;
 
 export type MusicBrainzIds = {
     recordingId?: string;
@@ -9,14 +8,16 @@ export type MusicBrainzIds = {
     artistId?: string;
 };
 
+export type MusicBrainzArtistCredit = {
+    name: string;
+    artistId?: string;
+    joinPhrase: string;
+};
+
 type ArtistLinkOptions = {
     artistText?: string;
     artistMbids?: string[];
-};
-
-type ParsedArtistCredits = {
-    artists: string[];
-    joinPhrases: string[];
+    artistCredits?: MusicBrainzArtistCredit[];
 };
 
 const mbUrl = (type: string, id?: string): string | undefined =>
@@ -55,52 +56,11 @@ const normalizeArtistMbids = (artistMbids?: string[]): string[] => {
     return normalized;
 };
 
-const parseArtistCredits = (artistText: string, expectedArtists: number): ParsedArtistCredits | null => {
-    if (expectedArtists <= 0) {
-        return null;
-    }
-
-    if (expectedArtists === 1) {
-        return {
-            artists: [artistText.trim()],
-            joinPhrases: [],
-        };
-    }
-
-    const separatorMatcher = new RegExp(artistJoinPhrasePattern.source, artistJoinPhrasePattern.flags);
-    const artists: string[] = [];
-    const joinPhrases: string[] = [];
-    let cursor = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = separatorMatcher.exec(artistText)) !== null && artists.length < expectedArtists - 1) {
-        const artist = artistText.slice(cursor, match.index).trim();
-        if (!artist) {
-            continue;
-        }
-
-        artists.push(artist);
-        joinPhrases.push(match[0]);
-        cursor = match.index + match[0].length;
-    }
-
-    const tail = artistText.slice(cursor).trim();
-    if (!tail) {
-        return null;
-    }
-
-    artists.push(tail);
-    if (artists.length !== expectedArtists) {
-        return null;
-    }
-
-    return { artists, joinPhrases };
-};
-
 const renderArtistLinks = (
     artistEl: HTMLElement,
     artistText: string,
     artistMbids: string[],
+    artistCredits: MusicBrainzArtistCredit[],
     fallbackArtistId?: string,
 ): void => {
     setLink(artistEl, undefined);
@@ -120,21 +80,21 @@ const renderArtistLinks = (
         return;
     }
 
-    const parsed = parseArtistCredits(artistText, artistMbids.length);
-    if (!parsed) {
+    if (artistCredits.length === 0) {
         setLink(artistEl, mbUrl('artist', artistMbids[0] || fallbackArtistId));
         return;
     }
 
     artistEl.textContent = '';
-    for (let index = 0; index < parsed.artists.length; index += 1) {
+    for (let index = 0; index < artistCredits.length; index += 1) {
+        const credit = artistCredits[index];
         const artistSpan = document.createElement('span');
         artistSpan.className = 'track-artist-link';
-        artistSpan.textContent = parsed.artists[index];
-        setLink(artistSpan, mbUrl('artist', artistMbids[index]));
+        artistSpan.textContent = credit.name;
+        setLink(artistSpan, mbUrl('artist', credit.artistId || artistMbids[index]));
         artistEl.append(artistSpan);
 
-        const joinPhrase = parsed.joinPhrases[index];
+        const joinPhrase = credit.joinPhrase;
         if (joinPhrase) {
             artistEl.append(document.createTextNode(joinPhrase));
         }
@@ -153,7 +113,14 @@ export const applyMbLinks = (
 
     const artistText = options?.artistText ?? artistEl.textContent ?? '';
     const artistMbids = normalizeArtistMbids(options?.artistMbids);
-    renderArtistLinks(artistEl, artistText, artistMbids, ids.artistId);
+    const artistCredits = (options?.artistCredits || [])
+        .map((credit) => ({
+            name: credit.name.trim(),
+            artistId: credit.artistId?.trim() || undefined,
+            joinPhrase: credit.joinPhrase || '',
+        }))
+        .filter((credit) => credit.name !== '');
+    renderArtistLinks(artistEl, artistText, artistMbids, artistCredits, ids.artistId);
 };
 
 export const openMbLink = (el: HTMLElement): void => {

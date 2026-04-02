@@ -52,12 +52,20 @@ type MusicBrainzEntityInfo struct {
 
 // MusicBrainzTrackMetadata contains normalized display metadata for a track lookup.
 type MusicBrainzTrackMetadata struct {
-	Found       bool   `json:"found"`
-	RecordingID string `json:"recordingId"`
-	ReleaseID   string `json:"releaseId"`
-	Title       string `json:"title"`
-	Album       string `json:"album"`
-	Artist      string `json:"artist"`
+	Found         bool                          `json:"found"`
+	RecordingID   string                        `json:"recordingId"`
+	ReleaseID     string                        `json:"releaseId"`
+	Title         string                        `json:"title"`
+	Album         string                        `json:"album"`
+	Artist        string                        `json:"artist"`
+	ArtistCredits []MusicBrainzArtistCreditPart `json:"artistCredits"`
+}
+
+// MusicBrainzArtistCreditPart represents one artist plus its trailing join phrase.
+type MusicBrainzArtistCreditPart struct {
+	Name       string `json:"name"`
+	ArtistID   string `json:"artistId"`
+	JoinPhrase string `json:"joinPhrase"`
 }
 
 const musicBrainzUserAgent = "Silphium/1.0 (metaisfacil@users.noreply.github.com)"
@@ -234,12 +242,23 @@ func musicBrainzLifeSpan(payload map[string]any) string {
 }
 
 func musicBrainzArtistCredit(payload map[string]any) string {
-	parts := make([]string, 0)
+	credits := musicBrainzArtistCredits(payload)
+	if len(credits) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(credits))
+	for _, credit := range credits {
+		parts = append(parts, fmt.Sprintf("%s%s", credit.Name, credit.JoinPhrase))
+	}
+
+	return strings.TrimSpace(strings.Join(parts, ""))
+}
+
+func musicBrainzArtistCredits(payload map[string]any) []MusicBrainzArtistCreditPart {
+	credits := make([]MusicBrainzArtistCreditPart, 0)
 	for _, entry := range asArray(payload["artist-credit"]) {
-		if textEntry, ok := entry.(string); ok {
-			if strings.TrimSpace(textEntry) != "" {
-				parts = append(parts, textEntry)
-			}
+		if _, ok := entry.(string); ok {
 			continue
 		}
 
@@ -257,10 +276,19 @@ func musicBrainzArtistCredit(payload map[string]any) string {
 		}
 
 		joinPhrase := objectRawString(entryMap, "joinphrase")
-		parts = append(parts, fmt.Sprintf("%s%s", name, joinPhrase))
+		artistID := objectString(asObject(entryMap["artist"]), "id")
+		credits = append(credits, MusicBrainzArtistCreditPart{
+			Name:       name,
+			ArtistID:   artistID,
+			JoinPhrase: joinPhrase,
+		})
 	}
 
-	return strings.TrimSpace(strings.Join(parts, ""))
+	if len(credits) > 0 {
+		return credits
+	}
+
+	return []MusicBrainzArtistCreditPart{}
 }
 
 func firstMusicBrainzReleaseTitle(payload map[string]any) string {
@@ -530,9 +558,10 @@ func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID strin
 	}
 
 	result := MusicBrainzTrackMetadata{
-		Found:       false,
-		RecordingID: cleanRecordingID,
-		ReleaseID:   cleanReleaseID,
+		Found:         false,
+		RecordingID:   cleanRecordingID,
+		ReleaseID:     cleanReleaseID,
+		ArtistCredits: []MusicBrainzArtistCreditPart{},
 	}
 
 	if cleanRecordingID == "" && cleanReleaseID == "" {
@@ -567,13 +596,16 @@ func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID strin
 	}
 
 	artist := musicBrainzArtistCredit(recordingPayload)
+	artistCredits := musicBrainzArtistCredits(recordingPayload)
 	if artist == "" {
 		artist = musicBrainzArtistCredit(releasePayload)
+		artistCredits = musicBrainzArtistCredits(releasePayload)
 	}
 
 	result.Title = title
 	result.Album = album
 	result.Artist = artist
+	result.ArtistCredits = artistCredits
 	result.Found = result.Title != "" || result.Album != "" || result.Artist != ""
 
 	return result
