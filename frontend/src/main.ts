@@ -1211,7 +1211,7 @@ const updateLyricsPanelVisibility = (): void => {
     const targetCardWidth = Math.max(0, (window.innerHeight - verticalPadding) * 0.75);
     const singleCardWidth = Math.min(availableWidth, targetCardWidth);
     const measuredCardHeight = playerCard.getBoundingClientRect().height;
-    const requiredWidth = singleCardWidth + lyricsPanelWidth + laneGap + visibilityBuffer;
+    const requiredWidth = singleCardWidth + (lyricsPanelWidth * 2) + (laneGap * 2) + visibilityBuffer;
     const canShow = hasActiveTrackLyrics() && singleCardWidth > 0 && availableWidth >= requiredWidth;
 
     playerLane.style.setProperty('--lyrics-panel-width', `${lyricsPanelWidth}px`);
