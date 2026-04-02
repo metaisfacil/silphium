@@ -754,8 +754,8 @@
 .volume-popout {
     position: absolute;
     bottom: calc(100% + 0.6rem);
-    right: 0;
-    transform: translateY(6px);
+    left: 50%;
+    transform: translate(-50%, 6px);
     background: rgba(22, 22, 24, 0.92);
     backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -772,5 +772,5 @@
 .volume-wrap.open .volume-popout {
     opacity: 1;
     pointer-events: auto;
-    transform: translateY(0);
+    transform: translate(-50%, 0);
 }
