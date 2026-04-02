@@ -8,6 +8,23 @@ import type {
 
 type RenderDirection = 'none' | 'forward' | 'back';
 
+type FolderPaneRow = {
+    kind: 'folder' | 'track' | 'text-file' | 'image-file';
+    index?: number;
+    folderPath?: string;
+    label: string;
+    active?: boolean;
+};
+
+type FolderPaneState = {
+    rows: FolderPaneRow[];
+    renderedCount: number;
+    appendScheduled: boolean;
+    targetCount: number;
+    rowHeightEstimate: number;
+    spacer: HTMLLIElement;
+};
+
 type LibraryControllerOptions = {
     app: HTMLElement;
     sidebarToggle: HTMLButtonElement;
@@ -57,6 +74,10 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     const librarySearchDebounceMs = 140;
     const librarySearchBatchSize = 300;
+    const folderPaneChunkSize = 100;
+    const folderPaneLoadThresholdPx = 180;
+    const folderPaneInitialRowHeightEstimatePx = 28;
+    const folderPaneStateByElement = new WeakMap<HTMLUListElement, FolderPaneState>();
 
     const getTracks = (): Track[] => options.getTracks();
     const getTextFiles = (): TextLibraryFile[] => options.getTextFiles();
@@ -343,42 +364,229 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     const createFolderPane = (node: LibraryNode): HTMLUListElement => {
         const pane = document.createElement('ul');
         pane.className = 'library-list-pane';
+        let restoringScrollPosition = false;
 
         const tracks = getTracks();
         const currentTrackIndex = options.getCurrentTrackIndex();
         const textFiles = getTextFiles();
         const imageFiles = getImageFiles();
 
-        const folderRows = node.folders
-            .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
-            .map((folder) => `<li><button class="library-entry folder" data-folder-path="${folder.path}">📁 ${folder.name}</button></li>`)
-            .join('');
+        const rows: FolderPaneRow[] = [];
 
-        const trackRows = node.trackIndexes
+        const sortedFolders = [...node.folders]
+            .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
+        for (const folder of sortedFolders) {
+            rows.push({
+                kind: 'folder',
+                folderPath: folder.path,
+                label: `📁 ${folder.name}`,
+            });
+        }
+
+        const sortedTracks = node.trackIndexes
             .map((trackIndex) => ({ trackIndex, track: tracks[trackIndex] }))
-            .sort((left, right) => left.track.title.localeCompare(right.track.title, undefined, { sensitivity: 'base' }))
-            .map(({ trackIndex, track }) => `<li><button class="library-entry track${trackIndex === currentTrackIndex ? ' active' : ''}" data-track-index="${trackIndex}">🎵 ${track.title}</button></li>`)
-            .join('');
+            .sort((left, right) => left.track.title.localeCompare(right.track.title, undefined, { sensitivity: 'base' }));
+        for (const { trackIndex, track } of sortedTracks) {
+            rows.push({
+                kind: 'track',
+                index: trackIndex,
+                label: `🎵 ${track.title}`,
+                active: trackIndex === currentTrackIndex,
+            });
+        }
 
-        const textRows = node.textFileIndexes
+        const sortedTextFiles = node.textFileIndexes
             .map((textFileIndex) => ({ textFileIndex, file: textFiles[textFileIndex] }))
-            .sort((left, right) => left.file.name.localeCompare(right.file.name, undefined, { sensitivity: 'base' }))
-            .map(({ textFileIndex, file }) => `<li><button class="library-entry text-file" data-text-file-index="${textFileIndex}">📄 ${file.name}</button></li>`)
-            .join('');
+            .sort((left, right) => left.file.name.localeCompare(right.file.name, undefined, { sensitivity: 'base' }));
+        for (const { textFileIndex, file } of sortedTextFiles) {
+            rows.push({
+                kind: 'text-file',
+                index: textFileIndex,
+                label: `📄 ${file.name}`,
+            });
+        }
 
-        const imageRows = node.imageFileIndexes
+        const sortedImageFiles = node.imageFileIndexes
             .map((imageFileIndex) => ({ imageFileIndex, file: imageFiles[imageFileIndex] }))
-            .sort((left, right) => left.file.name.localeCompare(right.file.name, undefined, { sensitivity: 'base' }))
-            .map(({ imageFileIndex, file }) => `<li><button class="library-entry image-file" data-image-file-index="${imageFileIndex}">🖼️ ${file.name}</button></li>`)
-            .join('');
+            .sort((left, right) => left.file.name.localeCompare(right.file.name, undefined, { sensitivity: 'base' }));
+        for (const { imageFileIndex, file } of sortedImageFiles) {
+            rows.push({
+                kind: 'image-file',
+                index: imageFileIndex,
+                label: `🖼️ ${file.name}`,
+            });
+        }
 
-        const content = `${folderRows}${trackRows}${textRows}${imageRows}`;
-        if (!content) {
+        if (rows.length === 0) {
             pane.innerHTML = '<li class="empty">Folder is empty</li>';
             return pane;
         }
 
-        pane.innerHTML = content;
+        const updateSpacerHeight = (state: FolderPaneState): void => {
+            const remainingRows = Math.max(0, state.rows.length - state.renderedCount);
+            state.spacer.style.height = `${remainingRows * state.rowHeightEstimate}px`;
+        };
+
+        const createRowListItem = (row: FolderPaneRow): HTMLLIElement => {
+            const listItem = document.createElement('li');
+            const button = document.createElement('button');
+            button.type = 'button';
+
+            if (row.kind === 'folder') {
+                button.className = 'library-entry folder';
+                button.dataset.folderPath = row.folderPath || '';
+            } else if (row.kind === 'track') {
+                button.className = `library-entry track${row.active ? ' active' : ''}`;
+                button.dataset.trackIndex = String(row.index);
+            } else if (row.kind === 'text-file') {
+                button.className = 'library-entry text-file';
+                button.dataset.textFileIndex = String(row.index);
+            } else {
+                button.className = 'library-entry image-file';
+                button.dataset.imageFileIndex = String(row.index);
+            }
+
+            button.textContent = row.label;
+            listItem.append(button);
+            return listItem;
+        };
+
+        const appendRows = (): void => {
+            const state = folderPaneStateByElement.get(pane);
+            if (!state) {
+                return;
+            }
+
+            const previousScrollTop = pane.scrollTop;
+
+            const startIndex = state.renderedCount;
+            if (startIndex >= state.rows.length) {
+                updateSpacerHeight(state);
+                return;
+            }
+
+            const endIndex = Math.min(startIndex + folderPaneChunkSize, state.targetCount, state.rows.length);
+            if (endIndex <= startIndex) {
+                updateSpacerHeight(state);
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+
+            for (const row of state.rows.slice(startIndex, endIndex)) {
+                fragment.append(createRowListItem(row));
+            }
+
+            pane.insertBefore(fragment, state.spacer);
+            state.renderedCount = endIndex;
+
+            if (state.renderedCount > 0) {
+                const sampleRow = pane.firstElementChild as HTMLLIElement | null;
+                if (sampleRow && sampleRow !== state.spacer) {
+                    const style = window.getComputedStyle(sampleRow);
+                    const marginBottom = Number.parseFloat(style.marginBottom || '0');
+                    const measuredHeight = sampleRow.getBoundingClientRect().height + (Number.isNaN(marginBottom) ? 0 : marginBottom);
+                    if (measuredHeight > 0) {
+                        state.rowHeightEstimate = measuredHeight;
+                    }
+                }
+            }
+
+            updateSpacerHeight(state);
+
+            if (pane.scrollTop !== previousScrollTop) {
+                restoringScrollPosition = true;
+                pane.scrollTop = previousScrollTop;
+                queueMicrotask(() => {
+                    restoringScrollPosition = false;
+                });
+            }
+        };
+
+        const updateTargetCountFromScroll = (): void => {
+            const state = folderPaneStateByElement.get(pane);
+            if (!state) {
+                return;
+            }
+
+            const estimatedRowsInViewport = Math.ceil(pane.clientHeight / state.rowHeightEstimate);
+            const estimatedVisibleBottomRow = Math.ceil((pane.scrollTop + pane.clientHeight + folderPaneLoadThresholdPx) / state.rowHeightEstimate);
+            const nextTargetCount = Math.min(
+                state.rows.length,
+                Math.max(folderPaneChunkSize, estimatedRowsInViewport + estimatedVisibleBottomRow),
+            );
+
+            if (nextTargetCount > state.targetCount) {
+                state.targetCount = nextTargetCount;
+            }
+        };
+
+        const scheduleChunkAppend = (): void => {
+            const state = folderPaneStateByElement.get(pane);
+            if (!state || state.appendScheduled || state.renderedCount >= state.targetCount) {
+                return;
+            }
+
+            state.appendScheduled = true;
+            requestAnimationFrame(() => {
+                const nextState = folderPaneStateByElement.get(pane);
+                if (!nextState) {
+                    return;
+                }
+
+                nextState.appendScheduled = false;
+                appendRows();
+                updateTargetCountFromScroll();
+                if (nextState.renderedCount < nextState.targetCount) {
+                    scheduleChunkAppend();
+                }
+            });
+        };
+
+        const spacer = document.createElement('li');
+        spacer.className = 'library-list-spacer';
+        spacer.setAttribute('aria-hidden', 'true');
+        spacer.style.marginBottom = '0';
+        spacer.style.pointerEvents = 'none';
+
+        folderPaneStateByElement.set(pane, {
+            rows,
+            renderedCount: 0,
+            appendScheduled: false,
+            targetCount: Math.min(folderPaneChunkSize, rows.length),
+            rowHeightEstimate: folderPaneInitialRowHeightEstimatePx,
+            spacer,
+        });
+
+        pane.append(spacer);
+        const initialState = folderPaneStateByElement.get(pane);
+        if (initialState) {
+            updateSpacerHeight(initialState);
+        }
+
+        pane.addEventListener('scroll', () => {
+            if (restoringScrollPosition) {
+                return;
+            }
+
+            const state = folderPaneStateByElement.get(pane);
+            if (!state || state.renderedCount >= state.rows.length) {
+                return;
+            }
+
+            updateTargetCountFromScroll();
+            if (state.renderedCount < state.targetCount) {
+                scheduleChunkAppend();
+            }
+        });
+
+        updateTargetCountFromScroll();
+        appendRows();
+        const state = folderPaneStateByElement.get(pane);
+        if (state && state.renderedCount < state.targetCount) {
+            scheduleChunkAppend();
+        }
+
         return pane;
     };
 
