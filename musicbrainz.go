@@ -55,6 +55,7 @@ type MusicBrainzTrackMetadata struct {
 	Found         bool                          `json:"found"`
 	RecordingID   string                        `json:"recordingId"`
 	ReleaseID     string                        `json:"releaseId"`
+	LabelID       string                        `json:"labelId"`
 	Title         string                        `json:"title"`
 	Album         string                        `json:"album"`
 	Artist        string                        `json:"artist"`
@@ -581,7 +582,7 @@ func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID strin
 	}
 
 	if cleanReleaseID != "" {
-		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=artists", cleanReleaseID)
+		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=artists+labels", cleanReleaseID)
 		if responseBody, ok := fetchMusicBrainzJSON(requestURL); ok {
 			if err := json.Unmarshal(responseBody, &releasePayload); err != nil {
 				releasePayload = map[string]any{}
@@ -602,6 +603,7 @@ func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID strin
 		artistCredits = musicBrainzArtistCredits(releasePayload)
 	}
 
+	result.LabelID = musicBrainzReleaseLabelID(releasePayload)
 	result.Title = title
 	result.Album = album
 	result.Artist = artist
@@ -609,6 +611,27 @@ func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID strin
 	result.Found = result.Title != "" || result.Album != "" || result.Artist != ""
 
 	return result
+}
+
+func musicBrainzReleaseLabelID(payload map[string]any) string {
+	for _, labelInfoValue := range asArray(payload["label-info"]) {
+		labelInfo := asObject(labelInfoValue)
+		labelValue := asObject(labelInfo["label"])
+		labelID := objectString(labelValue, "id")
+		if labelID != "" {
+			return strings.ToLower(strings.TrimSpace(labelID))
+		}
+	}
+
+	for _, labelValue := range asArray(payload["labels"]) {
+		labelObj := asObject(labelValue)
+		labelID := objectString(labelObj, "id")
+		if labelID != "" {
+			return strings.ToLower(strings.TrimSpace(labelID))
+		}
+	}
+
+	return ""
 }
 
 // LookupMusicBrainzEntity fetches recording, release, or artist metadata by entity type and MBID.
@@ -638,6 +661,10 @@ func (a *App) LookupMusicBrainzEntity(entityType string, mbid string) MusicBrain
 		incClause = "recordings+artists+labels+genres+tags+url-rels+release-groups"
 	case "artist":
 		incClause = "genres+tags+url-rels"
+	case "label":
+		incClause = "releases+artists+genres+tags+url-rels"
+		// Label entities do not support 'artists'; adjust cautiously below if needed.
+		incClause = "releases+genres+tags+url-rels"
 	default:
 		return result
 	}
@@ -713,6 +740,17 @@ func (a *App) LookupMusicBrainzEntity(entityType string, mbid string) MusicBrain
 		facts = appendFact(facts, "Barcode", objectString(payload, "barcode"))
 		facts = appendFact(facts, "Packaging", objectString(payload, "packaging"))
 		facts = appendFact(facts, "Quality", objectString(payload, "quality"))
+
+	case "label":
+		result.Title = objectString(payload, "name")
+		result.Summary = objectString(payload, "disambiguation")
+
+		facts = appendFact(facts, "Label code", objectString(payload, "label-code"))
+		facts = appendFact(facts, "Type", objectString(payload, "type"))
+		facts = appendFact(facts, "Country", objectString(payload, "country"))
+		facts = appendFact(facts, "Begin date", objectString(payload, "begin-date"))
+		facts = appendFact(facts, "End date", objectString(payload, "end-date"))
+		facts = appendFact(facts, "Artist credit", musicBrainzArtistCredit(payload))
 
 		labelNames := make([]string, 0)
 		catalogNumbers := make([]string, 0)

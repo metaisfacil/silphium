@@ -914,6 +914,7 @@
 
 .track-line[data-mb-url],
 .track-release-album[data-mb-url],
+.track-release-label[data-mb-url],
 .track-title-inline[data-mb-url],
 .track-artist-header[data-mb-url] {
     cursor: inherit;
@@ -930,6 +931,7 @@
 
 #app.ctrl-held .track-line[data-mb-url],
 #app.ctrl-held .track-release-album[data-mb-url],
+#app.ctrl-held .track-release-label[data-mb-url],
 #app.ctrl-held .track-title-inline[data-mb-url],
 #app.ctrl-held .track-artist-header[data-mb-url] {
     cursor: pointer;
@@ -947,6 +949,7 @@
 
 #app.ctrl-held .track-line[data-mb-url]:hover,
 #app.ctrl-held .track-release-album[data-mb-url]:hover,
+#app.ctrl-held .track-release-label[data-mb-url]:hover,
 #app.ctrl-held .track-title-inline[data-mb-url]:hover,
 #app.ctrl-held .track-artist-header[data-mb-url]:hover {
     text-decoration-color: rgba(255, 255, 255, 0.75);

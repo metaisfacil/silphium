@@ -6,6 +6,7 @@ export type MusicBrainzIds = {
     recordingId?: string;
     releaseId?: string;
     artistId?: string;
+    labelId?: string;
 };
 
 export type MusicBrainzArtistCredit = {

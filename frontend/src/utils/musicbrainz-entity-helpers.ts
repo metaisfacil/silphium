@@ -71,6 +71,10 @@ export const mbidForTrackEntity = (track: Track, entityType: MusicBrainzEntityTy
         return track.mbIds.releaseId || '';
     }
 
+    if (entityType === 'label') {
+        return track.mbIds.labelId || '';
+    }
+
     return track.mbIds.artistId || track.artistMbids[0] || '';
 };
 

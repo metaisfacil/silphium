@@ -129,6 +129,10 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
                     .map((credit) => credit.artistId?.trim() || '')
                     .filter((artistId) => artistId !== ''),
                 mbArtistCredits: metadata.artistCredits,
+                mbIds: {
+                    ...latestTrack.mbIds,
+                    labelId: metadata.labelId ? metadata.labelId.trim() : latestTrack.mbIds.labelId,
+                },
                 mbMetadataResolved: true,
             });
             return true;

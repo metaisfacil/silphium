@@ -207,7 +207,7 @@ export type AppSettings = {
     preferMusicBrainzMetadata: boolean;
 };
 
-export type MusicBrainzEntityType = 'recording' | 'release' | 'artist';
+export type MusicBrainzEntityType = 'recording' | 'release' | 'artist' | 'label';
 
 export type MusicBrainzEntityFact = {
     label: string;
@@ -231,6 +231,7 @@ export type MusicBrainzTrackMetadata = {
     found: boolean;
     recordingId: string;
     releaseId: string;
+    labelId?: string;
     title: string;
     album: string;
     artist: string;

@@ -414,6 +414,7 @@ export namespace main {
 	    found: boolean;
 	    recordingId: string;
 	    releaseId: string;
+	    labelId: string;
 	    title: string;
 	    album: string;
 	    artist: string;
@@ -428,6 +429,7 @@ export namespace main {
 	        this.found = source["found"];
 	        this.recordingId = source["recordingId"];
 	        this.releaseId = source["releaseId"];
+	        this.labelId = source["labelId"];
 	        this.title = source["title"];
 	        this.album = source["album"];
 	        this.artist = source["artist"];

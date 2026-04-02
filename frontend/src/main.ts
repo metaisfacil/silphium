@@ -398,6 +398,18 @@ trackReleaseAlbum.addEventListener('contextmenu', (event) => {
     trackMetaMenuTarget = trackReleaseAlbum;
     openTrackMetaMenu(event.clientX, event.clientY, false);
 });
+trackReleaseLabel.addEventListener('click', (event) => {
+    if (shouldBlockTrackMetaModalOpen()) {
+        return;
+    }
+
+    if (event.ctrlKey) {
+        openMbOnCtrlClick(event, trackReleaseLabel);
+        return;
+    }
+
+    void openMusicBrainzEntityForCurrentTrack('label');
+});
 trackArtistHeader.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
         return;
@@ -759,6 +771,12 @@ const refreshNowPlayingLabel = (): void => {
         ...mbLinkOptions,
         artistText: headerArtistText,
     });
+
+    if (activeTrack.mbIds.labelId) {
+        trackReleaseLabel.dataset.mbUrl = `https://musicbrainz.org/label/${activeTrack.mbIds.labelId}`;
+    } else {
+        delete trackReleaseLabel.dataset.mbUrl;
+    }
 
     playlistController.scheduleRender();
 };
