@@ -30,6 +30,10 @@ export function AudioStop() {
   return window['go']['main']['App']['AudioStop']();
 }
 
+export function GetAppVersion() {
+  return window['go']['main']['App']['GetAppVersion']();
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }

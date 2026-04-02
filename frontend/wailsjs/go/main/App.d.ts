@@ -16,6 +16,8 @@ export function AudioSetVolume(arg1:number):Promise<main.AudioPlaybackState>;
 
 export function AudioStop():Promise<main.AudioPlaybackState>;
 
+export function GetAppVersion():Promise<string>;
+
 export function GetSettings():Promise<main.AppSettings>;
 
 export function InitializeAudioBackend():Promise<main.AudioPlaybackState>;

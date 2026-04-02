@@ -573,6 +573,141 @@
     margin-top: 0.1rem;
 }
 
+.about-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 31;
+    display: grid;
+    place-items: center;
+}
+
+.about-modal[hidden] {
+    display: none;
+}
+
+.about-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+
+.about-dialog {
+    position: relative;
+    width: min(460px, calc(100vw - 2rem));
+    max-height: calc(100vh - 2.5rem);
+    display: flex;
+    flex-direction: column;
+    background: rgba(18, 18, 20, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.9rem;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.about-modal.is-visible .about-backdrop {
+    opacity: 1;
+}
+
+.about-modal.is-visible .about-dialog {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.about-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.about-title {
+    margin: 0;
+    font-size: 0.98rem;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.about-close {
+    width: 1.8rem;
+    height: 1.8rem;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.about-content {
+    overflow: auto;
+    padding: 0.9rem 1rem 1rem;
+    text-align: center;
+    display: grid;
+    gap: 0.6rem;
+}
+
+.about-logo-wrap {
+    display: grid;
+    place-items: center;
+    margin-top: 0.1rem;
+}
+
+.about-logo {
+    display: block;
+    width: min(220px, 75%);
+    height: auto;
+}
+
+.about-name,
+.about-version,
+.about-author {
+    margin: 0;
+    font-size: 0.98rem;
+    line-height: 1.45;
+    opacity: 0.88;
+}
+
+.about-name strong {
+    font-size: 1.2rem;
+}
+
+.about-name {
+    margin-top: 0.1rem;
+}
+
+.about-version {
+    opacity: 0.8;
+}
+
+.about-author {
+    margin-top: 0.6rem;
+    opacity: 0.78;
+}
+
+.about-repo {
+    margin: -0.1rem 0 0.6rem;
+}
+
+.about-repo-link {
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 0.9rem;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+
+.about-repo-link:hover {
+    color: rgba(255, 255, 255, 0.98);
+}
+
 .technical-info-modal {
     position: fixed;
     inset: 0;

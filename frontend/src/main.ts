@@ -13,6 +13,7 @@ import { createPlaybackStateService } from './services/playback-state-service';
 import { createTrackMetadataService } from './services/track-metadata-service';
 import { getMediaControlsElements, renderMediaControls } from './components/media-controls';
 import {
+    getAboutModalElements,
     getImageFileModalElements,
     getMusicBrainzEntityModalElements,
     getPlayOrderMenuElements,
@@ -24,6 +25,7 @@ import {
     getTextFileModalElements,
     getTrackMetaMenuElements,
     renderImageFileModal,
+    renderAboutModal,
     renderMusicBrainzEntityModal,
     renderPlayOrderMenu,
     renderPlaylistMenu,
@@ -43,6 +45,7 @@ import {
     AudioSeek,
     AudioSetVolume,
     AudioStop,
+    GetAppVersion,
     GetSettings,
     InitializeAudioBackend,
     LoadPlaylistFile,
@@ -102,6 +105,7 @@ app.innerHTML = `
     </div>
     ${renderSidebar()}
     ${renderMediaControls()}
+    ${renderAboutModal()}
     ${renderTextFileModal()}
     ${renderImageFileModal()}
     ${renderMusicBrainzEntityModal()}
@@ -126,6 +130,7 @@ let coverFlipped = false;
 let playbackPollHandle: number | undefined;
 let musicBrainzEntityModalHideTimer: number | undefined;
 let technicalInfoModalHideTimer: number | undefined;
+let aboutModalHideTimer: number | undefined;
 let isSeeking = false;
 let currentSettings: AppSettings = {
     libraryPath: '',
@@ -141,6 +146,7 @@ const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
 const musicBrainzEntityModalTransitionMs = 220;
 const technicalInfoModalTransitionMs = 220;
+const aboutModalTransitionMs = 220;
 const playbackStateService = createPlaybackStateService();
 const scrobbleService = createScrobbleService({
     submitListenBrainz: SubmitListenBrainz,
@@ -163,7 +169,7 @@ const trackMetadataService = createTrackMetadataService({
     getTagRequestVersion: () => tagRequestVersion,
 });
 
-const { sidebarToggle, librarySidebar, librarySettings, libraryBack, libraryPath, librarySearch, libraryBrowser } = getSidebarElements(document);
+const { sidebarToggle, librarySidebar, librarySettings, libraryAbout, libraryBack, libraryPath, librarySearch, libraryBrowser } = getSidebarElements(document);
 const {
     playerShell,
     playerLane,
@@ -292,6 +298,7 @@ trackArtist.addEventListener('contextmenu', (event) => {
 });
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
+const { aboutModal, aboutBackdrop, aboutClose, aboutVersion, aboutRepoLink } = getAboutModalElements(document);
 const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileClose } = getTextFileModalElements(document);
 const imageModalElements = getImageFileModalElements(document);
 const {
@@ -797,6 +804,31 @@ const openCoverImageModal = (): void => {
     void imageModalController.openGallery(gallery, selectedIndex >= 0 ? selectedIndex : 0);
 };
 
+const closeAboutModal = (): void => {
+    aboutModal.classList.remove('is-visible');
+
+    if (aboutModalHideTimer !== undefined) {
+        window.clearTimeout(aboutModalHideTimer);
+    }
+
+    aboutModalHideTimer = window.setTimeout(() => {
+        aboutModal.hidden = true;
+        aboutModalHideTimer = undefined;
+    }, aboutModalTransitionMs);
+};
+
+const openAboutModal = (): void => {
+    if (aboutModalHideTimer !== undefined) {
+        window.clearTimeout(aboutModalHideTimer);
+        aboutModalHideTimer = undefined;
+    }
+
+    aboutModal.hidden = false;
+    window.requestAnimationFrame(() => {
+        aboutModal.classList.add('is-visible');
+    });
+};
+
 
 const closeMusicBrainzEntityModal = (): void => {
     musicBrainzEntityModal.classList.remove('is-visible');
@@ -1012,6 +1044,16 @@ const initializeSettings = async (): Promise<void> => {
     }
 
     libraryController.renderFolder('none');
+};
+
+const initializeAppVersion = async (): Promise<void> => {
+    try {
+        const version = (await GetAppVersion()).trim();
+        aboutVersion.textContent = `${version || 'dev'}`;
+    } catch (error) {
+        console.error(error);
+        aboutVersion.textContent = 'dev';
+    }
 };
 
 const resolveCoverForTrack = async (track: Track): Promise<string | undefined> => {
@@ -1479,6 +1521,10 @@ trackTechnical.addEventListener('click', () => {
     void openTechnicalInfoModal();
 });
 
+libraryAbout.addEventListener('click', () => {
+    openAboutModal();
+});
+
 sidebarQueueAddNext.addEventListener('click', () => {
     if (sidebarQueueTrackIndexes.length === 0) {
         return;
@@ -1527,6 +1573,22 @@ technicalInfoClose.addEventListener('click', () => {
     closeTechnicalInfoModal();
 });
 
+aboutBackdrop.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeAboutModal();
+});
+
+aboutClose.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeAboutModal();
+});
+
+aboutRepoLink.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void BrowserOpenURL('https://github.com/metaisfacil/silphium');
+});
+
 settingsElements.settingsBackdrop.addEventListener('click', suppressTrackMetaClicks);
 settingsElements.settingsClose.addEventListener('click', suppressTrackMetaClicks);
 playlistModalElements.playlistBackdrop.addEventListener('click', suppressTrackMetaClicks);
@@ -1558,6 +1620,11 @@ document.addEventListener('keydown', (event) => {
 
     if (!technicalInfoModal.hidden) {
         closeTechnicalInfoModal();
+        return;
+    }
+
+    if (!aboutModal.hidden) {
+        closeAboutModal();
         return;
     }
 
@@ -1705,6 +1772,10 @@ document.addEventListener('click', (e) => {
         return;
     }
 
+    if (aboutModal.contains(target)) {
+        return;
+    }
+
     if (textFileModal.contains(target)) {
         return;
     }
@@ -1811,3 +1882,4 @@ libraryController.refreshSidebarToggleState();
 refreshLyricsPanel();
 void initializeBackendPlayback();
 void initializeSettings();
+void initializeAppVersion();

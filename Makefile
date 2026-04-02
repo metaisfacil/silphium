@@ -1,5 +1,20 @@
 .PHONY: build dev icon
 
+# ---------------------------------------------------------------------------
+# Version string: YYYYMMDD-<6-char hash>. Falls back to "dev".
+# ---------------------------------------------------------------------------
+ifeq ($(OS),Windows_NT)
+_RAW_VER := $(shell git log -1 --format=%cd-%h --date=format:%Y%m%d --abbrev=6 2>NUL)
+else
+_RAW_VER := $(shell git log -1 --format=%cd-%h --date=format:%Y%m%d --abbrev=6 2>/dev/null)
+endif
+ifeq ($(strip $(_RAW_VER)),)
+VERSION := dev
+else
+VERSION := $(_RAW_VER)
+endif
+LDFLAGS := -X main.AppVersion=$(VERSION)
+
 ifeq ($(OS),Windows_NT)
 ifneq (,$(wildcard .venv/Scripts/python.exe))
 PYTHON_ICON = .venv/Scripts/python.exe
@@ -45,8 +60,8 @@ endif
 
 build:
 	$(MAKE) icon
-	wails build
+	wails build -ldflags "$(LDFLAGS)"
 
 dev:
 	$(MAKE) icon
-	wails dev
+	wails dev -ldflags "$(LDFLAGS)"

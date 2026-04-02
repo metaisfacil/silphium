@@ -1,3 +1,4 @@
+export * from './about-modal';
 export * from './image-file-modal';
 export * from './musicbrainz-entity-modal';
 export * from './play-order-menu';

@@ -29,6 +29,9 @@ import (
 
 const libraryScanUpdatedEvent = "silphium:library:scan-updated"
 
+// AppVersion is set at build time via -ldflags "-X main.AppVersion=...".
+var AppVersion = "dev"
+
 // App contains runtime state and service dependencies for the Wails backend.
 type App struct {
 	ctx            context.Context
@@ -134,6 +137,10 @@ func (a *App) audioBackend() *AudioBackend {
 	}
 
 	return a.audio
+}
+
+func (a *App) GetAppVersion() string {
+	return AppVersion
 }
 
 var audioExtensions = map[string]struct{}{

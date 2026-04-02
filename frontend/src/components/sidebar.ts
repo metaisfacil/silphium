@@ -2,6 +2,7 @@ export type SidebarElements = {
     sidebarToggle: HTMLButtonElement;
     librarySidebar: HTMLElement;
     librarySettings: HTMLButtonElement;
+  libraryAbout: HTMLButtonElement;
     libraryBack: HTMLButtonElement;
     libraryPath: HTMLParagraphElement;
     librarySearch: HTMLInputElement;
@@ -13,7 +14,10 @@ export const renderSidebar = (): string => `
     <aside id="library-sidebar" class="library-sidebar" aria-hidden="true">
       <div class="library-header">
         <h2>Library</h2>
-        <button id="library-settings" class="upload-btn" type="button" aria-label="Settings" title="Settings">⚙</button>
+        <div class="library-header-actions">
+          <button id="library-about" class="upload-btn" type="button" aria-label="About" title="About">i</button>
+          <button id="library-settings" class="upload-btn" type="button" aria-label="Settings" title="Settings">⚙</button>
+        </div>
       </div>
       <div class="library-toolbar">
         <button id="library-back" class="library-back" type="button" aria-label="Go to parent folder">❮</button>
@@ -38,6 +42,7 @@ export const getSidebarElements = (root: ParentNode): SidebarElements => ({
     sidebarToggle: root.querySelector('#sidebar-toggle') as HTMLButtonElement,
     librarySidebar: root.querySelector('#library-sidebar') as HTMLElement,
     librarySettings: root.querySelector('#library-settings') as HTMLButtonElement,
+  libraryAbout: root.querySelector('#library-about') as HTMLButtonElement,
     libraryBack: root.querySelector('#library-back') as HTMLButtonElement,
     libraryPath: root.querySelector('#library-path') as HTMLParagraphElement,
     librarySearch: root.querySelector('#library-search') as HTMLInputElement,

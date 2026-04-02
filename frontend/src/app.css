@@ -230,6 +230,12 @@
     opacity: 0.7;
 }
 
+.library-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
 #library-upload {
     position: absolute;
     opacity: 0;
