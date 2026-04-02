@@ -18,6 +18,12 @@ export function AudioStop():Promise<main.AudioPlaybackState>;
 
 export function GetAppVersion():Promise<string>;
 
+export function GetLibraryFolderPage(arg1:string,arg2:number,arg3:number):Promise<main.LibraryFolderPage>;
+
+export function GetLibraryFolderTrackPaths(arg1:string):Promise<Array<string>>;
+
+export function GetLibraryIndexedFilePage(arg1:string,arg2:number,arg3:number):Promise<main.LibraryIndexedFilePage>;
+
 export function GetSettings():Promise<main.AppSettings>;
 
 export function InitializeAudioBackend():Promise<main.AudioPlaybackState>;
@@ -43,6 +49,8 @@ export function SavePlaylistFile(arg1:string,arg2:Array<string>):Promise<boolean
 export function SaveSettings(arg1:main.AppSettings):Promise<main.AppSettings>;
 
 export function ScanLibraryFolder(arg1:string):Promise<main.LibraryScanResult>;
+
+export function SearchLibrary(arg1:string,arg2:number,arg3:number):Promise<main.LibrarySearchPage>;
 
 export function SelectLibraryFolder():Promise<string>;
 

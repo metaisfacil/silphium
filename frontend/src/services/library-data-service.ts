@@ -6,12 +6,14 @@ import type {
     Track,
 } from '../types/app-types';
 
-type ScanCollections = {
+export type ScanCollections = {
     coverPathEntries: Array<[string, string]>;
     imageFiles: ImageLibraryFile[];
     textFiles: TextLibraryFile[];
     tracks: Track[];
 };
+
+export type ScanCollectionKind = 'track' | 'text-file' | 'image-file';
 
 type MergePlaylistFilesResult = {
     trackIndexes: number[];
@@ -26,10 +28,6 @@ type ClearLibraryRuntimeDataOptions = {
     clearImageModalCache?: () => void;
     resetLibraryState: () => void;
     resetPlaylistState: () => void;
-};
-
-const byRelativePath = <T extends { relativePath: string }>(left: T, right: T): number => {
-    return left.relativePath.localeCompare(right.relativePath, undefined, { sensitivity: 'base' });
 };
 
 const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
@@ -74,29 +72,81 @@ const yieldToUi = async (): Promise<void> => {
     });
 };
 
-export const mapLibraryScanResult = (scanResult: LibraryScanResult): ScanCollections => {
+const appendTrackFiles = async (tracks: Track[], files: LibraryIndexedFile[]): Promise<void> => {
+    const batchSize = 400;
+    for (let index = 0; index < files.length; index += 1) {
+        tracks.push(createPlaceholderTrack(files[index]));
+        if ((index + 1) % batchSize === 0) {
+            await yieldToUi();
+        }
+    }
+};
+
+const appendTextFiles = async (textFiles: TextLibraryFile[], files: LibraryIndexedFile[]): Promise<void> => {
+    const batchSize = 400;
+    for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        textFiles.push({
+            name: file.name,
+            path: file.path,
+            relativePath: file.relativePath,
+            folderPath: file.folderPath,
+        });
+        if ((index + 1) % batchSize === 0) {
+            await yieldToUi();
+        }
+    }
+};
+
+const appendImageFiles = async (imageFiles: ImageLibraryFile[], files: LibraryIndexedFile[]): Promise<void> => {
+    const batchSize = 400;
+    for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        imageFiles.push({
+            name: file.name,
+            path: file.path,
+            relativePath: file.relativePath,
+            folderPath: file.folderPath,
+        });
+        if ((index + 1) % batchSize === 0) {
+            await yieldToUi();
+        }
+    }
+};
+
+export const createScanCollections = (scanResult: LibraryScanResult): ScanCollections => {
     return {
         coverPathEntries: Object.entries(scanResult.coverPathByFolder || {}),
-        tracks: (scanResult.trackFiles || [])
-            .sort(byRelativePath)
-            .map((file) => createPlaceholderTrack(file)),
-        textFiles: (scanResult.textFiles || [])
-            .sort(byRelativePath)
-            .map((file) => ({
-                name: file.name,
-                path: file.path,
-                relativePath: file.relativePath,
-                folderPath: file.folderPath,
-            })),
-        imageFiles: (scanResult.imageFiles || [])
-            .sort(byRelativePath)
-            .map((file) => ({
-                name: file.name,
-                path: file.path,
-                relativePath: file.relativePath,
-                folderPath: file.folderPath,
-            })),
+        tracks: [],
+        textFiles: [],
+        imageFiles: [],
     };
+};
+
+export const appendIndexedFilesToScanCollections = async (
+    scanCollections: ScanCollections,
+    kind: ScanCollectionKind,
+    files: LibraryIndexedFile[],
+): Promise<void> => {
+    if (kind === 'track') {
+        await appendTrackFiles(scanCollections.tracks, files);
+        return;
+    }
+
+    if (kind === 'text-file') {
+        await appendTextFiles(scanCollections.textFiles, files);
+        return;
+    }
+
+    await appendImageFiles(scanCollections.imageFiles, files);
+};
+
+export const mapLibraryScanResult = async (scanResult: LibraryScanResult): Promise<ScanCollections> => {
+    const scanCollections = createScanCollections(scanResult);
+    await appendIndexedFilesToScanCollections(scanCollections, 'track', scanResult.trackFiles || []);
+    await appendIndexedFilesToScanCollections(scanCollections, 'text-file', scanResult.textFiles || []);
+    await appendIndexedFilesToScanCollections(scanCollections, 'image-file', scanResult.imageFiles || []);
+    return scanCollections;
 };
 
 export const mergePlaylistFilesIntoTracks = async (tracks: Track[], playlistFiles: LibraryIndexedFile[]): Promise<MergePlaylistFilesResult> => {

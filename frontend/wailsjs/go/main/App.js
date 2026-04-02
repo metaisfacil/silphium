@@ -34,6 +34,18 @@ export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
 }
 
+export function GetLibraryFolderPage(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetLibraryFolderPage'](arg1, arg2, arg3);
+}
+
+export function GetLibraryFolderTrackPaths(arg1) {
+  return window['go']['main']['App']['GetLibraryFolderTrackPaths'](arg1);
+}
+
+export function GetLibraryIndexedFilePage(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetLibraryIndexedFilePage'](arg1, arg2, arg3);
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
@@ -84,6 +96,10 @@ export function SaveSettings(arg1) {
 
 export function ScanLibraryFolder(arg1) {
   return window['go']['main']['App']['ScanLibraryFolder'](arg1);
+}
+
+export function SearchLibrary(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SearchLibrary'](arg1, arg2, arg3);
 }
 
 export function SelectLibraryFolder() {

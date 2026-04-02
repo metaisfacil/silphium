@@ -70,6 +70,9 @@ type LibraryScanResult struct {
 	ImageFiles        []LibraryIndexedFile `json:"imageFiles"`
 	CoverPathByFolder map[string]string    `json:"coverPathByFolder"`
 	TotalEntries      int                  `json:"totalEntries"`
+	TrackCount        int                  `json:"trackCount"`
+	TextFileCount     int                  `json:"textFileCount"`
+	ImageFileCount    int                  `json:"imageFileCount"`
 	Truncated         bool                 `json:"truncated"`
 	EntryLimit        int                  `json:"entryLimit"`
 }
@@ -82,6 +85,42 @@ type LibraryScanProgress struct {
 	ElapsedMs      int64  `json:"elapsedMs"`
 	EtaSeconds     int    `json:"etaSeconds"`
 	Phase          string `json:"phase"`
+}
+
+// LibraryBrowserEntry is a single server-side sidebar/search result row.
+type LibraryBrowserEntry struct {
+	Kind         string `json:"kind"`
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	FolderPath   string `json:"folderPath"`
+	RelativePath string `json:"relativePath"`
+}
+
+// LibraryFolderPage contains one paginated folder view from the backend.
+type LibraryFolderPage struct {
+	FolderPath   string                `json:"folderPath"`
+	Offset       int                   `json:"offset"`
+	Limit        int                   `json:"limit"`
+	TotalEntries int                   `json:"totalEntries"`
+	Entries      []LibraryBrowserEntry `json:"entries"`
+}
+
+// LibrarySearchPage contains one paginated search result page from the backend.
+type LibrarySearchPage struct {
+	Query        string                `json:"query"`
+	Offset       int                   `json:"offset"`
+	Limit        int                   `json:"limit"`
+	TotalEntries int                   `json:"totalEntries"`
+	Entries      []LibraryBrowserEntry `json:"entries"`
+}
+
+// LibraryIndexedFilePage contains a paginated slice of indexed library files.
+type LibraryIndexedFilePage struct {
+	Kind         string               `json:"kind"`
+	Offset       int                  `json:"offset"`
+	Limit        int                  `json:"limit"`
+	TotalEntries int                  `json:"totalEntries"`
+	Entries      []LibraryIndexedFile `json:"entries"`
 }
 
 // PlaylistLoadResult contains parsed playlist metadata and indexed tracks.
@@ -234,6 +273,161 @@ func coverPriority(name string) int {
 
 func normalizePath(path string) string {
 	return filepath.Clean(strings.TrimSpace(path))
+}
+
+func normalizeLibraryRelativePath(path string) (string, bool) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" || trimmed == "." {
+		return "", true
+	}
+
+	cleaned := filepath.ToSlash(filepath.Clean(strings.ReplaceAll(trimmed, "/", string(filepath.Separator))))
+	if cleaned == "." {
+		return "", true
+	}
+
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", false
+	}
+
+	return cleaned, true
+}
+
+func directChildFolderPath(parentPath string, candidateFolderPath string) (string, bool) {
+	normalizedParent := strings.TrimSpace(parentPath)
+	normalizedCandidate := strings.TrimSpace(candidateFolderPath)
+	if normalizedCandidate == "" {
+		return "", false
+	}
+
+	if normalizedParent == "" {
+		segments := strings.Split(normalizedCandidate, "/")
+		if len(segments) == 0 || segments[0] == "" {
+			return "", false
+		}
+
+		return segments[0], true
+	}
+
+	if normalizedCandidate == normalizedParent {
+		return "", false
+	}
+
+	prefix := normalizedParent + "/"
+	if !strings.HasPrefix(normalizedCandidate, prefix) {
+		return "", false
+	}
+
+	remainder := strings.TrimPrefix(normalizedCandidate, prefix)
+	if remainder == "" {
+		return "", false
+	}
+
+	segments := strings.Split(remainder, "/")
+	if len(segments) == 0 || segments[0] == "" {
+		return "", false
+	}
+
+	return normalizedParent + "/" + segments[0], true
+}
+
+func folderBrowserEntry(path string) LibraryBrowserEntry {
+	segments := strings.Split(path, "/")
+	name := path
+	parentPath := ""
+	if len(segments) > 0 {
+		name = segments[len(segments)-1]
+		if len(segments) > 1 {
+			parentPath = strings.Join(segments[:len(segments)-1], "/")
+		}
+	}
+
+	return LibraryBrowserEntry{
+		Kind:         "folder",
+		Name:         name,
+		Path:         path,
+		FolderPath:   parentPath,
+		RelativePath: path,
+	}
+}
+
+func browserEntryFromIndexedFile(kind string, indexed LibraryIndexedFile) LibraryBrowserEntry {
+	return LibraryBrowserEntry{
+		Kind:         kind,
+		Name:         indexed.Name,
+		Path:         indexed.Path,
+		FolderPath:   indexed.FolderPath,
+		RelativePath: indexed.RelativePath,
+	}
+}
+
+func relativePathWithinFolder(folderPath string, relativePath string) string {
+	normalizedFolder := strings.TrimSpace(folderPath)
+	if normalizedFolder == "" {
+		return relativePath
+	}
+
+	prefix := normalizedFolder + "/"
+	if !strings.HasPrefix(relativePath, prefix) {
+		return relativePath
+	}
+
+	return strings.TrimPrefix(relativePath, prefix)
+}
+
+func pagedLibraryEntries(entries []LibraryBrowserEntry, offset int, limit int) []LibraryBrowserEntry {
+	if offset < 0 {
+		offset = 0
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+
+	if offset >= len(entries) {
+		return []LibraryBrowserEntry{}
+	}
+
+	end := offset + limit
+	if end > len(entries) {
+		end = len(entries)
+	}
+
+	return entries[offset:end]
+}
+
+func pagedIndexedFiles(kind string, entries []LibraryIndexedFile, offset int, limit int) LibraryIndexedFilePage {
+	if offset < 0 {
+		offset = 0
+	}
+
+	if limit <= 0 {
+		limit = 1000
+	}
+
+	if offset >= len(entries) {
+		return LibraryIndexedFilePage{
+			Kind:         kind,
+			Offset:       offset,
+			Limit:        limit,
+			TotalEntries: len(entries),
+			Entries:      []LibraryIndexedFile{},
+		}
+	}
+
+	end := offset + limit
+	if end > len(entries) {
+		end = len(entries)
+	}
+
+	pageEntries := append([]LibraryIndexedFile(nil), entries[offset:end]...)
+	return LibraryIndexedFilePage{
+		Kind:         kind,
+		Offset:       offset,
+		Limit:        limit,
+		TotalEntries: len(entries),
+		Entries:      pageEntries,
+	}
 }
 
 func (a *App) isAllowedLibraryPath(path string) bool {
@@ -630,6 +824,9 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	})
 
 	if scanErr != nil {
+		result.TrackCount = len(result.TrackFiles)
+		result.TextFileCount = len(result.TextFiles)
+		result.ImageFileCount = len(result.ImageFiles)
 		finalizationStartedAt = time.Now()
 		finalizationBudgetMs = estimateFinalizationBudgetMs(finalizationStartedAt.Sub(scanStartedAt), scannedEntries)
 		emitProgress(true, "finalizing")
@@ -659,6 +856,10 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		return left < right
 	})
 
+	result.TrackCount = len(result.TrackFiles)
+	result.TextFileCount = len(result.TextFiles)
+	result.ImageFileCount = len(result.ImageFiles)
+
 	a.libraryRoot = cleanRoot
 	a.setLibraryIndexFromScan(result)
 	if restartWatcher {
@@ -676,12 +877,270 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		a.indexMu.Unlock()
 	}
 
-	return result
+	response := result
+	response.TrackFiles = []LibraryIndexedFile{}
+	response.TextFiles = []LibraryIndexedFile{}
+	response.ImageFiles = []LibraryIndexedFile{}
+	return response
 }
 
 // ScanLibraryFolder indexes audio, text, and image files under the selected root folder.
 func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 	return a.scanLibraryFolder(path, true)
+}
+
+// GetLibraryIndexedFilePage returns a paginated slice of indexed files for initial frontend hydration.
+func (a *App) GetLibraryIndexedFilePage(kind string, offset int, limit int) LibraryIndexedFilePage {
+	normalizedKind := strings.ToLower(strings.TrimSpace(kind))
+
+	a.indexMu.Lock()
+	defer a.indexMu.Unlock()
+
+	switch normalizedKind {
+	case "track":
+		return pagedIndexedFiles("track", a.libraryScan.TrackFiles, offset, limit)
+	case "text-file":
+		return pagedIndexedFiles("text-file", a.libraryScan.TextFiles, offset, limit)
+	case "image-file":
+		return pagedIndexedFiles("image-file", a.libraryScan.ImageFiles, offset, limit)
+	default:
+		return LibraryIndexedFilePage{
+			Kind:         normalizedKind,
+			Offset:       offset,
+			Limit:        limit,
+			TotalEntries: 0,
+			Entries:      []LibraryIndexedFile{},
+		}
+	}
+}
+
+// GetLibraryFolderPage returns a paginated folder listing from the current backend index.
+func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) LibraryFolderPage {
+	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
+	if !ok {
+		return LibraryFolderPage{
+			FolderPath: normalizedFolderPath,
+			Offset:     offset,
+			Limit:      limit,
+			Entries:    []LibraryBrowserEntry{},
+		}
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+
+	a.indexMu.Lock()
+	defer a.indexMu.Unlock()
+
+	folderEntriesByPath := make(map[string]LibraryBrowserEntry)
+	trackEntries := make([]LibraryBrowserEntry, 0)
+	textEntries := make([]LibraryBrowserEntry, 0)
+	imageEntries := make([]LibraryBrowserEntry, 0)
+
+	appendEntry := func(indexed LibraryIndexedFile, kind string, destination *[]LibraryBrowserEntry) {
+		if indexed.FolderPath == normalizedFolderPath {
+			*destination = append(*destination, browserEntryFromIndexedFile(kind, indexed))
+			return
+		}
+
+		childFolderPath, childOk := directChildFolderPath(normalizedFolderPath, indexed.FolderPath)
+		if !childOk {
+			return
+		}
+
+		if _, exists := folderEntriesByPath[childFolderPath]; !exists {
+			folderEntriesByPath[childFolderPath] = folderBrowserEntry(childFolderPath)
+		}
+	}
+
+	for _, indexed := range a.trackByPath {
+		appendEntry(indexed, "track", &trackEntries)
+	}
+	for _, indexed := range a.textByPath {
+		appendEntry(indexed, "text-file", &textEntries)
+	}
+	for _, indexed := range a.imageByPath {
+		appendEntry(indexed, "image-file", &imageEntries)
+	}
+
+	folderEntries := make([]LibraryBrowserEntry, 0, len(folderEntriesByPath))
+	for _, entry := range folderEntriesByPath {
+		folderEntries = append(folderEntries, entry)
+	}
+
+	sort.SliceStable(folderEntries, func(i int, j int) bool {
+		return strings.ToLower(folderEntries[i].Path) < strings.ToLower(folderEntries[j].Path)
+	})
+	sort.SliceStable(trackEntries, func(i int, j int) bool {
+		return strings.ToLower(trackEntries[i].Name) < strings.ToLower(trackEntries[j].Name)
+	})
+	sort.SliceStable(textEntries, func(i int, j int) bool {
+		return strings.ToLower(textEntries[i].Name) < strings.ToLower(textEntries[j].Name)
+	})
+	sort.SliceStable(imageEntries, func(i int, j int) bool {
+		return strings.ToLower(imageEntries[i].Name) < strings.ToLower(imageEntries[j].Name)
+	})
+
+	entries := make([]LibraryBrowserEntry, 0, len(folderEntries)+len(trackEntries)+len(textEntries)+len(imageEntries))
+	entries = append(entries, folderEntries...)
+	entries = append(entries, trackEntries...)
+	entries = append(entries, textEntries...)
+	entries = append(entries, imageEntries...)
+
+	return LibraryFolderPage{
+		FolderPath:   normalizedFolderPath,
+		Offset:       offset,
+		Limit:        limit,
+		TotalEntries: len(entries),
+		Entries:      pagedLibraryEntries(entries, offset, limit),
+	}
+}
+
+// SearchLibrary returns paginated server-side search results across folders and indexed files.
+func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPage {
+	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
+	if limit <= 0 {
+		limit = 100
+	}
+
+	if normalizedQuery == "" {
+		return LibrarySearchPage{
+			Query:   query,
+			Offset:  offset,
+			Limit:   limit,
+			Entries: []LibraryBrowserEntry{},
+		}
+	}
+
+	a.indexMu.Lock()
+	defer a.indexMu.Unlock()
+
+	folderPaths := make(map[string]struct{})
+	folderMatchesByPath := make(map[string]LibraryBrowserEntry)
+	trackMatches := make([]LibraryBrowserEntry, 0)
+	textMatches := make([]LibraryBrowserEntry, 0)
+	imageMatches := make([]LibraryBrowserEntry, 0)
+
+	collectFolderAncestors := func(folderPath string) {
+		if folderPath == "" {
+			return
+		}
+
+		segments := strings.Split(folderPath, "/")
+		cumulative := ""
+		for _, segment := range segments {
+			if segment == "" {
+				continue
+			}
+
+			if cumulative == "" {
+				cumulative = segment
+			} else {
+				cumulative += "/" + segment
+			}
+
+			folderPaths[cumulative] = struct{}{}
+		}
+	}
+
+	matchIndexedFile := func(indexed LibraryIndexedFile, kind string, destination *[]LibraryBrowserEntry) {
+		collectFolderAncestors(indexed.FolderPath)
+		candidateName := strings.ToLower(indexed.Name)
+		candidateRelativePath := strings.ToLower(indexed.RelativePath)
+		if strings.Contains(candidateName, normalizedQuery) || strings.Contains(candidateRelativePath, normalizedQuery) {
+			*destination = append(*destination, browserEntryFromIndexedFile(kind, indexed))
+		}
+	}
+
+	for _, indexed := range a.trackByPath {
+		matchIndexedFile(indexed, "track", &trackMatches)
+	}
+	for _, indexed := range a.textByPath {
+		matchIndexedFile(indexed, "text-file", &textMatches)
+	}
+	for _, indexed := range a.imageByPath {
+		matchIndexedFile(indexed, "image-file", &imageMatches)
+	}
+
+	for folderPath := range folderPaths {
+		folderName := folderPath
+		if lastSlash := strings.LastIndex(folderPath, "/"); lastSlash >= 0 {
+			folderName = folderPath[lastSlash+1:]
+		}
+
+		if strings.Contains(strings.ToLower(folderPath), normalizedQuery) || strings.Contains(strings.ToLower(folderName), normalizedQuery) {
+			folderMatchesByPath[folderPath] = folderBrowserEntry(folderPath)
+		}
+	}
+
+	folderMatches := make([]LibraryBrowserEntry, 0, len(folderMatchesByPath))
+	for _, entry := range folderMatchesByPath {
+		folderMatches = append(folderMatches, entry)
+	}
+
+	sort.SliceStable(folderMatches, func(i int, j int) bool {
+		return strings.ToLower(folderMatches[i].Path) < strings.ToLower(folderMatches[j].Path)
+	})
+	sort.SliceStable(trackMatches, func(i int, j int) bool {
+		return strings.ToLower(trackMatches[i].RelativePath) < strings.ToLower(trackMatches[j].RelativePath)
+	})
+	sort.SliceStable(textMatches, func(i int, j int) bool {
+		return strings.ToLower(textMatches[i].RelativePath) < strings.ToLower(textMatches[j].RelativePath)
+	})
+	sort.SliceStable(imageMatches, func(i int, j int) bool {
+		return strings.ToLower(imageMatches[i].RelativePath) < strings.ToLower(imageMatches[j].RelativePath)
+	})
+
+	entries := make([]LibraryBrowserEntry, 0, len(folderMatches)+len(trackMatches)+len(textMatches)+len(imageMatches))
+	entries = append(entries, folderMatches...)
+	entries = append(entries, trackMatches...)
+	entries = append(entries, textMatches...)
+	entries = append(entries, imageMatches...)
+
+	return LibrarySearchPage{
+		Query:        query,
+		Offset:       offset,
+		Limit:        limit,
+		TotalEntries: len(entries),
+		Entries:      pagedLibraryEntries(entries, offset, limit),
+	}
+}
+
+// GetLibraryFolderTrackPaths resolves all audio tracks under a folder subtree for queue actions.
+func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
+	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
+	if !ok {
+		return []string{}
+	}
+
+	a.indexMu.Lock()
+	defer a.indexMu.Unlock()
+
+	prefix := ""
+	if normalizedFolderPath != "" {
+		prefix = normalizedFolderPath + "/"
+	}
+
+	trackFiles := make([]LibraryIndexedFile, 0)
+	for _, indexed := range a.trackByPath {
+		if normalizedFolderPath == "" || indexed.FolderPath == normalizedFolderPath || strings.HasPrefix(indexed.FolderPath, prefix) {
+			trackFiles = append(trackFiles, indexed)
+		}
+	}
+
+	sort.SliceStable(trackFiles, func(i int, j int) bool {
+		left := strings.ToLower(relativePathWithinFolder(normalizedFolderPath, trackFiles[i].RelativePath))
+		right := strings.ToLower(relativePathWithinFolder(normalizedFolderPath, trackFiles[j].RelativePath))
+		return left < right
+	})
+
+	paths := make([]string, 0, len(trackFiles))
+	for _, indexed := range trackFiles {
+		paths = append(paths, indexed.Path)
+	}
+
+	return paths
 }
 
 func cloneCoverPathByFolder(input map[string]string) map[string]string {
@@ -862,6 +1321,9 @@ func (a *App) snapshotLibraryScanLocked(rootPath string) LibraryScanResult {
 		ImageFiles:        imageFiles,
 		CoverPathByFolder: coverPathByFolder,
 		TotalEntries:      len(trackFiles) + len(textFiles) + len(imageFiles),
+		TrackCount:        len(trackFiles),
+		TextFileCount:     len(textFiles),
+		ImageFileCount:    len(imageFiles),
 		Truncated:         a.libraryScan.Truncated,
 		EntryLimit:        a.libraryScan.EntryLimit,
 	}

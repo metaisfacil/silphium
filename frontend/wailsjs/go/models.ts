@@ -46,6 +46,64 @@ export namespace main {
 	        this.endEventId = source["endEventId"];
 	    }
 	}
+	export class LibraryBrowserEntry {
+	    kind: string;
+	    name: string;
+	    path: string;
+	    folderPath: string;
+	    relativePath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryBrowserEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.folderPath = source["folderPath"];
+	        this.relativePath = source["relativePath"];
+	    }
+	}
+	export class LibraryFolderPage {
+	    folderPath: string;
+	    offset: number;
+	    limit: number;
+	    totalEntries: number;
+	    entries: LibraryBrowserEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryFolderPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.folderPath = source["folderPath"];
+	        this.offset = source["offset"];
+	        this.limit = source["limit"];
+	        this.totalEntries = source["totalEntries"];
+	        this.entries = this.convertValues(source["entries"], LibraryBrowserEntry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class LibraryIndexedFile {
 	    name: string;
 	    path: string;
@@ -64,6 +122,44 @@ export namespace main {
 	        this.folderPath = source["folderPath"];
 	    }
 	}
+	export class LibraryIndexedFilePage {
+	    kind: string;
+	    offset: number;
+	    limit: number;
+	    totalEntries: number;
+	    entries: LibraryIndexedFile[];
+	
+	    static createFrom(source: any = {}) {
+	        return new LibraryIndexedFilePage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.offset = source["offset"];
+	        this.limit = source["limit"];
+	        this.totalEntries = source["totalEntries"];
+	        this.entries = this.convertValues(source["entries"], LibraryIndexedFile);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class LibraryScanResult {
 	    rootPath: string;
 	    rootName: string;
@@ -72,6 +168,9 @@ export namespace main {
 	    imageFiles: LibraryIndexedFile[];
 	    coverPathByFolder: Record<string, string>;
 	    totalEntries: number;
+	    trackCount: number;
+	    textFileCount: number;
+	    imageFileCount: number;
 	    truncated: boolean;
 	    entryLimit: number;
 	
@@ -88,8 +187,49 @@ export namespace main {
 	        this.imageFiles = this.convertValues(source["imageFiles"], LibraryIndexedFile);
 	        this.coverPathByFolder = source["coverPathByFolder"];
 	        this.totalEntries = source["totalEntries"];
+	        this.trackCount = source["trackCount"];
+	        this.textFileCount = source["textFileCount"];
+	        this.imageFileCount = source["imageFileCount"];
 	        this.truncated = source["truncated"];
 	        this.entryLimit = source["entryLimit"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LibrarySearchPage {
+	    query: string;
+	    offset: number;
+	    limit: number;
+	    totalEntries: number;
+	    entries: LibraryBrowserEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new LibrarySearchPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.query = source["query"];
+	        this.offset = source["offset"];
+	        this.limit = source["limit"];
+	        this.totalEntries = source["totalEntries"];
+	        this.entries = this.convertValues(source["entries"], LibraryBrowserEntry);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -117,6 +117,9 @@ export type LibraryScanResult = {
     imageFiles: LibraryIndexedFile[];
     coverPathByFolder: Record<string, string>;
     totalEntries: number;
+    trackCount: number;
+    textFileCount: number;
+    imageFileCount: number;
     truncated: boolean;
     entryLimit: number;
 };
@@ -128,6 +131,38 @@ export type LibraryScanProgress = {
     elapsedMs: number;
     etaSeconds: number;
     phase: 'scanning' | 'finalizing';
+};
+
+export type LibraryBrowserEntry = {
+    kind: 'folder' | 'track' | 'text-file' | 'image-file';
+    name: string;
+    path: string;
+    folderPath: string;
+    relativePath: string;
+};
+
+export type LibraryFolderPage = {
+    folderPath: string;
+    offset: number;
+    limit: number;
+    totalEntries: number;
+    entries: LibraryBrowserEntry[];
+};
+
+export type LibrarySearchPage = {
+    query: string;
+    offset: number;
+    limit: number;
+    totalEntries: number;
+    entries: LibraryBrowserEntry[];
+};
+
+export type LibraryIndexedFilePage = {
+    kind: 'track' | 'text-file' | 'image-file';
+    offset: number;
+    limit: number;
+    totalEntries: number;
+    entries: LibraryIndexedFile[];
 };
 
 export type PlaylistLoadResult = {

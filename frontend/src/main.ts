@@ -3,10 +3,17 @@ import './app.css';
 import './components/overlays/overlays.css';
 import { createArtistInfoController, type ArtistInfoController } from './controllers/artist-info-controller';
 import { createImageModalController, type ImageModalController } from './controllers/image-modal-controller';
-import { createLibraryController, type LibraryController } from './controllers/library-controller';
+import { createLibraryController } from './controllers/library-controller';
+import type { LibraryController } from './controllers/library-controller';
 import { createPlaylistController, type LoadedPlaylistData, type PlaylistController } from './controllers/playlist-controller';
 import { createSettingsController, type SettingsController } from './controllers/settings-controller';
-import { clearLibraryRuntimeData, mapLibraryScanResult, mergePlaylistFilesIntoTracks } from './services/library-data-service';
+import {
+    appendIndexedFilesToScanCollections,
+    clearLibraryRuntimeData,
+    createScanCollections,
+    mapLibraryScanResult,
+    mergePlaylistFilesIntoTracks,
+} from './services/library-data-service';
 import { createPlaybackSequencingService } from './services/playback-sequencing-service';
 import { createScrobbleService } from './services/scrobble-service';
 import { createPlaybackStateService } from './services/playback-state-service';
@@ -46,6 +53,9 @@ import {
     AudioSetVolume,
     AudioStop,
     GetAppVersion,
+    GetLibraryFolderPage,
+    GetLibraryFolderTrackPaths,
+    GetLibraryIndexedFilePage,
     GetSettings,
     InitializeAudioBackend,
     LoadPlaylistFile,
@@ -56,6 +66,7 @@ import {
     SavePlaylistFile,
     SaveSettings,
     ScanLibraryFolder,
+    SearchLibrary,
     SelectLibraryFolder,
     SelectPlaylistFile,
     SelectPlaylistSaveFile,
@@ -67,8 +78,11 @@ import type {
     AppSettings,
     AudioPlaybackState,
     ImageLibraryFile,
+    LibraryFolderPage,
+    LibraryIndexedFilePage,
     LibraryScanProgress,
     LibraryScanResult,
+    LibrarySearchPage,
     MusicBrainzEntityType,
     PlaybackOrderMode,
     PlaylistLoadResult,
@@ -122,6 +136,9 @@ app.innerHTML = `
 let tracks: Track[] = [];
 let textFiles: TextLibraryFile[] = [];
 let imageFiles: ImageLibraryFile[] = [];
+const trackIndexByPath = new Map<string, number>();
+const textFileIndexByPath = new Map<string, number>();
+const imageFileIndexByPath = new Map<string, number>();
 let currentTrackIndex = -1;
 let objectUrls: string[] = [];
 let tagRequestVersion = 0;
@@ -325,6 +342,7 @@ let imageModalController: ImageModalController;
 let libraryController: LibraryController;
 let libraryClientFinalizeEstimateMs = 0;
 let activeLibraryLoadScanResolvedAtMs: number | null = null;
+const libraryIndexedFilePageSize = 1000;
 
 const beginLibraryLoadTracking = (): void => {
     activeLibraryLoadScanResolvedAtMs = null;
@@ -354,6 +372,84 @@ const finishLibraryLoadTracking = (): void => {
 };
 
 const canScrobble = (): boolean => currentSettings.listenBrainzUserToken.trim() !== '';
+
+const rebuildTrackPathIndex = (): void => {
+    trackIndexByPath.clear();
+    tracks.forEach((track, index) => {
+        trackIndexByPath.set(track.path.toLowerCase(), index);
+    });
+};
+
+const rebuildTextFilePathIndex = (): void => {
+    textFileIndexByPath.clear();
+    textFiles.forEach((textFile, index) => {
+        textFileIndexByPath.set(textFile.path.toLowerCase(), index);
+    });
+};
+
+const rebuildImageFilePathIndex = (): void => {
+    imageFileIndexByPath.clear();
+    imageFiles.forEach((imageFile, index) => {
+        imageFileIndexByPath.set(imageFile.path.toLowerCase(), index);
+    });
+};
+
+const trackIndexForPath = (path: string): number => {
+    const normalizedPath = path.trim().toLowerCase();
+    if (!normalizedPath) {
+        return -1;
+    }
+
+    const cached = trackIndexByPath.get(normalizedPath);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const foundIndex = tracks.findIndex((track) => track.path.toLowerCase() === normalizedPath);
+    if (foundIndex >= 0) {
+        trackIndexByPath.set(normalizedPath, foundIndex);
+    }
+
+    return foundIndex;
+};
+
+const textFileIndexForPath = (path: string): number => {
+    const normalizedPath = path.trim().toLowerCase();
+    if (!normalizedPath) {
+        return -1;
+    }
+
+    const cached = textFileIndexByPath.get(normalizedPath);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const foundIndex = textFiles.findIndex((textFile) => textFile.path.toLowerCase() === normalizedPath);
+    if (foundIndex >= 0) {
+        textFileIndexByPath.set(normalizedPath, foundIndex);
+    }
+
+    return foundIndex;
+};
+
+const imageFileIndexForPath = (path: string): number => {
+    const normalizedPath = path.trim().toLowerCase();
+    if (!normalizedPath) {
+        return -1;
+    }
+
+    const cached = imageFileIndexByPath.get(normalizedPath);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const foundIndex = imageFiles.findIndex((imageFile) => imageFile.path.toLowerCase() === normalizedPath);
+    if (foundIndex >= 0) {
+        imageFileIndexByPath.set(normalizedPath, foundIndex);
+    }
+
+    return foundIndex;
+};
 
 const currentTrackForPlaybackState = (state: AudioPlaybackState): Track | undefined => {
     if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
@@ -995,6 +1091,9 @@ const clearLibrarySelection = async (): Promise<void> => {
     tracks = [];
     textFiles = [];
     imageFiles = [];
+    trackIndexByPath.clear();
+    textFileIndexByPath.clear();
+    imageFileIndexByPath.clear();
 
     currentTrackIndex = -1;
     scrobbleService.reset();
@@ -1328,6 +1427,7 @@ const loadPlaylistData = async (playlistPath: string): Promise<LoadedPlaylistDat
     const loaded = await LoadPlaylistFile(playlistPath) as PlaylistLoadResult;
     const mergeResult = await mergePlaylistFilesIntoTracks(tracks, loaded.trackFiles || []);
     tracks = mergeResult.tracks;
+    rebuildTrackPathIndex();
 
     if (mergeResult.trackIndexes.length === 0) {
         return null;
@@ -1337,6 +1437,72 @@ const loadPlaylistData = async (playlistPath: string): Promise<LoadedPlaylistDat
         name: loaded.name || '',
         trackIndexes: mergeResult.trackIndexes,
     };
+};
+
+const hasCompleteLibraryPayload = (scanResult: LibraryScanResult): boolean => {
+    const trackCount = Math.max(scanResult.trackCount || 0, (scanResult.trackFiles || []).length);
+    const textFileCount = Math.max(scanResult.textFileCount || 0, (scanResult.textFiles || []).length);
+    const imageFileCount = Math.max(scanResult.imageFileCount || 0, (scanResult.imageFiles || []).length);
+
+    return (scanResult.trackFiles || []).length >= trackCount
+        && (scanResult.textFiles || []).length >= textFileCount
+        && (scanResult.imageFiles || []).length >= imageFileCount;
+};
+
+const loadPagedScanCollections = async (scanResult: LibraryScanResult) => {
+    if (hasCompleteLibraryPayload(scanResult)) {
+        return await mapLibraryScanResult(scanResult);
+    }
+
+    const scanCollections = createScanCollections(scanResult);
+    const totalTrackCount = Math.max(scanResult.trackCount || 0, (scanResult.trackFiles || []).length);
+    const totalTextFileCount = Math.max(scanResult.textFileCount || 0, (scanResult.textFiles || []).length);
+    const totalImageFileCount = Math.max(scanResult.imageFileCount || 0, (scanResult.imageFiles || []).length);
+    const totalFileCount = totalTrackCount + totalTextFileCount + totalImageFileCount;
+    let loadedFileCount = 0;
+    const transferStartedAtMs = performance.now();
+
+    const updateTransferEta = (): void => {
+        if (totalFileCount <= 0 || loadedFileCount <= 0) {
+            return;
+        }
+
+        const elapsedTransferMs = Math.max(1, performance.now() - transferStartedAtMs);
+        const measuredRemainingMs = loadedFileCount < totalFileCount
+            ? Math.max(0, (elapsedTransferMs / loadedFileCount) * (totalFileCount - loadedFileCount))
+            : 0;
+
+        let historicalRemainingMs = 0;
+        if (activeLibraryLoadScanResolvedAtMs !== null && libraryClientFinalizeEstimateMs > 0) {
+            historicalRemainingMs = Math.max(0, libraryClientFinalizeEstimateMs - (performance.now() - activeLibraryLoadScanResolvedAtMs));
+        }
+
+        const remainingMs = Math.max(measuredRemainingMs, historicalRemainingMs);
+        if (remainingMs <= 0) {
+            return;
+        }
+
+        libraryController.setLibraryLoadingEtaSeconds(Math.max(1, Math.ceil(remainingMs / 1000)));
+    };
+
+    const pageKinds = [
+        { kind: 'track' as const, totalEntries: totalTrackCount },
+        { kind: 'text-file' as const, totalEntries: totalTextFileCount },
+        { kind: 'image-file' as const, totalEntries: totalImageFileCount },
+    ];
+
+    for (const pageKind of pageKinds) {
+        for (let offset = 0; offset < pageKind.totalEntries; offset += libraryIndexedFilePageSize) {
+            const page = await GetLibraryIndexedFilePage(pageKind.kind, offset, libraryIndexedFilePageSize) as LibraryIndexedFilePage;
+            const entries = page.entries || [];
+            await appendIndexedFilesToScanCollections(scanCollections, pageKind.kind, entries);
+            loadedFileCount += entries.length;
+            updateTransferEta();
+        }
+    }
+
+    libraryController.setLibraryLoadingStatusLabel('');
+    return scanCollections;
 };
 
 const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSelectStartingTrack?: boolean }): Promise<void> => {
@@ -1374,16 +1540,19 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     textFiles = [];
     imageFiles = [];
 
-    const scanCollections = mapLibraryScanResult(scanResult);
+    const scanCollections = await loadPagedScanCollections(scanResult);
     tracks = scanCollections.tracks;
     textFiles = scanCollections.textFiles;
     imageFiles = scanCollections.imageFiles;
+    rebuildTrackPathIndex();
+    rebuildTextFilePathIndex();
+    rebuildImageFilePathIndex();
 
     for (const [folder, coverPath] of scanCollections.coverPathEntries) {
         coverPathByFolder.set(folder, coverPath);
     }
 
-    libraryController.rebuildLibraryTree(
+    await libraryController.rebuildLibraryTree(
         scanResult.rootName || 'Selected folder',
         scanResult.truncated,
         tracks,
@@ -1541,6 +1710,21 @@ libraryController = createLibraryController({
     getTextFiles: () => textFiles,
     getImageFiles: () => imageFiles,
     getCurrentTrackIndex: () => currentTrackIndex,
+    loadFolderPage: async (folderPath: string, offset: number, limit: number): Promise<LibraryFolderPage> => {
+        return await GetLibraryFolderPage(folderPath, offset, limit) as LibraryFolderPage;
+    },
+    searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => {
+        return await SearchLibrary(query, offset, limit) as LibrarySearchPage;
+    },
+    resolveTrackIndex: trackIndexForPath,
+    resolveTextFileIndex: textFileIndexForPath,
+    resolveImageFileIndex: imageFileIndexForPath,
+    getFolderTrackIndexes: async (folderPath: string): Promise<number[]> => {
+        const trackPaths = await GetLibraryFolderTrackPaths(folderPath) as string[];
+        return trackPaths
+            .map((trackPath) => trackIndexForPath(trackPath))
+            .filter((trackIndex) => trackIndex >= 0);
+    },
     onTrackChosen: (index: number) => {
         void loadTrack(index).then(() => {
             void playCurrentTrack();
