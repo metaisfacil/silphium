@@ -121,40 +121,10 @@
     transform: translateY(0) scale(1);
 }
 
-.image-file-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.55rem;
-    padding: 0.45rem 0.65rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.image-file-title {
-    margin: 0;
-    font-size: 0.76rem;
-    opacity: 0.88;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.image-file-close {
-    width: 1.5rem;
-    height: 1.5rem;
-    border: none;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.12);
-    color: inherit;
-    font-size: 0.78rem;
-    line-height: 1;
-    cursor: pointer;
-}
-
 .image-file-content {
     width: fit-content;
     max-width: calc(100vw - 3.6rem);
-    max-height: calc(100vh - 8.5rem);
+    max-height: calc(100vh - 3.6rem);
     padding: 0.8rem;
     display: flex;
     align-items: center;
@@ -165,12 +135,13 @@
 .image-file-preview {
     display: block;
     max-width: 100%;
-    max-height: calc(100vh - 10.1rem);
+    max-height: calc(100vh - 5.2rem);
     width: auto;
     height: auto;
     object-fit: contain;
     border-radius: 0.4rem;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+    cursor: zoom-out;
 }
 
 .settings-modal {

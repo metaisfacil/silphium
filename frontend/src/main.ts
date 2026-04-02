@@ -263,7 +263,7 @@ trackArtist.addEventListener('click', () => openMbLink(trackArtist));
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
 const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileClose } = getTextFileModalElements(document);
-const { imageFileModal, imageFileBackdrop, imageFileTitle, imageFileClose, imageFilePreview } = getImageFileModalElements(document);
+const { imageFileModal, imageFileBackdrop, imageFilePreview } = getImageFileModalElements(document);
 const settingsElements = getSettingsModalElements(document);
 const { playOrderMenu } = getPlayOrderMenuElements(document);
 const playlistMenuElements = getPlaylistMenuElements(document);
@@ -1285,7 +1285,6 @@ const openImageFileModal = async (imageFile: ImageLibraryFile): Promise<void> =>
         imageModalHideTimer = undefined;
     }
 
-    imageFileTitle.textContent = imageFile.relativePath || imageFile.name;
     imageFilePreview.removeAttribute('src');
     imageFileModal.hidden = false;
     window.requestAnimationFrame(() => {
@@ -1304,13 +1303,12 @@ const openImageFileModal = async (imageFile: ImageLibraryFile): Promise<void> =>
     }
 };
 
-const openImagePreviewModal = (title: string, source: string): void => {
+const openImagePreviewModal = (_title: string, source: string): void => {
     if (imageModalHideTimer !== undefined) {
         window.clearTimeout(imageModalHideTimer);
         imageModalHideTimer = undefined;
     }
 
-    imageFileTitle.textContent = title;
     imageFilePreview.src = source;
     imageFileModal.hidden = false;
     window.requestAnimationFrame(() => {
@@ -2003,7 +2001,7 @@ imageFileBackdrop.addEventListener('click', () => {
     closeImageFileModal();
 });
 
-imageFileClose.addEventListener('click', () => {
+imageFilePreview.addEventListener('click', () => {
     closeImageFileModal();
 });
 
