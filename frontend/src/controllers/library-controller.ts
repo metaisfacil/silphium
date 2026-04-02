@@ -351,12 +351,6 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         });
     };
 
-    const trackTitleForEntry = (entry: LibraryBrowserEntry): string => {
-        const trackIndex = options.resolveTrackIndex(entry.path);
-        const track = trackIndex >= 0 ? getTracks()[trackIndex] : undefined;
-        return track ? (track.displayTitle || track.title || track.name) : entry.name;
-    };
-
     const createSearchTreeNode = (name: string, path: string): SearchTreeNode => ({
         name,
         path,
@@ -428,7 +422,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     const searchEntryLabel = (entry: LibraryBrowserEntry): string => {
         if (entry.kind === 'track') {
-            return `🎵 ${trackTitleForEntry(entry)}`;
+            return `🎵 ${entry.name}`;
         }
 
         if (entry.kind === 'text-file') {
@@ -478,8 +472,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         const appendFileRows = (entries: LibraryBrowserEntry[], kind: 'track' | 'text-file' | 'image-file'): void => {
             const sortedEntries = [...entries].sort((left, right) => {
-                const leftLabel = kind === 'track' ? trackTitleForEntry(left) : left.name;
-                const rightLabel = kind === 'track' ? trackTitleForEntry(right) : right.name;
+                const leftLabel = left.name;
+                const rightLabel = right.name;
                 return compareLibraryLabels(leftLabel, rightLabel);
             });
 
@@ -631,12 +625,9 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         if (entry.kind === 'track') {
-            const trackIndex = options.resolveTrackIndex(entry.path);
-            const track = trackIndex >= 0 ? getTracks()[trackIndex] : undefined;
-            const title = track ? (track.displayTitle || track.title || track.name) : entry.name;
             return source.kind === 'search'
-                ? `🎵 ${entry.relativePath || title}`
-                : `🎵 ${title}`;
+                ? `🎵 ${entry.relativePath || entry.name}`
+                : `🎵 ${entry.name}`;
         }
 
         if (entry.kind === 'text-file') {
