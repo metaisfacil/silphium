@@ -53,6 +53,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistClose,
         playlistTitle,
         playlistSource,
+        playlistHydrationProgress,
+        playlistHydrationCount,
         playlistList,
         playlistAddCurrent,
         playlistSaveAs,
@@ -67,6 +69,41 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     let selectedSource: PlaylistSource = 'queue';
     let selectedFavoriteIndex: number | null = null;
     let playbackSource: PlaylistSource = 'queue';
+    let hydrationTotal = 0;
+    let hydrationCompleted = 0;
+    let hydrationHideToken = 0;
+
+    const setHydrationProgress = (completed: number, total: number): void => {
+        hydrationHideToken += 1;
+
+        hydrationCompleted = Math.max(0, completed);
+        hydrationTotal = Math.max(0, total);
+
+        if (hydrationTotal <= 0) {
+            playlistHydrationProgress.hidden = true;
+            return;
+        }
+
+        const boundedCompleted = Math.min(hydrationCompleted, hydrationTotal);
+        playlistHydrationCount.textContent = `${boundedCompleted} of ${hydrationTotal}`;
+        playlistHydrationProgress.hidden = false;
+
+        if (boundedCompleted >= hydrationTotal) {
+            // Keep the completed state visible for at least one paint, then hide.
+            const activeHideToken = hydrationHideToken;
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (activeHideToken !== hydrationHideToken) {
+                        return;
+                    }
+
+                    if (hydrationTotal > 0 && hydrationCompleted >= hydrationTotal) {
+                        playlistHydrationProgress.hidden = true;
+                    }
+                });
+            });
+        }
+    };
 
     const hasLoadedPlaylist = (): boolean => Boolean(loadedPlaylistTrackIndexes && loadedPlaylistTrackIndexes.length > 0);
 
@@ -262,20 +299,31 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const hydrateTrackMetadataInBackground = (trackIndexes: number[]): void => {
         const runId = ++hydrationRunId;
-        const pending = Array.from(new Set(trackIndexes)).filter((index) => {
+        const scopedTrackIndexes = Array.from(new Set(trackIndexes)).filter((index) => {
             if (index < 0 || index >= options.getTrackCount()) {
                 return false;
             }
 
+            return true;
+        });
+
+        const pending = scopedTrackIndexes.filter((index) => {
             return !options.getTrack(index)?.tagsResolved;
         });
 
+        const totalTracks = scopedTrackIndexes.length;
+        const alreadyResolved = totalTracks - pending.length;
+
         if (pending.length === 0) {
+            setHydrationProgress(0, 0);
             return;
         }
 
+        setHydrationProgress(alreadyResolved, totalTracks);
+
         const workerCount = Math.min(4, pending.length);
         let cursor = 0;
+        let completed = alreadyResolved;
 
         const worker = async (): Promise<void> => {
             while (true) {
@@ -293,6 +341,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 if (runId !== hydrationRunId) {
                     return;
                 }
+
+                completed += 1;
+                setHydrationProgress(completed, totalTracks);
 
                 scheduleRender();
             }
@@ -774,3 +825,4 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         },
     };
 };
+

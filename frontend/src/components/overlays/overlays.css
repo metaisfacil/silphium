@@ -1095,6 +1095,13 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.playlist-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+}
+
 .playlist-title {
     margin: 0;
     font-size: 0.86rem;
@@ -1134,6 +1141,37 @@
 .playlist-source:focus-visible {
     outline: 2px solid rgba(255, 255, 255, 0.44);
     outline-offset: 1px;
+}
+
+.playlist-hydration-progress {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
+    font-size: 0.72rem;
+    line-height: 1;
+    opacity: 0.88;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.playlist-hydration-progress[hidden] {
+    display: none;
+}
+
+.playlist-hydration-spinner {
+    width: 0.76rem;
+    height: 0.76rem;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.28);
+    border-top-color: rgba(255, 255, 255, 0.94);
+    animation: playlist-hydration-spin 0.72s linear infinite;
+}
+
+@keyframes playlist-hydration-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .playlist-close {
