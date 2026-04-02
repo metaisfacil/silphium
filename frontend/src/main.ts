@@ -1246,6 +1246,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         setCoverFlipped(false);
         resetArtistInfoPanel();
         libraryController.renderFolder('none');
+        playlistController.refreshOpenModal();
         return;
     }
 
@@ -1259,6 +1260,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     }
 
     updatePlayButton();
+    playlistController.refreshOpenModal();
 };
 
 settingsController = createSettingsController({

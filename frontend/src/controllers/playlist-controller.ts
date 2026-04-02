@@ -374,6 +374,15 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistModal.hidden = false;
     };
 
+    const refreshOpenModal = (): void => {
+        if (playlistModal.hidden) {
+            return;
+        }
+
+        hydrateCurrentViewTracks();
+        renderPlaylist();
+    };
+
     const mutableCurrentSequence = (): number[] => {
         if (selectedSource === 'playlist' && loadedPlaylistTrackIndexes && loadedPlaylistTrackIndexes.length > 0) {
             return loadedPlaylistTrackIndexes;
@@ -842,6 +851,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return true;
         },
         openModal,
+        refreshOpenModal,
         resetState,
         scheduleRender,
         refreshFavorites: () => {
