@@ -297,6 +297,7 @@ const imageModalElements = getImageFileModalElements(document);
 const {
     musicBrainzEntityModal,
     musicBrainzEntityBackdrop,
+    musicBrainzEntityDialog,
     musicBrainzEntityTitle,
     musicBrainzEntityContent,
     musicBrainzEntityClose,
@@ -810,6 +811,13 @@ const closeMusicBrainzEntityModal = (): void => {
     }, musicBrainzEntityModalTransitionMs);
 };
 
+const lockMusicBrainzDialogWidth = (): void => {
+    const width = Math.ceil(musicBrainzEntityDialog.getBoundingClientRect().width);
+    if (width > 0) {
+        musicBrainzEntityDialog.style.width = `${width}px`;
+    }
+};
+
 const openMusicBrainzEntityForCurrentTrack = async (entityType: MusicBrainzEntityType): Promise<void> => {
     if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
         return;
@@ -832,6 +840,7 @@ const openMusicBrainzEntityForCurrentTrack = async (entityType: MusicBrainzEntit
         musicBrainzEntityModalHideTimer = undefined;
     }
 
+    musicBrainzEntityDialog.style.width = '';
     musicBrainzEntityTitle.textContent = 'MusicBrainz info';
     musicBrainzEntityContent.innerHTML = '<p class="mb-entity-empty">Loading from MusicBrainz...</p>';
     musicBrainzEntityModal.hidden = false;
@@ -842,10 +851,12 @@ const openMusicBrainzEntityForCurrentTrack = async (entityType: MusicBrainzEntit
     const entityInfo = await lookupMusicBrainzEntity(entityType, mbid);
     if (!entityInfo.found) {
         musicBrainzEntityContent.innerHTML = '<p class="mb-entity-empty">No details found for this MusicBrainz ID.</p>';
+        lockMusicBrainzDialogWidth();
         return;
     }
 
     renderMusicBrainzEntityContent(entityInfo, musicBrainzEntityTitle, musicBrainzEntityContent);
+    lockMusicBrainzDialogWidth();
 };
 
 const closeTechnicalInfoModal = (): void => {

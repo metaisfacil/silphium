@@ -1,6 +1,7 @@
 export type MusicBrainzEntityModalElements = {
     musicBrainzEntityModal: HTMLDivElement;
     musicBrainzEntityBackdrop: HTMLDivElement;
+    musicBrainzEntityDialog: HTMLElement;
     musicBrainzEntityTitle: HTMLParagraphElement;
     musicBrainzEntityContent: HTMLDivElement;
     musicBrainzEntityClose: HTMLButtonElement;
@@ -22,6 +23,7 @@ export const renderMusicBrainzEntityModal = (): string => `
 export const getMusicBrainzEntityModalElements = (root: ParentNode): MusicBrainzEntityModalElements => ({
     musicBrainzEntityModal: root.querySelector('#mb-entity-modal') as HTMLDivElement,
     musicBrainzEntityBackdrop: root.querySelector('#mb-entity-backdrop') as HTMLDivElement,
+    musicBrainzEntityDialog: root.querySelector('.mb-entity-dialog') as HTMLElement,
     musicBrainzEntityTitle: root.querySelector('#mb-entity-title') as HTMLParagraphElement,
     musicBrainzEntityContent: root.querySelector('#mb-entity-content') as HTMLDivElement,
     musicBrainzEntityClose: root.querySelector('#mb-entity-close') as HTMLButtonElement,

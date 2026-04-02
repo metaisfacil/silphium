@@ -707,7 +707,8 @@
 
 .mb-entity-dialog {
     position: relative;
-    width: min(860px, calc(100vw - 2rem));
+    width: fit-content;
+    max-width: min(860px, calc(100vw - 2rem));
     max-height: calc(100vh - 2.5rem);
     display: flex;
     flex-direction: column;
@@ -761,6 +762,8 @@
 
 .mb-entity-content {
     overflow: auto;
+    min-width: 0;
+    max-width: min(72ch, calc(100vw - 4rem));
     padding: 0.85rem 0.95rem 0.95rem;
     text-align: left;
 }
@@ -837,6 +840,7 @@
 
 .mb-entity-raw-details {
     margin-top: 0.95rem;
+    min-width: 0;
 }
 
 .mb-entity-raw-summary {
@@ -872,7 +876,11 @@
 
 .mb-entity-raw {
     margin: 0;
-    max-height: min(38vh, 460px);
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    max-height: 100px;
     overflow: auto;
     padding: 0.7rem 0.76rem;
     border-radius: 0.55rem;
@@ -881,7 +889,8 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
     font-size: 0.72rem;
     line-height: 1.35;
-    white-space: pre;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 .mb-entity-empty {
