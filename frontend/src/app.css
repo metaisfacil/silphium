@@ -607,14 +607,19 @@
 }
 
 .track-line[data-mb-url] {
+    cursor: inherit;
+    text-decoration: none;
+    transition: text-decoration-color 150ms ease;
+}
+
+#app.ctrl-held .track-line[data-mb-url] {
     cursor: pointer;
     text-decoration: underline;
     text-decoration-color: rgba(255, 255, 255, 0.3);
     text-underline-offset: 2px;
-    transition: text-decoration-color 150ms ease;
 }
 
-.track-line[data-mb-url]:hover {
+#app.ctrl-held .track-line[data-mb-url]:hover {
     text-decoration-color: rgba(255, 255, 255, 0.75);
 }
 

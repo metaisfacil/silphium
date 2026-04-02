@@ -11,12 +11,14 @@ import {
     getPlaylistModalElements,
     getSettingsModalElements,
     getTextFileModalElements,
+    getTrackMetaMenuElements,
     renderImageFileModal,
     renderPlayOrderMenu,
     renderPlaylistMenu,
     renderPlaylistModal,
     renderSettingsModal,
     renderTextFileModal,
+    renderTrackMetaMenu,
 } from './components/overlays';
 import { getSidebarElements, renderSidebar } from './components/sidebar';
 import {
@@ -177,6 +179,7 @@ app.innerHTML = `
     ${renderImageFileModal()}
     ${renderSettingsModal()}
     ${renderPlayOrderMenu()}
+    ${renderTrackMetaMenu()}
     ${renderPlaylistMenu()}
     ${renderPlaylistModal()}
 `;
@@ -220,6 +223,7 @@ let playbackOrderMode: PlaybackOrderMode = 'ordered-library';
 let shuffleHistory: number[] = [];
 let shuffleCursor = -1;
 let shuffleScopeKey = '';
+let trackMetaMenuTarget: HTMLParagraphElement | null = null;
 let libraryLoading = false;
 const libraryNodeByPath = new Map<string, LibraryNode>();
 const coverPathByFolder = new Map<string, string>();
@@ -257,15 +261,52 @@ const {
     forward,
     volume,
 } = getMediaControlsElements(document);
-trackTitle.addEventListener('click', () => openMbLink(trackTitle));
-trackAlbum.addEventListener('click', () => openMbLink(trackAlbum));
-trackArtist.addEventListener('click', () => openMbLink(trackArtist));
+const openMbOnCtrlClick = (event: MouseEvent, target: HTMLParagraphElement): void => {
+    if (!event.ctrlKey) {
+        return;
+    }
+
+    openMbLink(target);
+};
+
+const setCtrlHeldState = (held: boolean): void => {
+    app.classList.toggle('ctrl-held', held);
+};
+
+trackTitle.addEventListener('click', (event) => {
+    openMbOnCtrlClick(event, trackTitle);
+});
+trackTitle.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    trackMetaMenuTarget = trackTitle;
+    openTrackMetaMenu(event.clientX, event.clientY, true);
+});
+trackAlbum.addEventListener('click', (event) => {
+    openMbOnCtrlClick(event, trackAlbum);
+});
+trackAlbum.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    trackMetaMenuTarget = trackAlbum;
+    openTrackMetaMenu(event.clientX, event.clientY, false);
+});
+trackArtist.addEventListener('click', (event) => {
+    openMbOnCtrlClick(event, trackArtist);
+});
+trackArtist.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    trackMetaMenuTarget = trackArtist;
+    openTrackMetaMenu(event.clientX, event.clientY, false);
+});
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
 const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileClose } = getTextFileModalElements(document);
 const { imageFileModal, imageFileBackdrop, imageFilePreview } = getImageFileModalElements(document);
 const settingsElements = getSettingsModalElements(document);
 const { playOrderMenu } = getPlayOrderMenuElements(document);
+const { trackMetaMenu, trackMetaOpenMbBtn, trackMetaParentFolderBtn } = getTrackMetaMenuElements(document);
 const playlistMenuElements = getPlaylistMenuElements(document);
 const playlistModalElements = getPlaylistModalElements(document);
 let settingsController: SettingsController;
@@ -1029,6 +1070,68 @@ const closePlayOrderMenu = (): void => {
     playOrderMenu.hidden = true;
 };
 
+const closeTrackMetaMenu = (): void => {
+    trackMetaMenu.hidden = true;
+    trackMetaMenuTarget = null;
+};
+
+const openTrackMetaMenu = (clientX: number, clientY: number, includeFolderAction: boolean): void => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return;
+    }
+
+    closePlayOrderMenu();
+    trackMetaParentFolderBtn.hidden = !includeFolderAction;
+    trackMetaMenu.hidden = false;
+
+    const margin = 10;
+    const rect = trackMetaMenu.getBoundingClientRect();
+    const clampedX = Math.min(clientX, window.innerWidth - rect.width - margin);
+    const clampedY = Math.min(clientY, window.innerHeight - rect.height - margin);
+
+    trackMetaMenu.style.left = `${Math.max(margin, clampedX)}px`;
+    trackMetaMenu.style.top = `${Math.max(margin, clampedY)}px`;
+};
+
+const navigateSidebarToFolder = (nextFolderPath: string): void => {
+    if (nextFolderPath === currentFolderPath) {
+        return;
+    }
+
+    const segmentCount = (path: string): number => path.split('/').filter((segment) => segment !== '').length;
+    const nextDepth = segmentCount(nextFolderPath);
+    const currentDepth = segmentCount(currentFolderPath);
+
+    currentFolderPath = nextFolderPath;
+    if (nextDepth < currentDepth) {
+        renderFolder('back');
+        return;
+    }
+
+    if (nextDepth > currentDepth) {
+        renderFolder('forward');
+        return;
+    }
+
+    renderFolder('none');
+};
+
+const openCurrentTrackFolderInSidebar = (): void => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return;
+    }
+
+    const targetFolderPath = tracks[currentTrackIndex].folderPath || '';
+    sidebarAutoFolderPath = targetFolderPath;
+
+    if (!sidebarOpen) {
+        setSidebarOpen(true);
+        return;
+    }
+
+    navigateSidebarToFolder(targetFolderPath);
+};
+
 const updatePlayOrderMenuState = (): void => {
     const items = playOrderMenu.querySelectorAll('.play-order-item');
     items.forEach((item) => {
@@ -1046,6 +1149,7 @@ const updatePlayOrderMenuState = (): void => {
 };
 
 const openPlayOrderMenu = (clientX: number, clientY: number): void => {
+    closeTrackMetaMenu();
     updatePlayOrderMenuState();
     playOrderMenu.hidden = false;
 
@@ -2099,6 +2203,21 @@ playOrderMenu.addEventListener('click', (event) => {
     closePlayOrderMenu();
 });
 
+trackMetaParentFolderBtn.addEventListener('click', () => {
+    closeTrackMetaMenu();
+    openCurrentTrackFolderInSidebar();
+});
+
+trackMetaOpenMbBtn.addEventListener('click', () => {
+    const target = trackMetaMenuTarget;
+    closeTrackMetaMenu();
+    if (!target) {
+        return;
+    }
+
+    openMbLink(target);
+});
+
 back.addEventListener('click', () => {
     goToTrack(-1);
 });
@@ -2154,6 +2273,10 @@ document.addEventListener('click', (e) => {
         closePlayOrderMenu();
     }
 
+    if (!trackMetaMenu.hidden && !trackMetaMenu.contains(target)) {
+        closeTrackMetaMenu();
+    }
+
     if (!volumeRow.contains(target)) {
         volumeRow.classList.remove('open');
     }
@@ -2174,6 +2297,10 @@ document.addEventListener('click', (e) => {
         return;
     }
 
+    if (clickPath.includes(trackMetaMenu)) {
+        return;
+    }
+
     if (!sidebarOpen) {
         return;
     }
@@ -2185,9 +2312,24 @@ document.addEventListener('click', (e) => {
     setSidebarOpen(false);
 });
 
+document.addEventListener('contextmenu', (event) => {
+    const target = event.target as Node;
+    if (trackTitle.contains(target) || trackAlbum.contains(target) || trackArtist.contains(target) || trackMetaMenu.contains(target)) {
+        return;
+    }
+
+    if (!trackMetaMenu.hidden) {
+        closeTrackMetaMenu();
+    }
+});
+
 document.addEventListener('scroll', () => {
     if (!playOrderMenu.hidden) {
         closePlayOrderMenu();
+    }
+
+    if (!trackMetaMenu.hidden) {
+        closeTrackMetaMenu();
     }
 
     playlistController.closeMenu();
@@ -2198,9 +2340,29 @@ document.addEventListener('keydown', (event) => {
         closePlayOrderMenu();
     }
 
+    if (event.key === 'Escape' && !trackMetaMenu.hidden) {
+        closeTrackMetaMenu();
+    }
+
     if (event.key === 'Escape') {
         playlistController.closeMenu();
     }
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Control') {
+        setCtrlHeldState(true);
+    }
+});
+
+document.addEventListener('keyup', (event) => {
+    if (event.key === 'Control') {
+        setCtrlHeldState(false);
+    }
+});
+
+window.addEventListener('blur', () => {
+    setCtrlHeldState(false);
 });
 
 window.addEventListener('resize', () => {
