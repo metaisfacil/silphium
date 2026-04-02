@@ -902,7 +902,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     scrobbleService.reset();
     resetShuffleHistory();
 
-    trackTitle.textContent = 'No track loaded';
+    trackTitle.textContent = 'Unknown Title';
     trackAlbum.textContent = 'Unknown Album';
     trackPosition.textContent = '';
     trackArtist.textContent = 'Unknown Artist';

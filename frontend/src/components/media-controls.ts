@@ -53,7 +53,7 @@ export const renderMediaControls = (): string => `
         </div>
         <div class="track-meta">
           <div class="track-title-row">
-            <p id="track-title" class="track-line track-title">No track loaded</p>
+            <p id="track-title" class="track-line track-title">Unknown Title</p>
             <span id="track-position" class="track-position"></span>
           </div>
           <p id="track-album" class="track-line track-album">Unknown Album</p>
