@@ -206,6 +206,7 @@ type AppSettings = {
     listenBrainzUserToken: string;
     playbackOrder: PlaybackOrderMode;
     releaseDepth: number;
+    favoritePlaylists: string[];
 };
 
 type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
@@ -299,7 +300,7 @@ let technicalInfoModalHideTimer: number | undefined;
 let isSeeking = false;
 let backendReady = false;
 let lastHandledEndEventId = 0;
-let currentSettings: AppSettings = { libraryPath: '', listenBrainzUserToken: '', playbackOrder: 'ordered-library', releaseDepth: 0 };
+let currentSettings: AppSettings = { libraryPath: '', listenBrainzUserToken: '', playbackOrder: 'ordered-library', releaseDepth: 0, favoritePlaylists: [] };
 let scrobbleSessionId = 0;
 let nowPlayingSubmittedSessionId = -1;
 let scrobbleSubmittedSessionId = -1;
@@ -2924,6 +2925,7 @@ const initializeSettings = async (): Promise<void> => {
             listenBrainzUserToken: settings.listenBrainzUserToken || '',
             playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
             releaseDepth: asReleaseDepth(settings.releaseDepth),
+            favoritePlaylists: Array.isArray(settings.favoritePlaylists) ? settings.favoritePlaylists : [],
         };
         setPlaybackOrderMode(currentSettings.playbackOrder);
 
@@ -3119,6 +3121,7 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             listenBrainzUserToken: currentSettings.listenBrainzUserToken,
             playbackOrder: playbackOrderMode,
             releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
+            favoritePlaylists: currentSettings.favoritePlaylists,
         }) as AppSettings;
 
         currentSettings = {
@@ -3126,6 +3129,7 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             listenBrainzUserToken: savedSettings.listenBrainzUserToken || '',
             playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
             releaseDepth: asReleaseDepth(savedSettings.releaseDepth),
+            favoritePlaylists: Array.isArray(savedSettings.favoritePlaylists) ? savedSettings.favoritePlaylists : [],
         };
     } catch (error) {
         console.error(error);
@@ -3405,15 +3409,18 @@ settingsController = createSettingsController({
         libraryPath: currentSettings.libraryPath,
         listenBrainzUserToken: currentSettings.listenBrainzUserToken,
         releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
+        favoritePlaylists: currentSettings.favoritePlaylists,
     }),
     selectLibraryFolder: SelectLibraryFolder,
-    save: async ({ libraryPath: requestedLibraryPath, listenBrainzUserToken, releaseDepth }): Promise<void> => {
+    selectPlaylistFile: SelectPlaylistFile,
+    save: async ({ libraryPath: requestedLibraryPath, listenBrainzUserToken, releaseDepth, favoritePlaylists }): Promise<void> => {
         try {
             const savedSettings = await SaveSettings({
                 libraryPath: requestedLibraryPath,
                 listenBrainzUserToken,
                 playbackOrder: playbackOrderMode,
                 releaseDepth: asReleaseDepth(releaseDepth),
+                favoritePlaylists,
             }) as AppSettings;
 
             currentSettings = {
@@ -3421,7 +3428,10 @@ settingsController = createSettingsController({
                 listenBrainzUserToken: savedSettings.listenBrainzUserToken || '',
                 playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
                 releaseDepth: asReleaseDepth(savedSettings.releaseDepth),
+                favoritePlaylists: Array.isArray(savedSettings.favoritePlaylists) ? savedSettings.favoritePlaylists : [],
             };
+
+            playlistController.refreshFavorites();
 
             resetShuffleHistory();
 
@@ -3448,6 +3458,7 @@ playlistController = createPlaylistController({
     selectPlaylistSaveFile: SelectPlaylistSaveFile,
     loadPlaylistData,
     savePlaylistData: (playlistPath: string, trackPaths: string[]) => SavePlaylistFile(playlistPath, trackPaths),
+    getFavoritePlaylists: () => currentSettings.favoritePlaylists,
     onTrackChosen: async (index: number): Promise<void> => {
         await loadTrack(index);
         await playCurrentTrack();

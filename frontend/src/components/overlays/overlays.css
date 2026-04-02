@@ -333,6 +333,37 @@
     text-align: left;
 }
 
+.settings-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.settings-tab {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.45rem;
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.35rem 0.62rem;
+    cursor: pointer;
+}
+
+.settings-tab.is-active {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.34);
+}
+
+.settings-panel {
+    display: grid;
+    gap: 0.95rem;
+}
+
+.settings-panel[hidden] {
+    display: none;
+}
+
 .settings-field {
     display: grid;
     gap: 0.55rem;
@@ -361,6 +392,34 @@
     font: inherit;
     padding: 0.58rem 0.65rem;
     font-size: 0.86rem;
+}
+
+.settings-textarea {
+    resize: vertical;
+    min-height: 7.5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+.settings-actions-inline {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.settings-inline-btn {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.45rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 0.34rem 0.58rem;
+    cursor: pointer;
+}
+
+.settings-inline-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
 }
 
 .settings-path-row {

@@ -262,7 +262,7 @@ func (a *App) SelectPlaylistFile() string {
 // SelectPlaylistSaveFile opens a save dialog and returns a target M3U/M3U8 path.
 func (a *App) SelectPlaylistSaveFile() string {
 	selectedPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title: "Save Playlist As",
+		Title:           "Save Playlist As",
 		DefaultFilename: "playlist.m3u8",
 		Filters: []runtime.FileFilter{{
 			DisplayName: "Playlists",

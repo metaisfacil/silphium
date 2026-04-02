@@ -37,6 +37,7 @@ type PlaylistControllerOptions = {
     selectPlaylistSaveFile: () => Promise<string>;
     loadPlaylistData: (playlistPath: string) => Promise<LoadedPlaylistData | null>;
     savePlaylistData: (playlistPath: string, trackPaths: string[]) => Promise<boolean>;
+    getFavoritePlaylists: () => string[];
     onTrackChosen: (index: number) => Promise<void>;
     onExternalPlaylistLoaded: () => void;
 };
@@ -59,12 +60,17 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     let loadedPlaylistTrackIndexes: number[] | null = null;
     let loadedPlaylistName = '';
+    let loadedPlaylistPath = '';
     let editableQueueTrackIndexes: number[] | null = null;
     let hydrationRunId = 0;
     let dragFromPosition: number | null = null;
     let selectedSource: PlaylistSource = 'queue';
+    let selectedFavoriteIndex: number | null = null;
+    let playbackSource: PlaylistSource = 'queue';
 
     const hasLoadedPlaylist = (): boolean => Boolean(loadedPlaylistTrackIndexes && loadedPlaylistTrackIndexes.length > 0);
+
+    const normalizePlaylistPath = (playlistPath: string): string => playlistPath.trim().toLowerCase();
 
     const loadedPlaylistSequence = (): PlaylistSequence | null => {
         if (!loadedPlaylistTrackIndexes || loadedPlaylistTrackIndexes.length === 0) {
@@ -90,7 +96,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         const playlistSequence = loadedPlaylistSequence();
-        if (playlistSequence) {
+        if (playbackSource === 'playlist' && playlistSequence) {
             return {
                 indexes: playlistSequence.indexes,
                 currentPosition: playlistSequence.currentPosition,
@@ -101,7 +107,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const currentSequence = (): PlaylistSequence => {
-        if (selectedSource === 'playlist') {
+        if (selectedSource !== 'queue') {
             const playlistSequence = loadedPlaylistSequence();
             if (playlistSequence) {
                 return playlistSequence;
@@ -113,20 +119,28 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const updateHeaderSourceControl = (): void => {
         const queueLabel = `Playback Queue (${options.getPlaybackOrderLabel()})`;
+        const favoritePlaylists = options.getFavoritePlaylists().filter((playlistPath) => playlistPath.trim() !== '');
 
-        if (!hasLoadedPlaylist()) {
-            selectedSource = 'queue';
-            playlistSource.hidden = true;
-            playlistTitle.hidden = false;
-            playlistTitle.textContent = queueLabel;
-            return;
-        }
-
-        const playlistLabel = `Playlist: ${loadedPlaylistName || 'M3U/M3U8'}`;
-        const expectedOptions = [
+        const expectedOptions: Array<{ value: string; label: string }> = [
             { value: 'queue', label: queueLabel },
-            { value: 'playlist', label: playlistLabel },
+            ...favoritePlaylists.map((playlistPath, index) => {
+                const segments = playlistPath.split(/[\\/]/);
+                const baseName = segments[segments.length - 1] || playlistPath;
+                return {
+                    value: `favorite:${index}`,
+                    label: `Favorite: ${baseName}`,
+                };
+            }),
         ];
+
+        const loadedPlaylistMatchesFavorite = hasLoadedPlaylist() && favoritePlaylists.some((playlistPath) => {
+            return normalizePlaylistPath(playlistPath) === normalizePlaylistPath(loadedPlaylistPath);
+        });
+
+        if (hasLoadedPlaylist() && !loadedPlaylistMatchesFavorite) {
+            const playlistLabel = `Playlist: ${loadedPlaylistName || 'M3U/M3U8'}`;
+            expectedOptions.push({ value: 'playlist', label: playlistLabel });
+        }
 
         const shouldRebuildOptions = playlistSource.options.length !== expectedOptions.length
             || expectedOptions.some((option, index) => {
@@ -146,7 +160,26 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         playlistTitle.hidden = true;
         playlistSource.hidden = false;
-        playlistSource.value = selectedSource;
+
+        if (selectedSource === 'playlist' && hasLoadedPlaylist()) {
+            const hasPlaylistOption = Array.from(playlistSource.options).some((option) => option.value === 'playlist');
+            if (hasPlaylistOption) {
+                playlistSource.value = 'playlist';
+                return;
+            }
+        }
+
+        if (selectedFavoriteIndex !== null) {
+            const favoriteValue = `favorite:${selectedFavoriteIndex}`;
+            if (Array.from(playlistSource.options).some((option) => option.value === favoriteValue)) {
+                playlistSource.value = favoriteValue;
+                return;
+            }
+        }
+
+        selectedSource = 'queue';
+        selectedFavoriteIndex = null;
+        playlistSource.value = 'queue';
     };
 
     const closeMenu = (): void => {
@@ -334,7 +367,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const getNextTrackIndex = (direction: PlaylistDirection): number | undefined => {
         const currentTrackIndex = options.getCurrentTrackIndex();
 
-        if (selectedSource === 'playlist') {
+        if (playbackSource === 'playlist') {
             const playlistSequence = loadedPlaylistSequence();
             if (playlistSequence) {
                 const { indexes } = playlistSequence;
@@ -355,6 +388,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 return queueIndexes[0];
             }
 
+            if (direction > 0 && editableQueueTrackIndexes && currentPosition >= queueIndexes.length - 1) {
+                editableQueueTrackIndexes = null;
+                scheduleRender();
+                return undefined;
+            }
+
             const nextPosition = (currentPosition + direction + queueIndexes.length) % queueIndexes.length;
             return queueIndexes[nextPosition];
         }
@@ -370,8 +409,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const resetState = (): void => {
         loadedPlaylistTrackIndexes = null;
         loadedPlaylistName = '';
+        loadedPlaylistPath = '';
         editableQueueTrackIndexes = null;
         selectedSource = 'queue';
+        playbackSource = 'queue';
         hydrationRunId += 1;
         dragFromPosition = null;
         scheduleRender();
@@ -393,8 +434,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
             loadedPlaylistTrackIndexes = loadedPlaylist.trackIndexes;
             loadedPlaylistName = loadedPlaylist.name || '';
+            loadedPlaylistPath = selectedPath;
             editableQueueTrackIndexes = null;
             selectedSource = 'playlist';
+            playbackSource = 'playlist';
+            selectedFavoriteIndex = null;
             dragFromPosition = null;
             options.onExternalPlaylistLoaded();
             hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
@@ -437,7 +481,56 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         loadedPlaylistName = selectedPath.split(/[\\/]/).pop() || selectedPath;
+        loadedPlaylistPath = selectedPath;
+        selectedFavoriteIndex = null;
         updateHeaderSourceControl();
+    };
+
+    const loadFavouritePlaylist = async (playlistPath: string): Promise<void> => {
+        if (!playlistPath) {
+            return;
+        }
+
+        const loadedPlaylist = await options.loadPlaylistData(playlistPath);
+        if (!loadedPlaylist || loadedPlaylist.trackIndexes.length === 0) {
+            return;
+        }
+
+        loadedPlaylistTrackIndexes = loadedPlaylist.trackIndexes;
+        loadedPlaylistName = loadedPlaylist.name || '';
+        loadedPlaylistPath = playlistPath;
+        selectedSource = 'playlist';
+        dragFromPosition = null;
+        hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
+        renderPlaylist();
+    };
+
+    const commitPlaybackSourceFromCurrentView = (): void => {
+        if (selectedSource === 'playlist' && hasLoadedPlaylist()) {
+            const playlistSequence = loadedPlaylistSequence();
+            if (playlistSequence) {
+                editableQueueTrackIndexes = playlistSequence.indexes.slice();
+            }
+            playbackSource = 'queue';
+            return;
+        }
+
+        playbackSource = 'queue';
+    };
+
+    const loadFavouritePlaylistByIndex = async (favoriteIndex: number): Promise<void> => {
+        const favoritePlaylists = options.getFavoritePlaylists().filter((playlistPath) => playlistPath.trim() !== '');
+        if (!Number.isInteger(favoriteIndex) || favoriteIndex < 0 || favoriteIndex >= favoritePlaylists.length) {
+            return;
+        }
+
+        selectedFavoriteIndex = favoriteIndex;
+        await loadFavouritePlaylist(favoritePlaylists[favoriteIndex]);
+        updateHeaderSourceControl();
+        const favoriteValue = `favorite:${favoriteIndex}`;
+        if (Array.from(playlistSource.options).some((option) => option.value === favoriteValue)) {
+            playlistSource.value = favoriteValue;
+        }
     };
 
     trigger.addEventListener('click', () => {
@@ -451,9 +544,31 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     });
 
     playlistSource.addEventListener('change', () => {
-        selectedSource = playlistSource.value === 'playlist' ? 'playlist' : 'queue';
-        hydrateCurrentViewTracks();
-        renderPlaylist();
+        const selectedValue = playlistSource.value;
+        if (selectedValue === 'queue') {
+            selectedSource = 'queue';
+            selectedFavoriteIndex = null;
+            playbackSource = 'queue';
+            hydrateCurrentViewTracks();
+            renderPlaylist();
+            return;
+        }
+
+        if (selectedValue === 'playlist') {
+            selectedSource = 'playlist';
+            selectedFavoriteIndex = null;
+            hydrateCurrentViewTracks();
+            renderPlaylist();
+            return;
+        }
+
+        const favoriteMatch = /^favorite:(\d+)$/.exec(selectedValue);
+        if (favoriteMatch) {
+            const favoriteIndex = Number(favoriteMatch[1]);
+            void loadFavouritePlaylistByIndex(favoriteIndex).catch((error) => {
+                console.error(error);
+            });
+        }
     });
 
     playlistLoadBtn.addEventListener('click', () => {
@@ -517,6 +632,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return;
         }
 
+        commitPlaybackSourceFromCurrentView();
         void options.onTrackChosen(trackIndex).then(() => {
             renderPlaylist();
         });
@@ -619,11 +735,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         closeModal,
         getNextTrackIndex,
         getSequenceOverride: (): PlaylistSequence | null => {
-            if (selectedSource === 'playlist') {
+            if (playbackSource === 'playlist') {
                 return loadedPlaylistSequence();
             }
 
-            if ((editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) || hasLoadedPlaylist()) {
+            if (editableQueueTrackIndexes && editableQueueTrackIndexes.length > 0) {
                 return queueSequence();
             }
 
@@ -653,5 +769,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         openModal,
         resetState,
         scheduleRender,
+        refreshFavorites: () => {
+            updateHeaderSourceControl();
+        },
     };
 };

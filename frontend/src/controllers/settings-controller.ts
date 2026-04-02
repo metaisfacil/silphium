@@ -4,6 +4,7 @@ export type SettingsFormValues = {
     libraryPath: string;
     listenBrainzUserToken: string;
     releaseDepth: number;
+    favoritePlaylists: string[];
 };
 
 type SettingsControllerOptions = {
@@ -11,6 +12,7 @@ type SettingsControllerOptions = {
     elements: SettingsModalElements;
     getValues: () => SettingsFormValues;
     selectLibraryFolder: () => Promise<string>;
+    selectPlaylistFile: () => Promise<string>;
     save: (values: SettingsFormValues) => Promise<void>;
 };
 
@@ -22,13 +24,43 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsModal,
         settingsBackdrop,
         settingsClose,
+        settingsTabGeneral,
+        settingsTabPlaylists,
+        settingsPanelGeneral,
+        settingsPanelPlaylists,
         settingsBrowse,
+        settingsAddFavoritePlaylist,
         settingsSave,
         settingsLibraryPath,
         settingsListenBrainzToken,
         settingsReleaseDepth,
+        settingsFavoritePlaylists,
         settingsStatus,
     } = elements;
+
+    const normalizeFavoritePlaylists = (rawText: string): string[] => {
+        const deduped = new Set<string>();
+        const lines = rawText
+            .split(/\r?\n/g)
+            .map((line) => line.trim())
+            .filter((line) => line !== '');
+
+        lines.forEach((line) => {
+            deduped.add(line);
+        });
+
+        return Array.from(deduped);
+    };
+
+    const setActiveTab = (tab: 'general' | 'playlists'): void => {
+        const generalActive = tab === 'general';
+        settingsTabGeneral.classList.toggle('is-active', generalActive);
+        settingsTabPlaylists.classList.toggle('is-active', !generalActive);
+        settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
+        settingsTabPlaylists.setAttribute('aria-selected', generalActive ? 'false' : 'true');
+        settingsPanelGeneral.hidden = !generalActive;
+        settingsPanelPlaylists.hidden = generalActive;
+    };
 
     const close = (): void => {
         settingsModal.hidden = true;
@@ -40,7 +72,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryPath.value = values.libraryPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         settingsReleaseDepth.value = values.releaseDepth > 0 ? String(values.releaseDepth) : '';
+        settingsFavoritePlaylists.value = values.favoritePlaylists.join('\n');
         settingsStatus.textContent = '';
+        setActiveTab('general');
         settingsModal.hidden = false;
         settingsLibraryPath.focus();
     };
@@ -73,6 +107,33 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
     });
 
+    settingsTabGeneral.addEventListener('click', () => {
+        setActiveTab('general');
+    });
+
+    settingsTabPlaylists.addEventListener('click', () => {
+        setActiveTab('playlists');
+        settingsFavoritePlaylists.focus();
+    });
+
+    settingsAddFavoritePlaylist.addEventListener('click', async () => {
+        settingsStatus.textContent = '';
+
+        try {
+            const selectedPlaylist = await options.selectPlaylistFile();
+            if (!selectedPlaylist) {
+                return;
+            }
+
+            const next = new Set(normalizeFavoritePlaylists(settingsFavoritePlaylists.value));
+            next.add(selectedPlaylist.trim());
+            settingsFavoritePlaylists.value = Array.from(next).join('\n');
+        } catch (error) {
+            console.error(error);
+            settingsStatus.textContent = 'Unable to open playlist picker.';
+        }
+    });
+
     settingsSave.addEventListener('click', async () => {
         if (settingsSave.disabled) {
             return;
@@ -83,6 +144,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             libraryPath: settingsLibraryPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
             releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
+            favoritePlaylists: normalizeFavoritePlaylists(settingsFavoritePlaylists.value),
         };
         close();
 

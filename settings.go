@@ -11,10 +11,11 @@ const appSettingsFileName = "silphium.settings.json"
 
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
-	LibraryPath           string `json:"libraryPath"`
-	ListenBrainzUserToken string `json:"listenBrainzUserToken"`
-	PlaybackOrder         string `json:"playbackOrder"`
-	ReleaseDepth          int    `json:"releaseDepth,omitempty"`
+	LibraryPath           string   `json:"libraryPath"`
+	ListenBrainzUserToken string   `json:"listenBrainzUserToken"`
+	PlaybackOrder         string   `json:"playbackOrder"`
+	ReleaseDepth          int      `json:"releaseDepth,omitempty"`
+	FavoritePlaylists     []string `json:"favoritePlaylists,omitempty"`
 }
 
 const defaultPlaybackOrder = "ordered-library"
@@ -34,6 +35,26 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	path := strings.TrimSpace(settings.LibraryPath)
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
 	releaseDepth := settings.ReleaseDepth
+	favoritePlaylists := make([]string, 0, len(settings.FavoritePlaylists))
+	seenFavoritePlaylists := make(map[string]struct{})
+	for _, candidate := range settings.FavoritePlaylists {
+		trimmed := strings.TrimSpace(candidate)
+		if trimmed == "" {
+			continue
+		}
+
+		normalized := normalizePath(trimmed)
+		if absolutePath, err := filepath.Abs(normalized); err == nil {
+			normalized = filepath.Clean(absolutePath)
+		}
+
+		if _, exists := seenFavoritePlaylists[normalized]; exists {
+			continue
+		}
+
+		seenFavoritePlaylists[normalized] = struct{}{}
+		favoritePlaylists = append(favoritePlaylists, normalized)
+	}
 	if releaseDepth < 0 {
 		releaseDepth = 0
 	}
@@ -41,7 +62,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		releaseDepth = maxReleaseDepth
 	}
 	if path == "" {
-		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth}
+		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth, FavoritePlaylists: favoritePlaylists}
 	}
 
 	path = normalizePath(path)
@@ -54,6 +75,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		ListenBrainzUserToken: token,
 		PlaybackOrder:         playbackOrder,
 		ReleaseDepth:          releaseDepth,
+		FavoritePlaylists:     favoritePlaylists,
 	}
 }
 
