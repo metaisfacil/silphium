@@ -54,23 +54,25 @@ type LibraryScanResult struct {
 }
 
 type PlaylistLoadResult struct {
-	Name       string             `json:"name"`
+	Name       string               `json:"name"`
 	TrackFiles []LibraryIndexedFile `json:"trackFiles"`
 }
 
 type TrackTags struct {
-	Artist      string   `json:"artist"`
-	Album       string   `json:"album"`
-	Title       string   `json:"title"`
-	TrackNumber string   `json:"trackNumber,omitempty"`
-	TrackTotal  string   `json:"trackTotal,omitempty"`
-	BitDepth    int      `json:"bitDepth,omitempty"`
-	SampleRate  int      `json:"sampleRate,omitempty"`
-	Codec       string   `json:"codec,omitempty"`
-	RecordingID string   `json:"recordingId,omitempty"`
-	ReleaseID   string   `json:"releaseId,omitempty"`
-	ArtistID    string   `json:"artistId,omitempty"`
-	ArtistIDs   []string `json:"artistIds,omitempty"`
+	Artist         string   `json:"artist"`
+	Album          string   `json:"album"`
+	Title          string   `json:"title"`
+	Lyrics         string   `json:"lyrics,omitempty"`
+	UnsyncedLyrics string   `json:"unsyncedLyrics,omitempty"`
+	TrackNumber    string   `json:"trackNumber,omitempty"`
+	TrackTotal     string   `json:"trackTotal,omitempty"`
+	BitDepth       int      `json:"bitDepth,omitempty"`
+	SampleRate     int      `json:"sampleRate,omitempty"`
+	Codec          string   `json:"codec,omitempty"`
+	RecordingID    string   `json:"recordingId,omitempty"`
+	ReleaseID      string   `json:"releaseId,omitempty"`
+	ArtistID       string   `json:"artistId,omitempty"`
+	ArtistIDs      []string `json:"artistIds,omitempty"`
 }
 
 type TrackBlob struct {
@@ -729,24 +731,28 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
 		bitDepth, sampleRate, codec := readTrackTechnicalMetadata(path)
+		lyrics := firstTagValue(tags, "LYRICS")
+		unsyncedLyrics := firstTagValue(tags, "UNSYNCEDLYRICS")
 
-		if artist == "" && album == "" && title == "" {
+		if artist == "" && album == "" && title == "" && trackNumber == "" && trackTotal == "" && bitDepth == 0 && sampleRate == 0 && codec == "" && lyrics == "" && unsyncedLyrics == "" {
 			continue
 		}
 
 		tagByPath[path] = TrackTags{
-			Artist:      artist,
-			Album:       album,
-			Title:       title,
-			TrackNumber: trackNumber,
-			TrackTotal:  trackTotal,
-			BitDepth:    bitDepth,
-			SampleRate:  sampleRate,
-			Codec:       codec,
-			RecordingID: firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
-			ReleaseID:   firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
-			ArtistID:    firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
-			ArtistIDs:   artistIDs,
+			Artist:         artist,
+			Album:          album,
+			Title:          title,
+			Lyrics:         lyrics,
+			UnsyncedLyrics: unsyncedLyrics,
+			TrackNumber:    trackNumber,
+			TrackTotal:     trackTotal,
+			BitDepth:       bitDepth,
+			SampleRate:     sampleRate,
+			Codec:          codec,
+			RecordingID:    firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
+			ReleaseID:      firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
+			ArtistID:       firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
+			ArtistIDs:      artistIDs,
 		}
 	}
 
@@ -792,24 +798,28 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 		trackNumber, trackTotal := extractTrackNumbers(tags)
 		artistIDs := extractArtistMBIDs(tags)
 		bitDepth, sampleRate, codec := readTrackTechnicalMetadata(tempPath)
+		lyrics := firstTagValue(tags, "LYRICS")
+		unsyncedLyrics := firstTagValue(tags, "UNSYNCEDLYRICS")
 
-		if artist == "" && album == "" && title == "" {
+		if artist == "" && album == "" && title == "" && trackNumber == "" && trackTotal == "" && bitDepth == 0 && sampleRate == 0 && codec == "" && lyrics == "" && unsyncedLyrics == "" {
 			continue
 		}
 
 		tagByKey[blob.Key] = TrackTags{
-			Artist:      artist,
-			Album:       album,
-			Title:       title,
-			TrackNumber: trackNumber,
-			TrackTotal:  trackTotal,
-			BitDepth:    bitDepth,
-			SampleRate:  sampleRate,
-			Codec:       codec,
-			RecordingID: firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
-			ReleaseID:   firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
-			ArtistID:    firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
-			ArtistIDs:   artistIDs,
+			Artist:         artist,
+			Album:          album,
+			Title:          title,
+			Lyrics:         lyrics,
+			UnsyncedLyrics: unsyncedLyrics,
+			TrackNumber:    trackNumber,
+			TrackTotal:     trackTotal,
+			BitDepth:       bitDepth,
+			SampleRate:     sampleRate,
+			Codec:          codec,
+			RecordingID:    firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
+			ReleaseID:      firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
+			ArtistID:       firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
+			ArtistIDs:      artistIDs,
 		}
 	}
 

@@ -1,9 +1,14 @@
 export type MediaControlsElements = {
+    playerShell: HTMLElement;
+    playerLane: HTMLDivElement;
+    playerCard: HTMLElement;
     trackTitle: HTMLParagraphElement;
     trackAlbum: HTMLParagraphElement;
   trackPosition: HTMLSpanElement;
     trackArtist: HTMLParagraphElement;
     trackTechnical: HTMLSpanElement;
+    lyricsPanel: HTMLElement;
+    lyricsContent: HTMLPreElement;
     coverFrame: HTMLDivElement;
     coverFlipper: HTMLDivElement;
     artistInfoName: HTMLParagraphElement;
@@ -26,7 +31,8 @@ export type MediaControlsElements = {
 
 export const renderMediaControls = (): string => `
     <main class="player-shell">
-      <section class="player-card">
+      <div id="player-lane" class="player-lane">
+      <section id="player-card" class="player-card">
         <div id="cover-frame" class="cover-frame" role="button" tabindex="0" aria-label="Flip cover art">
           <div id="cover-flipper" class="cover-flipper">
             <div class="cover-face cover-front">
@@ -72,15 +78,25 @@ export const renderMediaControls = (): string => `
           </div>
         </div>
       </section>
+      <aside id="lyrics-panel" class="lyrics-panel" aria-hidden="true">
+        <p class="lyrics-title">Lyrics</p>
+        <pre id="lyrics-content" class="lyrics-content"></pre>
+      </aside>
+      </div>
     </main>
 `;
 
 export const getMediaControlsElements = (root: ParentNode): MediaControlsElements => ({
+    playerShell: root.querySelector('.player-shell') as HTMLElement,
+    playerLane: root.querySelector('#player-lane') as HTMLDivElement,
+    playerCard: root.querySelector('#player-card') as HTMLElement,
     trackTitle: root.querySelector('#track-title') as HTMLParagraphElement,
     trackAlbum: root.querySelector('#track-album') as HTMLParagraphElement,
   trackPosition: root.querySelector('#track-position') as HTMLSpanElement,
     trackArtist: root.querySelector('#track-artist') as HTMLParagraphElement,
     trackTechnical: root.querySelector('#track-technical') as HTMLSpanElement,
+    lyricsPanel: root.querySelector('#lyrics-panel') as HTMLElement,
+    lyricsContent: root.querySelector('#lyrics-content') as HTMLPreElement,
     coverFrame: root.querySelector('#cover-frame') as HTMLDivElement,
     coverFlipper: root.querySelector('#cover-flipper') as HTMLDivElement,
     artistInfoName: root.querySelector('#artist-info-name') as HTMLParagraphElement,

@@ -64,6 +64,7 @@ type Track = {
     displayTrackNumber: string;
     displayTrackTotal: string;
     displayTechnical: string;
+    displayLyrics: string;
     tagsResolved: boolean;
     mbIds: MusicBrainzIds;
     artistMbids: string[];
@@ -73,6 +74,8 @@ type TrackTags = {
     artist: string;
     album: string;
     title: string;
+    lyrics?: string;
+    unsyncedLyrics?: string;
     trackNumber?: string;
     trackTotal?: string;
     bitDepth?: number;
@@ -225,11 +228,16 @@ const artistInfoByMBID = new Map<string, ArtistDetails>();
 
 const { sidebarToggle, librarySidebar, librarySettings, libraryBack, libraryPath, libraryBrowser } = getSidebarElements(document);
 const {
+    playerShell,
+    playerLane,
+    playerCard,
     trackTitle,
     trackAlbum,
     trackPosition,
     trackArtist,
     trackTechnical,
+    lyricsPanel,
+    lyricsContent,
     coverFrame,
     coverFlipper,
     artistInfoName,
@@ -696,6 +704,67 @@ const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, codec?:
     return `${technicalParts[0]} ‣ ${technicalParts[1]}`;
 };
 
+const stripSyncedLyricTiming = (lyrics: string): string => {
+    return lyrics
+        .split(/\r?\n/)
+        .map((line) => line.replace(/\[[0-9]{1,2}:[0-9]{2}(?:[.:][0-9]{1,3})?\]/g, '').replace(/<[0-9]{1,2}:[0-9]{2}(?:[.:][0-9]{1,3})?>/g, '').trimEnd())
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+};
+
+const normalizeTrackLyrics = (tags?: TrackTags): string => {
+    const unsynced = tags?.unsyncedLyrics?.trim() || '';
+    if (unsynced) {
+        return unsynced;
+    }
+
+    const synced = tags?.lyrics?.trim() || '';
+    if (!synced) {
+        return '';
+    }
+
+    return stripSyncedLyricTiming(synced);
+};
+
+const hasActiveTrackLyrics = (): boolean => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return false;
+    }
+
+    return tracks[currentTrackIndex].displayLyrics.trim() !== '';
+};
+
+const updateLyricsPanelVisibility = (): void => {
+    const lyricsPanelWidth = 400;
+    const visibilityBuffer = 120;
+    const shellStyles = getComputedStyle(playerShell);
+    const horizontalPadding = (parseFloat(shellStyles.paddingLeft) || 0) + (parseFloat(shellStyles.paddingRight) || 0);
+    const verticalPadding = (parseFloat(shellStyles.paddingTop) || 0) + (parseFloat(shellStyles.paddingBottom) || 0);
+    const laneStyles = getComputedStyle(playerLane);
+    const laneGap = parseFloat(laneStyles.gap || laneStyles.columnGap || '0') || 0;
+
+    const availableWidth = Math.max(0, window.innerWidth - horizontalPadding);
+    const targetCardWidth = Math.max(0, (window.innerHeight - verticalPadding) * 0.75);
+    const singleCardWidth = Math.min(availableWidth, targetCardWidth);
+    const measuredCardHeight = playerCard.getBoundingClientRect().height;
+    const requiredWidth = singleCardWidth + lyricsPanelWidth + laneGap + visibilityBuffer;
+    const canShow = hasActiveTrackLyrics() && singleCardWidth > 0 && availableWidth >= requiredWidth;
+
+    playerLane.style.setProperty('--lyrics-panel-width', `${lyricsPanelWidth}px`);
+    if (measuredCardHeight > 0) {
+        playerLane.style.setProperty('--player-card-height', `${Math.round(measuredCardHeight)}px`);
+    }
+    playerLane.classList.toggle('lyrics-visible', canShow);
+    lyricsPanel.setAttribute('aria-hidden', canShow ? 'false' : 'true');
+};
+
+const refreshLyricsPanel = (): void => {
+    const nextLyrics = hasActiveTrackLyrics() ? tracks[currentTrackIndex].displayLyrics : '';
+    lyricsContent.textContent = nextLyrics;
+    updateLyricsPanelVisibility();
+};
+
 const refreshNowPlayingLabel = (): void => {
     if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
         return;
@@ -707,6 +776,7 @@ const refreshNowPlayingLabel = (): void => {
     trackPosition.textContent = taggedTrackPosition(activeTrack);
     trackArtist.textContent = activeTrack.displayArtist;
     trackTechnical.textContent = activeTrack.displayTechnical;
+    refreshLyricsPanel();
     applyMbLinks(trackTitle, trackAlbum, trackArtist, activeTrack.mbIds);
 
     playlistController.scheduleRender();
@@ -731,6 +801,7 @@ const ensureTrackTagsResolved = async (index: number): Promise<void> => {
             displayTitle: metadata.title,
             displayAlbum: metadata.album,
             displayArtist: metadata.artist,
+            displayLyrics: normalizeTrackLyrics(tags),
             displayTrackNumber: tags?.trackNumber?.trim() || '',
             displayTrackTotal: tags?.trackTotal?.trim() || '',
             displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
@@ -1149,6 +1220,7 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
             displayTitle: metadata.title,
             displayAlbum: metadata.album,
             displayArtist: metadata.artist,
+            displayLyrics: normalizeTrackLyrics(tags),
             displayTrackNumber: tags?.trackNumber?.trim() || '',
             displayTrackTotal: tags?.trackTotal?.trim() || '',
             displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
@@ -1284,6 +1356,9 @@ const clearLibrarySelection = async (): Promise<void> => {
     trackPosition.textContent = '';
     trackArtist.textContent = 'Unknown Artist';
     trackTechnical.textContent = '';
+    lyricsContent.textContent = '';
+    playerLane.classList.remove('lyrics-visible');
+    lyricsPanel.setAttribute('aria-hidden', 'true');
     applyMbLinks(trackTitle, trackAlbum, trackArtist, {});
 
     coverArt.removeAttribute('src');
@@ -1513,6 +1588,7 @@ const ensureTrackIndexForPath = (file: LibraryIndexedFile, trackIndexByPath: Map
         displayTrackNumber: '',
         displayTrackTotal: '',
         displayTechnical: '',
+        displayLyrics: '',
         tagsResolved: false,
         mbIds: {},
         artistMbids: [],
@@ -1625,6 +1701,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
             displayTrackNumber: '',
             displayTrackTotal: '',
             displayTechnical: '',
+            displayLyrics: '',
             tagsResolved: false,
             mbIds: {},
             artistMbids: [],
@@ -1724,6 +1801,9 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
         trackPosition.textContent = '';
         trackArtist.textContent = 'Unknown Artist';
         trackTechnical.textContent = '';
+        lyricsContent.textContent = '';
+        playerLane.classList.remove('lyrics-visible');
+        lyricsPanel.setAttribute('aria-hidden', 'true');
         coverArt.removeAttribute('src');
         coverArt.classList.remove('is-visible');
         setBackgroundCover();
@@ -2111,9 +2191,19 @@ document.addEventListener('keydown', (event) => {
     }
 });
 
+window.addEventListener('resize', () => {
+    updateLyricsPanelVisibility();
+});
+
+const cardResizeObserver = new ResizeObserver(() => {
+    updateLyricsPanelVisibility();
+});
+cardResizeObserver.observe(playerCard);
+
 updatePlayButton();
 updateTrackLabels();
 updatePlayOrderMenuState();
 refreshSidebarToggleState();
+refreshLyricsPanel();
 void initializeBackendPlayback();
 void initializeSettings();

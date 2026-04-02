@@ -304,6 +304,16 @@
     transform: translateX(calc(min(340px, 82vw) / 2));
 }
 
+.player-lane {
+    --player-lane-gap: clamp(1rem, 3vw, 1.6rem);
+    --player-card-height: calc(100vh - 4rem);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: var(--player-lane-gap);
+    width: min(100%, calc(((100vh - 4rem) * 0.75) * 2 + var(--player-lane-gap)));
+}
+
 .player-card {
     --player-card-pad: clamp(1.05rem, 4.2cqw, 1.5rem);
     --player-card-gap: clamp(0.45rem, 1.25cqh, 0.9rem);
@@ -323,6 +333,69 @@
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-top-color: rgba(255, 255, 255, 0.2);
     container-type: inline-size;
+    transform: translateX(0);
+    transition: transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    max-height: calc(100vh - 4rem);
+    overflow: hidden;
+}
+
+.player-lane.lyrics-visible .player-card {
+    transform: translateX(calc(var(--player-lane-gap) * -0.5));
+}
+
+.lyrics-panel {
+    flex: 0 0 0;
+    width: 0;
+    min-width: 0;
+    height: 0;
+    min-height: 0;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateX(-0.7rem);
+    transition: flex-basis 320ms cubic-bezier(0.22, 0.61, 0.36, 1), width 320ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 240ms ease, transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    pointer-events: none;
+    text-align: left;
+    align-self: stretch;
+    color: rgba(255, 255, 255, 0.88);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.player-lane.lyrics-visible .lyrics-panel {
+    flex-basis: var(--lyrics-panel-width, 0px);
+    width: var(--lyrics-panel-width, 0px);
+    height: var(--player-card-height);
+    max-height: var(--player-card-height);
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+.lyrics-title {
+    margin: 0 0 0.65rem;
+    font-size: clamp(0.72rem, calc(0.45rem + 0.36vh), 0.88rem);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.72;
+}
+
+.lyrics-content {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+    overflow-x: hidden;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    padding-right: 0.3rem;
+    line-height: 1.42;
+    font-family: inherit;
+    font-size: clamp(0.78rem, calc(0.54rem + 0.56vh), 1.04rem);
+    color: rgba(255, 255, 255, 0.9);
+    max-height: calc(var(--player-card-height) - 2rem);
 }
 
 .player-header {
