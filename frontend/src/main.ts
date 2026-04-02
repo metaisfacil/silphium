@@ -278,6 +278,10 @@ let playbackState: AudioPlaybackState = {
 };
 let playbackPollHandle: number | undefined;
 let imageModalHideTimer: number | undefined;
+let imageModalLoadToken = 0;
+let imageModalGallery: ImageLibraryFile[] = [];
+let imageModalCurrentIndex = -1;
+let imageModalPage = 0;
 let musicBrainzEntityModalHideTimer: number | undefined;
 let technicalInfoModalHideTimer: number | undefined;
 let isSeeking = false;
@@ -312,6 +316,8 @@ const librarySearchDebounceMs = 140;
 const librarySearchBatchSize = 300;
 const musicBrainzEntityModalTransitionMs = 220;
 const technicalInfoModalTransitionMs = 220;
+const imageModalThumbPageSize = 7;
+const imageFileDataUrlByPath = new Map<string, string>();
 
 const { sidebarToggle, librarySidebar, librarySettings, libraryBack, libraryPath, librarySearch, libraryBrowser } = getSidebarElements(document);
 const {
@@ -401,7 +407,15 @@ trackArtist.addEventListener('contextmenu', (event) => {
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
 const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileClose } = getTextFileModalElements(document);
-const { imageFileModal, imageFileBackdrop, imageFilePreview } = getImageFileModalElements(document);
+const {
+    imageFileModal,
+    imageFileBackdrop,
+    imageFilePreview,
+    imageFileThumbsPrev,
+    imageFileThumbsNext,
+    imageFileThumbsViewport,
+    imageFileThumbsRow,
+} = getImageFileModalElements(document);
 const {
     musicBrainzEntityModal,
     musicBrainzEntityBackdrop,
@@ -2037,7 +2051,154 @@ const closeTextFileModal = (): void => {
     textFileCode.textContent = '';
 };
 
+const releaseRootPathForFolder = (folderPath: string): string => {
+    const normalizedFolderPath = folderPath || '';
+    const segments = normalizedFolderPath
+        .split('/')
+        .filter((segment) => segment !== '');
+
+    if (segments.length === 0) {
+        return '';
+    }
+
+    const releaseDepth = asReleaseDepth(currentSettings.releaseDepth);
+    if (releaseDepth <= 0 || releaseDepth >= segments.length) {
+        return normalizedFolderPath;
+    }
+
+    return segments.slice(0, releaseDepth).join('/');
+};
+
+const collectReleaseImageFiles = (folderPath: string): ImageLibraryFile[] => {
+    const releaseRootPath = releaseRootPathForFolder(folderPath || '');
+    const releaseRootPathLower = releaseRootPath.toLowerCase();
+    const prefix = releaseRootPathLower ? `${releaseRootPathLower}/` : '';
+
+    return imageFiles
+        .filter((candidate) => {
+            const candidateFolderPath = (candidate.folderPath || '').toLowerCase();
+            if (!releaseRootPathLower) {
+                return candidateFolderPath === '';
+            }
+
+            return candidateFolderPath === releaseRootPathLower || candidateFolderPath.startsWith(prefix);
+        })
+        .sort((left, right) => left.relativePath.localeCompare(right.relativePath, undefined, {
+            sensitivity: 'base',
+            numeric: true,
+        }));
+};
+
+const indexOfImageByPath = (gallery: ImageLibraryFile[], candidatePath?: string): number => {
+    if (!candidatePath) {
+        return -1;
+    }
+
+    const normalizedPath = candidatePath.toLowerCase();
+    return gallery.findIndex((candidate) => candidate.path.toLowerCase() === normalizedPath);
+};
+
+const resolveImageFileDataUrl = async (imageFile: ImageLibraryFile): Promise<string | undefined> => {
+    const cacheKey = imageFile.path.toLowerCase();
+    const cached = imageFileDataUrlByPath.get(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    const base64 = await ReadFileBase64(imageFile.path);
+    if (!base64) {
+        return undefined;
+    }
+
+    const source = `data:${mimeTypeForFileName(imageFile.name)};base64,${base64}`;
+    imageFileDataUrlByPath.set(cacheKey, source);
+    return source;
+};
+
+const renderImageModalThumbs = (loadToken: number): void => {
+    imageFileThumbsRow.innerHTML = '';
+
+    if (imageModalGallery.length === 0 || imageModalCurrentIndex < 0) {
+        imageFileThumbsViewport.hidden = true;
+        imageFileThumbsPrev.hidden = true;
+        imageFileThumbsNext.hidden = true;
+        return;
+    }
+
+    imageFileThumbsViewport.hidden = false;
+
+    const pageCount = Math.max(1, Math.ceil(imageModalGallery.length / imageModalThumbPageSize));
+    imageModalPage = Math.max(0, Math.min(imageModalPage, pageCount - 1));
+
+    const hasMultiplePages = pageCount > 1;
+    imageFileThumbsPrev.hidden = !hasMultiplePages;
+    imageFileThumbsNext.hidden = !hasMultiplePages;
+    imageFileThumbsPrev.disabled = !hasMultiplePages || imageModalPage <= 0;
+    imageFileThumbsNext.disabled = !hasMultiplePages || imageModalPage >= pageCount - 1;
+
+    const start = imageModalPage * imageModalThumbPageSize;
+    const end = Math.min(imageModalGallery.length, start + imageModalThumbPageSize);
+
+    for (let index = start; index < end; index += 1) {
+        const imageFile = imageModalGallery[index];
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `image-file-thumb${index === imageModalCurrentIndex ? ' is-active' : ''}`;
+        button.dataset.imageModalIndex = String(index);
+        button.title = imageFile.relativePath || imageFile.name;
+        button.setAttribute('aria-label', imageFile.relativePath || imageFile.name);
+        button.setAttribute('aria-current', index === imageModalCurrentIndex ? 'true' : 'false');
+
+        const fallback = document.createElement('span');
+        fallback.className = 'image-file-thumb-fallback';
+        fallback.textContent = '...';
+        button.append(fallback);
+
+        void resolveImageFileDataUrl(imageFile).then((source) => {
+            if (loadToken !== imageModalLoadToken || !source || !button.isConnected) {
+                return;
+            }
+
+            const thumbnail = document.createElement('img');
+            thumbnail.src = source;
+            thumbnail.alt = imageFile.name;
+            button.replaceChildren(thumbnail);
+        }).catch((error) => {
+            console.error(error);
+        });
+
+        imageFileThumbsRow.append(button);
+    }
+};
+
+const setImageModalActiveIndex = async (index: number): Promise<void> => {
+    if (imageModalGallery.length === 0 || index < 0 || index >= imageModalGallery.length) {
+        return;
+    }
+
+    imageModalCurrentIndex = index;
+    imageModalPage = Math.floor(index / imageModalThumbPageSize);
+    const loadToken = ++imageModalLoadToken;
+    renderImageModalThumbs(loadToken);
+
+    const source = await resolveImageFileDataUrl(imageModalGallery[index]);
+    if (loadToken !== imageModalLoadToken) {
+        return;
+    }
+
+    if (source) {
+        imageFilePreview.src = source;
+        return;
+    }
+
+    imageFilePreview.removeAttribute('src');
+};
+
 const closeImageFileModal = (): void => {
+    imageModalGallery = [];
+    imageModalCurrentIndex = -1;
+    imageModalPage = 0;
+    imageModalLoadToken += 1;
     imageFileModal.classList.remove('is-visible');
 
     if (imageModalHideTimer !== undefined) {
@@ -2047,6 +2208,10 @@ const closeImageFileModal = (): void => {
     imageModalHideTimer = window.setTimeout(() => {
         imageFileModal.hidden = true;
         imageFilePreview.removeAttribute('src');
+        imageFileThumbsRow.innerHTML = '';
+        imageFileThumbsViewport.hidden = true;
+        imageFileThumbsPrev.hidden = true;
+        imageFileThumbsNext.hidden = true;
         imageModalHideTimer = undefined;
     }, 220);
 };
@@ -2065,11 +2230,16 @@ const openTextFileModal = async (textFile: TextLibraryFile): Promise<void> => {
     }
 };
 
-const openImageFileModal = async (imageFile: ImageLibraryFile): Promise<void> => {
+const openImageGalleryModal = async (gallery: ImageLibraryFile[], selectedIndex: number): Promise<void> => {
     if (imageModalHideTimer !== undefined) {
         window.clearTimeout(imageModalHideTimer);
         imageModalHideTimer = undefined;
     }
+
+    imageModalGallery = gallery;
+    imageModalCurrentIndex = -1;
+    imageModalPage = 0;
+    imageModalLoadToken += 1;
 
     imageFilePreview.removeAttribute('src');
     imageFileModal.hidden = false;
@@ -2077,16 +2247,49 @@ const openImageFileModal = async (imageFile: ImageLibraryFile): Promise<void> =>
         imageFileModal.classList.add('is-visible');
     });
 
+    if (gallery.length === 0) {
+        renderImageModalThumbs(imageModalLoadToken);
+        return;
+    }
+
+    const clampedIndex = Math.max(0, Math.min(selectedIndex, gallery.length - 1));
+    await setImageModalActiveIndex(clampedIndex);
+};
+
+const openImageFileModal = async (imageFile: ImageLibraryFile): Promise<void> => {
     try {
-        const base64 = await ReadFileBase64(imageFile.path);
-        if (!base64) {
+        const source = await resolveImageFileDataUrl(imageFile);
+        if (!source) {
             return;
         }
 
-        imageFilePreview.src = `data:${mimeTypeForFileName(imageFile.name)};base64,${base64}`;
+        openImagePreviewModal(imageFile.relativePath || imageFile.name, source);
     } catch (error) {
         console.error(error);
     }
+};
+
+const openCoverImageModal = (): void => {
+    if (!coverArt.classList.contains('is-visible') || !coverArt.src) {
+        return;
+    }
+
+    const activeTrack = tracks[currentTrackIndex];
+    if (!activeTrack) {
+        openImagePreviewModal('Cover art', coverArt.src);
+        return;
+    }
+
+    const gallery = collectReleaseImageFiles(activeTrack.folderPath || '');
+    if (gallery.length === 0) {
+        const title = `${activeTrack.displayArtist} - ${activeTrack.displayAlbum}`;
+        openImagePreviewModal(title, coverArt.src);
+        return;
+    }
+
+    const coverPath = coverPathByFolder.get(folderKeyForPath(activeTrack.folderPath || ''));
+    const selectedIndex = indexOfImageByPath(gallery, coverPath);
+    void openImageGalleryModal(gallery, selectedIndex >= 0 ? selectedIndex : 0);
 };
 
 const openImagePreviewModal = (_title: string, source: string): void => {
@@ -2094,6 +2297,15 @@ const openImagePreviewModal = (_title: string, source: string): void => {
         window.clearTimeout(imageModalHideTimer);
         imageModalHideTimer = undefined;
     }
+
+    imageModalGallery = [];
+    imageModalCurrentIndex = -1;
+    imageModalPage = 0;
+    imageModalLoadToken += 1;
+    imageFileThumbsRow.innerHTML = '';
+    imageFileThumbsViewport.hidden = true;
+    imageFileThumbsPrev.hidden = true;
+    imageFileThumbsNext.hidden = true;
 
     imageFilePreview.src = source;
     imageFileModal.hidden = false;
@@ -2548,6 +2760,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     objectUrls = [];
     coverPathByFolder.clear();
     coverUrlByFolder.clear();
+    imageFileDataUrlByPath.clear();
     artistInfoByMBID.clear();
     libraryNodeByPath.clear();
     tracks = [];
@@ -3142,15 +3355,7 @@ playlistController = createPlaylistController({
 });
 
 coverFrame.addEventListener('click', () => {
-    if (!coverArt.classList.contains('is-visible') || !coverArt.src) {
-        return;
-    }
-
-    const activeTrack = tracks[currentTrackIndex];
-    const title = activeTrack
-        ? `${activeTrack.displayArtist} - ${activeTrack.displayAlbum}`
-        : 'Cover art';
-    openImagePreviewModal(title, coverArt.src);
+    openCoverImageModal();
 });
 
 coverFrame.addEventListener('contextmenu', (event) => {
@@ -3169,11 +3374,7 @@ coverFrame.addEventListener('keydown', (event) => {
         return;
     }
 
-    const activeTrack = tracks[currentTrackIndex];
-    const title = activeTrack
-        ? `${activeTrack.displayArtist} - ${activeTrack.displayAlbum}`
-        : 'Cover art';
-    openImagePreviewModal(title, coverArt.src);
+    openCoverImageModal();
 });
 
 trackTechnical.addEventListener('click', () => {
@@ -3340,6 +3541,53 @@ textFileClose.addEventListener('click', () => {
 
 imageFileBackdrop.addEventListener('click', () => {
     closeImageFileModal();
+});
+
+imageFileThumbsPrev.addEventListener('click', () => {
+    if (imageModalGallery.length === 0 || imageModalPage <= 0) {
+        return;
+    }
+
+    imageModalPage -= 1;
+    renderImageModalThumbs(imageModalLoadToken);
+});
+
+imageFileThumbsNext.addEventListener('click', () => {
+    if (imageModalGallery.length === 0) {
+        return;
+    }
+
+    const pageCount = Math.ceil(imageModalGallery.length / imageModalThumbPageSize);
+    if (imageModalPage >= pageCount - 1) {
+        return;
+    }
+
+    imageModalPage += 1;
+    renderImageModalThumbs(imageModalLoadToken);
+});
+
+imageFileThumbsRow.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+        return;
+    }
+
+    const button = target.closest('button.image-file-thumb');
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const rawIndex = button.dataset.imageModalIndex;
+    if (rawIndex === undefined) {
+        return;
+    }
+
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index)) {
+        return;
+    }
+
+    void setImageModalActiveIndex(index);
 });
 
 imageFilePreview.addEventListener('click', () => {
