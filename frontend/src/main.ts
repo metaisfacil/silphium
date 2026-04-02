@@ -54,6 +54,15 @@ type LibraryNode = {
     imageFileIndexes: number[];
 };
 
+type LibrarySearchTreeNode = {
+    name: string;
+    path: string;
+    folders: LibrarySearchTreeNode[];
+    trackIndexes: number[];
+    textFileIndexes: number[];
+    imageFileIndexes: number[];
+};
+
 type Track = {
     title: string;
     name: string;
@@ -225,12 +234,21 @@ let shuffleCursor = -1;
 let shuffleScopeKey = '';
 let trackMetaMenuTarget: HTMLParagraphElement | null = null;
 let libraryLoading = false;
+let librarySearchQuery = '';
+let librarySearchPending = false;
+let librarySearchResultQuery = '';
+let librarySearchResult: LibrarySearchTreeNode | null = null;
+let librarySearchRequestVersion = 0;
+let librarySearchDebounceHandle: number | undefined;
 const libraryNodeByPath = new Map<string, LibraryNode>();
+const expandedSearchFolders = new Set<string>();
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
 const artistInfoByMBID = new Map<string, ArtistDetails>();
+const librarySearchDebounceMs = 140;
+const librarySearchBatchSize = 300;
 
-const { sidebarToggle, librarySidebar, librarySettings, libraryBack, libraryPath, libraryBrowser } = getSidebarElements(document);
+const { sidebarToggle, librarySidebar, librarySettings, libraryBack, libraryPath, librarySearch, libraryBrowser } = getSidebarElements(document);
 const {
     playerShell,
     playerLane,
@@ -350,6 +368,181 @@ const setLibraryLoading = (loading: boolean): void => {
     refreshSidebarToggleState();
 };
 
+const normalizedLibrarySearchQuery = (): string => librarySearchQuery.trim().toLowerCase();
+
+const isLibrarySearchActive = (): boolean => normalizedLibrarySearchQuery() !== '';
+
+const clearScheduledLibrarySearch = (): void => {
+    if (librarySearchDebounceHandle === undefined) {
+        return;
+    }
+
+    window.clearTimeout(librarySearchDebounceHandle);
+    librarySearchDebounceHandle = undefined;
+};
+
+const cancelLibrarySearch = (): void => {
+    librarySearchRequestVersion += 1;
+    librarySearchPending = false;
+    librarySearchResultQuery = '';
+    librarySearchResult = null;
+    clearScheduledLibrarySearch();
+};
+
+const runLibrarySearch = async (query: string, requestVersion: number): Promise<void> => {
+    const root = createSearchTreeNode(libraryRootName, '');
+    const nodeByPath = new Map<string, LibrarySearchTreeNode>();
+    nodeByPath.set('', root);
+
+    const searchCanceled = (): boolean => {
+        return requestVersion !== librarySearchRequestVersion || query !== normalizedLibrarySearchQuery();
+    };
+
+    const ensureNode = (path: string): LibrarySearchTreeNode => {
+        const normalizedPath = path || '';
+        const existing = nodeByPath.get(normalizedPath);
+        if (existing) {
+            return existing;
+        }
+
+        const segments = normalizedPath.split('/').filter((segment) => segment !== '');
+        const name = segments[segments.length - 1] || libraryRootName;
+        const parentPath = segments.slice(0, -1).join('/');
+        const parent = ensureNode(parentPath);
+        const created = createSearchTreeNode(name, normalizedPath);
+        parent.folders.push(created);
+        nodeByPath.set(normalizedPath, created);
+        return created;
+    };
+
+    for (let index = 0; index < tracks.length; index += 1) {
+        if (searchCanceled()) {
+            return;
+        }
+
+        const track = tracks[index];
+        if (!matchesLibrarySearch(track.relativePath, query) && !matchesLibrarySearch(track.name, query) && !matchesLibrarySearch(track.displayTitle, query)) {
+            if ((index + 1) % librarySearchBatchSize === 0) {
+                await yieldToUi();
+            }
+            continue;
+        }
+
+        ensureNode(track.folderPath).trackIndexes.push(index);
+        if ((index + 1) % librarySearchBatchSize === 0) {
+            await yieldToUi();
+        }
+    }
+
+    for (let index = 0; index < textFiles.length; index += 1) {
+        if (searchCanceled()) {
+            return;
+        }
+
+        const textFile = textFiles[index];
+        if (!matchesLibrarySearch(textFile.relativePath, query) && !matchesLibrarySearch(textFile.name, query)) {
+            if ((index + 1) % librarySearchBatchSize === 0) {
+                await yieldToUi();
+            }
+            continue;
+        }
+
+        ensureNode(textFile.folderPath).textFileIndexes.push(index);
+        if ((index + 1) % librarySearchBatchSize === 0) {
+            await yieldToUi();
+        }
+    }
+
+    for (let index = 0; index < imageFiles.length; index += 1) {
+        if (searchCanceled()) {
+            return;
+        }
+
+        const imageFile = imageFiles[index];
+        if (!matchesLibrarySearch(imageFile.relativePath, query) && !matchesLibrarySearch(imageFile.name, query)) {
+            if ((index + 1) % librarySearchBatchSize === 0) {
+                await yieldToUi();
+            }
+            continue;
+        }
+
+        ensureNode(imageFile.folderPath).imageFileIndexes.push(index);
+        if ((index + 1) % librarySearchBatchSize === 0) {
+            await yieldToUi();
+        }
+    }
+
+    let folderCounter = 0;
+    for (const folderNode of libraryNodeByPath.values()) {
+        if (searchCanceled()) {
+            return;
+        }
+
+        if (!folderNode.path) {
+            continue;
+        }
+
+        if (matchesLibrarySearch(folderNode.name, query) || matchesLibrarySearch(folderNode.path, query)) {
+            ensureNode(folderNode.path);
+        }
+
+        folderCounter += 1;
+        if (folderCounter % librarySearchBatchSize === 0) {
+            await yieldToUi();
+        }
+    }
+
+    const pruneNode = (node: LibrarySearchTreeNode): boolean => {
+        node.folders = node.folders.filter((child) => pruneNode(child));
+        return node.folders.length > 0 || node.trackIndexes.length > 0 || node.textFileIndexes.length > 0 || node.imageFileIndexes.length > 0;
+    };
+
+    const nextResult = pruneNode(root) ? root : null;
+    if (searchCanceled()) {
+        return;
+    }
+
+    librarySearchPending = false;
+    librarySearchResultQuery = query;
+    librarySearchResult = nextResult;
+    renderFolder('none');
+};
+
+const clearLibrarySearch = (): void => {
+    librarySearchQuery = '';
+    expandedSearchFolders.clear();
+    librarySearch.value = '';
+    cancelLibrarySearch();
+};
+
+const setLibrarySearchQuery = (nextValue: string): void => {
+    if (librarySearchQuery === nextValue) {
+        return;
+    }
+
+    librarySearchQuery = nextValue;
+    expandedSearchFolders.clear();
+
+    const normalizedQuery = normalizedLibrarySearchQuery();
+    if (!normalizedQuery) {
+        cancelLibrarySearch();
+        renderFolder('none');
+        return;
+    }
+
+    clearScheduledLibrarySearch();
+    librarySearchPending = true;
+    librarySearchResultQuery = '';
+    librarySearchResult = null;
+    const requestVersion = ++librarySearchRequestVersion;
+    librarySearchDebounceHandle = window.setTimeout(() => {
+        librarySearchDebounceHandle = undefined;
+        void runLibrarySearch(normalizedQuery, requestVersion);
+    }, librarySearchDebounceMs);
+
+    renderFolder('none');
+};
+
 const setLibraryPathLabel = (): void => {
     const partialSuffix = libraryIndexTruncated ? ' (partial)' : '';
     const folderSegments = currentFolderPath
@@ -384,6 +577,13 @@ const setLibraryPathLabel = (): void => {
     }
 
     libraryPath.innerHTML = '';
+
+    if (isLibrarySearchActive()) {
+        const searchSuffix = librarySearchPending ? ' (searching...)' : '';
+        appendText(`${libraryRootName}${partialSuffix} · Search: "${librarySearchQuery.trim()}"${searchSuffix}`);
+        libraryBack.disabled = true;
+        return;
+    }
 
     if (!currentFolderPath) {
         appendText(`${libraryRootName}${partialSuffix}`);
@@ -440,17 +640,165 @@ const createFolderPane = (node: LibraryNode): HTMLUListElement => {
     return pane;
 };
 
+const createSearchTreeNode = (name: string, path: string): LibrarySearchTreeNode => ({
+    name,
+    path,
+    folders: [],
+    trackIndexes: [],
+    textFileIndexes: [],
+    imageFileIndexes: [],
+});
+
+const matchesLibrarySearch = (candidate: string, query: string): boolean => candidate.toLowerCase().includes(query);
+
+const appendSearchTreeRows = (list: HTMLUListElement, node: LibrarySearchTreeNode): void => {
+    const sortedFolders = [...node.folders].sort((left, right) => left.name.localeCompare(right.name, undefined, {
+        sensitivity: 'base',
+        numeric: true,
+    }));
+
+    for (const folder of sortedFolders) {
+        const folderItem = document.createElement('li');
+        folderItem.className = 'library-tree-node';
+
+        const hasChildren = folder.folders.length > 0 || folder.trackIndexes.length > 0 || folder.textFileIndexes.length > 0 || folder.imageFileIndexes.length > 0;
+        const isExpanded = hasChildren && expandedSearchFolders.has(folder.path);
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'library-tree-folder';
+        button.textContent = `${hasChildren ? (isExpanded ? '▾' : '▸') : '•'} 📁 ${folder.name}`;
+        if (hasChildren) {
+            button.dataset.searchFolderPath = folder.path;
+        } else {
+            button.classList.add('is-leaf');
+        }
+
+        folderItem.append(button);
+
+        if (hasChildren && isExpanded) {
+            const childList = document.createElement('ul');
+            childList.className = 'library-tree-list';
+            appendSearchTreeRows(childList, folder);
+            if (childList.childElementCount > 0) {
+                folderItem.append(childList);
+            }
+        }
+
+        list.append(folderItem);
+    }
+
+    const sortedTrackIndexes = [...node.trackIndexes].sort((left, right) => tracks[left].name.localeCompare(tracks[right].name, undefined, {
+        sensitivity: 'base',
+        numeric: true,
+    }));
+    for (const trackIndex of sortedTrackIndexes) {
+        const track = tracks[trackIndex];
+        if (!track) {
+            continue;
+        }
+
+        const row = document.createElement('li');
+        row.className = 'library-tree-entry';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `library-entry track${trackIndex === currentTrackIndex ? ' active' : ''}`;
+        button.dataset.trackIndex = String(trackIndex);
+        button.textContent = `🎵 ${track.displayTitle || track.title}`;
+        row.append(button);
+        list.append(row);
+    }
+
+    const sortedTextFileIndexes = [...node.textFileIndexes].sort((left, right) => textFiles[left].name.localeCompare(textFiles[right].name, undefined, {
+        sensitivity: 'base',
+        numeric: true,
+    }));
+    for (const textFileIndex of sortedTextFileIndexes) {
+        const textFile = textFiles[textFileIndex];
+        if (!textFile) {
+            continue;
+        }
+
+        const row = document.createElement('li');
+        row.className = 'library-tree-entry';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'library-entry text-file';
+        button.dataset.textFileIndex = String(textFileIndex);
+        button.textContent = `📄 ${textFile.name}`;
+        row.append(button);
+        list.append(row);
+    }
+
+    const sortedImageFileIndexes = [...node.imageFileIndexes].sort((left, right) => imageFiles[left].name.localeCompare(imageFiles[right].name, undefined, {
+        sensitivity: 'base',
+        numeric: true,
+    }));
+    for (const imageFileIndex of sortedImageFileIndexes) {
+        const imageFile = imageFiles[imageFileIndex];
+        if (!imageFile) {
+            continue;
+        }
+
+        const row = document.createElement('li');
+        row.className = 'library-tree-entry';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'library-entry image-file';
+        button.dataset.imageFileIndex = String(imageFileIndex);
+        button.textContent = `🖼️ ${imageFile.name}`;
+        row.append(button);
+        list.append(row);
+    }
+};
+
+const createLibrarySearchPane = (): HTMLUListElement => {
+    const pane = document.createElement('ul');
+    pane.className = 'library-list-pane library-search-pane';
+
+    const query = normalizedLibrarySearchQuery();
+    if (librarySearchPending || librarySearchResultQuery !== query) {
+        pane.innerHTML = '<li class="empty">Searching...</li>';
+        return pane;
+    }
+
+    if (!librarySearchResult) {
+        pane.innerHTML = '<li class="empty">No files match your search</li>';
+        return pane;
+    }
+
+    const rootList = document.createElement('ul');
+    rootList.className = 'library-tree-list library-tree-root';
+    appendSearchTreeRows(rootList, librarySearchResult);
+
+    if (rootList.childElementCount === 0) {
+        pane.innerHTML = '<li class="empty">No files match your search</li>';
+        return pane;
+    }
+
+    pane.append(rootList);
+    return pane;
+};
+
 const renderFolder = (direction: 'none' | 'forward' | 'back'): void => {
+    setLibraryPathLabel();
+
+    if (isLibrarySearchActive()) {
+        const nextPane = createLibrarySearchPane();
+        libraryBrowser.innerHTML = '';
+        nextPane.classList.add('current');
+        libraryBrowser.append(nextPane);
+        return;
+    }
+
     const node = libraryNodeByPath.get(currentFolderPath);
     if (!node) {
-        setLibraryPathLabel();
         libraryBrowser.innerHTML = '';
         return;
     }
 
     const nextPane = createFolderPane(node);
     const currentPane = libraryBrowser.querySelector('.library-list-pane.current') as HTMLUListElement | null;
-    setLibraryPathLabel();
 
     if (!currentPane || direction === 'none') {
         libraryBrowser.innerHTML = '';
@@ -1094,7 +1442,15 @@ const openTrackMetaMenu = (clientX: number, clientY: number, includeFolderAction
 };
 
 const navigateSidebarToFolder = (nextFolderPath: string): void => {
+    const hadSearch = isLibrarySearchActive();
+    if (hadSearch) {
+        clearLibrarySearch();
+    }
+
     if (nextFolderPath === currentFolderPath) {
+        if (hadSearch) {
+            renderFolder('none');
+        }
         return;
     }
 
@@ -1446,6 +1802,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     currentFolderPath = '';
     sidebarAutoFolderPath = '';
     libraryIndexTruncated = false;
+    clearLibrarySearch();
     scrobbleSessionId = 0;
     nowPlayingSubmittedSessionId = -1;
     scrobbleSubmittedSessionId = -1;
@@ -1781,6 +2138,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult): Promise<void> => 
     imageFiles = [];
     playlistController.resetState();
     sidebarAutoFolderPath = '';
+    clearLibrarySearch();
 
     for (const [folder, coverPath] of Object.entries(scanResult.coverPathByFolder || {})) {
         coverPathByFolder.set(folder, coverPath);
@@ -2033,9 +2391,36 @@ const setSidebarOpen = (open: boolean): void => {
     refreshSidebarToggleState();
 };
 
+librarySearch.addEventListener('input', () => {
+    setLibrarySearchQuery(librarySearch.value);
+});
+
+librarySearch.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || librarySearch.value === '') {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    clearLibrarySearch();
+    renderFolder('none');
+});
+
 libraryBrowser.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const searchFolderPath = target.dataset.searchFolderPath;
+    if (searchFolderPath !== undefined) {
+        if (expandedSearchFolders.has(searchFolderPath)) {
+            expandedSearchFolders.delete(searchFolderPath);
+        } else {
+            expandedSearchFolders.add(searchFolderPath);
+        }
+
+        renderFolder('none');
         return;
     }
 
@@ -2133,6 +2518,12 @@ document.addEventListener('keydown', (event) => {
 });
 
 libraryBack.addEventListener('click', () => {
+    if (isLibrarySearchActive()) {
+        clearLibrarySearch();
+        renderFolder('none');
+        return;
+    }
+
     if (!currentFolderPath) {
         return;
     }
@@ -2144,6 +2535,10 @@ libraryBack.addEventListener('click', () => {
 });
 
 libraryPath.addEventListener('click', (event) => {
+    if (isLibrarySearchActive()) {
+        return;
+    }
+
     const target = event.target;
     if (!(target instanceof HTMLButtonElement)) {
         return;
