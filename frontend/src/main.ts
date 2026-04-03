@@ -1734,6 +1734,11 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     }
 
     stepTime = performance.now();
+    const scanCollections = await loadPagedScanCollections(scanResult);
+    logRescan('  - loaded paged collections: %.2fms', performance.now() - stepTime);
+
+    // Keep previous library UI usable while pages are being loaded, then swap in one step.
+    stepTime = performance.now();
     objectUrls = clearLibraryRuntimeData({
         objectUrls,
         coverPathByFolder,
@@ -1749,14 +1754,6 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         },
     });
     logRescan('  - cleared runtime data: %.2fms', performance.now() - stepTime);
-
-    tracks = [];
-    textFiles = [];
-    imageFiles = [];
-
-    stepTime = performance.now();
-    const scanCollections = await loadPagedScanCollections(scanResult);
-    logRescan('  - loaded paged collections: %.2fms', performance.now() - stepTime);
 
     stepTime = performance.now();
     tracks = scanCollections.tracks;
