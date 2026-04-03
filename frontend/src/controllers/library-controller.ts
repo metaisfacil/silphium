@@ -805,14 +805,43 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         });
     };
 
+    const areEntriesEquivalent = (left: LibraryBrowserEntry, right: LibraryBrowserEntry): boolean => {
+        return left.kind === right.kind
+            && left.path === right.path
+            && left.name === right.name
+            && left.folderPath === right.folderPath
+            && left.relativePath === right.relativePath;
+    };
+
+    const areEntryPagesEquivalent = (left: LibraryBrowserEntry[], right: LibraryBrowserEntry[]): boolean => {
+        if (left.length !== right.length) {
+            return false;
+        }
+
+        for (let index = 0; index < left.length; index += 1) {
+            if (!areEntriesEquivalent(left[index], right[index])) {
+                return false;
+            }
+        }
+
+        return true;
+    };
+
     const fetchPageForPane = async (pane: HTMLUListElement, pageIndex: number, forceRefresh = false): Promise<void> => {
         const state = paneStateByElement.get(pane);
         if (!state || state.loadingPages.has(pageIndex) || (!forceRefresh && state.loadedPages.has(pageIndex))) {
             return;
         }
 
-        state.loadingPages.add(pageIndex);
-        schedulePaneUpdate(pane);
+        const hasCachedPage = state.loadedPages.has(pageIndex);
+        const showLoadingState = !(forceRefresh && hasCachedPage);
+        let shouldScheduleUpdate = false;
+
+        if (showLoadingState) {
+            state.loadingPages.add(pageIndex);
+            shouldScheduleUpdate = true;
+            schedulePaneUpdate(pane);
+        }
 
         try {
             const offset = pageIndex * serverPageSize;
@@ -825,15 +854,25 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 return;
             }
 
+            const nextEntries = page.entries || [];
+            const previousEntries = latestState.loadedPages.get(pageIndex) || [];
+            if (latestState.totalEntries !== page.totalEntries || !areEntryPagesEquivalent(previousEntries, nextEntries)) {
+                shouldScheduleUpdate = true;
+            }
+
             latestState.totalEntries = page.totalEntries;
-            latestState.loadedPages.set(pageIndex, page.entries || []);
+            latestState.loadedPages.set(pageIndex, nextEntries);
             if (Number.isFinite(page.totalEntries) && page.totalEntries >= 0) {
                 const pageCount = Math.max(1, Math.ceil(page.totalEntries / serverPageSize));
                 for (const loadedPageIndex of Array.from(latestState.loadedPages.keys())) {
                     if (loadedPageIndex >= pageCount) {
                         latestState.loadedPages.delete(loadedPageIndex);
+                        shouldScheduleUpdate = true;
                     }
                 }
+            }
+            if (latestState.errorMessage) {
+                shouldScheduleUpdate = true;
             }
             latestState.errorMessage = null;
         } catch (error) {
@@ -843,15 +882,24 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             }
 
             console.error(error);
-            latestState.errorMessage = 'Unable to load library entries.';
+            if (latestState.errorMessage !== 'Unable to load library entries.') {
+                shouldScheduleUpdate = true;
+                latestState.errorMessage = 'Unable to load library entries.';
+            }
         } finally {
             const latestState = paneStateByElement.get(pane);
             if (!latestState || latestState.version !== state.version) {
                 return;
             }
 
-            latestState.loadingPages.delete(pageIndex);
-            schedulePaneUpdate(pane);
+            if (showLoadingState && latestState.loadingPages.has(pageIndex)) {
+                latestState.loadingPages.delete(pageIndex);
+                shouldScheduleUpdate = true;
+            }
+
+            if (shouldScheduleUpdate) {
+                schedulePaneUpdate(pane);
+            }
         }
     };
 

@@ -473,6 +473,8 @@ let libraryController: LibraryController;
 let libraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
 let activeLibraryLoadScanResolvedAtMs: number | null = null;
 const libraryIndexedFilePageSize = 1000;
+const libraryIncrementalRefreshDebounceMs = 180;
+let pendingLibraryIncrementalRefreshHandle: number | null = null;
 
 const beginLibraryLoadTracking = (): void => {
     activeLibraryLoadScanResolvedAtMs = null;
@@ -500,6 +502,19 @@ const finishLibraryLoadTracking = (): void => {
     }
 
     localStorage.setItem(LIBRARY_CLIENT_FINALIZE_MS_KEY, String(libraryClientFinalizeEstimateMs));
+};
+
+const scheduleLibraryIncrementalFolderRefresh = (): void => {
+    if (pendingLibraryIncrementalRefreshHandle !== null) {
+        return;
+    }
+
+    pendingLibraryIncrementalRefreshHandle = window.setTimeout(() => {
+        pendingLibraryIncrementalRefreshHandle = null;
+        const currentFolderPath = libraryController.getCurrentFolderPath();
+        logRescan('Refreshing current folder: %s', currentFolderPath || '(root)');
+        libraryController.refreshCurrentFolder();
+    }, libraryIncrementalRefreshDebounceMs);
 };
 
 const canScrobble = (): boolean => currentSettings.listenBrainzUserToken.trim() !== '';
@@ -1358,12 +1373,9 @@ const handleLibraryScanUpdatedEvent = (scanResult: LibraryScanResult): void => {
     libraryController.setLibraryRootName(nextRootName || 'Selected folder');
     libraryController.setLibraryIndexTruncated(!!scanResult.truncated);
 
-    // For incremental watcher updates, just re-fetch the current folder rather than
-    // doing a full reload of all 150K+ tracks. The backend index is already updated;
-    // refreshCurrentFolder clears the page cache so GetLibraryFolderPage re-fetches fresh results.
-    const currentFolderPath = libraryController.getCurrentFolderPath();
-    logRescan('Refreshing current folder: %s', currentFolderPath || '(root)');
-    libraryController.refreshCurrentFolder();
+    // For incremental updates, refresh the visible folder with a short debounce to
+    // avoid rapid re-renders that interfere with pointer interactions.
+    scheduleLibraryIncrementalFolderRefresh();
     logRescan('handleLibraryScanUpdatedEvent END: took %.2fms', performance.now() - startTime);
 };
 
