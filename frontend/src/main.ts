@@ -1974,17 +1974,69 @@ libraryController = createLibraryController({
 });
 
 const coverFront = coverFrame.querySelector('.cover-front') as HTMLElement;
+const coverFlipSuppressWindowMs = 320;
+let suppressCoverContextMenuUntil = 0;
+let suppressCoverFrontClickUntil = 0;
 
-coverFront.addEventListener('click', () => {
-    if (coverFlipped) {
+const markCoverFlipHandled = (): void => {
+    const suppressUntil = performance.now() + coverFlipSuppressWindowMs;
+    suppressCoverContextMenuUntil = suppressUntil;
+    suppressCoverFrontClickUntil = suppressUntil;
+};
+
+const toggleCoverFlipFromSecondaryInput = (event: MouseEvent): void => {
+    if (performance.now() < suppressCoverContextMenuUntil) {
         return;
     }
+
+    const isSecondaryButton = event.button === 2;
+    const isCtrlPrimaryClick = event.button === 0 && event.ctrlKey;
+    if (!isSecondaryButton && !isCtrlPrimaryClick) {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    markCoverFlipHandled();
+    setCoverFlipped(!coverFlipped);
+};
+
+const toggleCoverFlipFromContextMenu = (event: MouseEvent): boolean => {
+    const target = event.target;
+    if (!(target instanceof Node) || !coverFrame.contains(target)) {
+        return false;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (performance.now() < suppressCoverContextMenuUntil) {
+        return true;
+    }
+
+    markCoverFlipHandled();
+    setCoverFlipped(!coverFlipped);
+    return true;
+};
+
+coverFront.addEventListener('click', (event) => {
+    if (coverFlipped || event.ctrlKey || performance.now() < suppressCoverFrontClickUntil) {
+        return;
+    }
+
     openCoverImageModal();
 });
 
+coverFrame.addEventListener('mousedown', (event) => {
+    toggleCoverFlipFromSecondaryInput(event);
+});
+
+coverFrame.addEventListener('pointerdown', (event) => {
+    toggleCoverFlipFromSecondaryInput(event);
+});
+
 coverFrame.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    setCoverFlipped(!coverFlipped);
+    toggleCoverFlipFromContextMenu(event);
 });
 
 coverFrame.addEventListener('keydown', (event) => {
@@ -2289,6 +2341,10 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('contextmenu', (event) => {
+    if (toggleCoverFlipFromContextMenu(event)) {
+        return;
+    }
+
     const target = event.target as Node;
     if (!sidebarQueueMenu.hidden && !sidebarQueueMenu.contains(target)) {
         closeSidebarQueueMenu();

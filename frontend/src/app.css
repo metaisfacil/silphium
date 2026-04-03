@@ -668,31 +668,47 @@
     aspect-ratio: 1 / 1;
     margin: 0;
     place-self: center;
+    position: relative;
     border-radius: 12px;
     background: rgba(255, 255, 255, 0.07);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55), 0 8px 20px rgba(0, 0, 0, 0.35);
-    overflow: hidden;
-    perspective: 1100px;
     cursor: pointer;
 }
 
+.cover-frame::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55), 0 8px 20px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+
 .cover-flipper {
+    --cover-flip-duration: 420ms;
+    --cover-flip-switch-ratio: 0.28;
+    --cover-flip-midpoint: calc(var(--cover-flip-duration) * var(--cover-flip-switch-ratio));
     width: 100%;
     height: 100%;
     position: relative;
-    transform-style: preserve-3d;
-    transition: transform 420ms ease;
+    border-radius: inherit;
+    overflow: hidden;
+    transform: scaleX(1);
+    transition: transform var(--cover-flip-duration) ease;
+    will-change: transform;
 }
 
 .cover-flipper.is-flipped {
-    transform: rotateY(180deg);
+    transform: scaleX(-1);
 }
 
 .cover-face {
     position: absolute;
     inset: 0;
-    backface-visibility: hidden;
+    transform: scaleX(1);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0ms linear var(--cover-flip-midpoint), visibility 0ms linear var(--cover-flip-midpoint);
     pointer-events: none;
 }
 
@@ -706,7 +722,21 @@
     pointer-events: none;
 }
 
+.cover-flipper:not(.is-flipped) .cover-front {
+    opacity: 1;
+    visibility: visible;
+    z-index: 2;
+}
+
+.cover-flipper.is-flipped .cover-back {
+    opacity: 1;
+    visibility: visible;
+    z-index: 2;
+}
+
 .cover-front {
+    transform: scaleX(1);
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -734,7 +764,8 @@
 }
 
 .cover-back {
-    transform: rotateY(180deg);
+    transform: scaleX(-1);
+    z-index: 1;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
