@@ -135,13 +135,10 @@ func (a *App) loadStoredSettings() {
 	}
 
 	a.settings = settings
-	if settings.LibraryPath != "" {
-		a.libraryRoot = settings.LibraryPath
-		a.startLibraryWatcher(settings.LibraryPath)
-		return
+	a.libraryRoot = settings.LibraryPath
+	if settings.LibraryPath == "" {
+		a.stopLibraryWatcher()
 	}
-
-	a.stopLibraryWatcher()
 }
 
 func (a *App) ensureSettingsLoaded() {
@@ -171,8 +168,6 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	a.libraryRoot = normalized.LibraryPath
 	if normalized.LibraryPath == "" {
 		a.stopLibraryWatcher()
-	} else {
-		a.startLibraryWatcher(normalized.LibraryPath)
 	}
 	return normalized, nil
 }

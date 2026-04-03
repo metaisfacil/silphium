@@ -253,6 +253,7 @@ const setCtrlHeldState = (held: boolean): void => {
 };
 
 const PLAYER_CARD_LAYOUT_KEY = 'playerCardLayout';
+const LIBRARY_CLIENT_FINALIZE_MS_KEY = 'libraryClientFinalizeEstimateMs';
 
 const getStoredLayout = (): PlayerCardLayout =>
     localStorage.getItem(PLAYER_CARD_LAYOUT_KEY) === 'release' ? 'release' : 'default';
@@ -462,7 +463,7 @@ let playlistController: PlaylistController;
 let artistInfoController: ArtistInfoController;
 let imageModalController: ImageModalController;
 let libraryController: LibraryController;
-let libraryClientFinalizeEstimateMs = 0;
+let libraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
 let activeLibraryLoadScanResolvedAtMs: number | null = null;
 const libraryIndexedFilePageSize = 1000;
 
@@ -487,10 +488,11 @@ const finishLibraryLoadTracking = (): void => {
 
     if (libraryClientFinalizeEstimateMs <= 0) {
         libraryClientFinalizeEstimateMs = clientFinalizeMs;
-        return;
+    } else {
+        libraryClientFinalizeEstimateMs = (libraryClientFinalizeEstimateMs * 0.7) + (clientFinalizeMs * 0.3);
     }
 
-    libraryClientFinalizeEstimateMs = (libraryClientFinalizeEstimateMs * 0.7) + (clientFinalizeMs * 0.3);
+    localStorage.setItem(LIBRARY_CLIENT_FINALIZE_MS_KEY, String(libraryClientFinalizeEstimateMs));
 };
 
 const canScrobble = (): boolean => currentSettings.listenBrainzUserToken.trim() !== '';

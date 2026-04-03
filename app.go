@@ -59,6 +59,7 @@ type App struct {
 	imageByPath    map[string]LibraryIndexedFile
 	libraryScan    LibraryScanResult
 	scanFinalizeMs float64
+	scanWatcherMs  float64
 }
 
 // LibraryIndexedFile represents a discovered file with normalized library-relative metadata.
@@ -695,15 +696,23 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 
 	a.indexMu.Lock()
 	learnedFinalizeMs := a.scanFinalizeMs
+	learnedWatcherMs := a.scanWatcherMs
 	a.indexMu.Unlock()
 
 	estimateFinalizationBudgetMs := func(elapsed time.Duration, entriesDone int) float64 {
+		watcherBudget := learnedWatcherMs
+		if restartWatcher && watcherBudget <= 0 {
+			watcherBudget = 8000
+		} else if !restartWatcher {
+			watcherBudget = 0
+		}
+
 		if learnedFinalizeMs > 0 {
-			return learnedFinalizeMs
+			return learnedFinalizeMs + watcherBudget
 		}
 
 		if totalEntries <= 0 {
-			return 8000
+			return 4000 + watcherBudget
 		}
 
 		if entriesDone <= 0 {
@@ -724,7 +733,7 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 			fallback = 180000
 		}
 
-		return fallback
+		return fallback + watcherBudget
 	}
 
 	emitProgress := func(force bool, phase string) {
@@ -886,17 +895,44 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 
 	a.libraryRoot = cleanRoot
 	a.setLibraryIndexFromScan(result)
-	if restartWatcher {
-		a.startLibraryWatcher(cleanRoot)
-	}
 
-	actualFinalizationMs := float64(time.Since(finalizationStartedAt).Milliseconds())
-	if actualFinalizationMs > 0 {
+	sortIndexMs := float64(time.Since(finalizationStartedAt).Milliseconds())
+
+	if restartWatcher {
+		a.indexMu.Lock()
+		firstWatcherLearning := a.scanWatcherMs <= 0
+		a.indexMu.Unlock()
+
+		if sortIndexMs > 0 {
+			a.indexMu.Lock()
+			// If scanWatcherMs has never been learned, scanFinalizeMs was measured under old
+			// code which included watcher registration time. Reset it to avoid double-counting.
+			if a.scanFinalizeMs <= 0 || firstWatcherLearning {
+				a.scanFinalizeMs = sortIndexMs
+			} else {
+				a.scanFinalizeMs = (a.scanFinalizeMs * 0.72) + (sortIndexMs * 0.28)
+			}
+			a.indexMu.Unlock()
+		}
+
+		watcherStartedAt := time.Now()
+		a.startLibraryWatcher(cleanRoot, func() { emitProgress(false, "finalizing") })
+		watcherMs := float64(time.Since(watcherStartedAt).Milliseconds())
+		if watcherMs > 0 {
+			a.indexMu.Lock()
+			if a.scanWatcherMs <= 0 {
+				a.scanWatcherMs = watcherMs
+			} else {
+				a.scanWatcherMs = (a.scanWatcherMs * 0.72) + (watcherMs * 0.28)
+			}
+			a.indexMu.Unlock()
+		}
+	} else if sortIndexMs > 0 {
 		a.indexMu.Lock()
 		if a.scanFinalizeMs <= 0 {
-			a.scanFinalizeMs = actualFinalizationMs
+			a.scanFinalizeMs = sortIndexMs
 		} else {
-			a.scanFinalizeMs = (a.scanFinalizeMs * 0.72) + (actualFinalizationMs * 0.28)
+			a.scanFinalizeMs = (a.scanFinalizeMs * 0.72) + (sortIndexMs * 0.28)
 		}
 		a.indexMu.Unlock()
 	}
@@ -1450,7 +1486,7 @@ func isRelevantWatchEvent(event fsnotify.Event) bool {
 	return event.Op&interestingOps != 0
 }
 
-func addLibraryWatchesRecursive(watcher *fsnotify.Watcher, rootPath string) {
+func addLibraryWatchesRecursive(watcher *fsnotify.Watcher, rootPath string, onProgress func()) {
 	_ = filepath.WalkDir(rootPath, func(currentPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil
@@ -1461,11 +1497,14 @@ func addLibraryWatchesRecursive(watcher *fsnotify.Watcher, rootPath string) {
 		}
 
 		_ = watcher.Add(currentPath)
+		if onProgress != nil {
+			onProgress()
+		}
 		return nil
 	})
 }
 
-func (a *App) startLibraryWatcher(rootPath string) {
+func (a *App) startLibraryWatcher(rootPath string, onProgress func()) {
 	a.logRescanEvent("Starting library watcher for: %s", rootPath)
 	normalizedRoot := normalizePath(rootPath)
 	if normalizedRoot == "" {
@@ -1498,7 +1537,7 @@ func (a *App) startLibraryWatcher(rootPath string) {
 	}
 	a.logRescanEvent("Watcher created, registering all directories")
 
-	addLibraryWatchesRecursive(watcher, cleanRoot)
+	addLibraryWatchesRecursive(watcher, cleanRoot, onProgress)
 	a.logRescanEvent("Watcher ready, listening for changes")
 	stopCh := make(chan struct{})
 
@@ -1562,7 +1601,7 @@ func (a *App) startLibraryWatcher(rootPath string) {
 
 				if event.Op&fsnotify.Create != 0 {
 					if info, statErr := os.Stat(event.Name); statErr == nil && info.IsDir() {
-						addLibraryWatchesRecursive(activeWatcher, event.Name)
+						addLibraryWatchesRecursive(activeWatcher, event.Name, nil)
 					}
 				}
 
