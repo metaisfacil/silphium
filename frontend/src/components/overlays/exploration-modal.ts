@@ -10,7 +10,7 @@ export const renderExplorationModal = (): string => `
     <div id="exploration-modal" class="exploration-modal" hidden>
         <section class="exploration-dialog" role="dialog" aria-modal="true" aria-labelledby="exploration-title">
             <button id="exploration-close" class="exploration-close" type="button" aria-label="Close exploration">✕</button>
-            <p id="exploration-title" class="exploration-title">MusicBrainz Network Exploration</p>
+            <p id="exploration-title" class="exploration-title">Connection Explorer</p>
             <div id="exploration-content" class="exploration-content"></div>
         </section>
     </div>

@@ -60,7 +60,7 @@ export const renderMediaControls = (): string => `
                 <p id="artist-info-summary" class="artist-info-summary">Flip back after MBID lookup to see details.</p>
                 <div id="artist-info-links" class="artist-info-links"></div>
               </div>
-              <button id="exploration-btn" class="exploration-btn" type="button" aria-label="Explore MusicBrainz network" hidden>🌐</button>
+              <button id="exploration-btn" class="exploration-btn" type="button" aria-label="Explore connections between entities" hidden>🌐</button>
               <button id="track-technical-alt" class="track-technical" type="button" aria-label="Show track technical details" disabled></button>
             </div>
           </div>

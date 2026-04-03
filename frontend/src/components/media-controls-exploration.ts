@@ -206,7 +206,7 @@ const closeExplorationModal = (modal: HTMLDivElement, content: HTMLElement, titl
     window.setTimeout(() => {
         destroyActiveExplorationGraph();
         content.replaceChildren();
-        title.textContent = 'MusicBrainz Network Exploration';
+        title.textContent = 'Connection Explorer';
         modal.hidden = true;
     }, 200);
 };
@@ -226,7 +226,7 @@ const openExplorationModal = async (track: Track): Promise<void> => {
         closeExplorationModal(modal, explorationContent, explorationTitle);
     };
 
-    explorationTitle.textContent = `MusicBrainz Network Exploration`;
+    explorationTitle.textContent = `Connection Explorer`;
     renderExplorationLoading(explorationContent);
 
     activeExplorationRequestVersion += 1;
@@ -282,6 +282,6 @@ export function updateExplorationButton(root: ParentNode, track?: Track): void {
     btn.hidden = !enabled;
     btn.disabled = !enabled;
     btn.title = enabled
-        ? 'Explore MusicBrainz network'
+        ? 'Explore connections between entities'
         : 'This track has no tagged MusicBrainz IDs';
 }
