@@ -73,6 +73,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     let hydrationTotal = 0;
     let hydrationCompleted = 0;
     let hydrationHideToken = 0;
+    const playlistModalTransitionMs = 220;
+    let playlistModalHideTimer: number | undefined;
 
     const setHydrationProgress = (completed: number, total: number): void => {
         hydrationHideToken += 1;
@@ -237,7 +239,17 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const closeModal = (): void => {
-        playlistModal.hidden = true;
+        playlistModal.classList.remove('is-visible');
+
+        if (playlistModalHideTimer !== undefined) {
+            window.clearTimeout(playlistModalHideTimer);
+        }
+
+        playlistModalHideTimer = window.setTimeout(() => {
+            playlistModal.hidden = true;
+            playlistModalHideTimer = undefined;
+        }, playlistModalTransitionMs);
+
         dragFromPosition = null;
     };
 
@@ -369,9 +381,17 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const openModal = (): void => {
+        if (playlistModalHideTimer !== undefined) {
+            window.clearTimeout(playlistModalHideTimer);
+            playlistModalHideTimer = undefined;
+        }
+
         hydrateCurrentViewTracks();
         renderPlaylist();
         playlistModal.hidden = false;
+        window.requestAnimationFrame(() => {
+            playlistModal.classList.add('is-visible');
+        });
     };
 
     const refreshOpenModal = (): void => {

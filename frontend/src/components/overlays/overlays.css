@@ -1244,6 +1244,8 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.58);
     backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 220ms ease;
 }
 
 .playlist-dialog {
@@ -1256,6 +1258,18 @@
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 0.9rem;
     overflow: hidden;
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.playlist-modal.is-visible .playlist-backdrop {
+    opacity: 1;
+}
+
+.playlist-modal.is-visible .playlist-dialog {
+    opacity: 1;
+    transform: translateY(0) scale(1);
 }
 
 .playlist-header {
