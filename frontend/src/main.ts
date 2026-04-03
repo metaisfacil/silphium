@@ -473,6 +473,8 @@ let imageModalController: ImageModalController;
 let libraryController: LibraryController;
 let libraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
 let activeLibraryLoadScanResolvedAtMs: number | null = null;
+let fullLibraryScanLoadActive = false;
+let suppressAutoSelectAfterFullLibraryScan = false;
 const libraryIndexedFilePageSize = 1000;
 const libraryIncrementalRefreshDebounceMs = 180;
 let pendingLibraryIncrementalRefreshHandle: number | null = null;
@@ -558,6 +560,66 @@ const trackIndexForPath = (path: string): number => {
     }
 
     return foundIndex;
+};
+
+const createPlaceholderTrackForPath = (trackPath: string): Track => {
+    const normalizedPath = trackPath.trim();
+    const normalizedPathForSplit = normalizedPath.replace(/\\/g, '/');
+    const segments = normalizedPathForSplit.split('/').filter((segment) => segment !== '');
+    const fileName = segments[segments.length - 1] || normalizedPath;
+
+    const normalizedRootPath = currentSettings.libraryPath.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    const normalizedLowerPath = normalizedPathForSplit.toLowerCase();
+    const normalizedLowerRootPath = normalizedRootPath.toLowerCase();
+
+    let relativePath = fileName;
+    if (normalizedRootPath && normalizedLowerPath.startsWith(`${normalizedLowerRootPath}/`)) {
+        relativePath = normalizedPathForSplit.slice(normalizedRootPath.length + 1);
+    }
+
+    const folderPath = relativePath.includes('/')
+        ? relativePath.slice(0, relativePath.lastIndexOf('/'))
+        : '';
+
+    return {
+        title: fileName,
+        name: fileName,
+        path: normalizedPath,
+        relativePath,
+        folderPath,
+        displayTitle: fileName,
+        displayAlbum: 'Unknown Album',
+        displayArtist: 'Unknown Artist',
+        displayTrackNumber: '',
+        displayTrackTotal: '',
+        displayTechnical: '',
+        displayLyrics: '',
+        tagsResolved: false,
+        mbMetadataResolved: false,
+        technicalDetails: {},
+        allFileTags: {},
+        mbIds: {},
+        artistMbids: [],
+        mbArtistCredits: [],
+    };
+};
+
+const ensureTrackIndexForPath = (path: string): number => {
+    const existingIndex = trackIndexForPath(path);
+    if (existingIndex >= 0) {
+        return existingIndex;
+    }
+
+    const normalizedPath = path.trim();
+    if (!normalizedPath) {
+        return -1;
+    }
+
+    const placeholderTrack = createPlaceholderTrackForPath(normalizedPath);
+    tracks.push(placeholderTrack);
+    const createdIndex = tracks.length - 1;
+    trackIndexByPath.set(normalizedPath.toLowerCase(), createdIndex);
+    return createdIndex;
 };
 
 const textFileIndexForPath = (path: string): number => {
@@ -1329,6 +1391,8 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
         return;
     }
 
+    fullLibraryScanLoadActive = true;
+    suppressAutoSelectAfterFullLibraryScan = false;
     beginLibraryLoadTracking();
     libraryController.setLibraryLoading(true);
     libraryController.setLibraryLoadingEtaSeconds(null);
@@ -1344,6 +1408,8 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
     } finally {
         finishLibraryLoadTracking();
         libraryController.setLibraryLoading(false);
+        fullLibraryScanLoadActive = false;
+        suppressAutoSelectAfterFullLibraryScan = false;
     }
 };
 
@@ -1834,7 +1900,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     if (!options?.preserveFolderView) {
         resetShuffleHistory();
 
-        if (options?.autoSelectStartingTrack !== false) {
+        if (options?.autoSelectStartingTrack !== false && !suppressAutoSelectAfterFullLibraryScan) {
             const startingTrackIndex = libraryController.firstTrackIndexFromRandomAlbumFolder();
             void loadTrack(startingTrackIndex);
         }
@@ -1979,7 +2045,25 @@ libraryController = createLibraryController({
             .filter((trackIndex) => trackIndex >= 0);
     },
     onTrackChosen: (index: number) => {
+        if (fullLibraryScanLoadActive) {
+            suppressAutoSelectAfterFullLibraryScan = true;
+        }
+
         void loadTrack(index).then(() => {
+            void playCurrentTrack();
+        });
+    },
+    onTrackPathChosen: (trackPath: string) => {
+        if (fullLibraryScanLoadActive) {
+            suppressAutoSelectAfterFullLibraryScan = true;
+        }
+
+        const resolvedIndex = ensureTrackIndexForPath(trackPath);
+        if (resolvedIndex < 0) {
+            return;
+        }
+
+        void loadTrack(resolvedIndex).then(() => {
             void playCurrentTrack();
         });
     },

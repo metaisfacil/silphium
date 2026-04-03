@@ -60,6 +60,7 @@ type LibraryControllerOptions = {
     resolveImageFileIndex: (path: string) => number;
     getFolderTrackIndexes: (folderPath: string) => Promise<number[]>;
     onTrackChosen: (index: number) => void;
+    onTrackPathChosen?: (path: string) => void;
     onTextFileChosen: (index: number) => void;
     onImageFileChosen: (index: number) => void;
     onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[]) => void;
@@ -1406,6 +1407,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             const index = options.resolveTrackIndex(trackPath);
             if (index >= 0) {
                 options.onTrackChosen(index);
+            } else if (options.onTrackPathChosen) {
+                options.onTrackPathChosen(trackPath);
             }
             return;
         }
