@@ -782,7 +782,7 @@
     height: 100%;
     object-fit: cover;
     object-position: center center;
-    filter: blur(28px) brightness(0.28) saturate(0.82);
+    filter: blur(28px) brightness(0.78) saturate(0.82);
     transform: scale(1.2) translateZ(0);
     display: none;
     z-index: 0;
