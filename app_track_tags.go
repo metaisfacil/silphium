@@ -345,6 +345,57 @@ func extractArtistMBIDs(tags map[string][]string) []string {
 	return mbids
 }
 
+func buildTrackTags(tags map[string][]string, technical TrackTechnicalMetadata) TrackTags {
+	trackNumber, trackTotal := extractTrackNumbers(tags)
+
+	return TrackTags{
+		Artist:         firstTagValue(tags, "ARTIST", "ALBUMARTIST"),
+		Album:          firstTagValue(tags, "ALBUM"),
+		Title:          firstTagValue(tags, "TITLE"),
+		AllTags:        collectAllTags(tags),
+		Lyrics:         firstTagValue(tags, "LYRICS"),
+		UnsyncedLyrics: firstTagValue(tags, "UNSYNCEDLYRICS"),
+		TrackNumber:    trackNumber,
+		TrackTotal:     trackTotal,
+		BitDepth:       technical.BitDepth,
+		SampleRate:     technical.SampleRate,
+		Codec:          technical.Codec,
+		CodecLong:      technical.CodecLong,
+		CodecProfile:   technical.CodecProfile,
+		SampleFormat:   technical.SampleFormat,
+		Channels:       technical.Channels,
+		ChannelLayout:  technical.ChannelLayout,
+		BitRate:        technical.BitRate,
+		OverallBitRate: technical.OverallBitRate,
+		DurationSecs:   technical.DurationSeconds,
+		Container:      technical.Container,
+		FileSizeBytes:  technical.FileSizeBytes,
+		RecordingID:    firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
+		ReleaseID:      firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
+		ArtistID:       firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
+		ArtistIDs:      extractArtistMBIDs(tags),
+	}
+}
+
+func hasAnyTrackMetadata(trackTags TrackTags) bool {
+	return trackTags.Artist != "" ||
+		trackTags.Album != "" ||
+		trackTags.Title != "" ||
+		len(trackTags.AllTags) > 0 ||
+		trackTags.TrackNumber != "" ||
+		trackTags.TrackTotal != "" ||
+		trackTags.BitDepth != 0 ||
+		trackTags.SampleRate != 0 ||
+		trackTags.Codec != "" ||
+		trackTags.BitRate != 0 ||
+		trackTags.OverallBitRate != 0 ||
+		trackTags.DurationSecs != 0 ||
+		trackTags.Container != "" ||
+		trackTags.FileSizeBytes != 0 ||
+		trackTags.Lyrics != "" ||
+		trackTags.UnsyncedLyrics != ""
+}
+
 // ReadTrackTags reads tag and technical metadata for track files by path.
 func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 	tagByPath := make(map[string]TrackTags, len(paths))
@@ -359,47 +410,12 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 			continue
 		}
 
-		artist := firstTagValue(tags, "ARTIST", "ALBUMARTIST")
-		album := firstTagValue(tags, "ALBUM")
-		title := firstTagValue(tags, "TITLE")
-		allTags := collectAllTags(tags)
-		trackNumber, trackTotal := extractTrackNumbers(tags)
-		artistIDs := extractArtistMBIDs(tags)
-		technical := readTrackTechnicalMetadata(path)
-		lyrics := firstTagValue(tags, "LYRICS")
-		unsyncedLyrics := firstTagValue(tags, "UNSYNCEDLYRICS")
-
-		if artist == "" && album == "" && title == "" && len(allTags) == 0 && trackNumber == "" && trackTotal == "" && technical.BitDepth == 0 && technical.SampleRate == 0 && technical.Codec == "" && technical.BitRate == 0 && technical.OverallBitRate == 0 && technical.DurationSeconds == 0 && technical.Container == "" && technical.FileSizeBytes == 0 && lyrics == "" && unsyncedLyrics == "" {
+		trackTags := buildTrackTags(tags, readTrackTechnicalMetadata(path))
+		if !hasAnyTrackMetadata(trackTags) {
 			continue
 		}
 
-		tagByPath[path] = TrackTags{
-			Artist:         artist,
-			Album:          album,
-			Title:          title,
-			AllTags:        allTags,
-			Lyrics:         lyrics,
-			UnsyncedLyrics: unsyncedLyrics,
-			TrackNumber:    trackNumber,
-			TrackTotal:     trackTotal,
-			BitDepth:       technical.BitDepth,
-			SampleRate:     technical.SampleRate,
-			Codec:          technical.Codec,
-			CodecLong:      technical.CodecLong,
-			CodecProfile:   technical.CodecProfile,
-			SampleFormat:   technical.SampleFormat,
-			Channels:       technical.Channels,
-			ChannelLayout:  technical.ChannelLayout,
-			BitRate:        technical.BitRate,
-			OverallBitRate: technical.OverallBitRate,
-			DurationSecs:   technical.DurationSeconds,
-			Container:      technical.Container,
-			FileSizeBytes:  technical.FileSizeBytes,
-			RecordingID:    firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
-			ReleaseID:      firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
-			ArtistID:       firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
-			ArtistIDs:      artistIDs,
-		}
+		tagByPath[path] = trackTags
 	}
 
 	return tagByPath
@@ -439,48 +455,14 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 			continue
 		}
 
-		artist := firstTagValue(tags, "ARTIST", "ALBUMARTIST")
-		album := firstTagValue(tags, "ALBUM")
-		title := firstTagValue(tags, "TITLE")
-		allTags := collectAllTags(tags)
-		trackNumber, trackTotal := extractTrackNumbers(tags)
-		artistIDs := extractArtistMBIDs(tags)
 		technical := readTrackTechnicalMetadata(tempPath)
 		_ = os.Remove(tempPath)
-		lyrics := firstTagValue(tags, "LYRICS")
-		unsyncedLyrics := firstTagValue(tags, "UNSYNCEDLYRICS")
-
-		if artist == "" && album == "" && title == "" && len(allTags) == 0 && trackNumber == "" && trackTotal == "" && technical.BitDepth == 0 && technical.SampleRate == 0 && technical.Codec == "" && technical.BitRate == 0 && technical.OverallBitRate == 0 && technical.DurationSeconds == 0 && technical.Container == "" && technical.FileSizeBytes == 0 && lyrics == "" && unsyncedLyrics == "" {
+		trackTags := buildTrackTags(tags, technical)
+		if !hasAnyTrackMetadata(trackTags) {
 			continue
 		}
 
-		tagByKey[blob.Key] = TrackTags{
-			Artist:         artist,
-			Album:          album,
-			Title:          title,
-			AllTags:        allTags,
-			Lyrics:         lyrics,
-			UnsyncedLyrics: unsyncedLyrics,
-			TrackNumber:    trackNumber,
-			TrackTotal:     trackTotal,
-			BitDepth:       technical.BitDepth,
-			SampleRate:     technical.SampleRate,
-			Codec:          technical.Codec,
-			CodecLong:      technical.CodecLong,
-			CodecProfile:   technical.CodecProfile,
-			SampleFormat:   technical.SampleFormat,
-			Channels:       technical.Channels,
-			ChannelLayout:  technical.ChannelLayout,
-			BitRate:        technical.BitRate,
-			OverallBitRate: technical.OverallBitRate,
-			DurationSecs:   technical.DurationSeconds,
-			Container:      technical.Container,
-			FileSizeBytes:  technical.FileSizeBytes,
-			RecordingID:    firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
-			ReleaseID:      firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
-			ArtistID:       firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
-			ArtistIDs:      artistIDs,
-		}
+		tagByKey[blob.Key] = trackTags
 	}
 
 	return tagByKey
