@@ -248,7 +248,7 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		if ok {
 			a.indexMu.Lock()
 			if remainingChildren, exists := a.scanRemainingImmediateChildrenByFolder[folderPath]; exists {
-				remainingChildren -= 1
+				remainingChildren--
 				if remainingChildren <= 0 {
 					delete(a.scanRemainingImmediateChildrenByFolder, folderPath)
 				} else {
