@@ -11,6 +11,7 @@
 /frontend/.vite/
 /frontend/.npm/
 /frontend/npm-debug.log*
+/frontend/package.json.md5
 
 # ---- Logs ----
 *.log
