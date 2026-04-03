@@ -1,0 +1,354 @@
+package main
+
+import (
+	"io/fs"
+	"math"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+)
+
+func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanResult {
+	cleanRoot := normalizePath(path)
+	result := LibraryScanResult{
+		RootPath:          cleanRoot,
+		RootName:          filepath.Base(cleanRoot),
+		TrackFiles:        []LibraryIndexedFile{},
+		TextFiles:         []LibraryIndexedFile{},
+		ImageFiles:        []LibraryIndexedFile{},
+		CoverPathByFolder: map[string]string{},
+		EntryLimit:        0,
+	}
+
+	if cleanRoot == "" {
+		return result
+	}
+
+	absoluteRoot, err := filepath.Abs(cleanRoot)
+	if err != nil {
+		return result
+	}
+
+	cleanRoot = filepath.Clean(absoluteRoot)
+	result.RootPath = cleanRoot
+	result.RootName = filepath.Base(cleanRoot)
+
+	totalEntries := 0
+	_ = filepath.WalkDir(cleanRoot, func(currentPath string, _ fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+
+		if currentPath == cleanRoot {
+			return nil
+		}
+
+		totalEntries++
+		return nil
+	})
+
+	scanStartedAt := time.Now()
+	lastProgressEmit := time.Time{}
+	scannedEntries := 0
+	finalizationStartedAt := time.Time{}
+	finalizationBudgetMs := 0.0
+
+	a.indexMu.Lock()
+	learnedFinalizeMs := a.scanFinalizeMs
+	learnedWatcherMs := a.scanWatcherMs
+	a.indexMu.Unlock()
+
+	estimateFinalizationBudgetMs := func(elapsed time.Duration, entriesDone int) float64 {
+		watcherBudget := learnedWatcherMs
+		if restartWatcher && watcherBudget <= 0 {
+			watcherBudget = 8000
+		} else if !restartWatcher {
+			watcherBudget = 0
+		}
+
+		if learnedFinalizeMs > 0 {
+			return learnedFinalizeMs + watcherBudget
+		}
+
+		if totalEntries <= 0 {
+			return 4000 + watcherBudget
+		}
+
+		if entriesDone <= 0 {
+			entriesDone = 1
+		}
+
+		progress := float64(entriesDone) / float64(totalEntries)
+		if progress < 0.02 {
+			progress = 0.02
+		}
+
+		estimatedScanTotalMs := float64(elapsed.Milliseconds()) / progress
+		fallback := estimatedScanTotalMs * 0.22
+		if fallback < 4000 {
+			fallback = 4000
+		}
+		if fallback > 180000 {
+			fallback = 180000
+		}
+
+		return fallback + watcherBudget
+	}
+
+	emitProgress := func(force bool, phase string) {
+		if a.ctx == nil || totalEntries <= 0 {
+			return
+		}
+
+		now := time.Now()
+		if !force {
+			if !lastProgressEmit.IsZero() && now.Sub(lastProgressEmit) < 120*time.Millisecond {
+				return
+			}
+		}
+
+		elapsed := now.Sub(scanStartedAt)
+		etaSeconds := 0
+		if phase == "scanning" {
+			remainingScanSeconds := 0.0
+			if scannedEntries < totalEntries {
+				elapsedSeconds := elapsed.Seconds()
+				if elapsedSeconds > 0 && scannedEntries > 0 {
+					rate := float64(scannedEntries) / elapsedSeconds
+					if rate > 0 {
+						remainingEntries := totalEntries - scannedEntries
+						remainingScanSeconds = float64(remainingEntries) / rate
+					}
+				}
+			}
+
+			remainingFinalizeSeconds := estimateFinalizationBudgetMs(elapsed, scannedEntries) / 1000
+			etaSeconds = int(math.Ceil(remainingScanSeconds + remainingFinalizeSeconds))
+		} else if phase == "finalizing" {
+			if finalizationBudgetMs <= 0 {
+				finalizationBudgetMs = estimateFinalizationBudgetMs(elapsed, scannedEntries)
+			}
+
+			elapsedFinalizationMs := 0.0
+			if !finalizationStartedAt.IsZero() {
+				elapsedFinalizationMs = float64(now.Sub(finalizationStartedAt).Milliseconds())
+			}
+
+			remainingMs := finalizationBudgetMs - elapsedFinalizationMs
+			if remainingMs < 0 {
+				remainingMs = 0
+			}
+
+			etaSeconds = int(math.Ceil(remainingMs / 1000))
+		}
+
+		runtime.EventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
+			RootPath:       cleanRoot,
+			EntriesScanned: scannedEntries,
+			TotalEntries:   totalEntries,
+			ElapsedMs:      elapsed.Milliseconds(),
+			EtaSeconds:     etaSeconds,
+			Phase:          phase,
+		})
+		lastProgressEmit = now
+	}
+
+	emitProgress(true, "scanning")
+
+	selectedCoverPriority := make(map[string]int)
+	selectedCoverName := make(map[string]string)
+
+	scanErr := filepath.WalkDir(cleanRoot, func(currentPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+
+		if currentPath == cleanRoot {
+			return nil
+		}
+
+		result.TotalEntries++
+		scannedEntries++
+		emitProgress(false, "scanning")
+
+		if entry.IsDir() {
+			return nil
+		}
+
+		folderPath, relativePath, ok := folderAndRelative(cleanRoot, currentPath)
+		if !ok {
+			return nil
+		}
+
+		indexed := LibraryIndexedFile{
+			Name:         entry.Name(),
+			Path:         currentPath,
+			RelativePath: relativePath,
+			FolderPath:   folderPath,
+		}
+
+		switch {
+		case isAudioPath(currentPath):
+			result.TrackFiles = append(result.TrackFiles, indexed)
+		case isTextPath(currentPath):
+			result.TextFiles = append(result.TextFiles, indexed)
+		case isImagePath(currentPath):
+			result.ImageFiles = append(result.ImageFiles, indexed)
+
+			if !isJpegPath(currentPath) {
+				break
+			}
+
+			folderKey := strings.ToLower(folderPath)
+			name := strings.ToLower(entry.Name())
+			priority := coverPriority(name)
+			currentPriority, hasCurrent := selectedCoverPriority[folderKey]
+			currentName := selectedCoverName[folderKey]
+
+			if !hasCurrent || priority < currentPriority || (priority == currentPriority && name < currentName) {
+				selectedCoverPriority[folderKey] = priority
+				selectedCoverName[folderKey] = name
+				result.CoverPathByFolder[folderKey] = currentPath
+			}
+		}
+
+		return nil
+	})
+
+	if scanErr != nil {
+		result.TrackCount = len(result.TrackFiles)
+		result.TextFileCount = len(result.TextFiles)
+		result.ImageFileCount = len(result.ImageFiles)
+		finalizationStartedAt = time.Now()
+		finalizationBudgetMs = estimateFinalizationBudgetMs(finalizationStartedAt.Sub(scanStartedAt), scannedEntries)
+		emitProgress(true, "finalizing")
+		return result
+	}
+
+	scannedEntries = totalEntries
+	finalizationStartedAt = time.Now()
+	finalizationBudgetMs = estimateFinalizationBudgetMs(finalizationStartedAt.Sub(scanStartedAt), scannedEntries)
+	emitProgress(true, "finalizing")
+
+	sort.SliceStable(result.TrackFiles, func(i int, j int) bool {
+		left := strings.ToLower(result.TrackFiles[i].RelativePath)
+		right := strings.ToLower(result.TrackFiles[j].RelativePath)
+		return left < right
+	})
+
+	sort.SliceStable(result.TextFiles, func(i int, j int) bool {
+		left := strings.ToLower(result.TextFiles[i].RelativePath)
+		right := strings.ToLower(result.TextFiles[j].RelativePath)
+		return left < right
+	})
+
+	sort.SliceStable(result.ImageFiles, func(i int, j int) bool {
+		left := strings.ToLower(result.ImageFiles[i].RelativePath)
+		right := strings.ToLower(result.ImageFiles[j].RelativePath)
+		return left < right
+	})
+
+	result.TrackCount = len(result.TrackFiles)
+	result.TextFileCount = len(result.TextFiles)
+	result.ImageFileCount = len(result.ImageFiles)
+
+	a.libraryRoot = cleanRoot
+	a.setLibraryIndexFromScan(result)
+
+	sortIndexMs := float64(time.Since(finalizationStartedAt).Milliseconds())
+
+	if restartWatcher {
+		a.indexMu.Lock()
+		firstWatcherLearning := a.scanWatcherMs <= 0
+		a.indexMu.Unlock()
+
+		if sortIndexMs > 0 {
+			a.indexMu.Lock()
+			// If scanWatcherMs has never been learned, scanFinalizeMs was measured under old
+			// code which included watcher registration time. Reset it to avoid double-counting.
+			if a.scanFinalizeMs <= 0 || firstWatcherLearning {
+				a.scanFinalizeMs = sortIndexMs
+			} else {
+				a.scanFinalizeMs = (a.scanFinalizeMs * 0.72) + (sortIndexMs * 0.28)
+			}
+			a.indexMu.Unlock()
+		}
+
+		watcherStartedAt := time.Now()
+		a.startLibraryWatcher(cleanRoot, func() { emitProgress(false, "finalizing") })
+		watcherMs := float64(time.Since(watcherStartedAt).Milliseconds())
+		if watcherMs > 0 {
+			a.indexMu.Lock()
+			if a.scanWatcherMs <= 0 {
+				a.scanWatcherMs = watcherMs
+			} else {
+				a.scanWatcherMs = (a.scanWatcherMs * 0.72) + (watcherMs * 0.28)
+			}
+			a.indexMu.Unlock()
+		}
+	} else if sortIndexMs > 0 {
+		a.indexMu.Lock()
+		if a.scanFinalizeMs <= 0 {
+			a.scanFinalizeMs = sortIndexMs
+		} else {
+			a.scanFinalizeMs = (a.scanFinalizeMs * 0.72) + (sortIndexMs * 0.28)
+		}
+		a.indexMu.Unlock()
+	}
+
+	response := result
+	response.TrackFiles = []LibraryIndexedFile{}
+	response.TextFiles = []LibraryIndexedFile{}
+	response.ImageFiles = []LibraryIndexedFile{}
+	return response
+}
+
+// ScanLibraryFolder indexes audio, text, and image files under the selected root folder.
+func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
+	return a.scanLibraryFolder(path, true)
+}
+
+func cloneCoverPathByFolder(input map[string]string) map[string]string {
+	cloned := make(map[string]string, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+
+	return cloned
+}
+
+func (a *App) setLibraryIndexFromScan(scan LibraryScanResult) {
+	setStartTime := time.Now()
+	a.logRescanEvent("setLibraryIndexFromScan START: %d tracks, %d text, %d images",
+		len(scan.TrackFiles), len(scan.TextFiles), len(scan.ImageFiles))
+
+	lockWaitStart := time.Now()
+	a.indexMu.Lock()
+	a.logRescanEvent("  - setLibraryIndexFromScan acquired lock (waited %.2fms)", time.Since(lockWaitStart).Seconds()*1000)
+	defer a.indexMu.Unlock()
+
+	mapStartTime := time.Now()
+	a.trackByPath = make(map[string]LibraryIndexedFile, len(scan.TrackFiles))
+	a.textByPath = make(map[string]LibraryIndexedFile, len(scan.TextFiles))
+	a.imageByPath = make(map[string]LibraryIndexedFile, len(scan.ImageFiles))
+
+	for _, entry := range scan.TrackFiles {
+		a.trackByPath[entry.Path] = entry
+	}
+	for _, entry := range scan.TextFiles {
+		a.textByPath[entry.Path] = entry
+	}
+	for _, entry := range scan.ImageFiles {
+		a.imageByPath[entry.Path] = entry
+	}
+	a.logRescanEvent("  - indexed maps populated (%.2fms)", time.Since(mapStartTime).Seconds()*1000)
+
+	copyCoverStartTime := time.Now()
+	a.libraryScan = scan
+	a.libraryScan.CoverPathByFolder = cloneCoverPathByFolder(scan.CoverPathByFolder)
+	a.logRescanEvent("  - cover paths copied (%.2fms)", time.Since(copyCoverStartTime).Seconds()*1000)
+	a.logRescanEvent("setLibraryIndexFromScan END: total time %.2fms", time.Since(setStartTime).Seconds()*1000)
+}

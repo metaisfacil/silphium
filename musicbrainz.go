@@ -181,7 +181,7 @@ func (t *musicBrainzExplorationProgressTracker) queueStep() {
 		return
 	}
 
-	t.total += 1
+	t.total++
 	if t.total < t.current {
 		t.total = t.current
 	}
@@ -201,7 +201,7 @@ func (t *musicBrainzExplorationProgressTracker) step(message string) {
 		return
 	}
 
-	t.current += 1
+	t.current++
 	if t.total < t.current {
 		t.total = t.current
 	}
@@ -1758,7 +1758,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 				break
 			}
 			if !isSeedArtist {
-				compilationArtistCount += 1
+				compilationArtistCount++
 			}
 
 			artistNodeID := addMusicBrainzArtistNode(builder, artistID, artistName, "Artist", "artist", 2)
@@ -1788,7 +1788,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 			break
 		}
 
-		relatedRecordingReleaseLookups += 1
+		relatedRecordingReleaseLookups++
 		relatedRelease := relatedReleaseSummary
 		if !isVariousArtistsCompilationRelease(relatedRelease) || len(asArray(relatedRelease["artist-credit"])) == 0 || len(asObject(relatedRelease["release-group"])) == 0 {
 			requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=artists+labels+release-groups", relatedReleaseID)
@@ -1808,7 +1808,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 		relatedReleaseNodeID := addMusicBrainzReleaseNode(builder, relatedRelease, 2)
 		builder.addEdge(recordingNodeID, relatedReleaseNodeID, "appears on", "recording-appearance")
 		addCompilationArtistsForRelease(relatedRelease, relatedReleaseNodeID)
-		relatedRecordingReleaseCount += 1
+		relatedRecordingReleaseCount++
 	}
 
 	labelArtistCount := 0
@@ -1855,7 +1855,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 						builder.addEdge(artistNodeID, labelNodeID, "released on", "artist-label")
 					}
 					labelArtistSeen[artistID] = struct{}{}
-					labelArtistCount += 1
+					labelArtistCount++
 				}
 
 				if !isVariousArtistsCompilationRelease(labelRelease) {
@@ -1881,7 +1881,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 
 				addCompilationArtistsForRelease(labelRelease, labelReleaseNodeID)
 
-				addedLabelReleaseCount += 1
+				addedLabelReleaseCount++
 			}
 		} else {
 			builder.addWarning("Label roster details could not be loaded from MusicBrainz.")
@@ -1941,7 +1941,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 
 			targetNodeID := addMusicBrainzArtistNode(builder, targetArtistID, targetArtistName, targetSubtitle, targetKind, 1)
 			builder.addEdge(source.nodeID, targetNodeID, relationType, "artist-relation")
-			relatedBandEdgeCount += 1
+			relatedBandEdgeCount++
 			if source.depth+1 < musicBrainzExplorationArtistRelationDepth {
 				queueArtistRelationSource(targetArtistID, targetNodeID, source.depth+1)
 			}
