@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // MusicBrainzArtistInfo contains enriched artist details returned by MusicBrainz lookup.
@@ -69,9 +73,294 @@ type MusicBrainzArtistCreditPart struct {
 	JoinPhrase string `json:"joinPhrase"`
 }
 
+// MusicBrainzExplorationNode is one node in the exploration graph.
+type MusicBrainzExplorationNode struct {
+	ID         string `json:"id"`
+	EntityType string `json:"entityType"`
+	Kind       string `json:"kind"`
+	MBID       string `json:"mbid"`
+	Label      string `json:"label"`
+	Subtitle   string `json:"subtitle"`
+	Accent     string `json:"accent"`
+	Emphasis   int    `json:"emphasis"`
+	URL        string `json:"url"`
+}
+
+// MusicBrainzExplorationEdge is one relationship in the exploration graph.
+type MusicBrainzExplorationEdge struct {
+	ID       string `json:"id"`
+	SourceID string `json:"sourceId"`
+	TargetID string `json:"targetId"`
+	Label    string `json:"label"`
+	Kind     string `json:"kind"`
+}
+
+// MusicBrainzExplorationProgress reports in-flight exploration lookup progress.
+type MusicBrainzExplorationProgress struct {
+	RequestID string `json:"requestId"`
+	Message   string `json:"message"`
+	Current   int    `json:"current"`
+	Total     int    `json:"total"`
+	Done      bool   `json:"done"`
+}
+
+// MusicBrainzExplorationGraph contains a graph of related MusicBrainz entities.
+type MusicBrainzExplorationGraph struct {
+	Found    bool                         `json:"found"`
+	Title    string                       `json:"title"`
+	Summary  string                       `json:"summary"`
+	Nodes    []MusicBrainzExplorationNode `json:"nodes"`
+	Edges    []MusicBrainzExplorationEdge `json:"edges"`
+	Warnings []string                     `json:"warnings"`
+}
+
+type musicBrainzExplorationBuilder struct {
+	nodes    map[string]MusicBrainzExplorationNode
+	edges    map[string]MusicBrainzExplorationEdge
+	warnings []string
+}
+
+type musicBrainzExplorationProgressTracker struct {
+	app       *App
+	requestID string
+	current   int
+	total     int
+	message   string
+}
+
 const musicBrainzUserAgent = "Silphium/1.0 (metaisfacil@users.noreply.github.com)"
+const musicBrainzVariousArtistsID = "89ad4ac3-39f7-470e-963a-56509c546377"
+const musicBrainzNoLabelName = "[no label]"
+const musicBrainzExplorationProgressEvent = "silphium:musicbrainz:exploration-progress"
+const musicBrainzExplorationArtistRelationDepth = 2
+
+var musicBrainzFetchMu sync.Mutex
+var nextMusicBrainzFetchAt time.Time
+
+func newMusicBrainzExplorationBuilder() *musicBrainzExplorationBuilder {
+	return &musicBrainzExplorationBuilder{
+		nodes:    make(map[string]MusicBrainzExplorationNode),
+		edges:    make(map[string]MusicBrainzExplorationEdge),
+		warnings: make([]string, 0),
+	}
+}
+
+func newMusicBrainzExplorationProgressTracker(app *App, requestID string) *musicBrainzExplorationProgressTracker {
+	cleanRequestID := strings.TrimSpace(requestID)
+	if app == nil || app.ctx == nil || cleanRequestID == "" {
+		return nil
+	}
+
+	return &musicBrainzExplorationProgressTracker{
+		app:       app,
+		requestID: cleanRequestID,
+	}
+}
+
+func (t *musicBrainzExplorationProgressTracker) emit(message string, done bool) {
+	if t == nil || t.app == nil || t.app.ctx == nil || t.requestID == "" {
+		return
+	}
+
+	cleanMessage := strings.TrimSpace(message)
+	if cleanMessage != "" {
+		t.message = cleanMessage
+	}
+
+	runtime.EventsEmit(t.app.ctx, musicBrainzExplorationProgressEvent, MusicBrainzExplorationProgress{
+		RequestID: t.requestID,
+		Message:   t.message,
+		Current:   t.current,
+		Total:     t.total,
+		Done:      done,
+	})
+}
+
+func (t *musicBrainzExplorationProgressTracker) queueStep() {
+	if t == nil {
+		return
+	}
+
+	t.total += 1
+	if t.total < t.current {
+		t.total = t.current
+	}
+	t.emit(t.message, false)
+}
+
+func (t *musicBrainzExplorationProgressTracker) announce(message string) {
+	if t == nil {
+		return
+	}
+
+	t.emit(message, false)
+}
+
+func (t *musicBrainzExplorationProgressTracker) step(message string) {
+	if t == nil {
+		return
+	}
+
+	t.current += 1
+	if t.total < t.current {
+		t.total = t.current
+	}
+	t.emit(message, false)
+}
+
+func (t *musicBrainzExplorationProgressTracker) finish(message string) {
+	if t == nil {
+		return
+	}
+
+	if t.total < t.current {
+		t.total = t.current
+	}
+	t.current = t.total
+	t.emit(message, true)
+}
+
+func (b *musicBrainzExplorationBuilder) addWarning(message string) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+
+	for _, existing := range b.warnings {
+		if existing == message {
+			return
+		}
+	}
+
+	b.warnings = append(b.warnings, message)
+}
+
+func (b *musicBrainzExplorationBuilder) addNode(node MusicBrainzExplorationNode) string {
+	node.ID = strings.TrimSpace(node.ID)
+	if node.ID == "" {
+		return ""
+	}
+
+	node.EntityType = strings.TrimSpace(strings.ToLower(node.EntityType))
+	node.Kind = strings.TrimSpace(strings.ToLower(node.Kind))
+	node.MBID = strings.TrimSpace(strings.ToLower(node.MBID))
+	node.Label = strings.TrimSpace(node.Label)
+	node.Subtitle = strings.TrimSpace(node.Subtitle)
+	node.Accent = strings.TrimSpace(node.Accent)
+	node.URL = strings.TrimSpace(node.URL)
+	if node.Emphasis <= 0 {
+		node.Emphasis = 1
+	}
+
+	existing, exists := b.nodes[node.ID]
+	if !exists {
+		b.nodes[node.ID] = node
+		return node.ID
+	}
+
+	if existing.Label == "" && node.Label != "" {
+		existing.Label = node.Label
+	}
+	if existing.Subtitle == "" && node.Subtitle != "" {
+		existing.Subtitle = node.Subtitle
+	}
+	if existing.Accent == "" && node.Accent != "" {
+		existing.Accent = node.Accent
+	}
+	if existing.Kind == "" && node.Kind != "" {
+		existing.Kind = node.Kind
+	}
+	if existing.EntityType == "" && node.EntityType != "" {
+		existing.EntityType = node.EntityType
+	}
+	if existing.MBID == "" && node.MBID != "" {
+		existing.MBID = node.MBID
+	}
+	if existing.URL == "" && node.URL != "" {
+		existing.URL = node.URL
+	}
+	if node.Emphasis > existing.Emphasis {
+		existing.Emphasis = node.Emphasis
+	}
+
+	b.nodes[node.ID] = existing
+	return node.ID
+}
+
+func (b *musicBrainzExplorationBuilder) addEdge(sourceID string, targetID string, label string, kind string) string {
+	cleanSourceID := strings.TrimSpace(sourceID)
+	cleanTargetID := strings.TrimSpace(targetID)
+	cleanLabel := strings.TrimSpace(label)
+	cleanKind := strings.TrimSpace(strings.ToLower(kind))
+	if cleanSourceID == "" || cleanTargetID == "" || cleanSourceID == cleanTargetID {
+		return ""
+	}
+
+	edgeID := fmt.Sprintf("%s|%s|%s|%s", cleanSourceID, cleanTargetID, strings.ToLower(cleanLabel), cleanKind)
+	b.edges[edgeID] = MusicBrainzExplorationEdge{
+		ID:       edgeID,
+		SourceID: cleanSourceID,
+		TargetID: cleanTargetID,
+		Label:    cleanLabel,
+		Kind:     cleanKind,
+	}
+
+	return edgeID
+}
+
+func (b *musicBrainzExplorationBuilder) sortedNodes() []MusicBrainzExplorationNode {
+	nodes := make([]MusicBrainzExplorationNode, 0, len(b.nodes))
+	for _, node := range b.nodes {
+		nodes = append(nodes, node)
+	}
+
+	sort.SliceStable(nodes, func(i, j int) bool {
+		if nodes[i].Emphasis == nodes[j].Emphasis {
+			if nodes[i].Kind == nodes[j].Kind {
+				return nodes[i].Label < nodes[j].Label
+			}
+			return nodes[i].Kind < nodes[j].Kind
+		}
+		return nodes[i].Emphasis > nodes[j].Emphasis
+	})
+
+	return nodes
+}
+
+func (b *musicBrainzExplorationBuilder) sortedEdges() []MusicBrainzExplorationEdge {
+	edges := make([]MusicBrainzExplorationEdge, 0, len(b.edges))
+	for _, edge := range b.edges {
+		edges = append(edges, edge)
+	}
+
+	sort.SliceStable(edges, func(i, j int) bool {
+		if edges[i].SourceID == edges[j].SourceID {
+			if edges[i].TargetID == edges[j].TargetID {
+				return edges[i].Label < edges[j].Label
+			}
+			return edges[i].TargetID < edges[j].TargetID
+		}
+		return edges[i].SourceID < edges[j].SourceID
+	})
+
+	return edges
+}
+
+func waitForMusicBrainzRequestSlot() {
+	musicBrainzFetchMu.Lock()
+	defer musicBrainzFetchMu.Unlock()
+
+	now := time.Now()
+	if now.Before(nextMusicBrainzFetchAt) {
+		time.Sleep(nextMusicBrainzFetchAt.Sub(now))
+	}
+
+	nextMusicBrainzFetchAt = time.Now().Add(1 * time.Second)
+}
 
 func fetchMusicBrainzJSON(requestURL string) ([]byte, bool) {
+	waitForMusicBrainzRequestSlot()
+
 	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
 	if err != nil {
 		return nil, false
@@ -97,6 +386,20 @@ func fetchMusicBrainzJSON(requestURL string) ([]byte, bool) {
 	}
 
 	return responseBody, true
+}
+
+func fetchMusicBrainzPayload(requestURL string) (map[string]any, bool) {
+	responseBody, ok := fetchMusicBrainzJSON(requestURL)
+	if !ok {
+		return nil, false
+	}
+
+	payload := make(map[string]any)
+	if err := json.Unmarshal(responseBody, &payload); err != nil {
+		return nil, false
+	}
+
+	return payload, true
 }
 
 func musicBrainzEntitySubtitle(entityType string) string {
@@ -389,6 +692,383 @@ func prettyJSON(raw []byte) string {
 	}
 
 	return output.String()
+}
+
+func sanitizeMusicBrainzID(value string) string {
+	cleanValue := strings.ToLower(strings.TrimSpace(value))
+	if !mbidPattern.MatchString(cleanValue) {
+		return ""
+	}
+
+	return cleanValue
+}
+
+func sanitizeMusicBrainzIDs(values []string) []string {
+	cleanValues := make([]string, 0, len(values))
+	seen := make(map[string]struct{})
+	for _, value := range values {
+		cleanValue := sanitizeMusicBrainzID(value)
+		if cleanValue == "" {
+			continue
+		}
+
+		if _, exists := seen[cleanValue]; exists {
+			continue
+		}
+
+		seen[cleanValue] = struct{}{}
+		cleanValues = append(cleanValues, cleanValue)
+	}
+
+	return cleanValues
+}
+
+func musicBrainzExplorationNodeID(entityType string, mbid string, fallback string) string {
+	cleanEntityType := strings.TrimSpace(strings.ToLower(entityType))
+	cleanMBID := sanitizeMusicBrainzID(mbid)
+	if cleanEntityType != "" && cleanMBID != "" {
+		return fmt.Sprintf("%s:%s", cleanEntityType, cleanMBID)
+	}
+
+	return strings.TrimSpace(fallback)
+}
+
+func musicBrainzExplorationURL(entityType string, mbid string) string {
+	cleanEntityType := strings.TrimSpace(strings.ToLower(entityType))
+	cleanMBID := sanitizeMusicBrainzID(mbid)
+	if cleanEntityType == "" || cleanMBID == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("https://musicbrainz.org/%s/%s", cleanEntityType, cleanMBID)
+}
+
+func musicBrainzExplorationAccent(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "recording":
+		return "#d29a38"
+	case "release":
+		return "#5c88c6"
+	case "compilation":
+		return "#3b9c8f"
+	case "label":
+		return "#b56f5f"
+	case "group":
+		return "#6b8f50"
+	default:
+		return "#6f6f77"
+	}
+}
+
+func musicBrainzArtistRefs(payload map[string]any) []MusicBrainzArtistCreditPart {
+	return musicBrainzArtistCredits(payload)
+}
+
+func musicBrainzArtistNameMap(payload map[string]any) map[string]string {
+	names := make(map[string]string)
+	for _, credit := range musicBrainzArtistRefs(payload) {
+		artistID := sanitizeMusicBrainzID(credit.ArtistID)
+		if artistID == "" {
+			continue
+		}
+
+		name := strings.TrimSpace(credit.Name)
+		if name == "" {
+			continue
+		}
+
+		if _, exists := names[artistID]; !exists {
+			names[artistID] = name
+		}
+	}
+
+	return names
+}
+
+func isExcludedMusicBrainzLabel(labelName string) bool {
+	cleanLabelName := strings.TrimSpace(strings.ToLower(labelName))
+	if cleanLabelName == "" {
+		return false
+	}
+
+	return cleanLabelName == strings.ToLower(musicBrainzNoLabelName) || cleanLabelName == "no label"
+}
+
+func musicBrainzReleaseLabelInfo(payload map[string]any) (string, string) {
+	for _, labelInfoValue := range asArray(payload["label-info"]) {
+		labelInfo := asObject(labelInfoValue)
+		labelObject := asObject(labelInfo["label"])
+		labelID := sanitizeMusicBrainzID(objectString(labelObject, "id"))
+		labelName := objectString(labelObject, "name")
+		if isExcludedMusicBrainzLabel(labelName) {
+			continue
+		}
+		if labelID != "" || labelName != "" {
+			return labelID, labelName
+		}
+	}
+
+	for _, labelValue := range asArray(payload["labels"]) {
+		labelObject := asObject(labelValue)
+		labelID := sanitizeMusicBrainzID(objectString(labelObject, "id"))
+		labelName := objectString(labelObject, "name")
+		if isExcludedMusicBrainzLabel(labelName) {
+			continue
+		}
+		if labelID != "" || labelName != "" {
+			return labelID, labelName
+		}
+	}
+
+	return "", ""
+}
+
+func musicBrainzReleaseDateLabel(payload map[string]any) string {
+	date := objectString(payload, "date")
+	if date != "" {
+		return date
+	}
+
+	return objectString(payload, "first-release-date")
+}
+
+func musicBrainzReleaseGroupSummary(payload map[string]any) string {
+	releaseGroup := asObject(payload["release-group"])
+	primaryType := objectString(releaseGroup, "primary-type")
+	secondaryTypes := make([]string, 0)
+	for _, secondaryTypeValue := range asArray(releaseGroup["secondary-types"]) {
+		secondaryType := asString(secondaryTypeValue)
+		if secondaryType == "" {
+			continue
+		}
+		secondaryTypes = append(secondaryTypes, secondaryType)
+	}
+
+	if primaryType == "" && len(secondaryTypes) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, 1+len(secondaryTypes))
+	if primaryType != "" {
+		parts = append(parts, primaryType)
+	}
+	parts = append(parts, secondaryTypes...)
+
+	return strings.Join(parts, " / ")
+}
+
+func isMusicBrainzCompilationRelease(payload map[string]any) bool {
+	releaseGroup := asObject(payload["release-group"])
+	if strings.EqualFold(objectString(releaseGroup, "primary-type"), "Compilation") {
+		return true
+	}
+
+	for _, secondaryTypeValue := range asArray(releaseGroup["secondary-types"]) {
+		if strings.EqualFold(asString(secondaryTypeValue), "Compilation") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isVariousArtistsRelease(payload map[string]any) bool {
+	for _, scope := range []map[string]any{payload, asObject(payload["release-group"])} {
+		if len(scope) == 0 {
+			continue
+		}
+
+		for _, credit := range musicBrainzArtistRefs(scope) {
+			if sanitizeMusicBrainzID(credit.ArtistID) == musicBrainzVariousArtistsID {
+				return true
+			}
+			if strings.EqualFold(strings.TrimSpace(credit.Name), "Various Artists") {
+				return true
+			}
+		}
+
+		if strings.EqualFold(strings.TrimSpace(musicBrainzArtistCredit(scope)), "Various Artists") {
+			return true
+		}
+	}
+
+	return strings.EqualFold(strings.TrimSpace(objectString(payload, "artist-credit-phrase")), "Various Artists")
+}
+
+func isVariousArtistsCompilationRelease(payload map[string]any) bool {
+	return isVariousArtistsRelease(payload) && isMusicBrainzCompilationRelease(payload)
+}
+
+func musicBrainzCompilationArtistRefs(payload map[string]any) []MusicBrainzArtistCreditPart {
+	refs := make([]MusicBrainzArtistCreditPart, 0)
+	seen := make(map[string]struct{})
+
+	appendRefs := func(scope map[string]any) {
+		for _, credit := range musicBrainzArtistRefs(scope) {
+			artistID := sanitizeMusicBrainzID(credit.ArtistID)
+			artistName := strings.TrimSpace(credit.Name)
+			if artistID == musicBrainzVariousArtistsID || strings.EqualFold(artistName, "Various Artists") {
+				continue
+			}
+
+			key := artistID
+			if key == "" {
+				key = strings.ToLower(artistName)
+			}
+			if key == "" {
+				continue
+			}
+
+			if _, exists := seen[key]; exists {
+				continue
+			}
+
+			seen[key] = struct{}{}
+			refs = append(refs, MusicBrainzArtistCreditPart{
+				Name:     artistName,
+				ArtistID: artistID,
+			})
+		}
+	}
+
+	for _, mediaValue := range asArray(payload["media"]) {
+		mediaObject := asObject(mediaValue)
+		for _, trackValue := range asArray(mediaObject["tracks"]) {
+			trackObject := asObject(trackValue)
+			appendRefs(trackObject)
+			appendRefs(asObject(trackObject["recording"]))
+		}
+	}
+
+	return refs
+}
+
+func isMusicBrainzBandRelation(relationType string) bool {
+	cleanRelationType := strings.ToLower(strings.TrimSpace(relationType))
+	if cleanRelationType == "" {
+		return false
+	}
+
+	return strings.Contains(cleanRelationType, "member") || cleanRelationType == "founder" || cleanRelationType == "subgroup"
+}
+
+func hasSharedArtistID(payload map[string]any, artistIDs map[string]struct{}) bool {
+	for _, credit := range musicBrainzArtistRefs(payload) {
+		artistID := sanitizeMusicBrainzID(credit.ArtistID)
+		if artistID == "" {
+			continue
+		}
+
+		if _, exists := artistIDs[artistID]; exists {
+			return true
+		}
+	}
+
+	return false
+}
+
+func addMusicBrainzArtistNode(builder *musicBrainzExplorationBuilder, mbid string, label string, subtitle string, kind string, emphasis int) string {
+	cleanMBID := sanitizeMusicBrainzID(mbid)
+	cleanKind := strings.TrimSpace(strings.ToLower(kind))
+	if cleanKind == "" {
+		cleanKind = "artist"
+	}
+
+	if subtitle == "" {
+		subtitle = "Artist"
+	}
+
+	return builder.addNode(MusicBrainzExplorationNode{
+		ID:         musicBrainzExplorationNodeID("artist", cleanMBID, fmt.Sprintf("artist:%s", strings.ToLower(strings.TrimSpace(label)))),
+		EntityType: "artist",
+		Kind:       cleanKind,
+		MBID:       cleanMBID,
+		Label:      label,
+		Subtitle:   subtitle,
+		Accent:     musicBrainzExplorationAccent(cleanKind),
+		Emphasis:   emphasis,
+		URL:        musicBrainzExplorationURL("artist", cleanMBID),
+	})
+}
+
+func addMusicBrainzReleaseNode(builder *musicBrainzExplorationBuilder, payload map[string]any, emphasis int) string {
+	releaseID := sanitizeMusicBrainzID(objectString(payload, "id"))
+	kind := "release"
+	subtitle := "Release"
+	if isMusicBrainzCompilationRelease(payload) {
+		kind = "compilation"
+		subtitle = "Compilation"
+	}
+
+	date := musicBrainzReleaseDateLabel(payload)
+	groupSummary := musicBrainzReleaseGroupSummary(payload)
+	if date != "" && groupSummary != "" {
+		subtitle = fmt.Sprintf("%s • %s", subtitle, date)
+	} else if date != "" {
+		subtitle = fmt.Sprintf("%s • %s", subtitle, date)
+	} else if groupSummary != "" {
+		subtitle = fmt.Sprintf("%s • %s", subtitle, groupSummary)
+	}
+
+	return builder.addNode(MusicBrainzExplorationNode{
+		ID:         musicBrainzExplorationNodeID("release", releaseID, fmt.Sprintf("release:%s", strings.ToLower(objectString(payload, "title")))),
+		EntityType: "release",
+		Kind:       kind,
+		MBID:       releaseID,
+		Label:      objectString(payload, "title"),
+		Subtitle:   subtitle,
+		Accent:     musicBrainzExplorationAccent(kind),
+		Emphasis:   emphasis,
+		URL:        musicBrainzExplorationURL("release", releaseID),
+	})
+}
+
+func addMusicBrainzRecordingNode(builder *musicBrainzExplorationBuilder, recordingID string, label string, emphasis int) string {
+	cleanRecordingID := sanitizeMusicBrainzID(recordingID)
+	return builder.addNode(MusicBrainzExplorationNode{
+		ID:         musicBrainzExplorationNodeID("recording", cleanRecordingID, fmt.Sprintf("recording:%s", strings.ToLower(strings.TrimSpace(label)))),
+		EntityType: "recording",
+		Kind:       "recording",
+		MBID:       cleanRecordingID,
+		Label:      strings.TrimSpace(label),
+		Subtitle:   "Recording",
+		Accent:     musicBrainzExplorationAccent("recording"),
+		Emphasis:   emphasis,
+		URL:        musicBrainzExplorationURL("recording", cleanRecordingID),
+	})
+}
+
+func addMusicBrainzLabelNode(builder *musicBrainzExplorationBuilder, labelID string, label string, emphasis int) string {
+	cleanLabelID := sanitizeMusicBrainzID(labelID)
+	return builder.addNode(MusicBrainzExplorationNode{
+		ID:         musicBrainzExplorationNodeID("label", cleanLabelID, fmt.Sprintf("label:%s", strings.ToLower(strings.TrimSpace(label)))),
+		EntityType: "label",
+		Kind:       "label",
+		MBID:       cleanLabelID,
+		Label:      strings.TrimSpace(label),
+		Subtitle:   "Label",
+		Accent:     musicBrainzExplorationAccent("label"),
+		Emphasis:   emphasis,
+		URL:        musicBrainzExplorationURL("label", cleanLabelID),
+	})
+}
+
+func musicBrainzBrowseURL(resource string, values url.Values, incClause string) string {
+	query := values.Encode()
+	if incClause != "" {
+		if query != "" {
+			query += "&"
+		}
+		query += "inc=" + url.QueryEscape(incClause)
+	}
+
+	if query != "" {
+		query = "?fmt=json&" + query
+	} else {
+		query = "?fmt=json"
+	}
+
+	return fmt.Sprintf("https://musicbrainz.org/ws/2/%s%s", resource, query)
 }
 
 // LookupArtistByMBID fetches artist metadata from MusicBrainz for the provided MBID.
@@ -843,5 +1523,462 @@ func (a *App) LookupMusicBrainzEntity(entityType string, mbid string) MusicBrain
 	}
 
 	result.Facts = facts
+	return result
+}
+
+// LookupMusicBrainzExploration builds a compact graph of related MusicBrainz entities.
+func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string, artistIDs []string, labelID string, requestID string) MusicBrainzExplorationGraph {
+	cleanRecordingID := sanitizeMusicBrainzID(recordingID)
+	cleanReleaseID := sanitizeMusicBrainzID(releaseID)
+	cleanArtistIDs := sanitizeMusicBrainzIDs(artistIDs)
+	cleanLabelID := sanitizeMusicBrainzID(labelID)
+	progress := newMusicBrainzExplorationProgressTracker(a, requestID)
+
+	result := MusicBrainzExplorationGraph{
+		Found:    false,
+		Title:    "MusicBrainz exploration",
+		Summary:  "No MusicBrainz exploration data found.",
+		Nodes:    []MusicBrainzExplorationNode{},
+		Edges:    []MusicBrainzExplorationEdge{},
+		Warnings: []string{},
+	}
+
+	if cleanRecordingID == "" && cleanReleaseID == "" && len(cleanArtistIDs) == 0 && cleanLabelID == "" {
+		progress.finish("Nothing to explore.")
+		return result
+	}
+
+	progress.announce("Preparing MusicBrainz exploration...")
+	fetchPayload := func(requestURL string, message string) (map[string]any, bool) {
+		progress.queueStep()
+		progress.announce(message)
+		payload, ok := fetchMusicBrainzPayload(requestURL)
+		if ok {
+			progress.step(message)
+		} else {
+			progress.step(message + " unavailable")
+		}
+		return payload, ok
+	}
+
+	builder := newMusicBrainzExplorationBuilder()
+	recordingPayload := map[string]any{}
+	releasePayload := map[string]any{}
+	recordingReleaseIDs := make(map[string]struct{})
+	seedArtistNames := make(map[string]string)
+	seedArtistSet := make(map[string]struct{})
+	seedArtistNodeIDs := make(map[string]string)
+	relatedBandEdgeCount := 0
+	type artistRelationSource struct {
+		artistID string
+		nodeID   string
+		depth    int
+	}
+	artistRelationQueue := make([]artistRelationSource, 0, len(cleanArtistIDs))
+	artistRelationQueuedDepth := make(map[string]int)
+	queueArtistRelationSource := func(artistID string, nodeID string, depth int) {
+		cleanArtistID := sanitizeMusicBrainzID(artistID)
+		if cleanArtistID == "" || strings.TrimSpace(nodeID) == "" || depth >= musicBrainzExplorationArtistRelationDepth {
+			return
+		}
+
+		if existingDepth, exists := artistRelationQueuedDepth[cleanArtistID]; exists && existingDepth <= depth {
+			return
+		}
+
+		artistRelationQueuedDepth[cleanArtistID] = depth
+		artistRelationQueue = append(artistRelationQueue, artistRelationSource{
+			artistID: cleanArtistID,
+			nodeID:   strings.TrimSpace(nodeID),
+			depth:    depth,
+		})
+	}
+
+	appendSeedArtistID := func(artistID string) {
+		cleanArtistID := sanitizeMusicBrainzID(artistID)
+		if cleanArtistID == "" {
+			return
+		}
+
+		if _, exists := seedArtistSet[cleanArtistID]; exists {
+			return
+		}
+
+		seedArtistSet[cleanArtistID] = struct{}{}
+		cleanArtistIDs = append(cleanArtistIDs, cleanArtistID)
+	}
+
+	for _, artistID := range cleanArtistIDs {
+		seedArtistSet[artistID] = struct{}{}
+	}
+
+	if cleanRecordingID != "" {
+		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/recording/%s?fmt=json&inc=artists+releases", cleanRecordingID)
+		if payload, ok := fetchPayload(requestURL, "Loading recording details..."); ok {
+			recordingPayload = payload
+		} else {
+			builder.addWarning("Recording details could not be loaded from MusicBrainz.")
+		}
+	}
+
+	if cleanReleaseID != "" {
+		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=artists+labels+release-groups", cleanReleaseID)
+		if payload, ok := fetchPayload(requestURL, "Loading current release details..."); ok {
+			releasePayload = payload
+		} else {
+			builder.addWarning("Release details could not be loaded from MusicBrainz.")
+		}
+	}
+
+	for artistID, artistName := range musicBrainzArtistNameMap(recordingPayload) {
+		seedArtistNames[artistID] = artistName
+		appendSeedArtistID(artistID)
+	}
+	for artistID, artistName := range musicBrainzArtistNameMap(releasePayload) {
+		if _, exists := seedArtistNames[artistID]; !exists {
+			seedArtistNames[artistID] = artistName
+		}
+		appendSeedArtistID(artistID)
+	}
+
+	if len(cleanArtistIDs) > 4 {
+		builder.addWarning("Limited primary artist relationships to 4 tagged artists.")
+		cleanArtistIDs = cleanArtistIDs[:4]
+		seedArtistSet = make(map[string]struct{})
+		for _, artistID := range cleanArtistIDs {
+			seedArtistSet[artistID] = struct{}{}
+		}
+	}
+
+	recordingTitle := objectString(recordingPayload, "title")
+	releaseTitle := objectString(releasePayload, "title")
+	if recordingTitle != "" {
+		result.Title = recordingTitle
+	} else if releaseTitle != "" {
+		result.Title = releaseTitle
+	} else if len(cleanArtistIDs) > 0 {
+		result.Title = seedArtistNames[cleanArtistIDs[0]]
+	}
+
+	recordingNodeID := ""
+	if cleanRecordingID != "" || recordingTitle != "" {
+		recordingNodeID = addMusicBrainzRecordingNode(builder, cleanRecordingID, recordingTitle, 5)
+	}
+
+	releaseNodeID := ""
+	if len(releasePayload) > 0 {
+		releaseNodeID = addMusicBrainzReleaseNode(builder, releasePayload, 4)
+	} else if cleanReleaseID != "" {
+		releaseNodeID = builder.addNode(MusicBrainzExplorationNode{
+			ID:         musicBrainzExplorationNodeID("release", cleanReleaseID, "release:current"),
+			EntityType: "release",
+			Kind:       "release",
+			MBID:       cleanReleaseID,
+			Label:      "Current release",
+			Subtitle:   "Release",
+			Accent:     musicBrainzExplorationAccent("release"),
+			Emphasis:   4,
+			URL:        musicBrainzExplorationURL("release", cleanReleaseID),
+		})
+	}
+
+	if recordingNodeID != "" && releaseNodeID != "" {
+		builder.addEdge(recordingNodeID, releaseNodeID, "current release", "recording-release")
+	}
+
+	resolvedLabelID, resolvedLabelName := musicBrainzReleaseLabelInfo(releasePayload)
+	if cleanLabelID == "" {
+		cleanLabelID = resolvedLabelID
+	}
+	if cleanLabelID != "" && resolvedLabelName == "" {
+		labelRequestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/label/%s?fmt=json", cleanLabelID)
+		if labelPayload, ok := fetchPayload(labelRequestURL, "Loading label details..."); ok {
+			resolvedLabelName = objectString(labelPayload, "name")
+		}
+	}
+	if isExcludedMusicBrainzLabel(resolvedLabelName) {
+		cleanLabelID = ""
+		resolvedLabelName = ""
+	}
+
+	labelNodeID := ""
+	if cleanLabelID != "" || resolvedLabelName != "" {
+		labelNodeID = addMusicBrainzLabelNode(builder, cleanLabelID, resolvedLabelName, 3)
+		if releaseNodeID != "" {
+			builder.addEdge(releaseNodeID, labelNodeID, "released on", "label-release")
+		}
+	}
+
+	for _, artistID := range cleanArtistIDs {
+		artistName := strings.TrimSpace(seedArtistNames[artistID])
+		if artistName == "" {
+			artistName = "Tagged artist"
+		}
+
+		artistNodeID := addMusicBrainzArtistNode(builder, artistID, artistName, "Artist", "artist", 3)
+		seedArtistNodeIDs[artistID] = artistNodeID
+		if recordingNodeID != "" {
+			builder.addEdge(artistNodeID, recordingNodeID, "performed by", "artist-recording")
+		}
+		if releaseNodeID != "" {
+			builder.addEdge(artistNodeID, releaseNodeID, "credited on", "artist-release")
+		}
+		queueArtistRelationSource(artistID, artistNodeID, 0)
+	}
+
+	compilationArtistCount := 0
+	compilationArtistLimitHit := false
+	ensureReleaseTrackArtists := func(releasePayload map[string]any, releaseID string, message string) map[string]any {
+		if len(asArray(releasePayload["media"])) > 0 {
+			return releasePayload
+		}
+
+		cleanReleaseID := sanitizeMusicBrainzID(releaseID)
+		if cleanReleaseID == "" {
+			return releasePayload
+		}
+
+		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=recordings+artist-credits+labels+release-groups", cleanReleaseID)
+		if payload, ok := fetchPayload(requestURL, message); ok {
+			return payload
+		}
+
+		return releasePayload
+	}
+	addCompilationArtistsForRelease := func(releasePayload map[string]any, releaseNodeID string) {
+		for _, credit := range musicBrainzCompilationArtistRefs(releasePayload) {
+			artistID := sanitizeMusicBrainzID(credit.ArtistID)
+			artistName := strings.TrimSpace(credit.Name)
+			_, isSeedArtist := seedArtistSet[artistID]
+			if !isSeedArtist && compilationArtistCount >= 12 {
+				if !compilationArtistLimitHit {
+					builder.addWarning("Limited compilation artist links to 12 artists.")
+					compilationArtistLimitHit = true
+				}
+				break
+			}
+			if !isSeedArtist {
+				compilationArtistCount += 1
+			}
+
+			artistNodeID := addMusicBrainzArtistNode(builder, artistID, artistName, "Artist", "artist", 2)
+			builder.addEdge(artistNodeID, releaseNodeID, "appears on", "artist-release")
+		}
+	}
+	relatedRecordingReleaseCount := 0
+	relatedRecordingReleaseLookups := 0
+	for _, releaseValue := range asArray(recordingPayload["releases"]) {
+		relatedReleaseSummary := asObject(releaseValue)
+		relatedReleaseID := sanitizeMusicBrainzID(objectString(relatedReleaseSummary, "id"))
+		if relatedReleaseID == "" {
+			continue
+		}
+
+		recordingReleaseIDs[relatedReleaseID] = struct{}{}
+		if relatedReleaseID == cleanReleaseID || recordingNodeID == "" {
+			continue
+		}
+
+		if relatedRecordingReleaseCount >= 4 {
+			builder.addWarning("Limited alternate release appearances to 4 releases.")
+			break
+		}
+		if relatedRecordingReleaseLookups >= 12 {
+			builder.addWarning("Limited alternate release checks to 12 candidate releases.")
+			break
+		}
+
+		relatedRecordingReleaseLookups += 1
+		relatedRelease := relatedReleaseSummary
+		if !isVariousArtistsCompilationRelease(relatedRelease) || len(asArray(relatedRelease["artist-credit"])) == 0 || len(asObject(relatedRelease["release-group"])) == 0 {
+			requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=artists+labels+release-groups", relatedReleaseID)
+			payload, ok := fetchPayload(requestURL, "Checking alternate Various Artists compilations...")
+			if !ok {
+				continue
+			}
+			relatedRelease = payload
+		}
+
+		if !isVariousArtistsCompilationRelease(relatedRelease) {
+			continue
+		}
+
+		relatedRelease = ensureReleaseTrackArtists(relatedRelease, relatedReleaseID, "Loading compilation artists...")
+
+		relatedReleaseNodeID := addMusicBrainzReleaseNode(builder, relatedRelease, 2)
+		builder.addEdge(recordingNodeID, relatedReleaseNodeID, "appears on", "recording-appearance")
+		addCompilationArtistsForRelease(relatedRelease, relatedReleaseNodeID)
+		relatedRecordingReleaseCount += 1
+	}
+
+	labelArtistCount := 0
+	labelArtistSeen := make(map[string]struct{})
+	labelArtistLimitHit := false
+	if cleanLabelID != "" {
+		browseValues := url.Values{}
+		browseValues.Set("label", cleanLabelID)
+		browseValues.Set("limit", "18")
+		browseURL := musicBrainzBrowseURL("release", browseValues, "artist-credits+release-groups+labels")
+		if browsePayload, ok := fetchPayload(browseURL, "Browsing label releases..."); ok {
+			addedLabelReleaseCount := 0
+			for _, releaseValue := range asArray(browsePayload["releases"]) {
+				labelRelease := asObject(releaseValue)
+				labelReleaseID := sanitizeMusicBrainzID(objectString(labelRelease, "id"))
+				if labelReleaseID == "" || labelReleaseID == cleanReleaseID {
+					continue
+				}
+
+				for _, credit := range musicBrainzArtistRefs(labelRelease) {
+					artistID := sanitizeMusicBrainzID(credit.ArtistID)
+					if artistID == "" || artistID == musicBrainzVariousArtistsID {
+						continue
+					}
+
+					if _, isSeedArtist := seedArtistSet[artistID]; isSeedArtist {
+						continue
+					}
+
+					if _, exists := labelArtistSeen[artistID]; exists {
+						continue
+					}
+
+					if labelArtistCount >= 10 {
+						if !labelArtistLimitHit {
+							builder.addWarning("Limited same-label artist links to 10 artists.")
+							labelArtistLimitHit = true
+						}
+						break
+					}
+
+					artistNodeID := addMusicBrainzArtistNode(builder, artistID, credit.Name, "Artist", "artist", 1)
+					if labelNodeID != "" {
+						builder.addEdge(artistNodeID, labelNodeID, "released on", "artist-label")
+					}
+					labelArtistSeen[artistID] = struct{}{}
+					labelArtistCount += 1
+				}
+
+				if !isVariousArtistsCompilationRelease(labelRelease) {
+					continue
+				}
+
+				if addedLabelReleaseCount >= 6 {
+					builder.addWarning("Limited label connections to 6 Various Artists compilations.")
+					break
+				}
+
+				labelRelease = ensureReleaseTrackArtists(labelRelease, labelReleaseID, "Loading label compilation artists...")
+
+				labelReleaseNodeID := addMusicBrainzReleaseNode(builder, labelRelease, 2)
+				if labelNodeID != "" {
+					builder.addEdge(labelReleaseNodeID, labelNodeID, "released on", "label-release")
+				}
+				if recordingNodeID != "" {
+					if _, exists := recordingReleaseIDs[labelReleaseID]; exists {
+						builder.addEdge(recordingNodeID, labelReleaseNodeID, "appears on", "recording-appearance")
+					}
+				}
+
+				addCompilationArtistsForRelease(labelRelease, labelReleaseNodeID)
+
+				addedLabelReleaseCount += 1
+			}
+		} else {
+			builder.addWarning("Label roster details could not be loaded from MusicBrainz.")
+		}
+	}
+
+	for len(artistRelationQueue) > 0 {
+		if relatedBandEdgeCount >= 6 {
+			builder.addWarning("Limited artist membership relationships to 6 connections.")
+			break
+		}
+
+		source := artistRelationQueue[0]
+		artistRelationQueue = artistRelationQueue[1:]
+		if source.depth >= musicBrainzExplorationArtistRelationDepth {
+			continue
+		}
+
+		artistRequestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/artist/%s?fmt=json&inc=artist-rels", source.artistID)
+		artistPayload, ok := fetchPayload(artistRequestURL, "Expanding artist relationships...")
+		if !ok {
+			continue
+		}
+
+		for _, relationValue := range asArray(artistPayload["relations"]) {
+			if relatedBandEdgeCount >= 6 {
+				builder.addWarning("Limited artist membership relationships to 6 connections.")
+				break
+			}
+
+			relation := asObject(relationValue)
+			if !strings.EqualFold(objectString(relation, "target-type"), "artist") {
+				continue
+			}
+
+			relationType := objectString(relation, "type")
+			if !isMusicBrainzBandRelation(relationType) {
+				continue
+			}
+
+			targetArtist := asObject(relation["artist"])
+			targetArtistID := sanitizeMusicBrainzID(objectString(targetArtist, "id"))
+			targetArtistName := objectString(targetArtist, "name")
+			if targetArtistID == "" || targetArtistName == "" {
+				continue
+			}
+
+			targetType := objectString(targetArtist, "type")
+			targetKind := "artist"
+			targetSubtitle := "Artist"
+			if targetType != "" {
+				targetSubtitle = targetType
+				if !strings.EqualFold(targetType, "Person") {
+					targetKind = "group"
+				}
+			}
+
+			targetNodeID := addMusicBrainzArtistNode(builder, targetArtistID, targetArtistName, targetSubtitle, targetKind, 1)
+			builder.addEdge(source.nodeID, targetNodeID, relationType, "artist-relation")
+			relatedBandEdgeCount += 1
+			if source.depth+1 < musicBrainzExplorationArtistRelationDepth {
+				queueArtistRelationSource(targetArtistID, targetNodeID, source.depth+1)
+			}
+		}
+	}
+
+	summaryParts := make([]string, 0, 3)
+	if labelNodeID != "" {
+		summaryParts = append(summaryParts, "compilations")
+	}
+	if labelArtistCount > 0 {
+		summaryParts = append(summaryParts, "other artists with releases on the same label")
+	}
+	if compilationArtistCount > 0 {
+		summaryParts = append(summaryParts, "other artists on shared compilations")
+	}
+	if relatedRecordingReleaseCount > 0 {
+		summaryParts = append(summaryParts, "Various Artists appearances of the current recording")
+	}
+	if relatedBandEdgeCount > 0 {
+		summaryParts = append(summaryParts, "artist membership relationships")
+	}
+	if len(summaryParts) == 0 {
+		summaryParts = append(summaryParts, "tagged MusicBrainz entities around this track")
+	}
+
+	result.Summary = fmt.Sprintf("Connections shown through %s.", strings.Join(summaryParts, ", "))
+	result.Nodes = builder.sortedNodes()
+	result.Edges = builder.sortedEdges()
+	result.Warnings = builder.warnings
+	result.Found = len(result.Nodes) > 0
+	if !result.Found {
+		result.Summary = "No connected MusicBrainz entities were available for this track."
+		progress.finish("No MusicBrainz connections found.")
+		return result
+	}
+
+	progress.finish("MusicBrainz exploration ready.")
 	return result
 }

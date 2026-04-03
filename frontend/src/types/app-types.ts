@@ -237,3 +237,32 @@ export type MusicBrainzTrackMetadata = {
     artist: string;
     artistCredits: MusicBrainzArtistCredit[];
 };
+
+export type MusicBrainzExplorationNode = {
+    id: string;
+    entityType: string;
+    kind: string;
+    mbid: string;
+    label: string;
+    subtitle: string;
+    accent: string;
+    emphasis: number;
+    url: string;
+};
+
+export type MusicBrainzExplorationEdge = {
+    id: string;
+    sourceId: string;
+    targetId: string;
+    label: string;
+    kind: string;
+};
+
+export type MusicBrainzExplorationGraph = {
+    found: boolean;
+    title: string;
+    summary: string;
+    nodes: MusicBrainzExplorationNode[];
+    edges: MusicBrainzExplorationEdge[];
+    warnings: string[];
+};

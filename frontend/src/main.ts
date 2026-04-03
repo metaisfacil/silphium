@@ -1,6 +1,8 @@
+import { setupExplorationButton, updateExplorationButton } from './components/media-controls-exploration';
 import './style.css';
 import './app.css';
 import './components/overlays/overlays.css';
+import './components/overlays/exploration-modal.css';
 import { createArtistInfoController, type ArtistInfoController } from './controllers/artist-info-controller';
 import { createImageModalController, type ImageModalController } from './controllers/image-modal-controller';
 import { createLibraryController } from './controllers/library-controller';
@@ -115,24 +117,29 @@ if (!app) {
 }
 
 app.innerHTML = `
-    <div class="bg-stage" aria-hidden="true">
-      <div id="bg-layer-a" class="bg-layer"></div>
-      <div id="bg-layer-b" class="bg-layer"></div>
-    </div>
-    ${renderSidebar()}
-    ${renderMediaControls()}
-    ${renderAboutModal()}
-    ${renderTextFileModal()}
-    ${renderImageFileModal()}
-    ${renderMusicBrainzEntityModal()}
-    ${renderTechnicalInfoModal()}
-    ${renderSettingsModal()}
-    ${renderPlayOrderMenu()}
-    ${renderTrackMetaMenu()}
-    ${renderSidebarQueueMenu()}
-    ${renderPlaylistMenu()}
-    ${renderPlaylistModal()}
+        <div class="bg-stage" aria-hidden="true">
+            <div id="bg-layer-a" class="bg-layer"></div>
+            <div id="bg-layer-b" class="bg-layer"></div>
+        </div>
+        ${renderSidebar()}
+        ${renderMediaControls()}
+        ${renderAboutModal()}
+        ${renderTextFileModal()}
+        ${renderImageFileModal()}
+        ${renderMusicBrainzEntityModal()}
+        ${renderTechnicalInfoModal()}
+        ${renderSettingsModal()}
+        ${renderPlayOrderMenu()}
+        ${renderTrackMetaMenu()}
+        ${renderSidebarQueueMenu()}
+        ${renderPlaylistMenu()}
+        ${renderPlaylistModal()}
 `;
+
+
+setupExplorationButton(document, {
+    getActiveTrack: () => (currentTrackIndex >= 0 && currentTrackIndex < tracks.length ? tracks[currentTrackIndex] : undefined),
+});
 
 let tracks: Track[] = [];
 let textFiles: TextLibraryFile[] = [];
@@ -780,6 +787,8 @@ const refreshNowPlayingLabel = (): void => {
         delete trackReleaseLabel.dataset.mbUrl;
     }
 
+    updateExplorationButton(document, activeTrack);
+
     playlistController.scheduleRender();
 };
 
@@ -1269,6 +1278,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     lyricsPanel.setAttribute('aria-hidden', 'true');
     applyMbLinks(trackTitle, trackAlbum, trackArtist, {});
     applyMbLinks(trackTitleInline, trackReleaseAlbum, trackArtistHeader, {});
+    updateExplorationButton(document, undefined);
 
     coverArt.removeAttribute('src');
     coverArtBackground.removeAttribute('src');
@@ -1780,6 +1790,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         setBackgroundCover();
         setCoverFlipped(false);
         resetArtistInfoPanel();
+        updateExplorationButton(document, undefined);
         libraryController.renderFolder('none');
         playlistController.refreshOpenModal();
         logRescan('loadLibraryScan END: total time %.2fms (no tracks)', performance.now() - startTime);

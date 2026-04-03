@@ -1,11 +1,13 @@
 import {
     LookupMusicBrainzEntity,
+    LookupMusicBrainzExploration,
     LookupTrackMusicBrainzMetadata,
 } from '../../wailsjs/go/main/App';
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { scheduleMusicBrainzRequest } from './musicbrainz-request-scheduler';
 import type {
     MusicBrainzEntityInfo,
+    MusicBrainzExplorationGraph,
     MusicBrainzEntityType,
     MusicBrainzTrackMetadata,
     Track,
@@ -34,6 +36,15 @@ const emptyMusicBrainzTrackMetadata = (recordingId: string, releaseId: string): 
     artistCredits: [],
 });
 
+const emptyMusicBrainzExplorationGraph = (): MusicBrainzExplorationGraph => ({
+    found: false,
+    title: 'MusicBrainz exploration',
+    summary: 'No MusicBrainz exploration data found.',
+    nodes: [],
+    edges: [],
+    warnings: [],
+});
+
 export const lookupMusicBrainzTrackMetadata = async (recordingId: string, releaseId: string): Promise<MusicBrainzTrackMetadata> => {
     const cleanRecordingId = recordingId.trim();
     const cleanReleaseId = releaseId.trim();
@@ -59,6 +70,30 @@ export const lookupMusicBrainzEntity = async (entityType: MusicBrainzEntityType,
     } catch (error) {
         console.error(error);
         return emptyMusicBrainzEntityInfo(entityType, mbid);
+    }
+};
+
+export const lookupMusicBrainzExploration = async (track: Track, requestId: string): Promise<MusicBrainzExplorationGraph> => {
+    const recordingId = track.mbIds.recordingId?.trim() || '';
+    const releaseId = track.mbIds.releaseId?.trim() || '';
+    const labelId = track.mbIds.labelId?.trim() || '';
+    const artistIds = Array.from(new Set([
+        track.mbIds.artistId?.trim() || '',
+        ...track.artistMbids.map((artistId) => artistId.trim()),
+        ...track.mbArtistCredits.map((credit) => credit.artistId?.trim() || ''),
+    ].filter((artistId) => artistId !== '')));
+
+    if (!recordingId && !releaseId && artistIds.length === 0 && !labelId) {
+        return emptyMusicBrainzExplorationGraph();
+    }
+
+    try {
+        return await scheduleMusicBrainzRequest(async () => (
+            await LookupMusicBrainzExploration(recordingId, releaseId, artistIds, labelId, requestId) as MusicBrainzExplorationGraph
+        ));
+    } catch (error) {
+        console.error(error);
+        return emptyMusicBrainzExplorationGraph();
     }
 };
 
