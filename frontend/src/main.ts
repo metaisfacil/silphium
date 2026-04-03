@@ -45,6 +45,7 @@ import {
     renderTextFileModal,
     renderTrackMetaMenu,
 } from './components/overlays';
+import { UI_TIMINGS_MS } from './constants/ui-timings';
 import { getSidebarElements, renderSidebar } from './components/sidebar';
 import {
     AudioGetState,
@@ -172,9 +173,9 @@ let trackMetaMenuTarget: HTMLElement | null = null;
 let sidebarQueueTrackIndexes: number[] = [];
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
-const musicBrainzEntityModalTransitionMs = 220;
-const technicalInfoModalTransitionMs = 220;
-const aboutModalTransitionMs = 220;
+const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+const aboutModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const playbackStateService = createPlaybackStateService();
 const scrobbleService = createScrobbleService({
     submitListenBrainz: SubmitListenBrainz,

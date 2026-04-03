@@ -1,4 +1,5 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
+import { UI_TIMINGS_MS } from '../constants/ui-timings';
 import type { PlayerCardLayout } from '../types/app-types';
 
 export type SettingsFormValues = {
@@ -49,7 +50,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsStatus,
     } = elements;
 
-    const settingsModalTransitionMs = 220;
+    const settingsModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     let hideTimer: number | undefined;
 
     let favoritePlaylists: string[] = [];

@@ -1,5 +1,6 @@
 import type { PlaylistMenuElements } from '../components/overlays/playlist-menu';
 import type { PlaylistModalElements } from '../components/overlays/playlist-modal';
+import { UI_TIMINGS_MS } from '../constants/ui-timings';
 
 export type PlaylistDirection = -1 | 1;
 
@@ -73,7 +74,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     let hydrationTotal = 0;
     let hydrationCompleted = 0;
     let hydrationHideToken = 0;
-    const playlistModalTransitionMs = 220;
+    const playlistModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     let playlistModalHideTimer: number | undefined;
 
     const setHydrationProgress = (completed: number, total: number): void => {

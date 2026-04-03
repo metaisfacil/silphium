@@ -30,6 +30,11 @@ type ClearLibraryRuntimeDataOptions = {
     resetPlaylistState: () => void;
 };
 
+const BATCH_SIZES = {
+    indexedFiles: 400,
+    playlistFiles: 200,
+} as const;
+
 const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
     title: file.name,
     name: file.name,
@@ -73,7 +78,7 @@ const yieldToUi = async (): Promise<void> => {
 };
 
 const appendTrackFiles = async (tracks: Track[], files: LibraryIndexedFile[]): Promise<void> => {
-    const batchSize = 400;
+    const batchSize = BATCH_SIZES.indexedFiles;
     for (let index = 0; index < files.length; index += 1) {
         tracks.push(createPlaceholderTrack(files[index]));
         if ((index + 1) % batchSize === 0) {
@@ -83,7 +88,7 @@ const appendTrackFiles = async (tracks: Track[], files: LibraryIndexedFile[]): P
 };
 
 const appendTextFiles = async (textFiles: TextLibraryFile[], files: LibraryIndexedFile[]): Promise<void> => {
-    const batchSize = 400;
+    const batchSize = BATCH_SIZES.indexedFiles;
     for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
         textFiles.push({
@@ -99,7 +104,7 @@ const appendTextFiles = async (textFiles: TextLibraryFile[], files: LibraryIndex
 };
 
 const appendImageFiles = async (imageFiles: ImageLibraryFile[], files: LibraryIndexedFile[]): Promise<void> => {
-    const batchSize = 400;
+    const batchSize = BATCH_SIZES.indexedFiles;
     for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
         imageFiles.push({
@@ -158,7 +163,7 @@ export const mergePlaylistFilesIntoTracks = async (tracks: Track[], playlistFile
         trackIndexByPath.set(track.path.toLowerCase(), index);
     });
 
-    const batchSize = 200;
+    const batchSize = BATCH_SIZES.playlistFiles;
     for (let index = 0; index < playlistFiles.length; index += 1) {
         nextIndexes.push(ensureTrackIndexForPath(nextTracks, playlistFiles[index], trackIndexByPath));
 

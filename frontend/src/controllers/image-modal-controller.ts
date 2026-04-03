@@ -1,4 +1,5 @@
 import type { ImageFileModalElements } from '../components/overlays/image-file-modal';
+import { UI_TIMINGS_MS } from '../constants/ui-timings';
 import type { ImageLibraryFile } from '../types/app-types';
 import { mimeTypeForFileName } from '../utils/main-helpers';
 
@@ -25,7 +26,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageFileThumbsRow,
     } = options.elements;
 
-    const imageModalTransitionMs = 220;
+    const imageModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     const imageModalThumbPageSize = 7;
 
     const imageFileDataUrlByPath = new Map<string, string>();

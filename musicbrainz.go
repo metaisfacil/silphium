@@ -133,6 +133,14 @@ const musicBrainzVariousArtistsID = "89ad4ac3-39f7-470e-963a-56509c546377"
 const musicBrainzNoLabelName = "[no label]"
 const musicBrainzExplorationProgressEvent = "silphium:musicbrainz:exploration-progress"
 const musicBrainzExplorationArtistRelationDepth = 2
+const musicBrainzExplorationPrimaryArtistLimit = 4
+const musicBrainzExplorationCompilationArtistLimit = 12
+const musicBrainzExplorationAlternateReleaseLimit = 4
+const musicBrainzExplorationAlternateReleaseCheckLimit = 12
+const musicBrainzExplorationLabelBrowseLimit = "18"
+const musicBrainzExplorationLabelArtistLimit = 10
+const musicBrainzExplorationLabelCompilationLimit = 6
+const musicBrainzExplorationBandRelationLimit = 6
 
 var musicBrainzFetchMu sync.Mutex
 var nextMusicBrainzFetchAt time.Time
@@ -1641,9 +1649,9 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 		appendSeedArtistID(artistID)
 	}
 
-	if len(cleanArtistIDs) > 4 {
+	if len(cleanArtistIDs) > musicBrainzExplorationPrimaryArtistLimit {
 		builder.addWarning("Limited primary artist relationships to 4 tagged artists.")
-		cleanArtistIDs = cleanArtistIDs[:4]
+		cleanArtistIDs = cleanArtistIDs[:musicBrainzExplorationPrimaryArtistLimit]
 		seedArtistSet = make(map[string]struct{})
 		for _, artistID := range cleanArtistIDs {
 			seedArtistSet[artistID] = struct{}{}
@@ -1750,7 +1758,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 			artistID := sanitizeMusicBrainzID(credit.ArtistID)
 			artistName := strings.TrimSpace(credit.Name)
 			_, isSeedArtist := seedArtistSet[artistID]
-			if !isSeedArtist && compilationArtistCount >= 12 {
+			if !isSeedArtist && compilationArtistCount >= musicBrainzExplorationCompilationArtistLimit {
 				if !compilationArtistLimitHit {
 					builder.addWarning("Limited compilation artist links to 12 artists.")
 					compilationArtistLimitHit = true
@@ -1779,11 +1787,11 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 			continue
 		}
 
-		if relatedRecordingReleaseCount >= 4 {
+		if relatedRecordingReleaseCount >= musicBrainzExplorationAlternateReleaseLimit {
 			builder.addWarning("Limited alternate release appearances to 4 releases.")
 			break
 		}
-		if relatedRecordingReleaseLookups >= 12 {
+		if relatedRecordingReleaseLookups >= musicBrainzExplorationAlternateReleaseCheckLimit {
 			builder.addWarning("Limited alternate release checks to 12 candidate releases.")
 			break
 		}
@@ -1817,7 +1825,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 	if cleanLabelID != "" {
 		browseValues := url.Values{}
 		browseValues.Set("label", cleanLabelID)
-		browseValues.Set("limit", "18")
+		browseValues.Set("limit", musicBrainzExplorationLabelBrowseLimit)
 		browseURL := musicBrainzBrowseURL("release", browseValues, "artist-credits+release-groups+labels")
 		if browsePayload, ok := fetchPayload(browseURL, "Browsing label releases..."); ok {
 			addedLabelReleaseCount := 0
@@ -1842,7 +1850,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 						continue
 					}
 
-					if labelArtistCount >= 10 {
+					if labelArtistCount >= musicBrainzExplorationLabelArtistLimit {
 						if !labelArtistLimitHit {
 							builder.addWarning("Limited same-label artist links to 10 artists.")
 							labelArtistLimitHit = true
@@ -1862,7 +1870,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 					continue
 				}
 
-				if addedLabelReleaseCount >= 6 {
+				if addedLabelReleaseCount >= musicBrainzExplorationLabelCompilationLimit {
 					builder.addWarning("Limited label connections to 6 Various Artists compilations.")
 					break
 				}
@@ -1889,7 +1897,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 	}
 
 	for len(artistRelationQueue) > 0 {
-		if relatedBandEdgeCount >= 6 {
+		if relatedBandEdgeCount >= musicBrainzExplorationBandRelationLimit {
 			builder.addWarning("Limited artist membership relationships to 6 connections.")
 			break
 		}
@@ -1907,7 +1915,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 		}
 
 		for _, relationValue := range asArray(artistPayload["relations"]) {
-			if relatedBandEdgeCount >= 6 {
+			if relatedBandEdgeCount >= musicBrainzExplorationBandRelationLimit {
 				builder.addWarning("Limited artist membership relationships to 6 connections.")
 				break
 			}
