@@ -394,6 +394,32 @@
     overflow: hidden;
 }
 
+.library-viewport-loading-indicator {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+
+.library-viewport-loading-indicator.is-visible {
+    opacity: 1;
+}
+
+.library-viewport-loading-indicator::after {
+    content: '';
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.28);
+    border-top-color: rgba(255, 255, 255, 0.92);
+    animation: sidebar-toggle-spin 0.75s linear infinite;
+}
+
 .library-list-pane {
     position: absolute;
     inset: 0;

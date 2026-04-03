@@ -100,6 +100,16 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     let paneVersionCounter = 0;
     const expandedSearchFolders = new Set<string>();
     const paneStateByElement = new WeakMap<HTMLUListElement, PaneState>();
+    const viewportLoadingIndicator = document.createElement('div');
+    viewportLoadingIndicator.className = 'library-viewport-loading-indicator';
+    viewportLoadingIndicator.setAttribute('aria-hidden', 'true');
+    libraryBrowser.append(viewportLoadingIndicator);
+
+    const ensureViewportLoadingIndicatorMounted = (): void => {
+        if (!libraryBrowser.contains(viewportLoadingIndicator)) {
+            libraryBrowser.append(viewportLoadingIndicator);
+        }
+    };
 
     const getTracks = (): Track[] => options.getTracks();
 
@@ -343,6 +353,27 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         spacer.style.marginBottom = '0';
         spacer.style.pointerEvents = 'none';
         return spacer;
+    };
+
+    const setViewportLoadingIndicatorVisible = (visible: boolean): void => {
+        ensureViewportLoadingIndicatorMounted();
+        viewportLoadingIndicator.classList.toggle('is-visible', visible);
+        viewportLoadingIndicator.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    };
+
+    const isFocusPageLoaded = (pane: HTMLUListElement, state: PaneState, totalEntries: number | null): boolean => {
+        if (totalEntries !== null && totalEntries <= 0) {
+            return true;
+        }
+
+        const rowHeight = Math.max(1, state.rowHeightEstimate);
+        const focusRow = Math.max(0, Math.floor(pane.scrollTop / rowHeight));
+        if (totalEntries !== null && focusRow >= totalEntries) {
+            return true;
+        }
+
+        const focusPage = Math.max(0, Math.floor(focusRow / serverPageSize));
+        return state.loadedPages.has(focusPage);
     };
 
     const compareLibraryLabels = (left: string, right: string): number => {
@@ -700,6 +731,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     const renderPaneRows = (pane: HTMLUListElement): void => {
         const state = paneStateByElement.get(pane);
         if (!state) {
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
@@ -709,16 +741,19 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         if (state.errorMessage && state.loadedPages.size === 0) {
             pane.innerHTML = `<li class="empty">${state.errorMessage}</li>`;
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
         if (state.totalEntries === 0 && state.loadingPages.size === 0) {
             pane.innerHTML = `<li class="empty">${emptyMessage}</li>`;
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
         if (state.loadedPages.size === 0) {
             pane.innerHTML = `<li class="empty">${loadingMessage}</li>`;
+            setViewportLoadingIndicatorVisible(true);
             return;
         }
 
@@ -747,6 +782,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
             pane.replaceChildren(fragment);
             pane.scrollTop = previousScrollTop;
+            setViewportLoadingIndicatorVisible(true);
             return;
         }
 
@@ -775,6 +811,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         pane.replaceChildren(fragment);
         pane.scrollTop = previousScrollTop;
+        setViewportLoadingIndicatorVisible(!isFocusPageLoaded(pane, state, totalEntries));
 
         const firstEntryRow = Array.from(pane.children).find((child) => !child.classList.contains('library-list-spacer') && !child.classList.contains('empty')) as HTMLLIElement | undefined;
         if (firstEntryRow) {
@@ -963,6 +1000,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             libraryBrowser.innerHTML = '';
             nextPane.classList.add('current');
             libraryBrowser.append(nextPane);
+            ensureViewportLoadingIndicatorMounted();
             return;
         }
 
@@ -977,6 +1015,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         libraryBrowser.append(nextPane);
+        ensureViewportLoadingIndicatorMounted();
 
         requestAnimationFrame(() => {
             nextPane.classList.remove('from-right', 'from-left');
@@ -991,10 +1030,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     };
 
     const renderFolder = (direction: RenderDirection): void => {
+        ensureViewportLoadingIndicatorMounted();
         setLibraryPathLabel();
 
         if (!libraryRootName) {
             libraryBrowser.innerHTML = '';
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
@@ -1004,18 +1045,21 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             loadingPane.className = 'library-list-pane library-search-pane current';
             loadingPane.innerHTML = '<li class="empty">Searching...</li>';
             libraryBrowser.append(loadingPane);
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
         const source = activeSource();
         if (!source) {
             libraryBrowser.innerHTML = '';
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
         if (source.kind === 'search') {
             const nextPane = createSearchPane();
             mountPane(nextPane, 'none');
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
@@ -1132,6 +1176,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         libraryIndexTruncated = false;
         clearLibrarySearch();
         libraryBrowser.innerHTML = '';
+        setViewportLoadingIndicatorVisible(false);
     };
 
     sidebarToggle.addEventListener('click', () => {
