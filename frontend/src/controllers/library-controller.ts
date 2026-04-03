@@ -674,7 +674,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
                 if (kind === 'track') {
                     const trackIndex = options.resolveTrackIndex(entry.path);
-                    if (trackIndex === options.getCurrentTrackIndex()) {
+                    if (trackIndex >= 0 && trackIndex === options.getCurrentTrackIndex()) {
                         button.classList.add('active');
                     }
                     button.dataset.trackPath = entry.path;
@@ -838,7 +838,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             button.dataset.folderPath = entry.path;
         } else if (entry.kind === 'track') {
             const trackIndex = options.resolveTrackIndex(entry.path);
-            button.className = `library-entry track${trackIndex === options.getCurrentTrackIndex() ? ' active' : ''}`;
+            button.className = `library-entry track${trackIndex >= 0 && trackIndex === options.getCurrentTrackIndex() ? ' active' : ''}`;
             button.dataset.trackPath = entry.path;
         } else if (entry.kind === 'text-file') {
             button.className = 'library-entry text-file';
