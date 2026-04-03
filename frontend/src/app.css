@@ -532,7 +532,8 @@
     transition: background 130ms ease;
 }
 
-.library-tree-folder:hover {
+.library-tree-folder:hover,
+.library-tree-folder.is-hovered {
     background: rgba(0, 0, 0, 0.2);
 }
 
@@ -561,7 +562,8 @@
     transition: background 130ms ease, transform 100ms ease;
 }
 
-.library-entry:hover {
+.library-entry:hover,
+.library-entry.is-hovered {
     background: rgba(0, 0, 0, 0.2);
 }
 

@@ -98,6 +98,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     let librarySearchDebounceHandle: number | undefined;
     let activeSearchResult: SearchResultState | null = null;
     let paneVersionCounter = 0;
+    let hoveredBrowserEntryKey: string | null = null;
+    let hoveredBrowserButton: HTMLButtonElement | null = null;
     const expandedSearchFolders = new Set<string>();
     const paneStateByElement = new WeakMap<HTMLUListElement, PaneState>();
     const viewportLoadingIndicator = document.createElement('div');
@@ -437,6 +439,77 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         viewportLoadingIndicator.setAttribute('aria-hidden', visible ? 'false' : 'true');
     };
 
+    const hoverKeyForBrowserEntry = (entry: LibraryBrowserEntry): string => {
+        if (entry.kind === 'folder') {
+            return `folder:${entry.path}`;
+        }
+
+        if (entry.kind === 'track') {
+            return `track:${entry.path}`;
+        }
+
+        if (entry.kind === 'text-file') {
+            return `text-file:${entry.path}`;
+        }
+
+        return `image-file:${entry.path}`;
+    };
+
+    const hoverKeyForButton = (button: HTMLButtonElement): string | null => {
+        if (button.dataset.hoverKey) {
+            return button.dataset.hoverKey;
+        }
+
+        if (button.dataset.searchFolderPath !== undefined) {
+            return `search-folder:${button.dataset.searchFolderPath}`;
+        }
+
+        if (button.dataset.folderPath !== undefined) {
+            return `folder:${button.dataset.folderPath}`;
+        }
+
+        if (button.dataset.trackPath !== undefined) {
+            return `track:${button.dataset.trackPath}`;
+        }
+
+        if (button.dataset.textFilePath !== undefined) {
+            return `text-file:${button.dataset.textFilePath}`;
+        }
+
+        if (button.dataset.imageFilePath !== undefined) {
+            return `image-file:${button.dataset.imageFilePath}`;
+        }
+
+        return null;
+    };
+
+    const setHoveredBrowserButton = (button: HTMLButtonElement | null): void => {
+        if (hoveredBrowserButton === button) {
+            return;
+        }
+
+        if (hoveredBrowserButton) {
+            hoveredBrowserButton.classList.remove('is-hovered');
+        }
+
+        hoveredBrowserButton = button;
+        if (hoveredBrowserButton) {
+            hoveredBrowserButton.classList.add('is-hovered');
+        }
+    };
+
+    const syncHoveredBrowserButton = (): void => {
+        const pane = currentPane();
+        if (!pane || !hoveredBrowserEntryKey) {
+            setHoveredBrowserButton(null);
+            return;
+        }
+
+        const candidates = Array.from(pane.querySelectorAll('button[data-hover-key]')) as HTMLButtonElement[];
+        const matching = candidates.find((candidate) => candidate.dataset.hoverKey === hoveredBrowserEntryKey) || null;
+        setHoveredBrowserButton(matching);
+    };
+
     const isFocusPageLoaded = (pane: HTMLUListElement, state: PaneState, totalEntries: number | null): boolean => {
         if (totalEntries !== null && totalEntries <= 0) {
             return true;
@@ -558,6 +631,10 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             button.className = 'library-tree-folder';
             button.dataset.searchFolderPath = folder.path;
             button.dataset.searchFolderExpandable = hasChildren ? 'true' : 'false';
+            button.dataset.hoverKey = `search-folder:${folder.path}`;
+            if (hoveredBrowserEntryKey === button.dataset.hoverKey) {
+                button.classList.add('is-hovered');
+            }
             button.textContent = `${hasChildren ? (isExpanded ? '▾' : '▸') : '•'} 📁 ${folder.name}`;
 
             if (!hasChildren) {
@@ -770,6 +847,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             button.dataset.imageFilePath = entry.path;
         }
 
+        const hoverKey = hoverKeyForBrowserEntry(entry);
+        button.dataset.hoverKey = hoverKey;
+        if (hoveredBrowserEntryKey === hoverKey) {
+            button.classList.add('is-hovered');
+        }
+
         button.textContent = entryLabel(entry, source);
         row.append(button);
         return row;
@@ -888,6 +971,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         pane.replaceChildren(fragment);
         pane.scrollTop = previousScrollTop;
         setViewportLoadingIndicatorVisible(!isFocusPageLoaded(pane, state, totalEntries));
+        syncHoveredBrowserButton();
 
         const firstEntryRow = Array.from(pane.children).find((child) => !child.classList.contains('library-list-spacer') && !child.classList.contains('empty')) as HTMLLIElement | undefined;
         if (firstEntryRow) {
@@ -1077,6 +1161,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             nextPane.classList.add('current');
             libraryBrowser.append(nextPane);
             ensureViewportLoadingIndicatorMounted();
+            ensureFolderEnumerationTooltipMounted();
+            syncHoveredBrowserButton();
             return;
         }
 
@@ -1092,6 +1178,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         libraryBrowser.append(nextPane);
         ensureViewportLoadingIndicatorMounted();
+        ensureFolderEnumerationTooltipMounted();
+        syncHoveredBrowserButton();
 
         requestAnimationFrame(() => {
             nextPane.classList.remove('from-right', 'from-left');
@@ -1343,6 +1431,35 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 options.onImageFileChosen(index);
             }
         }
+    });
+
+    libraryBrowser.addEventListener('mousemove', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const button = target.closest('button');
+        if (!(button instanceof HTMLButtonElement)) {
+            hoveredBrowserEntryKey = null;
+            setHoveredBrowserButton(null);
+            return;
+        }
+
+        const hoverKey = hoverKeyForButton(button);
+        if (!hoverKey) {
+            hoveredBrowserEntryKey = null;
+            setHoveredBrowserButton(null);
+            return;
+        }
+
+        hoveredBrowserEntryKey = hoverKey;
+        setHoveredBrowserButton(button);
+    });
+
+    libraryBrowser.addEventListener('mouseleave', () => {
+        hoveredBrowserEntryKey = null;
+        setHoveredBrowserButton(null);
     });
 
     libraryBrowser.addEventListener('contextmenu', (event) => {
