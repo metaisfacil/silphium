@@ -104,11 +104,87 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     viewportLoadingIndicator.className = 'library-viewport-loading-indicator';
     viewportLoadingIndicator.setAttribute('aria-hidden', 'true');
     libraryBrowser.append(viewportLoadingIndicator);
+    const folderEnumerationTooltip = document.createElement('div');
+    folderEnumerationTooltip.className = 'library-folder-enumeration-tooltip';
+    folderEnumerationTooltip.setAttribute('aria-hidden', 'true');
+    folderEnumerationTooltip.textContent = 'This folder is still being enumerated!';
+    libraryBrowser.append(folderEnumerationTooltip);
+    let folderEnumerationTooltipFadeHandle: number | undefined;
+    let folderEnumerationTooltipHideHandle: number | undefined;
 
     const ensureViewportLoadingIndicatorMounted = (): void => {
         if (!libraryBrowser.contains(viewportLoadingIndicator)) {
             libraryBrowser.append(viewportLoadingIndicator);
         }
+    };
+
+    const ensureFolderEnumerationTooltipMounted = (): void => {
+        if (!libraryBrowser.contains(folderEnumerationTooltip)) {
+            libraryBrowser.append(folderEnumerationTooltip);
+        }
+    };
+
+    const hideFolderEnumerationTooltip = (): void => {
+        folderEnumerationTooltip.classList.remove('is-visible');
+        folderEnumerationTooltip.classList.remove('is-below');
+        folderEnumerationTooltip.setAttribute('aria-hidden', 'true');
+    };
+
+    const showFolderEnumerationTooltip = (anchor: HTMLElement): void => {
+        ensureFolderEnumerationTooltipMounted();
+
+        if (folderEnumerationTooltipFadeHandle !== undefined) {
+            window.clearTimeout(folderEnumerationTooltipFadeHandle);
+            folderEnumerationTooltipFadeHandle = undefined;
+        }
+
+        if (folderEnumerationTooltipHideHandle !== undefined) {
+            window.clearTimeout(folderEnumerationTooltipHideHandle);
+            folderEnumerationTooltipHideHandle = undefined;
+        }
+
+        const browserRect = libraryBrowser.getBoundingClientRect();
+        const anchorRect = anchor.getBoundingClientRect();
+        const tooltipWidth = Math.max(120, folderEnumerationTooltip.offsetWidth || 120);
+        const horizontalInset = Math.max(12, (tooltipWidth / 2) + 8);
+        const minInset = horizontalInset;
+        const maxInset = Math.max(minInset, browserRect.width - horizontalInset);
+        let left = anchorRect.left - browserRect.left + (anchorRect.width / 2);
+        left = Math.max(minInset, Math.min(maxInset, left));
+
+        const tooltipHeight = Math.max(28, folderEnumerationTooltip.offsetHeight || 28);
+        const verticalInset = 8;
+        const availableAbove = anchorRect.top - browserRect.top;
+        const availableBelow = browserRect.bottom - anchorRect.bottom;
+        const renderBelow = availableAbove < (tooltipHeight + verticalInset)
+            && availableBelow >= (tooltipHeight + verticalInset);
+        folderEnumerationTooltip.classList.toggle('is-below', renderBelow);
+
+        let top = renderBelow
+            ? anchorRect.bottom - browserRect.top
+            : anchorRect.top - browserRect.top;
+
+        const minTop = renderBelow
+            ? verticalInset
+            : tooltipHeight + verticalInset;
+        const maxTop = Math.max(minTop, browserRect.height - verticalInset);
+        top = Math.max(minTop, Math.min(maxTop, top));
+
+        folderEnumerationTooltip.style.left = `${left}px`;
+        folderEnumerationTooltip.style.top = `${top}px`;
+        folderEnumerationTooltip.classList.add('is-visible');
+        folderEnumerationTooltip.setAttribute('aria-hidden', 'false');
+
+        // Show briefly, then fade; total on-screen time stays under one second.
+        folderEnumerationTooltipFadeHandle = window.setTimeout(() => {
+            hideFolderEnumerationTooltip();
+            folderEnumerationTooltipFadeHandle = undefined;
+        }, 760);
+
+        folderEnumerationTooltipHideHandle = window.setTimeout(() => {
+            hideFolderEnumerationTooltip();
+            folderEnumerationTooltipHideHandle = undefined;
+        }, 980);
     };
 
     const getTracks = (): Track[] => options.getTracks();
@@ -1177,6 +1253,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         clearLibrarySearch();
         libraryBrowser.innerHTML = '';
         setViewportLoadingIndicatorVisible(false);
+        hideFolderEnumerationTooltip();
     };
 
     sidebarToggle.addEventListener('click', () => {
@@ -1229,9 +1306,11 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         if (nextFolder !== undefined) {
             void options.isFolderImmediateDescendantsEnumerated(nextFolder).then((isEnumerated) => {
                 if (!isEnumerated) {
+                    showFolderEnumerationTooltip(button);
                     return;
                 }
 
+                hideFolderEnumerationTooltip();
                 navigateToFolder(nextFolder);
             }).catch((error) => {
                 console.error(error);
