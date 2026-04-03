@@ -53,12 +53,14 @@ type LibraryControllerOptions = {
     getImageFiles: () => ImageLibraryFile[];
     getCurrentTrackIndex: () => number;
     loadFolderPage: (folderPath: string, offset: number, limit: number) => Promise<LibraryFolderPage>;
+    isFolderImmediateDescendantsEnumerated: (folderPath: string) => Promise<boolean>;
     searchLibrary: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
     resolveTrackIndex: (path: string) => number;
     resolveTextFileIndex: (path: string) => number;
     resolveImageFileIndex: (path: string) => number;
     getFolderTrackIndexes: (folderPath: string) => Promise<number[]>;
     onTrackChosen: (index: number) => void;
+    onTrackPathChosen?: (path: string) => void;
     onTextFileChosen: (index: number) => void;
     onImageFileChosen: (index: number) => void;
     onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[]) => void;
@@ -97,8 +99,96 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     let librarySearchDebounceHandle: number | undefined;
     let activeSearchResult: SearchResultState | null = null;
     let paneVersionCounter = 0;
+    let hoveredBrowserEntryKey: string | null = null;
+    let hoveredBrowserButton: HTMLButtonElement | null = null;
     const expandedSearchFolders = new Set<string>();
     const paneStateByElement = new WeakMap<HTMLUListElement, PaneState>();
+    const viewportLoadingIndicator = document.createElement('div');
+    viewportLoadingIndicator.className = 'library-viewport-loading-indicator';
+    viewportLoadingIndicator.setAttribute('aria-hidden', 'true');
+    libraryBrowser.append(viewportLoadingIndicator);
+    const folderEnumerationTooltip = document.createElement('div');
+    folderEnumerationTooltip.className = 'library-folder-enumeration-tooltip';
+    folderEnumerationTooltip.setAttribute('aria-hidden', 'true');
+    folderEnumerationTooltip.textContent = 'This folder is still being enumerated!';
+    libraryBrowser.append(folderEnumerationTooltip);
+    let folderEnumerationTooltipFadeHandle: number | undefined;
+    let folderEnumerationTooltipHideHandle: number | undefined;
+
+    const ensureViewportLoadingIndicatorMounted = (): void => {
+        if (!libraryBrowser.contains(viewportLoadingIndicator)) {
+            libraryBrowser.append(viewportLoadingIndicator);
+        }
+    };
+
+    const ensureFolderEnumerationTooltipMounted = (): void => {
+        if (!libraryBrowser.contains(folderEnumerationTooltip)) {
+            libraryBrowser.append(folderEnumerationTooltip);
+        }
+    };
+
+    const hideFolderEnumerationTooltip = (): void => {
+        folderEnumerationTooltip.classList.remove('is-visible');
+        folderEnumerationTooltip.classList.remove('is-below');
+        folderEnumerationTooltip.setAttribute('aria-hidden', 'true');
+    };
+
+    const showFolderEnumerationTooltip = (anchor: HTMLElement): void => {
+        ensureFolderEnumerationTooltipMounted();
+
+        if (folderEnumerationTooltipFadeHandle !== undefined) {
+            window.clearTimeout(folderEnumerationTooltipFadeHandle);
+            folderEnumerationTooltipFadeHandle = undefined;
+        }
+
+        if (folderEnumerationTooltipHideHandle !== undefined) {
+            window.clearTimeout(folderEnumerationTooltipHideHandle);
+            folderEnumerationTooltipHideHandle = undefined;
+        }
+
+        const browserRect = libraryBrowser.getBoundingClientRect();
+        const anchorRect = anchor.getBoundingClientRect();
+        const tooltipWidth = Math.max(120, folderEnumerationTooltip.offsetWidth || 120);
+        const horizontalInset = Math.max(12, (tooltipWidth / 2) + 8);
+        const minInset = horizontalInset;
+        const maxInset = Math.max(minInset, browserRect.width - horizontalInset);
+        let left = anchorRect.left - browserRect.left + (anchorRect.width / 2);
+        left = Math.max(minInset, Math.min(maxInset, left));
+
+        const tooltipHeight = Math.max(28, folderEnumerationTooltip.offsetHeight || 28);
+        const verticalInset = 8;
+        const availableAbove = anchorRect.top - browserRect.top;
+        const availableBelow = browserRect.bottom - anchorRect.bottom;
+        const renderBelow = availableAbove < (tooltipHeight + verticalInset)
+            && availableBelow >= (tooltipHeight + verticalInset);
+        folderEnumerationTooltip.classList.toggle('is-below', renderBelow);
+
+        let top = renderBelow
+            ? anchorRect.bottom - browserRect.top
+            : anchorRect.top - browserRect.top;
+
+        const minTop = renderBelow
+            ? verticalInset
+            : tooltipHeight + verticalInset;
+        const maxTop = Math.max(minTop, browserRect.height - verticalInset);
+        top = Math.max(minTop, Math.min(maxTop, top));
+
+        folderEnumerationTooltip.style.left = `${left}px`;
+        folderEnumerationTooltip.style.top = `${top}px`;
+        folderEnumerationTooltip.classList.add('is-visible');
+        folderEnumerationTooltip.setAttribute('aria-hidden', 'false');
+
+        // Show briefly, then fade; total on-screen time stays under one second.
+        folderEnumerationTooltipFadeHandle = window.setTimeout(() => {
+            hideFolderEnumerationTooltip();
+            folderEnumerationTooltipFadeHandle = undefined;
+        }, 760);
+
+        folderEnumerationTooltipHideHandle = window.setTimeout(() => {
+            hideFolderEnumerationTooltip();
+            folderEnumerationTooltipHideHandle = undefined;
+        }, 980);
+    };
 
     const getTracks = (): Track[] => options.getTracks();
 
@@ -344,6 +434,98 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         return spacer;
     };
 
+    const setViewportLoadingIndicatorVisible = (visible: boolean): void => {
+        ensureViewportLoadingIndicatorMounted();
+        viewportLoadingIndicator.classList.toggle('is-visible', visible);
+        viewportLoadingIndicator.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    };
+
+    const hoverKeyForBrowserEntry = (entry: LibraryBrowserEntry): string => {
+        if (entry.kind === 'folder') {
+            return `folder:${entry.path}`;
+        }
+
+        if (entry.kind === 'track') {
+            return `track:${entry.path}`;
+        }
+
+        if (entry.kind === 'text-file') {
+            return `text-file:${entry.path}`;
+        }
+
+        return `image-file:${entry.path}`;
+    };
+
+    const hoverKeyForButton = (button: HTMLButtonElement): string | null => {
+        if (button.dataset.hoverKey) {
+            return button.dataset.hoverKey;
+        }
+
+        if (button.dataset.searchFolderPath !== undefined) {
+            return `search-folder:${button.dataset.searchFolderPath}`;
+        }
+
+        if (button.dataset.folderPath !== undefined) {
+            return `folder:${button.dataset.folderPath}`;
+        }
+
+        if (button.dataset.trackPath !== undefined) {
+            return `track:${button.dataset.trackPath}`;
+        }
+
+        if (button.dataset.textFilePath !== undefined) {
+            return `text-file:${button.dataset.textFilePath}`;
+        }
+
+        if (button.dataset.imageFilePath !== undefined) {
+            return `image-file:${button.dataset.imageFilePath}`;
+        }
+
+        return null;
+    };
+
+    const setHoveredBrowserButton = (button: HTMLButtonElement | null): void => {
+        if (hoveredBrowserButton === button) {
+            return;
+        }
+
+        if (hoveredBrowserButton) {
+            hoveredBrowserButton.classList.remove('is-hovered');
+        }
+
+        hoveredBrowserButton = button;
+        if (hoveredBrowserButton) {
+            hoveredBrowserButton.classList.add('is-hovered');
+        }
+    };
+
+    const syncHoveredBrowserButton = (): void => {
+        const pane = currentPane();
+        if (!pane || !hoveredBrowserEntryKey) {
+            setHoveredBrowserButton(null);
+            return;
+        }
+
+        const candidates = Array.from(pane.querySelectorAll('button[data-hover-key]')) as HTMLButtonElement[];
+        const matching = candidates.find((candidate) => candidate.dataset.hoverKey === hoveredBrowserEntryKey) || null;
+        setHoveredBrowserButton(matching);
+    };
+
+    const isFocusPageLoaded = (pane: HTMLUListElement, state: PaneState, totalEntries: number | null): boolean => {
+        if (totalEntries !== null && totalEntries <= 0) {
+            return true;
+        }
+
+        const rowHeight = Math.max(1, state.rowHeightEstimate);
+        const focusRow = Math.max(0, Math.floor(pane.scrollTop / rowHeight));
+        if (totalEntries !== null && focusRow >= totalEntries) {
+            return true;
+        }
+
+        const focusPage = Math.max(0, Math.floor(focusRow / serverPageSize));
+        return state.loadedPages.has(focusPage);
+    };
+
     const compareLibraryLabels = (left: string, right: string): number => {
         return left.localeCompare(right, undefined, {
             sensitivity: 'base',
@@ -450,6 +632,10 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             button.className = 'library-tree-folder';
             button.dataset.searchFolderPath = folder.path;
             button.dataset.searchFolderExpandable = hasChildren ? 'true' : 'false';
+            button.dataset.hoverKey = `search-folder:${folder.path}`;
+            if (hoveredBrowserEntryKey === button.dataset.hoverKey) {
+                button.classList.add('is-hovered');
+            }
             button.textContent = `${hasChildren ? (isExpanded ? '▾' : '▸') : '•'} 📁 ${folder.name}`;
 
             if (!hasChildren) {
@@ -488,7 +674,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
                 if (kind === 'track') {
                     const trackIndex = options.resolveTrackIndex(entry.path);
-                    if (trackIndex === options.getCurrentTrackIndex()) {
+                    if (trackIndex >= 0 && trackIndex === options.getCurrentTrackIndex()) {
                         button.classList.add('active');
                     }
                     button.dataset.trackPath = entry.path;
@@ -652,7 +838,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             button.dataset.folderPath = entry.path;
         } else if (entry.kind === 'track') {
             const trackIndex = options.resolveTrackIndex(entry.path);
-            button.className = `library-entry track${trackIndex === options.getCurrentTrackIndex() ? ' active' : ''}`;
+            button.className = `library-entry track${trackIndex >= 0 && trackIndex === options.getCurrentTrackIndex() ? ' active' : ''}`;
             button.dataset.trackPath = entry.path;
         } else if (entry.kind === 'text-file') {
             button.className = 'library-entry text-file';
@@ -662,6 +848,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             button.dataset.imageFilePath = entry.path;
         }
 
+        const hoverKey = hoverKeyForBrowserEntry(entry);
+        button.dataset.hoverKey = hoverKey;
+        if (hoveredBrowserEntryKey === hoverKey) {
+            button.classList.add('is-hovered');
+        }
+
         button.textContent = entryLabel(entry, source);
         row.append(button);
         return row;
@@ -669,10 +861,6 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     const emptyMessageForSource = (source: PaneSource): string => {
         return source.kind === 'search' ? 'No files match your search' : 'Folder is empty';
-    };
-
-    const loadingMessageForSource = (source: PaneSource): string => {
-        return source.kind === 'search' ? 'Searching...' : 'Loading...';
     };
 
     const desiredPageRange = (pane: HTMLUListElement, state: PaneState): { startPage: number; endPage: number } => {
@@ -699,25 +887,28 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     const renderPaneRows = (pane: HTMLUListElement): void => {
         const state = paneStateByElement.get(pane);
         if (!state) {
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
         const previousScrollTop = pane.scrollTop;
         const emptyMessage = emptyMessageForSource(state.source);
-        const loadingMessage = loadingMessageForSource(state.source);
 
         if (state.errorMessage && state.loadedPages.size === 0) {
             pane.innerHTML = `<li class="empty">${state.errorMessage}</li>`;
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
         if (state.totalEntries === 0 && state.loadingPages.size === 0) {
             pane.innerHTML = `<li class="empty">${emptyMessage}</li>`;
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
         if (state.loadedPages.size === 0) {
-            pane.innerHTML = `<li class="empty">${loadingMessage}</li>`;
+            pane.innerHTML = '';
+            setViewportLoadingIndicatorVisible(true);
             return;
         }
 
@@ -734,18 +925,14 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 fragment.append(createSpacerRow(loadingStartIndex * state.rowHeightEstimate));
             }
 
-            const loadingRow = document.createElement('li');
-            loadingRow.className = 'empty';
-            loadingRow.textContent = loadingMessage;
-            fragment.append(loadingRow);
-
-            const remainingRows = Math.max(0, totalEntries - loadingStartIndex - 1);
+            const remainingRows = Math.max(0, totalEntries - loadingStartIndex);
             if (remainingRows > 0) {
                 fragment.append(createSpacerRow(remainingRows * state.rowHeightEstimate));
             }
 
             pane.replaceChildren(fragment);
             pane.scrollTop = previousScrollTop;
+            setViewportLoadingIndicatorVisible(true);
             return;
         }
 
@@ -774,6 +961,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         pane.replaceChildren(fragment);
         pane.scrollTop = previousScrollTop;
+        setViewportLoadingIndicatorVisible(!isFocusPageLoaded(pane, state, totalEntries));
+        syncHoveredBrowserButton();
 
         const firstEntryRow = Array.from(pane.children).find((child) => !child.classList.contains('library-list-spacer') && !child.classList.contains('empty')) as HTMLLIElement | undefined;
         if (firstEntryRow) {
@@ -805,14 +994,43 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         });
     };
 
-    const fetchPageForPane = async (pane: HTMLUListElement, pageIndex: number): Promise<void> => {
+    const areEntriesEquivalent = (left: LibraryBrowserEntry, right: LibraryBrowserEntry): boolean => {
+        return left.kind === right.kind
+            && left.path === right.path
+            && left.name === right.name
+            && left.folderPath === right.folderPath
+            && left.relativePath === right.relativePath;
+    };
+
+    const areEntryPagesEquivalent = (left: LibraryBrowserEntry[], right: LibraryBrowserEntry[]): boolean => {
+        if (left.length !== right.length) {
+            return false;
+        }
+
+        for (let index = 0; index < left.length; index += 1) {
+            if (!areEntriesEquivalent(left[index], right[index])) {
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    const fetchPageForPane = async (pane: HTMLUListElement, pageIndex: number, forceRefresh = false): Promise<void> => {
         const state = paneStateByElement.get(pane);
-        if (!state || state.loadedPages.has(pageIndex) || state.loadingPages.has(pageIndex)) {
+        if (!state || state.loadingPages.has(pageIndex) || (!forceRefresh && state.loadedPages.has(pageIndex))) {
             return;
         }
 
-        state.loadingPages.add(pageIndex);
-        schedulePaneUpdate(pane);
+        const hasCachedPage = state.loadedPages.has(pageIndex);
+        const showLoadingState = !(forceRefresh && hasCachedPage);
+        let shouldScheduleUpdate = false;
+
+        if (showLoadingState) {
+            state.loadingPages.add(pageIndex);
+            shouldScheduleUpdate = true;
+            schedulePaneUpdate(pane);
+        }
 
         try {
             const offset = pageIndex * serverPageSize;
@@ -825,8 +1043,26 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 return;
             }
 
+            const nextEntries = page.entries || [];
+            const previousEntries = latestState.loadedPages.get(pageIndex) || [];
+            if (latestState.totalEntries !== page.totalEntries || !areEntryPagesEquivalent(previousEntries, nextEntries)) {
+                shouldScheduleUpdate = true;
+            }
+
             latestState.totalEntries = page.totalEntries;
-            latestState.loadedPages.set(pageIndex, page.entries || []);
+            latestState.loadedPages.set(pageIndex, nextEntries);
+            if (Number.isFinite(page.totalEntries) && page.totalEntries >= 0) {
+                const pageCount = Math.max(1, Math.ceil(page.totalEntries / serverPageSize));
+                for (const loadedPageIndex of Array.from(latestState.loadedPages.keys())) {
+                    if (loadedPageIndex >= pageCount) {
+                        latestState.loadedPages.delete(loadedPageIndex);
+                        shouldScheduleUpdate = true;
+                    }
+                }
+            }
+            if (latestState.errorMessage) {
+                shouldScheduleUpdate = true;
+            }
             latestState.errorMessage = null;
         } catch (error) {
             const latestState = paneStateByElement.get(pane);
@@ -835,19 +1071,28 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             }
 
             console.error(error);
-            latestState.errorMessage = 'Unable to load library entries.';
+            if (latestState.errorMessage !== 'Unable to load library entries.') {
+                shouldScheduleUpdate = true;
+                latestState.errorMessage = 'Unable to load library entries.';
+            }
         } finally {
             const latestState = paneStateByElement.get(pane);
             if (!latestState || latestState.version !== state.version) {
                 return;
             }
 
-            latestState.loadingPages.delete(pageIndex);
-            schedulePaneUpdate(pane);
+            if (showLoadingState && latestState.loadingPages.has(pageIndex)) {
+                latestState.loadingPages.delete(pageIndex);
+                shouldScheduleUpdate = true;
+            }
+
+            if (shouldScheduleUpdate) {
+                schedulePaneUpdate(pane);
+            }
         }
     };
 
-    const requestPagesForPane = async (pane: HTMLUListElement): Promise<void> => {
+    const requestPagesForPane = async (pane: HTMLUListElement, forceRefresh = false): Promise<void> => {
         const state = paneStateByElement.get(pane);
         if (!state) {
             return;
@@ -856,11 +1101,11 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         const pageRange = desiredPageRange(pane, state);
         const requestedPages: Promise<void>[] = [];
         for (let pageIndex = pageRange.startPage; pageIndex <= pageRange.endPage; pageIndex += 1) {
-            requestedPages.push(fetchPageForPane(pane, pageIndex));
+            requestedPages.push(fetchPageForPane(pane, pageIndex, forceRefresh));
         }
 
         if (requestedPages.length === 0) {
-            requestedPages.push(fetchPageForPane(pane, 0));
+            requestedPages.push(fetchPageForPane(pane, 0, forceRefresh));
         }
 
         await Promise.all(requestedPages);
@@ -906,6 +1151,9 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             libraryBrowser.innerHTML = '';
             nextPane.classList.add('current');
             libraryBrowser.append(nextPane);
+            ensureViewportLoadingIndicatorMounted();
+            ensureFolderEnumerationTooltipMounted();
+            syncHoveredBrowserButton();
             return;
         }
 
@@ -920,6 +1168,9 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         libraryBrowser.append(nextPane);
+        ensureViewportLoadingIndicatorMounted();
+        ensureFolderEnumerationTooltipMounted();
+        syncHoveredBrowserButton();
 
         requestAnimationFrame(() => {
             nextPane.classList.remove('from-right', 'from-left');
@@ -934,10 +1185,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     };
 
     const renderFolder = (direction: RenderDirection): void => {
+        ensureViewportLoadingIndicatorMounted();
         setLibraryPathLabel();
 
         if (!libraryRootName) {
             libraryBrowser.innerHTML = '';
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
@@ -947,18 +1200,21 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             loadingPane.className = 'library-list-pane library-search-pane current';
             loadingPane.innerHTML = '<li class="empty">Searching...</li>';
             libraryBrowser.append(loadingPane);
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
         const source = activeSource();
         if (!source) {
             libraryBrowser.innerHTML = '';
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
         if (source.kind === 'search') {
             const nextPane = createSearchPane();
             mountPane(nextPane, 'none');
+            setViewportLoadingIndicatorVisible(false);
             return;
         }
 
@@ -1075,6 +1331,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         libraryIndexTruncated = false;
         clearLibrarySearch();
         libraryBrowser.innerHTML = '';
+        setViewportLoadingIndicatorVisible(false);
+        hideFolderEnumerationTooltip();
     };
 
     sidebarToggle.addEventListener('click', () => {
@@ -1125,7 +1383,17 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         const nextFolder = button.dataset.folderPath;
         if (nextFolder !== undefined) {
-            navigateToFolder(nextFolder);
+            void options.isFolderImmediateDescendantsEnumerated(nextFolder).then((isEnumerated) => {
+                if (!isEnumerated) {
+                    showFolderEnumerationTooltip(button);
+                    return;
+                }
+
+                hideFolderEnumerationTooltip();
+                navigateToFolder(nextFolder);
+            }).catch((error) => {
+                console.error(error);
+            });
             return;
         }
 
@@ -1134,6 +1402,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             const index = options.resolveTrackIndex(trackPath);
             if (index >= 0) {
                 options.onTrackChosen(index);
+            } else if (options.onTrackPathChosen) {
+                options.onTrackPathChosen(trackPath);
             }
             return;
         }
@@ -1154,6 +1424,35 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 options.onImageFileChosen(index);
             }
         }
+    });
+
+    libraryBrowser.addEventListener('mousemove', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const button = target.closest('button');
+        if (!(button instanceof HTMLButtonElement)) {
+            hoveredBrowserEntryKey = null;
+            setHoveredBrowserButton(null);
+            return;
+        }
+
+        const hoverKey = hoverKeyForButton(button);
+        if (!hoverKey) {
+            hoveredBrowserEntryKey = null;
+            setHoveredBrowserButton(null);
+            return;
+        }
+
+        hoveredBrowserEntryKey = hoverKey;
+        setHoveredBrowserButton(button);
+    });
+
+    libraryBrowser.addEventListener('mouseleave', () => {
+        hoveredBrowserEntryKey = null;
+        setHoveredBrowserButton(null);
     });
 
     libraryBrowser.addEventListener('contextmenu', (event) => {
@@ -1253,9 +1552,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         const pane = currentPane();
         if (pane) {
             const state = paneStateByElement.get(pane);
-            if (state) {
-                state.loadedPages.clear();
-                state.totalEntries = null;
+            if (state && state.source.kind === 'folder' && state.source.folderPath === currentFolderPath) {
+                // Keep current rows visible while refreshing to avoid loading-overlay flicker.
+                state.errorMessage = null;
+                schedulePaneUpdate(pane);
+                void requestPagesForPane(pane, true);
+                return;
             }
         }
         renderFolder('none');

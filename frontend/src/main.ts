@@ -55,9 +55,11 @@ import {
     AudioSetVolume,
     AudioStop,
     GetAppVersion,
+    GetLibraryFolderCoverPath,
     GetLibraryFolderPage,
     GetLibraryFolderTrackPaths,
     GetLibraryIndexedFilePage,
+    IsLibraryFolderImmediateDescendantsEnumerated,
     GetSettings,
     InitializeAudioBackend,
     LoadPlaylistFile,
@@ -472,7 +474,11 @@ let imageModalController: ImageModalController;
 let libraryController: LibraryController;
 let libraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
 let activeLibraryLoadScanResolvedAtMs: number | null = null;
+let fullLibraryScanLoadActive = false;
+let suppressAutoSelectAfterFullLibraryScan = false;
 const libraryIndexedFilePageSize = 1000;
+const libraryIncrementalRefreshDebounceMs = 180;
+let pendingLibraryIncrementalRefreshHandle: number | null = null;
 
 const beginLibraryLoadTracking = (): void => {
     activeLibraryLoadScanResolvedAtMs = null;
@@ -500,6 +506,19 @@ const finishLibraryLoadTracking = (): void => {
     }
 
     localStorage.setItem(LIBRARY_CLIENT_FINALIZE_MS_KEY, String(libraryClientFinalizeEstimateMs));
+};
+
+const scheduleLibraryIncrementalFolderRefresh = (): void => {
+    if (pendingLibraryIncrementalRefreshHandle !== null) {
+        return;
+    }
+
+    pendingLibraryIncrementalRefreshHandle = window.setTimeout(() => {
+        pendingLibraryIncrementalRefreshHandle = null;
+        const currentFolderPath = libraryController.getCurrentFolderPath();
+        logRescan('Refreshing current folder: %s', currentFolderPath || '(root)');
+        libraryController.refreshCurrentFolder();
+    }, libraryIncrementalRefreshDebounceMs);
 };
 
 const canScrobble = (): boolean => currentSettings.listenBrainzUserToken.trim() !== '';
@@ -542,6 +561,66 @@ const trackIndexForPath = (path: string): number => {
     }
 
     return foundIndex;
+};
+
+const createPlaceholderTrackForPath = (trackPath: string): Track => {
+    const normalizedPath = trackPath.trim();
+    const normalizedPathForSplit = normalizedPath.replace(/\\/g, '/');
+    const segments = normalizedPathForSplit.split('/').filter((segment) => segment !== '');
+    const fileName = segments[segments.length - 1] || normalizedPath;
+
+    const normalizedRootPath = currentSettings.libraryPath.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    const normalizedLowerPath = normalizedPathForSplit.toLowerCase();
+    const normalizedLowerRootPath = normalizedRootPath.toLowerCase();
+
+    let relativePath = fileName;
+    if (normalizedRootPath && normalizedLowerPath.startsWith(`${normalizedLowerRootPath}/`)) {
+        relativePath = normalizedPathForSplit.slice(normalizedRootPath.length + 1);
+    }
+
+    const folderPath = relativePath.includes('/')
+        ? relativePath.slice(0, relativePath.lastIndexOf('/'))
+        : '';
+
+    return {
+        title: fileName,
+        name: fileName,
+        path: normalizedPath,
+        relativePath,
+        folderPath,
+        displayTitle: fileName,
+        displayAlbum: 'Unknown Album',
+        displayArtist: 'Unknown Artist',
+        displayTrackNumber: '',
+        displayTrackTotal: '',
+        displayTechnical: '',
+        displayLyrics: '',
+        tagsResolved: false,
+        mbMetadataResolved: false,
+        technicalDetails: {},
+        allFileTags: {},
+        mbIds: {},
+        artistMbids: [],
+        mbArtistCredits: [],
+    };
+};
+
+const ensureTrackIndexForPath = (path: string): number => {
+    const existingIndex = trackIndexForPath(path);
+    if (existingIndex >= 0) {
+        return existingIndex;
+    }
+
+    const normalizedPath = path.trim();
+    if (!normalizedPath) {
+        return -1;
+    }
+
+    const placeholderTrack = createPlaceholderTrackForPath(normalizedPath);
+    tracks.push(placeholderTrack);
+    const createdIndex = tracks.length - 1;
+    trackIndexByPath.set(normalizedPath.toLowerCase(), createdIndex);
+    return createdIndex;
 };
 
 const textFileIndexForPath = (path: string): number => {
@@ -1313,6 +1392,8 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
         return;
     }
 
+    fullLibraryScanLoadActive = true;
+    suppressAutoSelectAfterFullLibraryScan = false;
     beginLibraryLoadTracking();
     libraryController.setLibraryLoading(true);
     libraryController.setLibraryLoadingEtaSeconds(null);
@@ -1328,6 +1409,8 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
     } finally {
         finishLibraryLoadTracking();
         libraryController.setLibraryLoading(false);
+        fullLibraryScanLoadActive = false;
+        suppressAutoSelectAfterFullLibraryScan = false;
     }
 };
 
@@ -1349,12 +1432,18 @@ const handleLibraryScanUpdatedEvent = (scanResult: LibraryScanResult): void => {
         return;
     }
 
-    // For incremental watcher updates, just re-fetch the current folder rather than
-    // doing a full reload of all 150K+ tracks. The backend index is already updated;
-    // refreshCurrentFolder clears the page cache so GetLibraryFolderPage re-fetches fresh results.
-    const currentFolderPath = libraryController.getCurrentFolderPath();
-    logRescan('Refreshing current folder: %s', currentFolderPath || '(root)');
-    libraryController.refreshCurrentFolder();
+    const previousRootName = libraryController.getLibraryRootName().trim();
+    const nextRootName = (scanResult.rootName || 'Selected folder').trim();
+    if (!previousRootName || previousRootName !== nextRootName) {
+        libraryController.setCurrentFolderPath('');
+    }
+
+    libraryController.setLibraryRootName(nextRootName || 'Selected folder');
+    libraryController.setLibraryIndexTruncated(!!scanResult.truncated);
+
+    // For incremental updates, refresh the visible folder with a short debounce to
+    // avoid rapid re-renders that interfere with pointer interactions.
+    scheduleLibraryIncrementalFolderRefresh();
     logRescan('handleLibraryScanUpdatedEvent END: took %.2fms', performance.now() - startTime);
 };
 
@@ -1401,7 +1490,15 @@ const resolveCoverForTrack = async (track: Track): Promise<string | undefined> =
         return cached;
     }
 
-    const coverPath = coverPathByFolder.get(folderKey);
+    let coverPath = coverPathByFolder.get(folderKey);
+    if (!coverPath) {
+        const backendCoverPath = await GetLibraryFolderCoverPath(track.folderPath || '') as string;
+        if (backendCoverPath) {
+            coverPathByFolder.set(folderKey, backendCoverPath);
+            coverPath = backendCoverPath;
+        }
+    }
+
     if (!coverPath) {
         return undefined;
     }
@@ -1702,15 +1799,36 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     closeTechnicalInfoModal();
     logRescan('  - closed modals: %.2fms', performance.now() - stepTime);
 
-    try {
-        stepTime = performance.now();
-        const nextState = await AudioStop() as AudioPlaybackState;
-        applyPlaybackState(nextState);
-        logRescan('  - audio stop: %.2fms', performance.now() - stepTime);
-    } catch (error) {
-        handleAudioError(error);
+    const playbackStateBeforeScanSwap = playbackStateService.getPlaybackState();
+    const preserveManualTrackPlayback = suppressAutoSelectAfterFullLibraryScan
+        && playbackStateBeforeScanSwap.loaded
+        && playbackStateBeforeScanSwap.sourcePath.trim() !== '';
+
+    if (!preserveManualTrackPlayback) {
+        try {
+            stepTime = performance.now();
+            const nextState = await AudioStop() as AudioPlaybackState;
+            applyPlaybackState(nextState);
+            logRescan('  - audio stop: %.2fms', performance.now() - stepTime);
+        } catch (error) {
+            handleAudioError(error);
+        }
+    } else {
+        logRescan('  - preserving manual playback during scan swap');
     }
 
+    stepTime = performance.now();
+    const scanCollections = await loadPagedScanCollections(scanResult);
+    logRescan('  - loaded paged collections: %.2fms', performance.now() - stepTime);
+
+    const previousRootName = libraryController.getLibraryRootName().trim();
+    const nextRootName = (scanResult.rootName || 'Selected folder').trim();
+    const canPreserveExistingFolderView = previousRootName !== '' && previousRootName === nextRootName;
+    const folderPathBeforeSwap = canPreserveExistingFolderView
+        ? libraryController.getCurrentFolderPath()
+        : '';
+
+    // Keep previous library UI usable while pages are being loaded, then swap in one step.
     stepTime = performance.now();
     objectUrls = clearLibraryRuntimeData({
         objectUrls,
@@ -1728,14 +1846,6 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     });
     logRescan('  - cleared runtime data: %.2fms', performance.now() - stepTime);
 
-    tracks = [];
-    textFiles = [];
-    imageFiles = [];
-
-    stepTime = performance.now();
-    const scanCollections = await loadPagedScanCollections(scanResult);
-    logRescan('  - loaded paged collections: %.2fms', performance.now() - stepTime);
-
     stepTime = performance.now();
     tracks = scanCollections.tracks;
     textFiles = scanCollections.textFiles;
@@ -1743,6 +1853,18 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     rebuildTrackPathIndex();
     rebuildTextFilePathIndex();
     rebuildImageFilePathIndex();
+
+    if (preserveManualTrackPlayback) {
+        const normalizedSourcePath = playbackStateBeforeScanSwap.sourcePath.trim().toLowerCase();
+        currentTrackIndex = normalizedSourcePath
+            ? tracks.findIndex((candidate) => candidate.path.toLowerCase() === normalizedSourcePath)
+            : -1;
+
+        if (currentTrackIndex >= 0) {
+            refreshNowPlayingLabel();
+        }
+    }
+
     logRescan('  - updated indices: %.2fms', performance.now() - stepTime);
 
     stepTime = performance.now();
@@ -1797,19 +1919,20 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         return;
     }
 
-    if (!options?.preserveFolderView) {
+    const preferredFolderPath = options?.currentFolderPath ?? folderPathBeforeSwap;
+    if (preferredFolderPath) {
+        libraryController.navigateToFolder(preferredFolderPath);
+    } else {
         libraryController.setCurrentFolderPath('');
         libraryController.renderFolder('none');
+    }
+
+    if (!options?.preserveFolderView) {
         resetShuffleHistory();
 
-        if (options?.autoSelectStartingTrack !== false) {
+        if (options?.autoSelectStartingTrack !== false && !suppressAutoSelectAfterFullLibraryScan) {
             const startingTrackIndex = libraryController.firstTrackIndexFromRandomAlbumFolder();
             void loadTrack(startingTrackIndex);
-        }
-    } else {
-        // For incremental updates, preserve the current folder view
-        if (options.currentFolderPath) {
-            libraryController.navigateToFolder(options.currentFolderPath);
         }
     }
 
@@ -1936,6 +2059,9 @@ libraryController = createLibraryController({
     loadFolderPage: async (folderPath: string, offset: number, limit: number): Promise<LibraryFolderPage> => {
         return await GetLibraryFolderPage(folderPath, offset, limit) as LibraryFolderPage;
     },
+    isFolderImmediateDescendantsEnumerated: async (folderPath: string): Promise<boolean> => {
+        return await IsLibraryFolderImmediateDescendantsEnumerated(folderPath);
+    },
     searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => {
         return await SearchLibrary(query, offset, limit) as LibrarySearchPage;
     },
@@ -1949,7 +2075,25 @@ libraryController = createLibraryController({
             .filter((trackIndex) => trackIndex >= 0);
     },
     onTrackChosen: (index: number) => {
+        if (fullLibraryScanLoadActive) {
+            suppressAutoSelectAfterFullLibraryScan = true;
+        }
+
         void loadTrack(index).then(() => {
+            void playCurrentTrack();
+        });
+    },
+    onTrackPathChosen: (trackPath: string) => {
+        if (fullLibraryScanLoadActive) {
+            suppressAutoSelectAfterFullLibraryScan = true;
+        }
+
+        const resolvedIndex = ensureTrackIndexForPath(trackPath);
+        if (resolvedIndex < 0) {
+            return;
+        }
+
+        void loadTrack(resolvedIndex).then(() => {
             void playCurrentTrack();
         });
     },

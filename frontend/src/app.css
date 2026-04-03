@@ -394,6 +394,64 @@
     overflow: hidden;
 }
 
+.library-viewport-loading-indicator {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+
+.library-viewport-loading-indicator.is-visible {
+    opacity: 1;
+}
+
+.library-viewport-loading-indicator::after {
+    content: '';
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.28);
+    border-top-color: rgba(255, 255, 255, 0.92);
+    animation: sidebar-toggle-spin 0.75s linear infinite;
+}
+
+.library-folder-enumeration-tooltip {
+    position: absolute;
+    z-index: 4;
+    max-width: min(88%, 21rem);
+    padding: 0.42rem 0.62rem;
+    border-radius: 8px;
+    background: rgba(9, 9, 11, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 0.76rem;
+    line-height: 1.25;
+    text-align: center;
+    pointer-events: none;
+    transform: translate(-50%, -112%) scale(0.97);
+    opacity: 0;
+    transition: opacity 180ms ease, transform 180ms ease;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
+}
+
+.library-folder-enumeration-tooltip.is-visible {
+    opacity: 1;
+    transform: translate(-50%, -116%) scale(1);
+}
+
+.library-folder-enumeration-tooltip.is-below {
+    transform: translate(-50%, 8%) scale(0.97);
+}
+
+.library-folder-enumeration-tooltip.is-below.is-visible {
+    transform: translate(-50%, 12%) scale(1);
+}
+
 .library-list-pane {
     position: absolute;
     inset: 0;
@@ -474,7 +532,8 @@
     transition: background 130ms ease;
 }
 
-.library-tree-folder:hover {
+.library-tree-folder:hover,
+.library-tree-folder.is-hovered {
     background: rgba(0, 0, 0, 0.2);
 }
 
@@ -503,7 +562,8 @@
     transition: background 130ms ease, transform 100ms ease;
 }
 
-.library-entry:hover {
+.library-entry:hover,
+.library-entry.is-hovered {
     background: rgba(0, 0, 0, 0.2);
 }
 
@@ -722,7 +782,7 @@
     height: 100%;
     object-fit: cover;
     object-position: center center;
-    filter: blur(28px) brightness(0.28) saturate(0.82);
+    filter: blur(28px) brightness(0.78) saturate(0.82);
     transform: scale(1.2) translateZ(0);
     display: none;
     z-index: 0;

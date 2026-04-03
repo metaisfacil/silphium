@@ -25,22 +25,24 @@ var AppVersion = "dev"
 
 // App contains runtime state and service dependencies for the Wails backend.
 type App struct {
-	ctx            context.Context
-	libraryRoot    string
-	audio          *AudioBackend
-	settings       AppSettings
-	settingsPath   string
-	settingsLoaded bool
-	watchMu        sync.Mutex
-	libraryWatcher *fsnotify.Watcher
-	watchStop      chan struct{}
-	indexMu        sync.Mutex
-	trackByPath    map[string]LibraryIndexedFile
-	textByPath     map[string]LibraryIndexedFile
-	imageByPath    map[string]LibraryIndexedFile
-	libraryScan    LibraryScanResult
-	scanFinalizeMs float64
-	scanWatcherMs  float64
+	ctx                                    context.Context
+	libraryRoot                            string
+	audio                                  *AudioBackend
+	settings                               AppSettings
+	settingsPath                           string
+	settingsLoaded                         bool
+	watchMu                                sync.Mutex
+	libraryWatcher                         *fsnotify.Watcher
+	watchStop                              chan struct{}
+	indexMu                                sync.Mutex
+	trackByPath                            map[string]LibraryIndexedFile
+	textByPath                             map[string]LibraryIndexedFile
+	imageByPath                            map[string]LibraryIndexedFile
+	libraryScan                            LibraryScanResult
+	scanInProgress                         bool
+	scanRemainingImmediateChildrenByFolder map[string]int
+	scanFinalizeMs                         float64
+	scanWatcherMs                          float64
 }
 
 // NewApp creates a new App application struct

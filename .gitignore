@@ -2,6 +2,8 @@
 /Silphium
 /build/bin/
 /build/bin/**
+/build/appicon.png
+/build/windows/icon.ico
 *.exe
 
 # ---- Frontend (Vite/Node) ----
@@ -38,3 +40,4 @@ coverage.out
 Thumbs.db
 .idea/
 .vscode/
+

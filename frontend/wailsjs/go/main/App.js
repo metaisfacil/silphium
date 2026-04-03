@@ -34,6 +34,10 @@ export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
 }
 
+export function GetLibraryFolderCoverPath(arg1) {
+  return window['go']['main']['App']['GetLibraryFolderCoverPath'](arg1);
+}
+
 export function GetLibraryFolderPage(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetLibraryFolderPage'](arg1, arg2, arg3);
 }
@@ -52,6 +56,10 @@ export function GetSettings() {
 
 export function InitializeAudioBackend() {
   return window['go']['main']['App']['InitializeAudioBackend']();
+}
+
+export function IsLibraryFolderImmediateDescendantsEnumerated(arg1) {
+  return window['go']['main']['App']['IsLibraryFolderImmediateDescendantsEnumerated'](arg1);
 }
 
 export function LoadPlaylistFile(arg1) {
