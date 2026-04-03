@@ -1790,13 +1790,22 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     closeTechnicalInfoModal();
     logRescan('  - closed modals: %.2fms', performance.now() - stepTime);
 
-    try {
-        stepTime = performance.now();
-        const nextState = await AudioStop() as AudioPlaybackState;
-        applyPlaybackState(nextState);
-        logRescan('  - audio stop: %.2fms', performance.now() - stepTime);
-    } catch (error) {
-        handleAudioError(error);
+    const playbackStateBeforeScanSwap = playbackStateService.getPlaybackState();
+    const preserveManualTrackPlayback = suppressAutoSelectAfterFullLibraryScan
+        && playbackStateBeforeScanSwap.loaded
+        && playbackStateBeforeScanSwap.sourcePath.trim() !== '';
+
+    if (!preserveManualTrackPlayback) {
+        try {
+            stepTime = performance.now();
+            const nextState = await AudioStop() as AudioPlaybackState;
+            applyPlaybackState(nextState);
+            logRescan('  - audio stop: %.2fms', performance.now() - stepTime);
+        } catch (error) {
+            handleAudioError(error);
+        }
+    } else {
+        logRescan('  - preserving manual playback during scan swap');
     }
 
     stepTime = performance.now();
@@ -1835,6 +1844,18 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     rebuildTrackPathIndex();
     rebuildTextFilePathIndex();
     rebuildImageFilePathIndex();
+
+    if (preserveManualTrackPlayback) {
+        const normalizedSourcePath = playbackStateBeforeScanSwap.sourcePath.trim().toLowerCase();
+        currentTrackIndex = normalizedSourcePath
+            ? tracks.findIndex((candidate) => candidate.path.toLowerCase() === normalizedSourcePath)
+            : -1;
+
+        if (currentTrackIndex >= 0) {
+            refreshNowPlayingLabel();
+        }
+    }
+
     logRescan('  - updated indices: %.2fms', performance.now() - stepTime);
 
     stepTime = performance.now();
