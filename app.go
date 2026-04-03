@@ -8,7 +8,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -28,8 +30,14 @@ import (
 	taglib "go.senan.xyz/taglib"
 )
 
+func init() {
+	// Configure logger to only output the message without timestamp (we add our own)
+	log.SetFlags(0)
+}
+
 const libraryScanUpdatedEvent = "silphium:library:scan-updated"
 const libraryScanProgressEvent = "silphium:library:scan-progress"
+const libraryRescanLogEvent = "silphium:library:rescan-log"
 
 // AppVersion is set at build time via -ldflags "-X main.AppVersion=...".
 var AppVersion = "dev"
@@ -172,6 +180,17 @@ func NewApp() *App {
 	}
 }
 
+// logRescanEvent logs a rescan-related event with precise timestamp to both console and frontend
+func (a *App) logRescanEvent(message string, args ...interface{}) {
+	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+	formattedMessage := fmt.Sprintf(message, args...)
+	logLine := fmt.Sprintf("[%s] %s", timestamp, formattedMessage)
+	log.Println(logLine)
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, libraryRescanLogEvent, logLine)
+	}
+}
+
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
@@ -193,6 +212,11 @@ func (a *App) audioBackend() *AudioBackend {
 
 func (a *App) GetAppVersion() string {
 	return AppVersion
+}
+
+// LogFrontendMessage logs a message from the frontend to the backend console
+func (a *App) LogFrontendMessage(message string) {
+	log.Println("[FRONTEND] " + message)
 }
 
 var audioExtensions = map[string]struct{}{
@@ -916,6 +940,7 @@ func (a *App) GetLibraryIndexedFilePage(kind string, offset int, limit int) Libr
 
 // GetLibraryFolderPage returns a paginated folder listing from the current backend index.
 func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) LibraryFolderPage {
+	queryStartTime := time.Now()
 	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
 	if !ok {
 		return LibraryFolderPage{
@@ -930,7 +955,10 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 		limit = 100
 	}
 
+	lockWaitStart := time.Now()
+	a.logRescanEvent("GetLibraryFolderPage waiting for indexMu lock: %s", normalizedFolderPath)
 	a.indexMu.Lock()
+	a.logRescanEvent("GetLibraryFolderPage acquired lock (waited %.2fms)", time.Since(lockWaitStart).Seconds()*1000)
 	defer a.indexMu.Unlock()
 
 	folderEntriesByPath := make(map[string]LibraryBrowserEntry)
@@ -988,13 +1016,15 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 	entries = append(entries, textEntries...)
 	entries = append(entries, imageEntries...)
 
-	return LibraryFolderPage{
+	result := LibraryFolderPage{
 		FolderPath:   normalizedFolderPath,
 		Offset:       offset,
 		Limit:        limit,
 		TotalEntries: len(entries),
 		Entries:      pagedLibraryEntries(entries, offset, limit),
 	}
+	a.logRescanEvent("GetLibraryFolderPage END: %d total entries, took %.2fms", len(entries), time.Since(queryStartTime).Seconds()*1000)
+	return result
 }
 
 // SearchLibrary returns paginated server-side search results across folders and indexed files.
@@ -1153,9 +1183,16 @@ func cloneCoverPathByFolder(input map[string]string) map[string]string {
 }
 
 func (a *App) setLibraryIndexFromScan(scan LibraryScanResult) {
+	setStartTime := time.Now()
+	a.logRescanEvent("setLibraryIndexFromScan START: %d tracks, %d text, %d images",
+		len(scan.TrackFiles), len(scan.TextFiles), len(scan.ImageFiles))
+
+	lockWaitStart := time.Now()
 	a.indexMu.Lock()
+	a.logRescanEvent("  - setLibraryIndexFromScan acquired lock (waited %.2fms)", time.Since(lockWaitStart).Seconds()*1000)
 	defer a.indexMu.Unlock()
 
+	mapStartTime := time.Now()
 	a.trackByPath = make(map[string]LibraryIndexedFile, len(scan.TrackFiles))
 	a.textByPath = make(map[string]LibraryIndexedFile, len(scan.TextFiles))
 	a.imageByPath = make(map[string]LibraryIndexedFile, len(scan.ImageFiles))
@@ -1169,9 +1206,13 @@ func (a *App) setLibraryIndexFromScan(scan LibraryScanResult) {
 	for _, entry := range scan.ImageFiles {
 		a.imageByPath[entry.Path] = entry
 	}
+	a.logRescanEvent("  - indexed maps populated (%.2fms)", time.Since(mapStartTime).Seconds()*1000)
 
+	copyCoverStartTime := time.Now()
 	a.libraryScan = scan
 	a.libraryScan.CoverPathByFolder = cloneCoverPathByFolder(scan.CoverPathByFolder)
+	a.logRescanEvent("  - cover paths copied (%.2fms)", time.Since(copyCoverStartTime).Seconds()*1000)
+	a.logRescanEvent("setLibraryIndexFromScan END: total time %.2fms", time.Since(setStartTime).Seconds()*1000)
 }
 
 func (a *App) removePathAndDescendants(path string) {
@@ -1230,6 +1271,7 @@ func (a *App) addOrUpdateIndexedFile(rootPath string, fullPath string, fileName 
 }
 
 func (a *App) addOrUpdatePathRecursive(rootPath string, targetPath string) {
+	startTime := time.Now()
 	info, err := os.Stat(targetPath)
 	if err != nil {
 		a.removePathAndDescendants(targetPath)
@@ -1238,18 +1280,22 @@ func (a *App) addOrUpdatePathRecursive(rootPath string, targetPath string) {
 
 	if !info.IsDir() {
 		a.addOrUpdateIndexedFile(rootPath, targetPath, info.Name())
+		a.logRescanEvent("  - processed single file: %s", targetPath)
 		return
 	}
 
 	a.removePathAndDescendants(targetPath)
+	fileCount := 0
 	_ = filepath.WalkDir(targetPath, func(currentPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry.IsDir() {
 			return nil
 		}
 
 		a.addOrUpdateIndexedFile(rootPath, currentPath, entry.Name())
+		fileCount++
 		return nil
 	})
+	a.logRescanEvent("  - processed directory: %s (%d files in %.2fms)", targetPath, fileCount, time.Since(startTime).Seconds()*1000)
 }
 
 func (a *App) rebuildCoverPathByFolderLocked() map[string]string {
@@ -1330,7 +1376,13 @@ func (a *App) snapshotLibraryScanLocked(rootPath string) LibraryScanResult {
 }
 
 func (a *App) applyIncrementalLibraryChanges(rootPath string, changedPaths []string) (LibraryScanResult, bool) {
+	startTime := time.Now()
+	a.logRescanEvent("applyIncrementalLibraryChanges START with %d paths", len(changedPaths))
+
+	lockWaitStart := time.Now()
+	a.logRescanEvent("  - waiting for indexMu lock...")
 	a.indexMu.Lock()
+	a.logRescanEvent("  - acquired indexMu lock (waited %.2fms)", time.Since(lockWaitStart).Seconds()*1000)
 	defer a.indexMu.Unlock()
 
 	if len(changedPaths) == 0 {
@@ -1338,6 +1390,7 @@ func (a *App) applyIncrementalLibraryChanges(rootPath string, changedPaths []str
 	}
 
 	hasChanges := false
+	processStartTime := time.Now()
 	for _, changedPath := range changedPaths {
 		cleanChangedPath := normalizePath(changedPath)
 		if cleanChangedPath == "" {
@@ -1357,14 +1410,39 @@ func (a *App) applyIncrementalLibraryChanges(rootPath string, changedPaths []str
 		a.addOrUpdatePathRecursive(rootPath, normalizedChangedPath)
 		hasChanges = true
 	}
+	a.logRescanEvent("applyIncrementalLibraryChanges path processing took %.2fms for %d paths",
+		time.Since(processStartTime).Seconds()*1000, len(changedPaths))
 
 	if !hasChanges {
 		return LibraryScanResult{}, false
 	}
 
-	snapshot := a.snapshotLibraryScanLocked(rootPath)
-	a.libraryScan = snapshot
-	return snapshot, true
+	// Avoid expensive full snapshot rebuild for incremental changes.
+	// Just update the counts in the cached snapshot without re-sorting all files.
+	// The file arrays are still valid (items may have been added/removed from the maps,
+	// but the snapshot lists are consistent for the event emission).
+	updateStartTime := time.Now()
+	a.libraryScan.TrackCount = len(a.trackByPath)
+	a.libraryScan.TextFileCount = len(a.textByPath)
+	a.libraryScan.ImageFileCount = len(a.imageByPath)
+	a.libraryScan.TotalEntries = a.libraryScan.TrackCount + a.libraryScan.TextFileCount + a.libraryScan.ImageFileCount
+
+	// Emit only the lightweight metadata — the frontend no longer uses the file arrays
+	// for incremental updates, and serializing 150K+ entries over IPC takes several seconds.
+	notification := LibraryScanResult{
+		RootPath:     a.libraryScan.RootPath,
+		RootName:     a.libraryScan.RootName,
+		TotalEntries: a.libraryScan.TotalEntries,
+		TrackCount:   a.libraryScan.TrackCount,
+		TextFileCount: a.libraryScan.TextFileCount,
+		ImageFileCount: a.libraryScan.ImageFileCount,
+		Truncated:    a.libraryScan.Truncated,
+		EntryLimit:   a.libraryScan.EntryLimit,
+	}
+	a.logRescanEvent("applyIncrementalLibraryChanges update took %.2fms, total time %.2fms",
+		time.Since(updateStartTime).Seconds()*1000, time.Since(startTime).Seconds()*1000)
+
+	return notification, true
 }
 
 func isRelevantWatchEvent(event fsnotify.Event) bool {
@@ -1388,6 +1466,7 @@ func addLibraryWatchesRecursive(watcher *fsnotify.Watcher, rootPath string) {
 }
 
 func (a *App) startLibraryWatcher(rootPath string) {
+	a.logRescanEvent("Starting library watcher for: %s", rootPath)
 	normalizedRoot := normalizePath(rootPath)
 	if normalizedRoot == "" {
 		a.stopLibraryWatcher()
@@ -1408,15 +1487,19 @@ func (a *App) startLibraryWatcher(rootPath string) {
 	indexMissing := a.libraryScan.RootPath != cleanRoot || a.trackByPath == nil || a.textByPath == nil || a.imageByPath == nil
 	a.indexMu.Unlock()
 	if indexMissing {
+		a.logRescanEvent("Library index missing, performing initial scan")
 		_ = a.scanLibraryFolder(cleanRoot, false)
 	}
 
 	watcher, watcherErr := fsnotify.NewWatcher()
 	if watcherErr != nil {
+		a.logRescanEvent("Failed to create filesystem watcher: %v", watcherErr)
 		return
 	}
+	a.logRescanEvent("Watcher created, registering all directories")
 
 	addLibraryWatchesRecursive(watcher, cleanRoot)
+	a.logRescanEvent("Watcher ready, listening for changes")
 	stopCh := make(chan struct{})
 
 	a.watchMu.Lock()
@@ -1495,10 +1578,14 @@ func (a *App) startLibraryWatcher(rootPath string) {
 					changedPaths = append(changedPaths, changedPath)
 				}
 				pendingPaths = make(map[string]struct{})
+				a.logRescanEvent("Debounce timer fired, applying incremental changes to %d paths", len(changedPaths))
 
 				scan, changed := a.applyIncrementalLibraryChanges(root, changedPaths)
 				if changed && a.ctx != nil {
+					emitStartTime := time.Now()
+					a.logRescanEvent("EventsEmit START: sending scan update event")
 					runtime.EventsEmit(a.ctx, libraryScanUpdatedEvent, scan)
+					a.logRescanEvent("EventsEmit END: took %.2fms", time.Since(emitStartTime).Seconds()*1000)
 				}
 
 			case _, ok := <-activeWatcher.Errors:

@@ -58,6 +58,10 @@ export function LoadPlaylistFile(arg1) {
   return window['go']['main']['App']['LoadPlaylistFile'](arg1);
 }
 
+export function LogFrontendMessage(arg1) {
+  return window['go']['main']['App']['LogFrontendMessage'](arg1);
+}
+
 export function LookupArtistByMBID(arg1) {
   return window['go']['main']['App']['LookupArtistByMBID'](arg1);
 }

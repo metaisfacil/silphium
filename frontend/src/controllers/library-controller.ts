@@ -1249,6 +1249,18 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         navigateToFolder(nextPath);
     });
 
+    const refreshCurrentFolder = (): void => {
+        const pane = currentPane();
+        if (pane) {
+            const state = paneStateByElement.get(pane);
+            if (state) {
+                state.loadedPages.clear();
+                state.totalEntries = null;
+            }
+        }
+        renderFolder('none');
+    };
+
     return {
         clearLibrarySearch,
         firstTrackIndexFromRandomAlbumFolder,
@@ -1258,6 +1270,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         isLibrarySearchActive,
         isSidebarOpen: () => sidebarOpen,
         navigateToFolder,
+        refreshCurrentFolder,
         refreshSidebarToggleState,
         rebuildLibraryTree,
         renderFolder,

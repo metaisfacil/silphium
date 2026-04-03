@@ -1319,7 +1319,11 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
     }
 };
 
-const handleLibraryScanUpdatedEvent = async (scanResult: LibraryScanResult): Promise<void> => {
+const handleLibraryScanUpdatedEvent = (scanResult: LibraryScanResult): void => {
+    const startTime = performance.now();
+    logRescan('handleLibraryScanUpdatedEvent START: %d tracks, %d text, %d images',
+        scanResult.trackCount, scanResult.textFileCount, scanResult.imageFileCount);
+
     const expectedRootPath = currentSettings.libraryPath.trim();
     if (!expectedRootPath) {
         return;
@@ -1333,7 +1337,13 @@ const handleLibraryScanUpdatedEvent = async (scanResult: LibraryScanResult): Pro
         return;
     }
 
-    await loadLibraryScan(scanResult, { autoSelectStartingTrack: false });
+    // For incremental watcher updates, just re-fetch the current folder rather than
+    // doing a full reload of all 150K+ tracks. The backend index is already updated;
+    // refreshCurrentFolder clears the page cache so GetLibraryFolderPage re-fetches fresh results.
+    const currentFolderPath = libraryController.getCurrentFolderPath();
+    logRescan('Refreshing current folder: %s', currentFolderPath || '(root)');
+    libraryController.refreshCurrentFolder();
+    logRescan('handleLibraryScanUpdatedEvent END: took %.2fms', performance.now() - startTime);
 };
 
 const initializeSettings = async (): Promise<void> => {
@@ -1665,22 +1675,31 @@ const loadPagedScanCollections = async (scanResult: LibraryScanResult) => {
     return scanCollections;
 };
 
-const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSelectStartingTrack?: boolean }): Promise<void> => {
+const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSelectStartingTrack?: boolean; preserveFolderView?: boolean; currentFolderPath?: string }): Promise<void> => {
+    const startTime = performance.now();
+    logRescan('loadLibraryScan START: preserveFolderView=%s, %d tracks, %d text, %d images',
+        options?.preserveFolderView || false, scanResult.trackCount, scanResult.textFileCount, scanResult.imageFileCount);
+
     if (!scanResult.rootPath) {
         return;
     }
 
+    let stepTime = performance.now();
     closeSidebarQueueMenu();
     closeMusicBrainzEntityModal();
     closeTechnicalInfoModal();
+    logRescan('  - closed modals: %.2fms', performance.now() - stepTime);
 
     try {
+        stepTime = performance.now();
         const nextState = await AudioStop() as AudioPlaybackState;
         applyPlaybackState(nextState);
+        logRescan('  - audio stop: %.2fms', performance.now() - stepTime);
     } catch (error) {
         handleAudioError(error);
     }
 
+    stepTime = performance.now();
     objectUrls = clearLibraryRuntimeData({
         objectUrls,
         coverPathByFolder,
@@ -1695,23 +1714,32 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
             playlistController.resetState();
         },
     });
+    logRescan('  - cleared runtime data: %.2fms', performance.now() - stepTime);
 
     tracks = [];
     textFiles = [];
     imageFiles = [];
 
+    stepTime = performance.now();
     const scanCollections = await loadPagedScanCollections(scanResult);
+    logRescan('  - loaded paged collections: %.2fms', performance.now() - stepTime);
+
+    stepTime = performance.now();
     tracks = scanCollections.tracks;
     textFiles = scanCollections.textFiles;
     imageFiles = scanCollections.imageFiles;
     rebuildTrackPathIndex();
     rebuildTextFilePathIndex();
     rebuildImageFilePathIndex();
+    logRescan('  - updated indices: %.2fms', performance.now() - stepTime);
 
+    stepTime = performance.now();
     for (const [folder, coverPath] of scanCollections.coverPathEntries) {
         coverPathByFolder.set(folder, coverPath);
     }
+    logRescan('  - set cover paths: %.2fms', performance.now() - stepTime);
 
+    stepTime = performance.now();
     await libraryController.rebuildLibraryTree(
         scanResult.rootName || 'Selected folder',
         scanResult.truncated,
@@ -1719,8 +1747,10 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         textFiles,
         imageFiles,
     );
+    logRescan('  - rebuilt library tree: %.2fms', performance.now() - stepTime);
 
     if (tracks.length === 0) {
+        logRescan('loadLibraryScan: no tracks found');
         currentTrackIndex = -1;
         libraryController.setCurrentFolderPath('');
         trackTitle.textContent = 'No audio tracks found';
@@ -1750,20 +1780,29 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         resetArtistInfoPanel();
         libraryController.renderFolder('none');
         playlistController.refreshOpenModal();
+        logRescan('loadLibraryScan END: total time %.2fms (no tracks)', performance.now() - startTime);
         return;
     }
 
-    libraryController.setCurrentFolderPath('');
-    libraryController.renderFolder('none');
-    resetShuffleHistory();
+    if (!options?.preserveFolderView) {
+        libraryController.setCurrentFolderPath('');
+        libraryController.renderFolder('none');
+        resetShuffleHistory();
 
-    if (options?.autoSelectStartingTrack !== false) {
-        const startingTrackIndex = libraryController.firstTrackIndexFromRandomAlbumFolder();
-        void loadTrack(startingTrackIndex);
+        if (options?.autoSelectStartingTrack !== false) {
+            const startingTrackIndex = libraryController.firstTrackIndexFromRandomAlbumFolder();
+            void loadTrack(startingTrackIndex);
+        }
+    } else {
+        // For incremental updates, preserve the current folder view
+        if (options.currentFolderPath) {
+            libraryController.navigateToFolder(options.currentFolderPath);
+        }
     }
 
     updatePlayButton();
     playlistController.refreshOpenModal();
+    logRescan('loadLibraryScan END: total time %.2fms', performance.now() - startTime);
 };
 
 settingsController = createSettingsController({
@@ -2306,10 +2345,19 @@ const cardResizeObserver = new ResizeObserver(() => {
 });
 cardResizeObserver.observe(playerCard);
 
+// Logging utilities with precise timestamps
+const logRescan = (message: string, ...args: unknown[]): void => {
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+    console.log(`[${timestamp}] ${message}`, ...args);
+};
+
+// Listen for backend rescan logs
+EventsOn('silphium:library:rescan-log', (logLine: string) => {
+    console.log(logLine);
+});
+
 EventsOn('silphium:library:scan-updated', (scanResult: LibraryScanResult) => {
-    void handleLibraryScanUpdatedEvent(scanResult).catch((error) => {
-        console.error(error);
-    });
+    handleLibraryScanUpdatedEvent(scanResult);
 });
 
 EventsOn('silphium:library:scan-progress', (scanProgress: LibraryScanProgress) => {

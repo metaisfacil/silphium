@@ -30,6 +30,8 @@ export function InitializeAudioBackend():Promise<main.AudioPlaybackState>;
 
 export function LoadPlaylistFile(arg1:string):Promise<main.PlaylistLoadResult>;
 
+export function LogFrontendMessage(arg1:string):Promise<void>;
+
 export function LookupArtistByMBID(arg1:string):Promise<main.MusicBrainzArtistInfo>;
 
 export function LookupMusicBrainzEntity(arg1:string,arg2:string):Promise<main.MusicBrainzEntityInfo>;
