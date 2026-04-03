@@ -911,7 +911,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         if (state.loadedPages.size === 0) {
-            pane.innerHTML = `<li class="empty">${loadingMessage}</li>`;
+            pane.innerHTML = '';
             setViewportLoadingIndicatorVisible(true);
             return;
         }
@@ -929,12 +929,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 fragment.append(createSpacerRow(loadingStartIndex * state.rowHeightEstimate));
             }
 
-            const loadingRow = document.createElement('li');
-            loadingRow.className = 'empty';
-            loadingRow.textContent = loadingMessage;
-            fragment.append(loadingRow);
-
-            const remainingRows = Math.max(0, totalEntries - loadingStartIndex - 1);
+            const remainingRows = Math.max(0, totalEntries - loadingStartIndex);
             if (remainingRows > 0) {
                 fragment.append(createSpacerRow(remainingRows * state.rowHeightEstimate));
             }
