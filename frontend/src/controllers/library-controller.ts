@@ -863,10 +863,6 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         return source.kind === 'search' ? 'No files match your search' : 'Folder is empty';
     };
 
-    const loadingMessageForSource = (source: PaneSource): string => {
-        return source.kind === 'search' ? 'Searching...' : 'Loading...';
-    };
-
     const desiredPageRange = (pane: HTMLUListElement, state: PaneState): { startPage: number; endPage: number } => {
         if (state.totalEntries === null || state.totalEntries <= 0) {
             return { startPage: 0, endPage: 0 };
@@ -897,7 +893,6 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         const previousScrollTop = pane.scrollTop;
         const emptyMessage = emptyMessageForSource(state.source);
-        const loadingMessage = loadingMessageForSource(state.source);
 
         if (state.errorMessage && state.loadedPages.size === 0) {
             pane.innerHTML = `<li class="empty">${state.errorMessage}</li>`;

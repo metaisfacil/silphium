@@ -55,6 +55,7 @@ import {
     AudioSetVolume,
     AudioStop,
     GetAppVersion,
+    GetLibraryFolderCoverPath,
     GetLibraryFolderPage,
     GetLibraryFolderTrackPaths,
     GetLibraryIndexedFilePage,
@@ -1489,7 +1490,15 @@ const resolveCoverForTrack = async (track: Track): Promise<string | undefined> =
         return cached;
     }
 
-    const coverPath = coverPathByFolder.get(folderKey);
+    let coverPath = coverPathByFolder.get(folderKey);
+    if (!coverPath) {
+        const backendCoverPath = await GetLibraryFolderCoverPath(track.folderPath || '') as string;
+        if (backendCoverPath) {
+            coverPathByFolder.set(folderKey, backendCoverPath);
+            coverPath = backendCoverPath;
+        }
+    }
+
     if (!coverPath) {
         return undefined;
     }

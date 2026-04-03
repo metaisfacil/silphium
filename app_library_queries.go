@@ -253,6 +253,29 @@ func (a *App) IsLibraryFolderImmediateDescendantsEnumerated(folderPath string) b
 	return remainingChildren <= 0
 }
 
+// GetLibraryFolderCoverPath returns the current best cover image path for a folder.
+func (a *App) GetLibraryFolderCoverPath(folderPath string) string {
+	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
+	if !ok {
+		return ""
+	}
+
+	a.indexMu.Lock()
+	defer a.indexMu.Unlock()
+
+	if a.libraryScan.CoverPathByFolder == nil {
+		return ""
+	}
+
+	folderKey := strings.ToLower(normalizedFolderPath)
+	coverPath, exists := a.libraryScan.CoverPathByFolder[folderKey]
+	if !exists {
+		return ""
+	}
+
+	return coverPath
+}
+
 // GetLibraryFolderTrackPaths resolves all audio tracks under a folder subtree for queue actions.
 func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)

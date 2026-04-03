@@ -18,6 +18,8 @@ export function AudioStop():Promise<main.AudioPlaybackState>;
 
 export function GetAppVersion():Promise<string>;
 
+export function GetLibraryFolderCoverPath(arg1:string):Promise<string>;
+
 export function GetLibraryFolderPage(arg1:string,arg2:number,arg3:number):Promise<main.LibraryFolderPage>;
 
 export function GetLibraryFolderTrackPaths(arg1:string):Promise<Array<string>>;
