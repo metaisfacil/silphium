@@ -1737,6 +1737,13 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     const scanCollections = await loadPagedScanCollections(scanResult);
     logRescan('  - loaded paged collections: %.2fms', performance.now() - stepTime);
 
+    const previousRootName = libraryController.getLibraryRootName().trim();
+    const nextRootName = (scanResult.rootName || 'Selected folder').trim();
+    const canPreserveExistingFolderView = previousRootName !== '' && previousRootName === nextRootName;
+    const folderPathBeforeSwap = canPreserveExistingFolderView
+        ? libraryController.getCurrentFolderPath()
+        : '';
+
     // Keep previous library UI usable while pages are being loaded, then swap in one step.
     stepTime = performance.now();
     objectUrls = clearLibraryRuntimeData({
@@ -1816,19 +1823,20 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         return;
     }
 
-    if (!options?.preserveFolderView) {
+    const preferredFolderPath = options?.currentFolderPath ?? folderPathBeforeSwap;
+    if (preferredFolderPath) {
+        libraryController.navigateToFolder(preferredFolderPath);
+    } else {
         libraryController.setCurrentFolderPath('');
         libraryController.renderFolder('none');
+    }
+
+    if (!options?.preserveFolderView) {
         resetShuffleHistory();
 
         if (options?.autoSelectStartingTrack !== false) {
             const startingTrackIndex = libraryController.firstTrackIndexFromRandomAlbumFolder();
             void loadTrack(startingTrackIndex);
-        }
-    } else {
-        // For incremental updates, preserve the current folder view
-        if (options.currentFolderPath) {
-            libraryController.navigateToFolder(options.currentFolderPath);
         }
     }
 
