@@ -1349,6 +1349,15 @@ const handleLibraryScanUpdatedEvent = (scanResult: LibraryScanResult): void => {
         return;
     }
 
+    const previousRootName = libraryController.getLibraryRootName().trim();
+    const nextRootName = (scanResult.rootName || 'Selected folder').trim();
+    if (!previousRootName || previousRootName !== nextRootName) {
+        libraryController.setCurrentFolderPath('');
+    }
+
+    libraryController.setLibraryRootName(nextRootName || 'Selected folder');
+    libraryController.setLibraryIndexTruncated(!!scanResult.truncated);
+
     // For incremental watcher updates, just re-fetch the current folder rather than
     // doing a full reload of all 150K+ tracks. The backend index is already updated;
     // refreshCurrentFolder clears the page cache so GetLibraryFolderPage re-fetches fresh results.
