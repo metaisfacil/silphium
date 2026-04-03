@@ -1803,6 +1803,9 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     const preserveManualTrackPlayback = suppressAutoSelectAfterFullLibraryScan
         && playbackStateBeforeScanSwap.loaded
         && playbackStateBeforeScanSwap.sourcePath.trim() !== '';
+    const previouslyPlayingTrack = preserveManualTrackPlayback && currentTrackIndex >= 0 && currentTrackIndex < tracks.length
+        ? tracks[currentTrackIndex]
+        : null;
 
     if (!preserveManualTrackPlayback) {
         try {
@@ -1861,6 +1864,27 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
             : -1;
 
         if (currentTrackIndex >= 0) {
+            if (previouslyPlayingTrack && previouslyPlayingTrack.path.toLowerCase() === tracks[currentTrackIndex].path.toLowerCase()) {
+                tracks[currentTrackIndex] = {
+                    ...tracks[currentTrackIndex],
+                    title: previouslyPlayingTrack.title,
+                    displayTitle: previouslyPlayingTrack.displayTitle,
+                    displayAlbum: previouslyPlayingTrack.displayAlbum,
+                    displayArtist: previouslyPlayingTrack.displayArtist,
+                    displayTrackNumber: previouslyPlayingTrack.displayTrackNumber,
+                    displayTrackTotal: previouslyPlayingTrack.displayTrackTotal,
+                    displayTechnical: previouslyPlayingTrack.displayTechnical,
+                    displayLyrics: previouslyPlayingTrack.displayLyrics,
+                    tagsResolved: previouslyPlayingTrack.tagsResolved,
+                    mbMetadataResolved: previouslyPlayingTrack.mbMetadataResolved,
+                    technicalDetails: { ...previouslyPlayingTrack.technicalDetails },
+                    allFileTags: { ...previouslyPlayingTrack.allFileTags },
+                    mbIds: { ...previouslyPlayingTrack.mbIds },
+                    artistMbids: [...previouslyPlayingTrack.artistMbids],
+                    mbArtistCredits: [...previouslyPlayingTrack.mbArtistCredits],
+                };
+            }
+
             refreshNowPlayingLabel();
         }
     }
