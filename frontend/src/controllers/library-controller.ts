@@ -805,9 +805,9 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         });
     };
 
-    const fetchPageForPane = async (pane: HTMLUListElement, pageIndex: number): Promise<void> => {
+    const fetchPageForPane = async (pane: HTMLUListElement, pageIndex: number, forceRefresh = false): Promise<void> => {
         const state = paneStateByElement.get(pane);
-        if (!state || state.loadedPages.has(pageIndex) || state.loadingPages.has(pageIndex)) {
+        if (!state || state.loadingPages.has(pageIndex) || (!forceRefresh && state.loadedPages.has(pageIndex))) {
             return;
         }
 
@@ -827,6 +827,14 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
             latestState.totalEntries = page.totalEntries;
             latestState.loadedPages.set(pageIndex, page.entries || []);
+            if (Number.isFinite(page.totalEntries) && page.totalEntries >= 0) {
+                const pageCount = Math.max(1, Math.ceil(page.totalEntries / serverPageSize));
+                for (const loadedPageIndex of Array.from(latestState.loadedPages.keys())) {
+                    if (loadedPageIndex >= pageCount) {
+                        latestState.loadedPages.delete(loadedPageIndex);
+                    }
+                }
+            }
             latestState.errorMessage = null;
         } catch (error) {
             const latestState = paneStateByElement.get(pane);
@@ -847,7 +855,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
     };
 
-    const requestPagesForPane = async (pane: HTMLUListElement): Promise<void> => {
+    const requestPagesForPane = async (pane: HTMLUListElement, forceRefresh = false): Promise<void> => {
         const state = paneStateByElement.get(pane);
         if (!state) {
             return;
@@ -856,11 +864,11 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         const pageRange = desiredPageRange(pane, state);
         const requestedPages: Promise<void>[] = [];
         for (let pageIndex = pageRange.startPage; pageIndex <= pageRange.endPage; pageIndex += 1) {
-            requestedPages.push(fetchPageForPane(pane, pageIndex));
+            requestedPages.push(fetchPageForPane(pane, pageIndex, forceRefresh));
         }
 
         if (requestedPages.length === 0) {
-            requestedPages.push(fetchPageForPane(pane, 0));
+            requestedPages.push(fetchPageForPane(pane, 0, forceRefresh));
         }
 
         await Promise.all(requestedPages);
@@ -1253,9 +1261,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         const pane = currentPane();
         if (pane) {
             const state = paneStateByElement.get(pane);
-            if (state) {
-                state.loadedPages.clear();
-                state.totalEntries = null;
+            if (state && state.source.kind === 'folder' && state.source.folderPath === currentFolderPath) {
+                // Keep current rows visible while refreshing to avoid loading-overlay flicker.
+                state.errorMessage = null;
+                schedulePaneUpdate(pane);
+                void requestPagesForPane(pane, true);
+                return;
             }
         }
         renderFolder('none');
