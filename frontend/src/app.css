@@ -426,7 +426,7 @@
     max-width: min(88%, 21rem);
     padding: 0.42rem 0.62rem;
     border-radius: 8px;
-    background: rgba(9, 9, 11, 0.9);
+    background: rgba(9, 9, 11, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.2);
     color: rgba(255, 255, 255, 0.94);
     font-size: 0.76rem;
