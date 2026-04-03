@@ -686,11 +686,12 @@
     display: grid;
     place-items: center;
     margin-top: 0.1rem;
+    margin-bottom: 0.5rem;
 }
 
 .about-logo {
     display: block;
-    width: min(220px, 75%);
+    width: min(120px, 75%);
     height: auto;
 }
 
