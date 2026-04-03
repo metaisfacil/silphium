@@ -58,6 +58,7 @@ import {
     GetLibraryFolderPage,
     GetLibraryFolderTrackPaths,
     GetLibraryIndexedFilePage,
+    IsLibraryFolderImmediateDescendantsEnumerated,
     GetSettings,
     InitializeAudioBackend,
     LoadPlaylistFile,
@@ -1956,6 +1957,9 @@ libraryController = createLibraryController({
     getCurrentTrackIndex: () => currentTrackIndex,
     loadFolderPage: async (folderPath: string, offset: number, limit: number): Promise<LibraryFolderPage> => {
         return await GetLibraryFolderPage(folderPath, offset, limit) as LibraryFolderPage;
+    },
+    isFolderImmediateDescendantsEnumerated: async (folderPath: string): Promise<boolean> => {
+        return await IsLibraryFolderImmediateDescendantsEnumerated(folderPath);
     },
     searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => {
         return await SearchLibrary(query, offset, limit) as LibrarySearchPage;

@@ -54,6 +54,10 @@ export function InitializeAudioBackend() {
   return window['go']['main']['App']['InitializeAudioBackend']();
 }
 
+export function IsLibraryFolderImmediateDescendantsEnumerated(arg1) {
+  return window['go']['main']['App']['IsLibraryFolderImmediateDescendantsEnumerated'](arg1);
+}
+
 export function LoadPlaylistFile(arg1) {
   return window['go']['main']['App']['LoadPlaylistFile'](arg1);
 }

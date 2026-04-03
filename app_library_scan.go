@@ -11,6 +11,15 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+func cloneImmediateChildCountByFolder(input map[string]int) map[string]int {
+	cloned := make(map[string]int, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+
+	return cloned
+}
+
 func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanResult {
 	cleanRoot := normalizePath(path)
 	result := LibraryScanResult{
@@ -41,6 +50,7 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	}
 
 	totalEntries := 0
+	remainingImmediateChildrenByFolder := make(map[string]int)
 	_ = filepath.WalkDir(cleanRoot, func(currentPath string, _ fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil
@@ -51,6 +61,10 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		}
 
 		totalEntries++
+		folderPath, _, ok := folderAndRelative(cleanRoot, currentPath)
+		if ok {
+			remainingImmediateChildrenByFolder[folderPath] = remainingImmediateChildrenByFolder[folderPath] + 1
+		}
 		return nil
 	})
 
@@ -68,6 +82,8 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	a.trackByPath = make(map[string]LibraryIndexedFile)
 	a.textByPath = make(map[string]LibraryIndexedFile)
 	a.imageByPath = make(map[string]LibraryIndexedFile)
+	a.scanInProgress = true
+	a.scanRemainingImmediateChildrenByFolder = cloneImmediateChildCountByFolder(remainingImmediateChildrenByFolder)
 	a.libraryScan = LibraryScanResult{
 		RootPath:          cleanRoot,
 		RootName:          result.RootName,
@@ -78,6 +94,12 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		EntryLimit:        0,
 	}
 	a.indexMu.Unlock()
+	defer func() {
+		a.indexMu.Lock()
+		a.scanInProgress = false
+		a.scanRemainingImmediateChildrenByFolder = nil
+		a.indexMu.Unlock()
+	}()
 
 	estimateFinalizationBudgetMs := func(elapsed time.Duration, entriesDone int) float64 {
 		watcherBudget := learnedWatcherMs
@@ -222,11 +244,24 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		scannedEntries++
 		emitProgress(false, "scanning")
 
+		folderPath, relativePath, ok := folderAndRelative(cleanRoot, currentPath)
+		if ok {
+			a.indexMu.Lock()
+			if remainingChildren, exists := a.scanRemainingImmediateChildrenByFolder[folderPath]; exists {
+				remainingChildren -= 1
+				if remainingChildren <= 0 {
+					delete(a.scanRemainingImmediateChildrenByFolder, folderPath)
+				} else {
+					a.scanRemainingImmediateChildrenByFolder[folderPath] = remainingChildren
+				}
+			}
+			a.indexMu.Unlock()
+		}
+
 		if entry.IsDir() {
 			return nil
 		}
 
-		folderPath, relativePath, ok := folderAndRelative(cleanRoot, currentPath)
 		if !ok {
 			return nil
 		}

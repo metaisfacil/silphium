@@ -28,6 +28,8 @@ export function GetSettings():Promise<main.AppSettings>;
 
 export function InitializeAudioBackend():Promise<main.AudioPlaybackState>;
 
+export function IsLibraryFolderImmediateDescendantsEnumerated(arg1:string):Promise<boolean>;
+
 export function LoadPlaylistFile(arg1:string):Promise<main.PlaylistLoadResult>;
 
 export function LogFrontendMessage(arg1:string):Promise<void>;

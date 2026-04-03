@@ -53,6 +53,7 @@ type LibraryControllerOptions = {
     getImageFiles: () => ImageLibraryFile[];
     getCurrentTrackIndex: () => number;
     loadFolderPage: (folderPath: string, offset: number, limit: number) => Promise<LibraryFolderPage>;
+    isFolderImmediateDescendantsEnumerated: (folderPath: string) => Promise<boolean>;
     searchLibrary: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
     resolveTrackIndex: (path: string) => number;
     resolveTextFileIndex: (path: string) => number;
@@ -1181,7 +1182,15 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         const nextFolder = button.dataset.folderPath;
         if (nextFolder !== undefined) {
-            navigateToFolder(nextFolder);
+            void options.isFolderImmediateDescendantsEnumerated(nextFolder).then((isEnumerated) => {
+                if (!isEnumerated) {
+                    return;
+                }
+
+                navigateToFolder(nextFolder);
+            }).catch((error) => {
+                console.error(error);
+            });
             return;
         }
 
