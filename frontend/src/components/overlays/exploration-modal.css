@@ -123,6 +123,8 @@
 
 .exploration-loading,
 .exploration-empty {
+    grid-row: 1 / -1;
+    align-self: stretch;
     min-height: 100%;
     display: grid;
     place-items: center;
