@@ -50,6 +50,7 @@ import { getSidebarElements, renderSidebar } from './components/sidebar';
 import {
     ScanConfiguredLibraryFolders,
     AudioListOutputDevices,
+    AudioReinitializeBackend,
     AudioGetState,
     AudioLoadTrack,
     AudioPause,
@@ -3049,6 +3050,42 @@ settingsController = createSettingsController({
             console.error(error);
             libraryController.setLibraryPathMessage('Unable to save settings.');
         }
+    },
+    applyAudioNow: async ({
+        libraryFolders: requestedLibraryFolders,
+        listenBrainzUserToken,
+        favoritePlaylists,
+        coverArtPriority,
+        audioOutputDevice,
+        audioOutputBufferMs,
+        preferMusicBrainzMetadata,
+        keyboardShortcuts,
+    }): Promise<void> => {
+        const normalizedLibraryFolders = normalizeLibraryFolders(requestedLibraryFolders);
+        const primaryLibraryFolder = normalizedLibraryFolders[0];
+        const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
+            libraryFolders: normalizedLibraryFolders,
+            libraryPath: primaryLibraryFolder?.path || '',
+            listenBrainzUserToken,
+            playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
+            releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
+            favoritePlaylists,
+            coverArtPriority,
+            audio: {
+                outputDevice: audioOutputDevice,
+                outputBufferMs: audioOutputBufferMs,
+            },
+            preferMusicBrainzMetadata,
+            keyboardShortcuts,
+        })) as AppSettings;
+
+        currentSettings = normalizeAppSettings(savedSettings);
+        setPlaybackOrderMode(currentSettings.playbackOrder);
+
+        const nextState = await AudioReinitializeBackend() as AudioPlaybackState;
+        playbackStateService.setBackendReady(true);
+        applyPlaybackState(nextState);
+        updatePlayButton();
     },
     forceReload: async (): Promise<void> => {
         await scanConfiguredLibraryFolders();

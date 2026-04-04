@@ -225,6 +225,7 @@ export type AudioSettings = {
 export type AudioOutputDevice = {
     id: string;
     name: string;
+    backend: string;
     isDefault: boolean;
 };
 

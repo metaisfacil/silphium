@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ebitengine/oto/v3"
+	"github.com/metaisfacil/oto/v3"
 )
 
 const (
@@ -36,23 +36,47 @@ type AudioPlaybackState struct {
 type AudioOutputDevice struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
+	Backend   string `json:"backend"`
 	IsDefault bool   `json:"isDefault"`
+}
+
+func backendDisplayName(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "wasapi":
+		return "WASAPI"
+	case "winmm":
+		return "WinMM"
+	case "coreaudio":
+		return "CoreAudio"
+	case "pulseaudio":
+		return "PulseAudio"
+	case "webaudio":
+		return "WebAudio"
+	case "oboe":
+		return "Oboe"
+	case "console":
+		return "Console"
+	case "auto", "":
+		return "Auto"
+	default:
+		return strings.ToUpper(strings.TrimSpace(raw))
+	}
 }
 
 // AudioBackend manages decoded PCM playback and transport controls.
 type AudioBackend struct {
-	mutex       sync.Mutex
-	ffmpegPath  string
-	context     *oto.Context
-	player      *oto.Player
-	pcmData     []byte
-	sourcePath  string
-	duration    float64
-	position    float64
-	playStarted time.Time
-	playing     bool
-	volume      float64
-	endEventID  uint64
+	mutex        sync.Mutex
+	ffmpegPath   string
+	context      *oto.Context
+	player       *oto.Player
+	pcmData      []byte
+	sourcePath   string
+	duration     float64
+	position     float64
+	playStarted  time.Time
+	playing      bool
+	volume       float64
+	endEventID   uint64
 	outputDevice string
 	outputBuffer time.Duration
 }
@@ -75,11 +99,49 @@ func (b *AudioBackend) ApplyAudioSettings(settings AudioSettings) {
 }
 
 func (b *AudioBackend) ListOutputDevices() []AudioOutputDevice {
-	return []AudioOutputDevice{{
-		ID:        defaultAudioOutputDevice,
-		Name:      "System default output device",
-		IsDefault: true,
-	}}
+	devices, err := oto.OutputDevices()
+	if err != nil || len(devices) == 0 {
+		return []AudioOutputDevice{{
+			ID:        defaultAudioOutputDevice,
+			Name:      "Auto: System default output device",
+			Backend:   "auto",
+			IsDefault: true,
+		}}
+	}
+
+	mapped := make([]AudioOutputDevice, 0, len(devices))
+	for _, device := range devices {
+		deviceID := strings.TrimSpace(device.ID)
+		if deviceID == "" {
+			continue
+		}
+
+		name := strings.TrimSpace(device.Name)
+		if name == "" {
+			name = deviceID
+		}
+
+		backend := strings.TrimSpace(string(device.Backend))
+		name = fmt.Sprintf("%s: %s", backendDisplayName(backend), name)
+
+		mapped = append(mapped, AudioOutputDevice{
+			ID:        deviceID,
+			Name:      name,
+			Backend:   backend,
+			IsDefault: device.IsDefault,
+		})
+	}
+
+	if len(mapped) == 0 {
+		return []AudioOutputDevice{{
+			ID:        defaultAudioOutputDevice,
+			Name:      "Auto: System default output device",
+			Backend:   "auto",
+			IsDefault: true,
+		}}
+	}
+
+	return mapped
 }
 
 // Initialize prepares ffmpeg and the audio output context.
@@ -104,6 +166,13 @@ func (b *AudioBackend) Initialize() error {
 		ChannelCount: audioChannelCount,
 		Format:       oto.FormatSignedInt16LE,
 		BufferSize:   b.outputBuffer,
+		OutputDeviceID: func() string {
+			if b.outputDevice == "" || b.outputDevice == defaultAudioOutputDevice {
+				return ""
+			}
+
+			return b.outputDevice
+		}(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize audio output: %w", err)

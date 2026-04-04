@@ -60,6 +60,7 @@ type SettingsControllerOptions = {
     selectLibraryFolder: () => Promise<string>;
     selectPlaylistFile: () => Promise<string>;
     save: (values: SettingsFormValues) => Promise<void>;
+    applyAudioNow: (values: SettingsFormValues) => Promise<void>;
     forceReload: (values: SettingsFormValues) => Promise<void>;
     getPlayerCardLayout: () => PlayerCardLayout;
     setPlayerCardLayout: (layout: PlayerCardLayout) => void;
@@ -103,6 +104,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsListenBrainzToken,
         settingsAudioOutputDevice,
         settingsAudioOutputBufferMs,
+        settingsApplyAudioNow,
         settingsPreferMusicBrainzMetadata,
         settingsPlayerCardLayout,
         settingsCoverArtPriorityList,
@@ -442,18 +444,34 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const renderAudioOutputDeviceOptions = (selectedDevice: string): void => {
         settingsAudioOutputDevice.innerHTML = '';
 
+        const primaryDriverOption = document.createElement('option');
+        primaryDriverOption.value = 'default';
+        primaryDriverOption.textContent = 'Primary Sound Driver';
+        settingsAudioOutputDevice.append(primaryDriverOption);
+
         const normalizedDevices = audioOutputDevices.length > 0
             ? audioOutputDevices
-            : [{ id: 'default', name: 'System default output device', isDefault: true }];
+            : [{ id: 'default', name: 'System default output device', backend: 'auto', isDefault: true }];
 
         normalizedDevices.forEach((device) => {
+            const normalizedId = (device.id || 'default').trim() || 'default';
+            if (normalizedId === 'default') {
+                return;
+            }
+
             const option = document.createElement('option');
-            option.value = device.id || 'default';
-            option.textContent = device.name || device.id || 'System default output device';
+            option.value = normalizedId;
+            const deviceName = device.name || device.id || 'System default output device';
+            option.textContent = deviceName;
             settingsAudioOutputDevice.append(option);
         });
 
         const targetDevice = selectedDevice.trim() || 'default';
+        if (targetDevice === 'default') {
+            settingsAudioOutputDevice.value = 'default';
+            return;
+        }
+
         const hasExact = normalizedDevices.some((device) => (device.id || 'default') === targetDevice);
         if (!hasExact) {
             const fallbackOption = document.createElement('option');
@@ -702,6 +720,36 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     settingsTabAudio.addEventListener('click', () => {
         setActiveTab('audio');
         settingsAudioOutputDevice.focus();
+    });
+
+    settingsApplyAudioNow.addEventListener('click', async () => {
+        if (settingsApplyAudioNow.disabled) {
+            return;
+        }
+
+        const formValues: SettingsFormValues = {
+            libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
+            listenBrainzUserToken: settingsListenBrainzToken.value,
+            favoritePlaylists: favoritePlaylists.slice(),
+            coverArtPriority: coverArtPriority.slice(),
+            audioOutputDevice: settingsAudioOutputDevice.value || 'default',
+            audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
+            preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
+            keyboardShortcuts: getShortcutValues(),
+        };
+
+        settingsApplyAudioNow.disabled = true;
+        settingsStatus.textContent = 'Applying audio settings...';
+
+        try {
+            await options.applyAudioNow(formValues);
+            settingsStatus.textContent = 'Audio settings applied. Restart may be required for output-device changes.';
+        } catch (error) {
+            console.error(error);
+            settingsStatus.textContent = 'Unable to apply audio settings right now.';
+        } finally {
+            settingsApplyAudioNow.disabled = false;
+        }
     });
 
     settingsTabUi.addEventListener('click', () => {

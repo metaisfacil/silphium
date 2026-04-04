@@ -103,6 +103,7 @@ export namespace main {
 	export class AudioOutputDevice {
 	    id: string;
 	    name: string;
+	    backend: string;
 	    isDefault: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -113,6 +114,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.backend = source["backend"];
 	        this.isDefault = source["isDefault"];
 	    }
 	}

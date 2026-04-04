@@ -22,6 +22,10 @@ export function AudioPlay() {
   return window['go']['main']['App']['AudioPlay']();
 }
 
+export function AudioReinitializeBackend() {
+  return window['go']['main']['App']['AudioReinitializeBackend']();
+}
+
 export function AudioSeek(arg1) {
   return window['go']['main']['App']['AudioSeek'](arg1);
 }

@@ -60,3 +60,22 @@ func (a *App) AudioGetState() AudioPlaybackState {
 func (a *App) AudioListOutputDevices() []AudioOutputDevice {
 	return a.audioBackend().ListOutputDevices()
 }
+
+// AudioReinitializeBackend rebuilds the audio backend using the currently saved audio settings.
+func (a *App) AudioReinitializeBackend() (AudioPlaybackState, error) {
+	a.ensureSettingsLoaded()
+	backend := a.audioBackend()
+	backend.ApplyAudioSettings(a.settings.Audio)
+
+	backend.mutex.Lock()
+	initialized := backend.context != nil
+	backend.mutex.Unlock()
+
+	if !initialized {
+		if err := backend.Initialize(); err != nil {
+			return AudioPlaybackState{}, err
+		}
+	}
+
+	return backend.State(), nil
+}

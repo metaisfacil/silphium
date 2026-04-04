@@ -32,6 +32,7 @@ export type SettingsModalElements = {
     settingsListenBrainzToken: HTMLInputElement;
     settingsAudioOutputDevice: HTMLSelectElement;
     settingsAudioOutputBufferMs: HTMLInputElement;
+    settingsApplyAudioNow: HTMLButtonElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsPlayerCardLayout: HTMLSelectElement;
     settingsCoverArtPriorityList: HTMLUListElement;
@@ -97,8 +98,11 @@ export const renderSettingsModal = (): string => `
                 <div id="settings-panel-audio" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-audio" hidden>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-audio-output-device">Audio Output Device</label>
-                        <p class="settings-hint">Current audio engine uses the system default output path.<br>Device choice is saved for future support.</p>
-                        <select id="settings-audio-output-device" class="settings-input settings-select"></select>
+                        <div class="settings-audio-device-row">
+                            <select id="settings-audio-output-device" class="settings-input settings-select"></select>
+                            <button id="settings-apply-audio-now" class="settings-secondary-btn settings-audio-apply-btn" type="button" title="Experimental. Reinitializes the backend immediately so output device/buffer changes can be tested without restarting." aria-label="Apply Audio Settings Now"><svg class="overlay-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M20 5V10H15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 19V14H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.6 9.2C7.6 7.2 9.6 6 12 6C14.4 6 16.4 7.1 17.5 8.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M17.4 14.8C16.4 16.8 14.4 18 12 18C9.6 18 7.6 16.9 6.5 15.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                        </div>
+                        <p class="settings-hint">Choose the output device used when the audio backend initializes.<br>Changes apply on next app launch.</p>
                     </div>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-audio-output-buffer-ms">Audio Output Buffer (ms)</label>
@@ -215,6 +219,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsAudioOutputDevice: root.querySelector('#settings-audio-output-device') as HTMLSelectElement,
     settingsAudioOutputBufferMs: root.querySelector('#settings-audio-output-buffer-ms') as HTMLInputElement,
+    settingsApplyAudioNow: root.querySelector('#settings-apply-audio-now') as HTMLButtonElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,
