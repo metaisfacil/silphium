@@ -514,12 +514,9 @@
 }
 
 .library-list-pane .empty {
-    opacity: 0.75;
-}
-
-.library-list-pane .empty.is-searching {
     padding-top: 5px;
     padding-bottom: 5px;
+    opacity: 0.75;
 }
 
 .library-list-pane.from-right {
