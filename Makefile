@@ -32,7 +32,7 @@ ICON_INSET = 0.85
 
 ifeq ($(OS),Windows_NT)
 icon:
-	$(PYTHON_ICON) scripts/generate_windows_icon.py --svg silphium.svg --app-png build/appicon.png --ico build/windows/icon.ico --inset $(ICON_INSET)
+	$(PYTHON_ICON) scripts/generate_windows_icon.py --svg silphium.svg --app-png build/appicon.png --ico build/windows/icon.ico
 	@echo "Updated build/windows/icon.ico"
 else
 icon:
