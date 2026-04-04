@@ -167,8 +167,8 @@
 
 .image-file-preview {
     display: block;
-    max-width: 100%;
-    max-height: calc(100vh - 12.2rem);
+    max-width: none;
+    max-height: none;
     width: auto;
     height: auto;
     object-fit: contain;
@@ -178,11 +178,6 @@
     transform-origin: center center;
     user-select: none;
     -webkit-user-drag: none;
-}
-
-.image-file-preview.is-quarter-turn {
-    max-width: calc(100vh - 14.4rem);
-    max-height: calc(100vw - 4.2rem);
 }
 
 .image-file-thumbs {

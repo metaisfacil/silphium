@@ -38,6 +38,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     let imageModalPage = 0;
     let imageModalRotation = 0;
     let imageModalZoom = 1;
+    let imageModalBaseFitScale = 1;
     let imageModalPanX = 0;
     let imageModalPanY = 0;
     let imageModalPanDragging = false;
@@ -64,10 +65,45 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         return source;
     };
 
+    const recalculateImageModalBaseFitScale = (): void => {
+        const source = imageFilePreview.getAttribute('src');
+        if (!source) {
+            imageModalBaseFitScale = 1;
+            return;
+        }
+
+        const viewportWidth = imageFileContent.clientWidth;
+        const viewportHeight = imageFileContent.clientHeight;
+        const naturalWidth = imageFilePreview.naturalWidth || imageFilePreview.width;
+        const naturalHeight = imageFilePreview.naturalHeight || imageFilePreview.height;
+
+        if (viewportWidth <= 0 || viewportHeight <= 0 || naturalWidth <= 0 || naturalHeight <= 0) {
+            imageModalBaseFitScale = 1;
+            return;
+        }
+
+        const radians = (imageModalRotation * Math.PI) / 180;
+        const cosTheta = Math.abs(Math.cos(radians));
+        const sinTheta = Math.abs(Math.sin(radians));
+
+        const rotatedBoundsWidth = (naturalWidth * cosTheta) + (naturalHeight * sinTheta);
+        const rotatedBoundsHeight = (naturalWidth * sinTheta) + (naturalHeight * cosTheta);
+
+        if (rotatedBoundsWidth <= 0 || rotatedBoundsHeight <= 0) {
+            imageModalBaseFitScale = 1;
+            return;
+        }
+
+        imageModalBaseFitScale = Math.min(
+            viewportWidth / rotatedBoundsWidth,
+            viewportHeight / rotatedBoundsHeight,
+        );
+    };
+
     const applyImageModalTransform = (): void => {
+        recalculateImageModalBaseFitScale();
         imageFilePreview.style.transformOrigin = 'center center';
-        imageFilePreview.style.transform = `translate(${imageModalPanX}px, ${imageModalPanY}px) rotate(${imageModalRotation}deg) scale(${imageModalZoom})`;
-        imageFilePreview.classList.toggle('is-quarter-turn', imageModalRotation % 180 !== 0);
+        imageFilePreview.style.transform = `translate(${imageModalPanX}px, ${imageModalPanY}px) rotate(${imageModalRotation}deg) scale(${imageModalBaseFitScale * imageModalZoom})`;
     };
 
     const setImageModalPan = (x: number, y: number): void => {
@@ -201,6 +237,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
         imageModalCurrentIndex = index;
         imageModalPage = Math.floor(index / imageModalThumbPageSize);
+        setImageModalRotation(0);
         resetImageModalZoom();
         const loadToken = ++imageModalLoadToken;
         renderImageModalThumbs(loadToken);
@@ -418,6 +455,18 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         }
 
         void setImageModalActiveIndex(index);
+    });
+
+    imageFilePreview.addEventListener('load', () => {
+        applyImageModalTransform();
+    });
+
+    window.addEventListener('resize', () => {
+        if (imageFileModal.hidden || !imageFilePreview.getAttribute('src')) {
+            return;
+        }
+
+        applyImageModalTransform();
     });
 
     return {
