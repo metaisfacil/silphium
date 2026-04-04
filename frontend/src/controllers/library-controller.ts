@@ -74,6 +74,7 @@ const serverPageSize = 100;
 const searchDebounceMs = 180;
 const rowOverscanCount = 30;
 const initialRowHeightEstimatePx = 28;
+const sidebarToggleIconMarkup = '<svg class="sidebar-toggle-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M4 6.5C4 5.67 4.67 5 5.5 5H18.5C19.33 5 20 5.67 20 6.5C20 7.33 19.33 8 18.5 8H5.5C4.67 8 4 7.33 4 6.5ZM4 12C4 11.17 4.67 10.5 5.5 10.5H18.5C19.33 10.5 20 11.17 20 12C20 12.83 19.33 13.5 18.5 13.5H5.5C4.67 13.5 4 12.83 4 12ZM4 17.5C4 16.67 4.67 16 5.5 16H18.5C19.33 16 20 16.67 20 17.5C20 18.33 19.33 19 18.5 19H5.5C4.67 19 4 18.33 4 17.5Z"/></svg>';
 
 export const createLibraryController = (options: LibraryControllerOptions) => {
     const {
@@ -227,7 +228,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         libraryScanYieldIndicator.setAttribute('aria-hidden', libraryLoading ? 'false' : 'true');
         const loadingEtaLabel = libraryLoading && !sidebarOpen ? loadingIndicatorLabel() : '';
         sidebarToggle.classList.toggle('has-loading-eta', loadingEtaLabel !== '');
-        sidebarToggle.textContent = libraryLoading ? loadingEtaLabel : '‣‣‣';
+        sidebarToggle.innerHTML = libraryLoading ? loadingEtaLabel : sidebarToggleIconMarkup;
 
         if (libraryLoading) {
             const ariaLabel = loadingEtaLabel
@@ -608,16 +609,54 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         return root;
     };
 
+    const createLibraryIconElement = (kind: 'folder' | 'track' | 'text-file' | 'image-file'): HTMLSpanElement => {
+        const icon = document.createElement('span');
+        icon.className = `library-entry-icon ${kind}`;
+
+        if (kind === 'folder') {
+            icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M3 6.5C3 5.12 4.12 4 5.5 4H9.09C9.75 4 10.37 4.26 10.83 4.72L12.11 6H18.5C19.88 6 21 7.12 21 8.5V17.5C21 18.88 19.88 20 18.5 20H5.5C4.12 20 3 18.88 3 17.5V6.5Z"/></svg>';
+            return icon;
+        }
+
+        if (kind === 'track') {
+            icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M16.75 4.5V13.33C16.17 12.98 15.49 12.78 14.75 12.78C12.68 12.78 11 14.26 11 16.08C11 17.9 12.68 19.38 14.75 19.38C16.82 19.38 18.5 17.9 18.5 16.08V8.26L21 7.43V4.62L16.75 6.02V4.5ZM3 6.75H13V8.5H3V6.75ZM3 10.5H13V12.25H3V10.5ZM3 14.25H9.5V16H3V14.25Z"/></svg>';
+            return icon;
+        }
+
+        if (kind === 'text-file') {
+            icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6 3.5C4.9 3.5 4 4.4 4 5.5V18.5C4 19.6 4.9 20.5 6 20.5H18C19.1 20.5 20 19.6 20 18.5V9L14.5 3.5H6ZM14 5.6L17.9 9.5H14V5.6ZM7.5 11H16.5V12.5H7.5V11ZM7.5 14H16.5V15.5H7.5V14Z"/></svg>';
+            return icon;
+        }
+
+        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M5.5 4C4.67 4 4 4.67 4 5.5V18.5C4 19.33 4.67 20 5.5 20H18.5C19.33 20 20 19.33 20 18.5V5.5C20 4.67 19.33 4 18.5 4H5.5ZM7 8.5C7 7.67 7.67 7 8.5 7C9.33 7 10 7.67 10 8.5C10 9.33 9.33 10 8.5 10C7.67 10 7 9.33 7 8.5ZM6.5 17L10 12.5L12.8 16L14.6 13.8L17.5 17H6.5Z"/></svg>';
+        return icon;
+    };
+
+    const setLibraryEntryButtonContent = (
+        button: HTMLButtonElement,
+        kind: 'folder' | 'track' | 'text-file' | 'image-file',
+        label: string,
+        prefix?: string,
+    ): void => {
+        button.textContent = '';
+
+        if (prefix) {
+            const prefixSpan = document.createElement('span');
+            prefixSpan.className = 'library-entry-prefix';
+            prefixSpan.textContent = `${prefix} `;
+            button.append(prefixSpan);
+        }
+
+        button.append(createLibraryIconElement(kind));
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'library-entry-label';
+        labelSpan.textContent = label;
+        button.append(labelSpan);
+    };
+
     const searchEntryLabel = (entry: LibraryBrowserEntry): string => {
-        if (entry.kind === 'track') {
-            return `🎵 ${entry.name}`;
-        }
-
-        if (entry.kind === 'text-file') {
-            return `📄 ${entry.name}`;
-        }
-
-        return `🖼️ ${entry.name}`;
+        return entry.name;
     };
 
     const appendSearchTreeRows = (list: HTMLUListElement, node: SearchTreeNode): void => {
@@ -642,7 +681,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             if (hoveredBrowserEntryKey === button.dataset.hoverKey) {
                 button.classList.add('is-hovered');
             }
-            button.textContent = `${hasChildren ? (isExpanded ? '▾' : '▸') : '•'} 📁 ${folder.name}`;
+            setLibraryEntryButtonContent(
+                button,
+                'folder',
+                folder.name,
+                hasChildren ? (isExpanded ? '▾' : '▸') : '•',
+            );
 
             if (!hasChildren) {
                 button.classList.add('is-leaf');
@@ -690,7 +734,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                     button.dataset.imageFilePath = entry.path;
                 }
 
-                button.textContent = searchEntryLabel(entry);
+                setLibraryEntryButtonContent(button, kind, searchEntryLabel(entry));
                 row.append(button);
                 list.append(row);
             }
@@ -812,25 +856,25 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     const entryLabel = (entry: LibraryBrowserEntry, source: PaneSource): string => {
         if (entry.kind === 'folder') {
             return source.kind === 'search'
-                ? `📁 ${entry.relativePath || entry.path || entry.name}`
-                : `📁 ${entry.name}`;
+                ? (entry.relativePath || entry.path || entry.name)
+                : entry.name;
         }
 
         if (entry.kind === 'track') {
             return source.kind === 'search'
-                ? `🎵 ${entry.relativePath || entry.name}`
-                : `🎵 ${entry.name}`;
+                ? (entry.relativePath || entry.name)
+                : entry.name;
         }
 
         if (entry.kind === 'text-file') {
             return source.kind === 'search'
-                ? `📄 ${entry.relativePath || entry.name}`
-                : `📄 ${entry.name}`;
+                ? (entry.relativePath || entry.name)
+                : entry.name;
         }
 
         return source.kind === 'search'
-            ? `🖼️ ${entry.relativePath || entry.name}`
-            : `🖼️ ${entry.name}`;
+            ? (entry.relativePath || entry.name)
+            : entry.name;
     };
 
     const createEntryRow = (entry: LibraryBrowserEntry, source: PaneSource): HTMLLIElement => {
@@ -860,7 +904,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             button.classList.add('is-hovered');
         }
 
-        button.textContent = entryLabel(entry, source);
+        setLibraryEntryButtonContent(button, entry.kind, entryLabel(entry, source));
         row.append(button);
         return row;
     };

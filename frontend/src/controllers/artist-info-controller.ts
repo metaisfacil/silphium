@@ -51,7 +51,7 @@ export const createArtistInfoController = (options: ArtistInfoControllerOptions)
 
             const fallback = document.createElement('span');
             fallback.className = 'artist-link-fallback';
-            fallback.textContent = '🔗';
+            fallback.innerHTML = '<svg class="overlay-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M8.71 15.29C7.93 14.51 7.93 13.24 8.71 12.46L12.46 8.71C13.24 7.93 14.51 7.93 15.29 8.71C16.07 9.49 16.07 10.76 15.29 11.54L14.37 12.46C13.98 12.85 13.98 13.48 14.37 13.87C14.76 14.26 15.39 14.26 15.78 13.87L16.7 12.95C18.27 11.39 18.27 8.86 16.7 7.29C15.14 5.73 12.61 5.73 11.05 7.29L7.29 11.05C5.73 12.61 5.73 15.14 7.29 16.7C8.86 18.27 11.39 18.27 12.95 16.7L13.87 15.78C14.26 15.39 14.26 14.76 13.87 14.37C13.48 13.98 12.85 13.98 12.46 14.37L11.54 15.29C10.76 16.07 9.49 16.07 8.71 15.29Z"/></svg>';
 
             const faviconUrl = faviconUrlForResource(url.resource);
             if (faviconUrl) {

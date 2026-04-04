@@ -76,6 +76,19 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     let hydrationHideToken = 0;
     const playlistModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     let playlistModalHideTimer: number | undefined;
+    const playlistPrefixIcon = (state: 'active' | 'before' | 'after'): string => {
+        if (state === 'active') {
+            return '<svg class="playlist-inline-icon" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12 7C9.24 7 7 9.24 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 9.24 14.76 7 12 7Z"/></svg>';
+        }
+
+        if (state === 'before') {
+            return '<svg class="playlist-inline-icon" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M14.53 5.47C15.12 6.06 15.12 7.01 14.53 7.6L10.12 12L14.53 16.4C15.12 16.99 15.12 17.94 14.53 18.53C13.94 19.12 12.99 19.12 12.4 18.53L6.94 13.06C6.35 12.47 6.35 11.53 6.94 10.94L12.4 5.47C12.99 4.88 13.94 4.88 14.53 5.47Z"/></svg>';
+        }
+
+        return '<svg class="playlist-inline-icon" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M9.47 5.47C10.06 4.88 11.01 4.88 11.6 5.47L17.06 10.94C17.65 11.53 17.65 12.47 17.06 13.06L11.6 18.53C11.01 19.12 10.06 19.12 9.47 18.53C8.88 17.94 8.88 16.99 9.47 16.4L13.88 12L9.47 7.6C8.88 7.01 8.88 6.06 9.47 5.47Z"/></svg>';
+    };
+    const playlistDragIcon = '<svg class="playlist-inline-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M9 6.5C9 7.33 8.33 8 7.5 8C6.67 8 6 7.33 6 6.5C6 5.67 6.67 5 7.5 5C8.33 5 9 5.67 9 6.5ZM18 6.5C18 7.33 17.33 8 16.5 8C15.67 8 15 7.33 15 6.5C15 5.67 15.67 5 16.5 5C17.33 5 18 5.67 18 6.5ZM9 12C9 12.83 8.33 13.5 7.5 13.5C6.67 13.5 6 12.83 6 12C6 11.17 6.67 10.5 7.5 10.5C8.33 10.5 9 11.17 9 12ZM18 12C18 12.83 17.33 13.5 16.5 13.5C15.67 13.5 15 12.83 15 12C15 11.17 15.67 10.5 16.5 10.5C17.33 10.5 18 11.17 18 12ZM9 17.5C9 18.33 8.33 19 7.5 19C6.67 19 6 18.33 6 17.5C6 16.67 6.67 16 7.5 16C8.33 16 9 16.67 9 17.5ZM18 17.5C18 18.33 17.33 19 16.5 19C15.67 19 15 18.33 15 17.5C15 16.67 15.67 16 16.5 16C17.33 16 18 16.67 18 17.5Z"/></svg>';
+    const playlistRemoveIcon = '<svg class="playlist-inline-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6.4 5.34C6.11 5.05 5.64 5.05 5.34 5.34C5.05 5.64 5.05 6.11 5.34 6.4L10.94 12L5.34 17.6C5.05 17.89 5.05 18.36 5.34 18.66C5.64 18.95 6.11 18.95 6.4 18.66L12 13.06L17.6 18.66C17.89 18.95 18.36 18.95 18.66 18.66C18.95 18.36 18.95 17.89 18.66 17.6L13.06 12L18.66 6.4C18.95 6.11 18.95 5.64 18.66 5.34C18.36 5.05 17.89 5.05 17.6 5.34L12 10.94L6.4 5.34Z"/></svg>';
 
     const setHydrationProgress = (completed: number, total: number): void => {
         hydrationHideToken += 1;
@@ -277,16 +290,16 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             const activeClass = trackIndex === currentTrackIndex ? ' is-active' : '';
             const isActiveTrack = trackIndex === currentTrackIndex;
             const prefix = isActiveTrack
-                ? '• '
-                : (activePosition >= 0 && actualPosition < activePosition ? '◀ ' : '▶ ');
+                ? playlistPrefixIcon('active')
+                : (activePosition >= 0 && actualPosition < activePosition ? playlistPrefixIcon('before') : playlistPrefixIcon('after'));
             const label = track?.displayTitle || track?.name || 'Unknown track';
             const secondary = track?.displayArtist || '';
 
             return `<li class="playlist-row" draggable="true" data-playlist-position="${actualPosition}">
-            <button class="playlist-drag-handle" type="button" aria-label="Drag track" title="Drag to reorder">☰</button>
+            <button class="playlist-drag-handle" type="button" aria-label="Drag track" title="Drag to reorder">${playlistDragIcon}</button>
             <span class="playlist-position-indicator">#${actualPosition + 1}</span>
             <button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}" data-playlist-position="${actualPosition}"><span class="playlist-item-main"><span class="playlist-item-prefix">${prefix}</span><span class="playlist-item-label">${label}</span></span><span class="playlist-item-sub">${secondary}</span></button>
-            <button class="playlist-remove" type="button" data-playlist-remove-position="${actualPosition}" aria-label="Remove track" title="Remove track">✕</button>
+            <button class="playlist-remove" type="button" data-playlist-remove-position="${actualPosition}" aria-label="Remove track" title="Remove track">${playlistRemoveIcon}</button>
         </li>`;
         }).join('');
 

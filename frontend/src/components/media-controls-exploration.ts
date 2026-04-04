@@ -169,7 +169,7 @@ const renderExplorationData = (content: HTMLElement, graph: MusicBrainzExplorati
     if (graph.warnings.length > 0) {
         const warningIndicator = document.createElement('span');
         warningIndicator.className = 'exploration-warning-indicator';
-        warningIndicator.textContent = '⚠';
+        warningIndicator.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M10.73 4.57C11.3 3.57 12.7 3.57 13.27 4.57L21.14 18.27C21.72 19.29 20.99 20.55 19.86 20.55H4.14C3.01 20.55 2.28 19.29 2.86 18.27L10.73 4.57ZM12 9C11.31 9 10.75 9.56 10.75 10.25V13.25C10.75 13.94 11.31 14.5 12 14.5C12.69 14.5 13.25 13.94 13.25 13.25V10.25C13.25 9.56 12.69 9 12 9ZM12 18C11.31 18 10.75 17.44 10.75 16.75C10.75 16.06 11.31 15.5 12 15.5C12.69 15.5 13.25 16.06 13.25 16.75C13.25 17.44 12.69 18 12 18Z"/></svg>';
         warningIndicator.setAttribute('role', 'img');
         warningIndicator.tabIndex = 0;
         const tooltipText = ['Warnings:', ...graph.warnings.map((warning) => `- ${warning}`)].join('\n');

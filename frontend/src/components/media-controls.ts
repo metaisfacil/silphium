@@ -81,7 +81,7 @@ export const renderMediaControls = (): string => `
                 <p id="artist-info-summary" class="artist-info-summary">Flip back after MBID lookup to see details.</p>
                 <div id="artist-info-links" class="artist-info-links"></div>
               </div>
-              <button id="exploration-btn" class="exploration-btn" type="button" aria-label="Explore connections between entities" hidden>🌐</button>
+              <button id="exploration-btn" class="exploration-btn" type="button" aria-label="Explore connections between entities" hidden><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12 3.5C7.31 3.5 3.5 7.31 3.5 12C3.5 16.69 7.31 20.5 12 20.5C16.69 20.5 20.5 16.69 20.5 12C20.5 7.31 16.69 3.5 12 3.5ZM18.73 11H15.86C15.76 9.06 15.22 7.23 14.34 5.78C16.52 6.56 18.16 8.56 18.73 11ZM12 5.24C13.01 6.57 13.63 8.7 13.74 11H10.26C10.37 8.7 10.99 6.57 12 5.24ZM9.66 5.78C8.78 7.23 8.24 9.06 8.14 11H5.27C5.84 8.56 7.48 6.56 9.66 5.78ZM5.27 13H8.14C8.24 14.94 8.78 16.77 9.66 18.22C7.48 17.44 5.84 15.44 5.27 13ZM12 18.76C10.99 17.43 10.37 15.3 10.26 13H13.74C13.63 15.3 13.01 17.43 12 18.76ZM14.34 18.22C15.22 16.77 15.76 14.94 15.86 13H18.73C18.16 15.44 16.52 17.44 14.34 18.22Z"/></svg></button>
               <button id="track-technical-alt" class="track-technical" type="button" aria-label="Show track technical details" disabled></button>
             </div>
           </div>

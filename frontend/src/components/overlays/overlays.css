@@ -56,6 +56,15 @@
     background: rgba(255, 255, 255, 0.12);
     color: inherit;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.overlay-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+    display: block;
 }
 
 .text-file-content {
@@ -338,6 +347,9 @@
     color: inherit;
     font: inherit;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .settings-content {
@@ -680,6 +692,9 @@
     color: inherit;
     font: inherit;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .about-content {
@@ -816,6 +831,9 @@
     color: inherit;
     font: inherit;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .technical-info-content {
@@ -933,6 +951,9 @@
     color: inherit;
     font: inherit;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .mb-entity-content {
@@ -1409,6 +1430,15 @@
     height: 2rem;
     padding: 0;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.playlist-action-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+    display: block;
 }
 
 .playlist-action-btn:hover {
@@ -1460,6 +1490,15 @@
     width: 1.8rem;
     height: 1.8rem;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.playlist-inline-icon {
+    width: 0.78rem;
+    height: 0.78rem;
+    display: block;
 }
 
 .playlist-drag-handle {
@@ -1496,6 +1535,8 @@
 .playlist-item-prefix {
     opacity: 0.62;
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
 }
 
 .playlist-item-label {
