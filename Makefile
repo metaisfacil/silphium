@@ -36,7 +36,8 @@ icon:
 	@echo "Updated build/windows/icon.ico"
 else
 icon:
-	rm -f build/appicon.png build/appicon.source.png
+	rm -f build/appicon.png build/appicon.source.png build/darwin/iconfile.icns build/windows/icon.ico
+	rm -f build/bin/Silphium.app/Contents/Resources/iconfile.icns
 	sips -s format png silphium.svg --out build/appicon.source.png >/dev/null
 	$(PYTHON_ICON) -c "from PIL import Image; src = Image.open('build/appicon.source.png').convert('RGBA'); canvas = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0)); fill = float('$(ICON_INSET)'); target_side = max(1, int(1024 * fill)); scale = target_side / max(src.width, src.height); new_width = max(1, int(round(src.width * scale))); new_height = max(1, int(round(src.height * scale))); src = src.resize((new_width, new_height), Image.Resampling.LANCZOS); x = (1024 - src.width) // 2; y = (1024 - src.height) // 2; canvas.paste(src, (x, y), src); canvas.save('build/appicon.png')"
 	rm -f build/appicon.source.png
