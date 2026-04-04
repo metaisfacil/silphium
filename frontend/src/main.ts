@@ -49,6 +49,7 @@ import { UI_TIMINGS_MS } from './constants/ui-timings';
 import { getSidebarElements, renderSidebar } from './components/sidebar';
 import {
     ScanConfiguredLibraryFolders,
+    AudioListOutputDevices,
     AudioGetState,
     AudioLoadTrack,
     AudioPause,
@@ -87,6 +88,7 @@ import { applyMbLinks, openMbLink } from './musicbrainz';
 import type {
     AppLibraryFolder,
     AppSettings,
+    AudioOutputDevice,
     AudioPlaybackState,
     CoverArtPrioritySource,
     ImageLibraryFile,
@@ -180,6 +182,7 @@ let aboutModalHideTimer: number | undefined;
 let isSeeking = false;
 let playbackMutationVersion = 0;
 let playPauseToggleInFlight = false;
+let availableAudioOutputDevices: AudioOutputDevice[] = [];
 let currentSettings: AppSettings = {
     libraryFolders: [],
     libraryPath: '',
@@ -188,6 +191,10 @@ let currentSettings: AppSettings = {
     releaseDepth: 0,
     favoritePlaylists: [],
     coverArtPriority: ['file', 'embedded'],
+    audio: {
+        outputDevice: 'default',
+        outputBufferMs: 0,
+    },
     preferMusicBrainzMetadata: false,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
@@ -228,6 +235,10 @@ const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] 
 };
 const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
     const libraryFolders = normalizeLibraryFolders(settings.libraryFolders, settings.libraryPath, settings.releaseDepth);
+    const rawAudio = settings.audio || { outputDevice: 'default', outputBufferMs: 0 };
+    const normalizedAudioBufferMs = Number.isFinite(rawAudio.outputBufferMs)
+        ? Math.max(0, Math.min(1000, Math.round(rawAudio.outputBufferMs)))
+        : 0;
     return {
         libraryFolders,
         libraryPath: libraryFolders[0]?.path || '',
@@ -236,6 +247,10 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         releaseDepth: libraryFolders[0]?.releaseDepth || 0,
         favoritePlaylists: Array.isArray(settings.favoritePlaylists) ? settings.favoritePlaylists : [],
         coverArtPriority: normalizeCoverArtPriority(settings.coverArtPriority),
+        audio: {
+            outputDevice: (rawAudio.outputDevice || 'default').trim() || 'default',
+            outputBufferMs: normalizedAudioBufferMs,
+        },
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
     };
@@ -2093,6 +2108,9 @@ const initializeSettings = async (): Promise<void> => {
     resetListenBrainzFeedbackState();
 
     try {
+        const outputDevices = await AudioListOutputDevices() as AudioOutputDevice[];
+        availableAudioOutputDevices = Array.isArray(outputDevices) ? outputDevices : [];
+
         const settings = await GetSettings() as AppSettings;
         currentSettings = normalizeAppSettings(settings);
         setPlaybackOrderMode(currentSettings.playbackOrder);
@@ -2689,6 +2707,7 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
             favoritePlaylists: currentSettings.favoritePlaylists,
             coverArtPriority: currentSettings.coverArtPriority,
+            audio: currentSettings.audio,
             preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
             keyboardShortcuts: currentSettings.keyboardShortcuts,
         })) as AppSettings;
@@ -2977,6 +2996,9 @@ settingsController = createSettingsController({
         listenBrainzUserToken: currentSettings.listenBrainzUserToken,
         favoritePlaylists: currentSettings.favoritePlaylists,
         coverArtPriority: currentSettings.coverArtPriority,
+        audioOutputDevice: currentSettings.audio.outputDevice,
+        audioOutputBufferMs: currentSettings.audio.outputBufferMs,
+        audioOutputDevices: availableAudioOutputDevices,
         preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
     }),
@@ -2987,6 +3009,8 @@ settingsController = createSettingsController({
         listenBrainzUserToken,
         favoritePlaylists,
         coverArtPriority,
+        audioOutputDevice,
+        audioOutputBufferMs,
         preferMusicBrainzMetadata,
         keyboardShortcuts,
     }): Promise<void> => {
@@ -3001,6 +3025,10 @@ settingsController = createSettingsController({
                 releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
                 favoritePlaylists,
                 coverArtPriority,
+                audio: {
+                    outputDevice: audioOutputDevice,
+                    outputBufferMs: audioOutputBufferMs,
+                },
                 preferMusicBrainzMetadata,
                 keyboardShortcuts,
             })) as AppSettings;

@@ -4,10 +4,12 @@ export type SettingsModalElements = {
     settingsClose: HTMLButtonElement;
     settingsTabGeneral: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
+    settingsTabAudio: HTMLButtonElement;
     settingsTabUi: HTMLButtonElement;
     settingsTabShortcuts: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
+    settingsPanelAudio: HTMLDivElement;
     settingsPanelUi: HTMLDivElement;
     settingsPanelShortcuts: HTMLDivElement;
     settingsLibraryFolderList: HTMLUListElement;
@@ -28,6 +30,8 @@ export type SettingsModalElements = {
     settingsLibraryDepthCancel: HTMLButtonElement;
     settingsLibraryDepthConfirm: HTMLButtonElement;
     settingsListenBrainzToken: HTMLInputElement;
+    settingsAudioOutputDevice: HTMLSelectElement;
+    settingsAudioOutputBufferMs: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsPlayerCardLayout: HTMLSelectElement;
     settingsCoverArtPriorityList: HTMLUListElement;
@@ -52,6 +56,7 @@ export const renderSettingsModal = (): string => `
                 <div class="settings-tabs" role="tablist" aria-label="Settings sections">
                     <button id="settings-tab-general" class="settings-tab is-active" type="button" role="tab" aria-controls="settings-panel-general" aria-selected="true">General</button>
                     <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
+                    <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
                     <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
                     <button id="settings-tab-shortcuts" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-shortcuts" aria-selected="false">Shortcuts</button>
                 </div>
@@ -87,6 +92,18 @@ export const renderSettingsModal = (): string => `
                             <button id="settings-add-favorite-playlist" class="settings-list-btn" type="button" title="Add favourite playlist" aria-label="Add favourite playlist">+</button>
                             <button id="settings-remove-favorite-playlist" class="settings-list-btn" type="button" title="Remove selected favourite playlist" aria-label="Remove selected favourite playlist" disabled>-</button>
                         </div>
+                    </div>
+                </div>
+                <div id="settings-panel-audio" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-audio" hidden>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-audio-output-device">Audio Output Device</label>
+                        <p class="settings-hint">Current audio engine uses the system default output path.<br>Device choice is saved for future support.</p>
+                        <select id="settings-audio-output-device" class="settings-input settings-select"></select>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-audio-output-buffer-ms">Audio Output Buffer (ms)</label>
+                        <p class="settings-hint">0 uses driver default. Higher values may reduce crackling but increase latency.<br>Applied on next app launch.</p>
+                        <input id="settings-audio-output-buffer-ms" class="settings-input" type="number" min="0" max="1000" step="1" inputmode="numeric" placeholder="0">
                     </div>
                 </div>
                 <div id="settings-panel-ui" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-ui" hidden>
@@ -170,10 +187,12 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsClose: root.querySelector('#settings-close') as HTMLButtonElement,
     settingsTabGeneral: root.querySelector('#settings-tab-general') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
+    settingsTabAudio: root.querySelector('#settings-tab-audio') as HTMLButtonElement,
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
     settingsTabShortcuts: root.querySelector('#settings-tab-shortcuts') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
+    settingsPanelAudio: root.querySelector('#settings-panel-audio') as HTMLDivElement,
     settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,
     settingsPanelShortcuts: root.querySelector('#settings-panel-shortcuts') as HTMLDivElement,
     settingsLibraryFolderList: root.querySelector('#settings-library-folder-list') as HTMLUListElement,
@@ -194,6 +213,8 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsLibraryDepthCancel: root.querySelector('#settings-library-depth-cancel') as HTMLButtonElement,
     settingsLibraryDepthConfirm: root.querySelector('#settings-library-depth-confirm') as HTMLButtonElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
+    settingsAudioOutputDevice: root.querySelector('#settings-audio-output-device') as HTMLSelectElement,
+    settingsAudioOutputBufferMs: root.querySelector('#settings-audio-output-buffer-ms') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,

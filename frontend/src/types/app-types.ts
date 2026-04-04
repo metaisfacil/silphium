@@ -217,6 +217,17 @@ export type FocusedKeyboardShortcuts = {
     openSettings: string;
 };
 
+export type AudioSettings = {
+    outputDevice: string;
+    outputBufferMs: number;
+};
+
+export type AudioOutputDevice = {
+    id: string;
+    name: string;
+    isDefault: boolean;
+};
+
 export type AppLibraryFolder = {
     path: string;
     label: string;
@@ -231,6 +242,7 @@ export type AppSettings = {
     releaseDepth: number;
     favoritePlaylists: string[];
     coverArtPriority: CoverArtPrioritySource[];
+    audio: AudioSettings;
     preferMusicBrainzMetadata: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };

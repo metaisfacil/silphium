@@ -1,6 +1,6 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import type { AppLibraryFolder, CoverArtPrioritySource, FocusedKeyboardShortcuts, PlayerCardLayout } from '../types/app-types';
+import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, FocusedKeyboardShortcuts, PlayerCardLayout } from '../types/app-types';
 import { asReleaseDepth, libraryFolderPathKey, normalizeLibraryFolderLabel, normalizeLibraryFolders } from '../utils/main-helpers';
 import { formatShortcutBindingFromKeyboardEvent, normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 
@@ -14,8 +14,14 @@ export type SettingsFormValues = {
     listenBrainzUserToken: string;
     favoritePlaylists: string[];
     coverArtPriority: CoverArtPrioritySource[];
+    audioOutputDevice: string;
+    audioOutputBufferMs: number;
     preferMusicBrainzMetadata: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
+};
+
+export type SettingsViewValues = SettingsFormValues & {
+    audioOutputDevices: AudioOutputDevice[];
 };
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
@@ -50,7 +56,7 @@ const normalizeCoverArtPriority = (items: string[]): CoverArtPrioritySource[] =>
 type SettingsControllerOptions = {
     trigger: HTMLButtonElement;
     elements: SettingsModalElements;
-    getValues: () => SettingsFormValues;
+    getValues: () => SettingsViewValues;
     selectLibraryFolder: () => Promise<string>;
     selectPlaylistFile: () => Promise<string>;
     save: (values: SettingsFormValues) => Promise<void>;
@@ -69,10 +75,12 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsClose,
         settingsTabGeneral,
         settingsTabPlaylists,
+        settingsTabAudio,
         settingsTabUi,
         settingsTabShortcuts,
         settingsPanelGeneral,
         settingsPanelPlaylists,
+        settingsPanelAudio,
         settingsPanelUi,
         settingsPanelShortcuts,
         settingsLibraryFolderList,
@@ -93,6 +101,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryDepthCancel,
         settingsLibraryDepthConfirm,
         settingsListenBrainzToken,
+        settingsAudioOutputDevice,
+        settingsAudioOutputBufferMs,
         settingsPreferMusicBrainzMetadata,
         settingsPlayerCardLayout,
         settingsCoverArtPriorityList,
@@ -118,6 +128,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let libraryDepthReturnFocusTarget: HTMLElement | null = null;
     let forceReloadInProgress = false;
     let forceReloadEtaSeconds: number | null = null;
+    let audioOutputDevices: AudioOutputDevice[] = [];
     let coverArtPriority: CoverArtPrioritySource[] = [...defaultCoverArtPriority];
     let draggedCoverPriorityIndex = -1;
     const libraryFolderRepeatClickWindowMs = 400;
@@ -391,23 +402,67 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
     };
 
-    const setActiveTab = (tab: 'general' | 'playlists' | 'ui' | 'shortcuts'): void => {
+    const setActiveTab = (tab: 'general' | 'playlists' | 'audio' | 'ui' | 'shortcuts'): void => {
         const generalActive = tab === 'general';
         const playlistsActive = tab === 'playlists';
+        const audioActive = tab === 'audio';
         const uiActive = tab === 'ui';
         const shortcutsActive = tab === 'shortcuts';
         settingsTabGeneral.classList.toggle('is-active', generalActive);
         settingsTabPlaylists.classList.toggle('is-active', playlistsActive);
+        settingsTabAudio.classList.toggle('is-active', audioActive);
         settingsTabUi.classList.toggle('is-active', uiActive);
         settingsTabShortcuts.classList.toggle('is-active', shortcutsActive);
         settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
         settingsTabPlaylists.setAttribute('aria-selected', playlistsActive ? 'true' : 'false');
+        settingsTabAudio.setAttribute('aria-selected', audioActive ? 'true' : 'false');
         settingsTabUi.setAttribute('aria-selected', uiActive ? 'true' : 'false');
         settingsTabShortcuts.setAttribute('aria-selected', shortcutsActive ? 'true' : 'false');
         settingsPanelGeneral.hidden = !generalActive;
         settingsPanelPlaylists.hidden = !playlistsActive;
+        settingsPanelAudio.hidden = !audioActive;
         settingsPanelUi.hidden = !uiActive;
         settingsPanelShortcuts.hidden = !shortcutsActive;
+    };
+
+    const normalizeAudioOutputBufferMs = (rawValue: string): number => {
+        const trimmed = rawValue.trim();
+        if (trimmed === '') {
+            return 0;
+        }
+
+        const parsed = Number.parseInt(trimmed, 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            return 0;
+        }
+
+        return Math.min(1000, parsed);
+    };
+
+    const renderAudioOutputDeviceOptions = (selectedDevice: string): void => {
+        settingsAudioOutputDevice.innerHTML = '';
+
+        const normalizedDevices = audioOutputDevices.length > 0
+            ? audioOutputDevices
+            : [{ id: 'default', name: 'System default output device', isDefault: true }];
+
+        normalizedDevices.forEach((device) => {
+            const option = document.createElement('option');
+            option.value = device.id || 'default';
+            option.textContent = device.name || device.id || 'System default output device';
+            settingsAudioOutputDevice.append(option);
+        });
+
+        const targetDevice = selectedDevice.trim() || 'default';
+        const hasExact = normalizedDevices.some((device) => (device.id || 'default') === targetDevice);
+        if (!hasExact) {
+            const fallbackOption = document.createElement('option');
+            fallbackOption.value = targetDevice;
+            fallbackOption.textContent = `${targetDevice} (saved)`;
+            settingsAudioOutputDevice.append(fallbackOption);
+        }
+
+        settingsAudioOutputDevice.value = hasExact ? targetDevice : targetDevice;
     };
 
     const getShortcutValues = (): FocusedKeyboardShortcuts => {
@@ -535,6 +590,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const values = options.getValues();
         libraryFolders = normalizeLibraryFolders(values.libraryFolders);
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
+        audioOutputDevices = values.audioOutputDevices.slice();
+        renderAudioOutputDeviceOptions(values.audioOutputDevice || 'default');
+        settingsAudioOutputBufferMs.value = values.audioOutputBufferMs > 0 ? String(values.audioOutputBufferMs) : '';
         settingsPreferMusicBrainzMetadata.checked = !!values.preferMusicBrainzMetadata;
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
@@ -639,6 +697,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     settingsTabPlaylists.addEventListener('click', () => {
         setActiveTab('playlists');
         settingsFavoritePlaylistList.focus();
+    });
+
+    settingsTabAudio.addEventListener('click', () => {
+        setActiveTab('audio');
+        settingsAudioOutputDevice.focus();
     });
 
     settingsTabUi.addEventListener('click', () => {
@@ -843,6 +906,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             listenBrainzUserToken: settingsListenBrainzToken.value,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
+            audioOutputDevice: settingsAudioOutputDevice.value || 'default',
+            audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
             keyboardShortcuts: getShortcutValues(),
         };
@@ -866,6 +931,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             listenBrainzUserToken: settingsListenBrainzToken.value,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
+            audioOutputDevice: settingsAudioOutputDevice.value || 'default',
+            audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
             keyboardShortcuts: getShortcutValues(),
         };

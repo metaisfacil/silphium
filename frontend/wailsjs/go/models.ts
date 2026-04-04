@@ -38,6 +38,20 @@ export namespace main {
 	        this.openSettings = source["openSettings"];
 	    }
 	}
+	export class AudioSettings {
+	    outputDevice?: string;
+	    outputBufferMs?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.outputDevice = source["outputDevice"];
+	        this.outputBufferMs = source["outputBufferMs"];
+	    }
+	}
 	export class AppSettings {
 	    libraryFolders?: AppLibraryFolder[];
 	    libraryPath?: string;
@@ -46,6 +60,7 @@ export namespace main {
 	    releaseDepth?: number;
 	    favoritePlaylists?: string[];
 	    coverArtPriority?: string[];
+	    audio?: AudioSettings;
 	    preferMusicBrainzMetadata: boolean;
 	    keyboardShortcuts: FocusedKeyboardShortcuts;
 	
@@ -62,6 +77,7 @@ export namespace main {
 	        this.releaseDepth = source["releaseDepth"];
 	        this.favoritePlaylists = source["favoritePlaylists"];
 	        this.coverArtPriority = source["coverArtPriority"];
+	        this.audio = this.convertValues(source["audio"], AudioSettings);
 	        this.preferMusicBrainzMetadata = source["preferMusicBrainzMetadata"];
 	        this.keyboardShortcuts = this.convertValues(source["keyboardShortcuts"], FocusedKeyboardShortcuts);
 	    }
@@ -83,6 +99,22 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class AudioOutputDevice {
+	    id: string;
+	    name: string;
+	    isDefault: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioOutputDevice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.isDefault = source["isDefault"];
+	    }
 	}
 	export class AudioPlaybackState {
 	    loaded: boolean;
@@ -108,6 +140,7 @@ export namespace main {
 	        this.endEventId = source["endEventId"];
 	    }
 	}
+	
 	export class EmbeddedCoverArt {
 	    base64: string;
 	    mimeType: string;

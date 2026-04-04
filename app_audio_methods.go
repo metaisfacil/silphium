@@ -55,3 +55,8 @@ func (a *App) AudioSetVolume(volume float64) (AudioPlaybackState, error) {
 func (a *App) AudioGetState() AudioPlaybackState {
 	return a.audioBackend().State()
 }
+
+// AudioListOutputDevices returns available audio output devices.
+func (a *App) AudioListOutputDevices() []AudioOutputDevice {
+	return a.audioBackend().ListOutputDevices()
+}

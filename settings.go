@@ -24,6 +24,11 @@ type AppLibraryFolder struct {
 	ReleaseDepth int    `json:"releaseDepth,omitempty"`
 }
 
+type AudioSettings struct {
+	OutputDevice   string `json:"outputDevice,omitempty"`
+	OutputBufferMs int    `json:"outputBufferMs,omitempty"`
+}
+
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
 	LibraryFolders            []AppLibraryFolder       `json:"libraryFolders,omitempty"`
@@ -33,6 +38,7 @@ type AppSettings struct {
 	ReleaseDepth              int                      `json:"releaseDepth,omitempty"`
 	FavoritePlaylists         []string                 `json:"favoritePlaylists,omitempty"`
 	CoverArtPriority          []string                 `json:"coverArtPriority,omitempty"`
+	Audio                     AudioSettings            `json:"audio,omitempty"`
 	PreferMusicBrainzMetadata bool                     `json:"preferMusicBrainzMetadata"`
 	KeyboardShortcuts         FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
@@ -47,8 +53,38 @@ const defaultShortcutFocusLibraryFilter = "Ctrl+F"
 const defaultShortcutOpenSettings = "Ctrl+P"
 const coverArtPriorityFile = "file"
 const coverArtPriorityEmbedded = "embedded"
+const defaultAudioOutputDevice = "default"
+const maxAudioOutputBufferMs = 1000
 
 var defaultCoverArtPriority = []string{coverArtPriorityFile, coverArtPriorityEmbedded}
+
+func normalizeAudioOutputDevice(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return defaultAudioOutputDevice
+	}
+
+	return trimmed
+}
+
+func normalizeAudioOutputBufferMs(value int) int {
+	if value < 0 {
+		return 0
+	}
+
+	if value > maxAudioOutputBufferMs {
+		return maxAudioOutputBufferMs
+	}
+
+	return value
+}
+
+func normalizeAudioSettings(settings AudioSettings) AudioSettings {
+	return AudioSettings{
+		OutputDevice:   normalizeAudioOutputDevice(settings.OutputDevice),
+		OutputBufferMs: normalizeAudioOutputBufferMs(settings.OutputBufferMs),
+	}
+}
 
 func normalizePlaybackOrder(value string) string {
 	switch strings.TrimSpace(value) {
@@ -179,6 +215,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	libraryFolders := normalizeLibraryFolders(settings.LibraryFolders, settings.LibraryPath, settings.ReleaseDepth)
 	coverArtPriority := normalizeCoverArtPriority(settings.CoverArtPriority)
 	preferMusicBrainzMetadata := settings.PreferMusicBrainzMetadata
+	audio := normalizeAudioSettings(settings.Audio)
 	keyboardShortcuts := normalizeFocusedKeyboardShortcuts(settings.KeyboardShortcuts)
 	favoritePlaylists := make([]string, 0, len(settings.FavoritePlaylists))
 	seenFavoritePlaylists := make(map[string]struct{})
@@ -215,6 +252,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		ReleaseDepth:              legacyReleaseDepth,
 		FavoritePlaylists:         favoritePlaylists,
 		CoverArtPriority:          coverArtPriority,
+		Audio:                     audio,
 		PreferMusicBrainzMetadata: preferMusicBrainzMetadata,
 		KeyboardShortcuts:         keyboardShortcuts,
 	}
@@ -299,5 +337,6 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	}
 
 	a.settings = normalized
+	a.audioBackend().ApplyAudioSettings(normalized.Audio)
 	return normalized, nil
 }

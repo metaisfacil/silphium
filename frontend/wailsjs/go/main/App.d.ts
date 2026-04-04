@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function AudioGetState():Promise<main.AudioPlaybackState>;
 
+export function AudioListOutputDevices():Promise<Array<main.AudioOutputDevice>>;
+
 export function AudioLoadTrack(arg1:string):Promise<main.AudioPlaybackState>;
 
 export function AudioPause():Promise<main.AudioPlaybackState>;

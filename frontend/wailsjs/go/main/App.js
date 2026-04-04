@@ -6,6 +6,10 @@ export function AudioGetState() {
   return window['go']['main']['App']['AudioGetState']();
 }
 
+export function AudioListOutputDevices() {
+  return window['go']['main']['App']['AudioListOutputDevices']();
+}
+
 export function AudioLoadTrack(arg1) {
   return window['go']['main']['App']['AudioLoadTrack'](arg1);
 }

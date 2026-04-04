@@ -33,6 +33,12 @@ type AudioPlaybackState struct {
 	EndEventID  uint64  `json:"endEventId"`
 }
 
+type AudioOutputDevice struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"isDefault"`
+}
+
 // AudioBackend manages decoded PCM playback and transport controls.
 type AudioBackend struct {
 	mutex       sync.Mutex
@@ -47,11 +53,33 @@ type AudioBackend struct {
 	playing     bool
 	volume      float64
 	endEventID  uint64
+	outputDevice string
+	outputBuffer time.Duration
 }
 
 // NewAudioBackend creates an audio backend with default playback volume.
 func NewAudioBackend() *AudioBackend {
-	return &AudioBackend{volume: 0.8}
+	return &AudioBackend{
+		volume:       0.8,
+		outputDevice: defaultAudioOutputDevice,
+	}
+}
+
+func (b *AudioBackend) ApplyAudioSettings(settings AudioSettings) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	normalized := normalizeAudioSettings(settings)
+	b.outputDevice = normalized.OutputDevice
+	b.outputBuffer = time.Duration(normalized.OutputBufferMs) * time.Millisecond
+}
+
+func (b *AudioBackend) ListOutputDevices() []AudioOutputDevice {
+	return []AudioOutputDevice{{
+		ID:        defaultAudioOutputDevice,
+		Name:      "System default output device",
+		IsDefault: true,
+	}}
 }
 
 // Initialize prepares ffmpeg and the audio output context.
@@ -75,6 +103,7 @@ func (b *AudioBackend) Initialize() error {
 		SampleRate:   audioSampleRate,
 		ChannelCount: audioChannelCount,
 		Format:       oto.FormatSignedInt16LE,
+		BufferSize:   b.outputBuffer,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize audio output: %w", err)
