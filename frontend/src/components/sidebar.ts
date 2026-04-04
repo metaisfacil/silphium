@@ -1,6 +1,7 @@
 export type SidebarElements = {
     sidebarToggle: HTMLButtonElement;
     librarySidebar: HTMLElement;
+  libraryScanYieldIndicator: HTMLSpanElement;
     librarySettings: HTMLButtonElement;
     libraryAbout: HTMLButtonElement;
     libraryBack: HTMLButtonElement;
@@ -14,7 +15,7 @@ export const renderSidebar = (): string => `
     <button id="library-about" class="about-toggle" type="button" aria-label="About" title="About">i</button>
     <aside id="library-sidebar" class="library-sidebar" aria-hidden="true">
       <div class="library-header">
-        <h2>Library</h2>
+        <h2 class="library-header-title">Library <span id="library-scan-yield-indicator" class="library-scan-yield-indicator" role="img" aria-label="Performance will be degraded until the library scan completes" title="Performance will be degraded until the library scan completes">⚠</span></h2>
         <div class="library-header-actions">
           <button id="library-settings" class="upload-btn" type="button" aria-label="Settings" title="Settings">⚙</button>
         </div>
@@ -41,6 +42,7 @@ export const renderSidebar = (): string => `
 export const getSidebarElements = (root: ParentNode): SidebarElements => ({
     sidebarToggle: root.querySelector('#sidebar-toggle') as HTMLButtonElement,
     librarySidebar: root.querySelector('#library-sidebar') as HTMLElement,
+  libraryScanYieldIndicator: root.querySelector('#library-scan-yield-indicator') as HTMLSpanElement,
     librarySettings: root.querySelector('#library-settings') as HTMLButtonElement,
     libraryAbout: root.querySelector('#library-about') as HTMLButtonElement,
     libraryBack: root.querySelector('#library-back') as HTMLButtonElement,

@@ -44,6 +44,7 @@ type LibraryControllerOptions = {
     app: HTMLElement;
     sidebarToggle: HTMLButtonElement;
     librarySidebar: HTMLElement;
+    libraryScanYieldIndicator: HTMLSpanElement;
     libraryBack: HTMLButtonElement;
     libraryPath: HTMLParagraphElement;
     librarySearch: HTMLInputElement;
@@ -79,6 +80,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         app,
         sidebarToggle,
         librarySidebar,
+        libraryScanYieldIndicator,
         libraryBack,
         libraryPath,
         librarySearch,
@@ -221,6 +223,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     const refreshSidebarToggleState = (): void => {
         sidebarToggle.classList.toggle('is-loading', libraryLoading);
+        libraryScanYieldIndicator.classList.toggle('is-visible', libraryLoading);
+        libraryScanYieldIndicator.setAttribute('aria-hidden', libraryLoading ? 'false' : 'true');
         const loadingEtaLabel = libraryLoading && !sidebarOpen ? loadingIndicatorLabel() : '';
         sidebarToggle.classList.toggle('has-loading-eta', loadingEtaLabel !== '');
         sidebarToggle.textContent = libraryLoading ? loadingEtaLabel : '‣‣‣';

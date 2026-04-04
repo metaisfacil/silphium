@@ -300,7 +300,17 @@ const trackMetadataService = createTrackMetadataService({
     getTagRequestVersion: () => tagRequestVersion,
 });
 
-const { sidebarToggle, librarySidebar, librarySettings, libraryAbout, libraryBack, libraryPath, librarySearch, libraryBrowser } = getSidebarElements(document);
+const {
+    sidebarToggle,
+    librarySidebar,
+    librarySettings,
+    libraryAbout,
+    libraryBack,
+    libraryPath,
+    librarySearch,
+    libraryBrowser,
+    libraryScanYieldIndicator,
+} = getSidebarElements(document);
 const {
     playerShell,
     playerLane,
@@ -2628,6 +2638,7 @@ libraryController = createLibraryController({
     libraryPath,
     librarySearch,
     libraryBrowser,
+    libraryScanYieldIndicator,
     getTracks: () => tracks,
     getTextFiles: () => textFiles,
     getImageFiles: () => imageFiles,
