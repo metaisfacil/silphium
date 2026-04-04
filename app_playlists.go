@@ -116,11 +116,16 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 
 		folderPath := filepath.ToSlash(filepath.Dir(resolved))
 		relativePath := filepath.Base(resolved)
-		if strings.TrimSpace(a.libraryRoot) != "" {
-			if relFolderPath, relPath, ok := folderAndRelative(a.libraryRoot, resolved); ok {
-				folderPath = relFolderPath
-				relativePath = relPath
+		rootPath := ""
+		rootName := ""
+		if root, ok := a.activeLibraryRootForPath(resolved); ok {
+			if indexed, indexedOk := indexFileForRoot(root, resolved, filepath.Base(resolved)); indexedOk {
+				result.TrackFiles = append(result.TrackFiles, indexed)
+				continue
 			}
+
+			rootPath = root.Path
+			rootName = root.Name
 		}
 
 		result.TrackFiles = append(result.TrackFiles, LibraryIndexedFile{
@@ -128,6 +133,8 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 			Path:         resolved,
 			RelativePath: relativePath,
 			FolderPath:   folderPath,
+			RootPath:     rootPath,
+			RootName:     rootName,
 		})
 	}
 

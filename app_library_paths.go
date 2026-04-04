@@ -1,9 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 )
+
+type libraryRootConfig struct {
+	Path         string
+	Name         string
+	ReleaseDepth int
+}
 
 var audioExtensions = map[string]struct{}{
 	".mp3":  {},
@@ -53,6 +60,57 @@ func isJpegPath(path string) bool {
 	return ext == ".jpg" || ext == ".jpeg"
 }
 
+func libraryRootDisplayBaseForPath(path string) string {
+	base := filepath.Base(filepath.Clean(strings.TrimSpace(path)))
+	base = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(base, "\\", " "), "/", " "))
+	if base == "" || base == "." {
+		return "Library"
+	}
+
+	return base
+}
+
+func libraryRootDisplayBase(folder AppLibraryFolder) string {
+	if label := normalizeLibraryFolderLabel(folder.Label); label != "" {
+		return label
+	}
+
+	return libraryRootDisplayBaseForPath(folder.Path)
+}
+
+func resolveLibraryRootConfigs(folders []AppLibraryFolder) []libraryRootConfig {
+	if len(folders) == 0 {
+		return []libraryRootConfig{}
+	}
+
+	totalsByBase := make(map[string]int, len(folders))
+	for _, folder := range folders {
+		baseKey := strings.ToLower(libraryRootDisplayBase(folder))
+		totalsByBase[baseKey] = totalsByBase[baseKey] + 1
+	}
+
+	seenByBase := make(map[string]int, len(folders))
+	resolved := make([]libraryRootConfig, 0, len(folders))
+	for _, folder := range folders {
+		baseName := libraryRootDisplayBase(folder)
+		baseKey := strings.ToLower(baseName)
+		seenByBase[baseKey] = seenByBase[baseKey] + 1
+
+		rootName := baseName
+		if totalsByBase[baseKey] > 1 {
+			rootName = fmt.Sprintf("%s (%d)", baseName, seenByBase[baseKey])
+		}
+
+		resolved = append(resolved, libraryRootConfig{
+			Path:         folder.Path,
+			Name:         rootName,
+			ReleaseDepth: folder.ReleaseDepth,
+		})
+	}
+
+	return resolved
+}
+
 func folderAndRelative(rootPath string, fullPath string) (string, string, bool) {
 	relativePath, err := filepath.Rel(rootPath, fullPath)
 	if err != nil {
@@ -66,6 +124,97 @@ func folderAndRelative(rootPath string, fullPath string) (string, string, bool) 
 	}
 
 	return folderPath, relativePath, true
+}
+
+func buildVirtualLibraryPath(rootName string, relativePath string) string {
+	trimmedRootName := strings.TrimSpace(rootName)
+	trimmedRelativePath := strings.TrimSpace(relativePath)
+	if trimmedRootName == "" {
+		return trimmedRelativePath
+	}
+
+	if trimmedRelativePath == "" {
+		return trimmedRootName
+	}
+
+	return trimmedRootName + "/" + trimmedRelativePath
+}
+
+func folderAndRelativeForLibraryRoot(root libraryRootConfig, fullPath string) (string, string, bool) {
+	folderPath, relativePath, ok := folderAndRelative(root.Path, fullPath)
+	if !ok {
+		return "", "", false
+	}
+
+	return buildVirtualLibraryPath(root.Name, folderPath), buildVirtualLibraryPath(root.Name, relativePath), true
+}
+
+func absoluteNormalizedPath(path string) (string, bool) {
+	cleanPath := normalizePath(path)
+	if cleanPath == "" {
+		return "", false
+	}
+
+	absolutePath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return "", false
+	}
+
+	return filepath.Clean(absolutePath), true
+}
+
+func pathWithinRoot(rootPath string, absolutePath string) bool {
+	if strings.TrimSpace(rootPath) == "" {
+		return false
+	}
+
+	relativeToRoot, err := filepath.Rel(rootPath, absolutePath)
+	if err != nil {
+		return false
+	}
+
+	if relativeToRoot == "." {
+		return true
+	}
+
+	parentPrefix := ".." + string(filepath.Separator)
+	return relativeToRoot != ".." && !strings.HasPrefix(relativeToRoot, parentPrefix)
+}
+
+func (a *App) activeLibraryRootForPath(path string) (libraryRootConfig, bool) {
+	absolutePath, ok := absoluteNormalizedPath(path)
+	if !ok {
+		return libraryRootConfig{}, false
+	}
+
+	bestMatch := libraryRootConfig{}
+	bestMatchLength := -1
+	for _, root := range a.activeLibraryRoots {
+		if !pathWithinRoot(root.Path, absolutePath) {
+			continue
+		}
+
+		if len(root.Path) <= bestMatchLength {
+			continue
+		}
+
+		bestMatch = root
+		bestMatchLength = len(root.Path)
+	}
+
+	if bestMatchLength < 0 {
+		return libraryRootConfig{}, false
+	}
+
+	return bestMatch, true
+}
+
+func (a *App) primaryActiveLibraryRoot() (libraryRootConfig, bool) {
+	if len(a.activeLibraryRoots) == 0 {
+		return libraryRootConfig{}, false
+	}
+
+	return a.activeLibraryRoots[0], true
 }
 
 func coverPriority(name string) int {
@@ -241,29 +390,15 @@ func pagedIndexedFiles(kind string, entries []LibraryIndexedFile, offset int, li
 }
 
 func (a *App) isAllowedLibraryPath(path string) bool {
-	cleanPath := normalizePath(path)
-	if cleanPath == "" {
+	absolutePath, ok := absoluteNormalizedPath(path)
+	if !ok {
 		return false
 	}
 
-	absolutePath, err := filepath.Abs(cleanPath)
-	if err != nil {
-		return false
-	}
-
-	if strings.TrimSpace(a.libraryRoot) == "" {
+	if len(a.activeLibraryRoots) == 0 {
 		return true
 	}
 
-	relativeToRoot, err := filepath.Rel(a.libraryRoot, absolutePath)
-	if err != nil {
-		return false
-	}
-
-	if relativeToRoot == "." {
-		return true
-	}
-
-	parentPrefix := ".." + string(filepath.Separator)
-	return relativeToRoot != ".." && !strings.HasPrefix(relativeToRoot, parentPrefix)
+	_, exists := a.activeLibraryRootForPath(absolutePath)
+	return exists
 }

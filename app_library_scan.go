@@ -20,12 +20,29 @@ func cloneImmediateChildCountByFolder(input map[string]int) map[string]int {
 	return cloned
 }
 
+func aggregateLibraryScanRootInfo(roots []libraryRootConfig) (string, string) {
+	if len(roots) == 0 {
+		return "", ""
+	}
+
+	if len(roots) == 1 {
+		return roots[0].Path, roots[0].Name
+	}
+
+	return "", "Selected folders"
+}
+
 func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanResult {
+	return a.scanLibraryFolders(normalizeLibraryFolders([]AppLibraryFolder{{Path: path}}, "", 0), restartWatcher)
+}
+
+func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool) LibraryScanResult {
 	scanOverallStartedAt := time.Now()
-	cleanRoot := normalizePath(path)
+	roots := resolveLibraryRootConfigs(normalizeLibraryFolders(folders, "", 0))
+	rootPath, rootName := aggregateLibraryScanRootInfo(roots)
 	result := LibraryScanResult{
-		RootPath:          cleanRoot,
-		RootName:          filepath.Base(cleanRoot),
+		RootPath:          rootPath,
+		RootName:          rootName,
 		TrackFiles:        []LibraryIndexedFile{},
 		TextFiles:         []LibraryIndexedFile{},
 		ImageFiles:        []LibraryIndexedFile{},
@@ -33,45 +50,47 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		EntryLimit:        0,
 	}
 
-	if cleanRoot == "" {
+	if len(roots) == 0 {
+		if restartWatcher {
+			a.stopLibraryWatcher()
+		}
+		a.indexMu.Lock()
+		a.activeLibraryRoots = nil
+		a.indexMu.Unlock()
+		a.setLibraryIndexFromScan(result)
 		return result
 	}
 
-	absoluteRoot, err := filepath.Abs(cleanRoot)
-	if err != nil {
-		return result
-	}
-
-	cleanRoot = filepath.Clean(absoluteRoot)
-	result.RootPath = cleanRoot
-	result.RootName = filepath.Base(cleanRoot)
-	a.logRescanEvent("scanLibraryFolder START: root=%s restartWatcher=%t", cleanRoot, restartWatcher)
+	a.logRescanEvent("scanLibraryFolders START: roots=%d restartWatcher=%t", len(roots), restartWatcher)
 
 	if restartWatcher {
 		a.stopLibraryWatcher()
 	}
 
 	totalEntries := 0
+	rootTotalEntries := make([]int, len(roots))
+	rootScannedEntries := make([]int, len(roots))
+	rootStartedAt := make([]time.Time, len(roots))
+	rootCompletedAt := make([]time.Time, len(roots))
 	remainingImmediateChildrenByFolder := make(map[string]int)
 	preCountStartedAt := time.Now()
-	_ = filepath.WalkDir(cleanRoot, func(currentPath string, _ fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
+	for rootIndex, root := range roots {
+		_ = filepath.WalkDir(root.Path, func(currentPath string, _ fs.DirEntry, walkErr error) error {
+			if walkErr != nil || currentPath == root.Path {
+				return nil
+			}
 
-		if currentPath == cleanRoot {
+			totalEntries++
+			rootTotalEntries[rootIndex]++
+			folderPath, _, ok := folderAndRelativeForLibraryRoot(root, currentPath)
+			if ok {
+				remainingImmediateChildrenByFolder[folderPath] = remainingImmediateChildrenByFolder[folderPath] + 1
+			}
 			return nil
-		}
-
-		totalEntries++
-		folderPath, _, ok := folderAndRelative(cleanRoot, currentPath)
-		if ok {
-			remainingImmediateChildrenByFolder[folderPath] = remainingImmediateChildrenByFolder[folderPath] + 1
-		}
-		return nil
-	})
+		})
+	}
 	a.logRescanEvent(
-		"scanLibraryFolder pre-count END: totalEntries=%d folders=%d took %.2fms",
+		"scanLibraryFolders pre-count END: totalEntries=%d folders=%d took %.2fms",
 		totalEntries,
 		len(remainingImmediateChildrenByFolder),
 		time.Since(preCountStartedAt).Seconds()*1000,
@@ -81,13 +100,15 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	lastProgressEmit := time.Time{}
 	lastScanUpdatedEmit := time.Time{}
 	scannedEntries := 0
+	currentRootIndex := -1
 	finalizationStartedAt := time.Time{}
 	finalizationBudgetMs := 0.0
 
 	a.indexMu.Lock()
+	learnedScanEntryMs := a.scanEntryMs
 	learnedFinalizeMs := a.scanFinalizeMs
 	learnedWatcherMs := a.scanWatcherMs
-	a.libraryRoot = cleanRoot
+	a.activeLibraryRoots = append([]libraryRootConfig(nil), roots...)
 	a.trackByPath = make(map[string]LibraryIndexedFile)
 	a.textByPath = make(map[string]LibraryIndexedFile)
 	a.imageByPath = make(map[string]LibraryIndexedFile)
@@ -95,7 +116,7 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	a.scanInProgress = true
 	a.scanRemainingImmediateChildrenByFolder = cloneImmediateChildCountByFolder(remainingImmediateChildrenByFolder)
 	a.libraryScan = LibraryScanResult{
-		RootPath:          cleanRoot,
+		RootPath:          result.RootPath,
 		RootName:          result.RootName,
 		TrackFiles:        []LibraryIndexedFile{},
 		TextFiles:         []LibraryIndexedFile{},
@@ -149,33 +170,100 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		return fallback + watcherBudget
 	}
 
+	estimateRemainingScanSeconds := func(now time.Time, elapsed time.Duration) float64 {
+		if scannedEntries >= totalEntries {
+			return 0
+		}
+
+		globalRate := 0.0
+		elapsedSeconds := elapsed.Seconds()
+		if elapsedSeconds > 0 && scannedEntries > 0 {
+			globalRate = float64(scannedEntries) / elapsedSeconds
+		}
+
+		historicalRate := 0.0
+		if learnedScanEntryMs > 0 {
+			historicalRate = 1000 / learnedScanEntryMs
+		}
+
+		completedEntries := 0
+		completedSeconds := 0.0
+		currentRootRate := 0.0
+
+		for rootIndex := range roots {
+			if rootScannedEntries[rootIndex] <= 0 || rootStartedAt[rootIndex].IsZero() {
+				continue
+			}
+
+			if !rootCompletedAt[rootIndex].IsZero() {
+				rootElapsedSeconds := rootCompletedAt[rootIndex].Sub(rootStartedAt[rootIndex]).Seconds()
+				if rootElapsedSeconds > 0 {
+					completedEntries += rootScannedEntries[rootIndex]
+					completedSeconds += rootElapsedSeconds
+				}
+				continue
+			}
+
+			if rootIndex == currentRootIndex {
+				rootElapsedSeconds := now.Sub(rootStartedAt[rootIndex]).Seconds()
+				if rootElapsedSeconds > 0 {
+					currentRootRate = float64(rootScannedEntries[rootIndex]) / rootElapsedSeconds
+				}
+			}
+		}
+
+		remainingRootRate := 0.0
+		if completedSeconds > 0 && completedEntries > 0 {
+			remainingRootRate = float64(completedEntries) / completedSeconds
+		}
+		if remainingRootRate <= 0 {
+			remainingRootRate = historicalRate
+		}
+		if remainingRootRate <= 0 {
+			remainingRootRate = currentRootRate
+		}
+		if remainingRootRate <= 0 {
+			remainingRootRate = globalRate
+		}
+
+		remainingSeconds := 0.0
+		for rootIndex := range roots {
+			remainingEntries := rootTotalEntries[rootIndex] - rootScannedEntries[rootIndex]
+			if remainingEntries <= 0 {
+				continue
+			}
+
+			rate := remainingRootRate
+			if rootIndex == currentRootIndex && currentRootRate > 0 {
+				rate = currentRootRate
+			}
+			if rate <= 0 {
+				rate = historicalRate
+			}
+			if rate <= 0 {
+				continue
+			}
+
+			remainingSeconds += float64(remainingEntries) / rate
+		}
+
+		return remainingSeconds
+	}
+
 	emitProgress := func(force bool, phase string) {
 		if a.ctx == nil || totalEntries <= 0 {
 			return
 		}
 
 		now := time.Now()
-		if !force {
-			if !lastProgressEmit.IsZero() && now.Sub(lastProgressEmit) < 120*time.Millisecond {
-				return
-			}
+		if !force && !lastProgressEmit.IsZero() && now.Sub(lastProgressEmit) < 120*time.Millisecond {
+			return
 		}
 
 		elapsed := now.Sub(scanStartedAt)
 		etaSeconds := 0
 		if phase == "scanning" {
-			remainingScanSeconds := 0.0
-			if scannedEntries < totalEntries {
-				elapsedSeconds := elapsed.Seconds()
-				if elapsedSeconds > 0 && scannedEntries > 0 {
-					rate := float64(scannedEntries) / elapsedSeconds
-					if rate > 0 {
-						remainingEntries := totalEntries - scannedEntries
-						remainingScanSeconds = float64(remainingEntries) / rate
-					}
-				}
-			}
-
+			remainingScanSeconds := estimateRemainingScanSeconds(now, elapsed)
 			remainingFinalizeSeconds := estimateFinalizationBudgetMs(elapsed, scannedEntries) / 1000
 			etaSeconds = int(math.Ceil(remainingScanSeconds + remainingFinalizeSeconds))
 		} else if phase == "finalizing" {
@@ -197,7 +285,7 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		}
 
 		runtime.EventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
-			RootPath:       cleanRoot,
+			RootPath:       result.RootPath,
 			EntriesScanned: scannedEntries,
 			TotalEntries:   totalEntries,
 			ElapsedMs:      elapsed.Milliseconds(),
@@ -213,10 +301,8 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		}
 
 		now := time.Now()
-		if !force {
-			if !lastScanUpdatedEmit.IsZero() && now.Sub(lastScanUpdatedEmit) < 180*time.Millisecond {
-				return
-			}
+		if !force && !lastScanUpdatedEmit.IsZero() && now.Sub(lastScanUpdatedEmit) < 180*time.Millisecond {
+			return
 		}
 
 		a.indexMu.Lock()
@@ -243,110 +329,114 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	selectedCoverName := make(map[string]string)
 
 	indexWalkStartedAt := time.Now()
-	scanErr := filepath.WalkDir(cleanRoot, func(currentPath string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
+	var scanErr error
+	for rootIndex, root := range roots {
+		currentRootIndex = rootIndex
+		rootStartedAt[rootIndex] = time.Now()
+		walkErr := filepath.WalkDir(root.Path, func(currentPath string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil || currentPath == root.Path {
+				return nil
+			}
 
-		if currentPath == cleanRoot {
-			return nil
-		}
+			result.TotalEntries++
+			scannedEntries++
+			rootScannedEntries[rootIndex]++
+			emitProgress(false, "scanning")
 
-		result.TotalEntries++
-		scannedEntries++
-		emitProgress(false, "scanning")
+			folderPath, relativePath, ok := folderAndRelativeForLibraryRoot(root, currentPath)
+			if ok {
+				a.indexMu.Lock()
+				if remainingChildren, exists := a.scanRemainingImmediateChildrenByFolder[folderPath]; exists {
+					remainingChildren--
+					if remainingChildren <= 0 {
+						delete(a.scanRemainingImmediateChildrenByFolder, folderPath)
+					} else {
+						a.scanRemainingImmediateChildrenByFolder[folderPath] = remainingChildren
+					}
+				}
+				a.indexMu.Unlock()
+			}
 
-		folderPath, relativePath, ok := folderAndRelative(cleanRoot, currentPath)
-		if ok {
-			a.indexMu.Lock()
-			if remainingChildren, exists := a.scanRemainingImmediateChildrenByFolder[folderPath]; exists {
-				remainingChildren--
-				if remainingChildren <= 0 {
-					delete(a.scanRemainingImmediateChildrenByFolder, folderPath)
-				} else {
-					a.scanRemainingImmediateChildrenByFolder[folderPath] = remainingChildren
+			if entry.IsDir() || !ok {
+				return nil
+			}
+
+			indexed := LibraryIndexedFile{
+				Name:         entry.Name(),
+				Path:         currentPath,
+				RelativePath: relativePath,
+				FolderPath:   folderPath,
+				RootPath:     root.Path,
+				RootName:     root.Name,
+			}
+
+			kind := ""
+			coverFolderKey := ""
+			coverPath := ""
+
+			switch {
+			case isAudioPath(currentPath):
+				result.TrackFiles = append(result.TrackFiles, indexed)
+				kind = "track"
+			case isTextPath(currentPath):
+				result.TextFiles = append(result.TextFiles, indexed)
+				kind = "text-file"
+			case isImagePath(currentPath):
+				result.ImageFiles = append(result.ImageFiles, indexed)
+				kind = "image-file"
+
+				if !isJpegPath(currentPath) {
+					break
+				}
+
+				folderKey := strings.ToLower(folderPath)
+				name := strings.ToLower(entry.Name())
+				priority := coverPriority(name)
+				currentPriority, hasCurrent := selectedCoverPriority[folderKey]
+				currentName := selectedCoverName[folderKey]
+
+				if !hasCurrent || priority < currentPriority || (priority == currentPriority && name < currentName) {
+					selectedCoverPriority[folderKey] = priority
+					selectedCoverName[folderKey] = name
+					result.CoverPathByFolder[folderKey] = currentPath
+					coverFolderKey = folderKey
+					coverPath = currentPath
 				}
 			}
+
+			if kind == "" {
+				return nil
+			}
+
+			a.indexMu.Lock()
+			switch kind {
+			case "track":
+				a.trackByPath[currentPath] = indexed
+			case "text-file":
+				a.textByPath[currentPath] = indexed
+			case "image-file":
+				a.imageByPath[currentPath] = indexed
+			}
+			if coverFolderKey != "" {
+				a.libraryScan.CoverPathByFolder[coverFolderKey] = coverPath
+			}
+			a.libraryScan.TrackCount = len(a.trackByPath)
+			a.libraryScan.TextFileCount = len(a.textByPath)
+			a.libraryScan.ImageFileCount = len(a.imageByPath)
+			a.libraryScan.TotalEntries = a.libraryScan.TrackCount + a.libraryScan.TextFileCount + a.libraryScan.ImageFileCount
 			a.indexMu.Unlock()
-		}
 
-		if entry.IsDir() {
+			emitScanUpdated(false)
+
 			return nil
+		})
+		rootCompletedAt[rootIndex] = time.Now()
+		if walkErr != nil && scanErr == nil {
+			scanErr = walkErr
 		}
-
-		if !ok {
-			return nil
-		}
-
-		indexed := LibraryIndexedFile{
-			Name:         entry.Name(),
-			Path:         currentPath,
-			RelativePath: relativePath,
-			FolderPath:   folderPath,
-		}
-
-		kind := ""
-		coverFolderKey := ""
-		coverPath := ""
-
-		switch {
-		case isAudioPath(currentPath):
-			result.TrackFiles = append(result.TrackFiles, indexed)
-			kind = "track"
-		case isTextPath(currentPath):
-			result.TextFiles = append(result.TextFiles, indexed)
-			kind = "text-file"
-		case isImagePath(currentPath):
-			result.ImageFiles = append(result.ImageFiles, indexed)
-			kind = "image-file"
-
-			if !isJpegPath(currentPath) {
-				break
-			}
-
-			folderKey := strings.ToLower(folderPath)
-			name := strings.ToLower(entry.Name())
-			priority := coverPriority(name)
-			currentPriority, hasCurrent := selectedCoverPriority[folderKey]
-			currentName := selectedCoverName[folderKey]
-
-			if !hasCurrent || priority < currentPriority || (priority == currentPriority && name < currentName) {
-				selectedCoverPriority[folderKey] = priority
-				selectedCoverName[folderKey] = name
-				result.CoverPathByFolder[folderKey] = currentPath
-				coverFolderKey = folderKey
-				coverPath = currentPath
-			}
-		}
-
-		if kind == "" {
-			return nil
-		}
-
-		a.indexMu.Lock()
-		switch kind {
-		case "track":
-			a.trackByPath[currentPath] = indexed
-		case "text-file":
-			a.textByPath[currentPath] = indexed
-		case "image-file":
-			a.imageByPath[currentPath] = indexed
-		}
-		if coverFolderKey != "" {
-			a.libraryScan.CoverPathByFolder[coverFolderKey] = coverPath
-		}
-		a.libraryScan.TrackCount = len(a.trackByPath)
-		a.libraryScan.TextFileCount = len(a.textByPath)
-		a.libraryScan.ImageFileCount = len(a.imageByPath)
-		a.libraryScan.TotalEntries = a.libraryScan.TrackCount + a.libraryScan.TextFileCount + a.libraryScan.ImageFileCount
-		a.indexMu.Unlock()
-
-		emitScanUpdated(false)
-
-		return nil
-	})
+	}
 	a.logRescanEvent(
-		"scanLibraryFolder index walk END: scannedEntries=%d took %.2fms",
+		"scanLibraryFolders index walk END: scannedEntries=%d took %.2fms",
 		scannedEntries,
 		time.Since(indexWalkStartedAt).Seconds()*1000,
 	)
@@ -356,7 +446,7 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		result.TextFileCount = len(result.TextFiles)
 		result.ImageFileCount = len(result.ImageFiles)
 		a.logRescanEvent(
-			"scanLibraryFolder END (walk error): tracks=%d text=%d images=%d took %.2fms",
+			"scanLibraryFolders END (walk error): tracks=%d text=%d images=%d took %.2fms",
 			result.TrackCount,
 			result.TextFileCount,
 			result.ImageFileCount,
@@ -371,6 +461,17 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 
 	scannedEntries = totalEntries
 	finalizationStartedAt = time.Now()
+	scanDurationMs := float64(finalizationStartedAt.Sub(scanStartedAt).Milliseconds())
+	if scanDurationMs > 0 && totalEntries > 0 {
+		measuredScanEntryMs := scanDurationMs / float64(totalEntries)
+		a.indexMu.Lock()
+		if a.scanEntryMs <= 0 {
+			a.scanEntryMs = measuredScanEntryMs
+		} else {
+			a.scanEntryMs = (a.scanEntryMs * 0.72) + (measuredScanEntryMs * 0.28)
+		}
+		a.indexMu.Unlock()
+	}
 	finalizationBudgetMs = estimateFinalizationBudgetMs(finalizationStartedAt.Sub(scanStartedAt), scannedEntries)
 	emitProgress(true, "finalizing")
 
@@ -398,7 +499,7 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	})
 	imageSortMs := time.Since(imageSortStartedAt).Seconds() * 1000
 	a.logRescanEvent(
-		"scanLibraryFolder sort END: tracks=%.2fms text=%.2fms images=%.2fms",
+		"scanLibraryFolders sort END: tracks=%.2fms text=%.2fms images=%.2fms",
 		trackSortMs,
 		textSortMs,
 		imageSortMs,
@@ -408,7 +509,6 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	result.TextFileCount = len(result.TextFiles)
 	result.ImageFileCount = len(result.ImageFiles)
 
-	a.libraryRoot = cleanRoot
 	a.setLibraryIndexFromScan(result)
 	emitScanUpdated(true)
 
@@ -421,8 +521,6 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 
 		if sortIndexMs > 0 {
 			a.indexMu.Lock()
-			// If scanWatcherMs has never been learned, scanFinalizeMs was measured under old
-			// code which included watcher registration time. Reset it to avoid double-counting.
 			if a.scanFinalizeMs <= 0 || firstWatcherLearning {
 				a.scanFinalizeMs = sortIndexMs
 			} else {
@@ -432,7 +530,7 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 		}
 
 		watcherStartedAt := time.Now()
-		a.startLibraryWatcher(cleanRoot, func() { emitProgress(false, "finalizing") })
+		a.startLibraryWatcher(roots, func() { emitProgress(false, "finalizing") })
 		watcherMs := float64(time.Since(watcherStartedAt).Milliseconds())
 		if watcherMs > 0 {
 			a.indexMu.Lock()
@@ -458,7 +556,7 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 	response.TextFiles = []LibraryIndexedFile{}
 	response.ImageFiles = []LibraryIndexedFile{}
 	a.logRescanEvent(
-		"scanLibraryFolder END: totalEntries=%d tracks=%d text=%d images=%d took %.2fms",
+		"scanLibraryFolders END: totalEntries=%d tracks=%d text=%d images=%d took %.2fms",
 		result.TotalEntries,
 		result.TrackCount,
 		result.TextFileCount,
@@ -471,6 +569,12 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 // ScanLibraryFolder indexes audio, text, and image files under the selected root folder.
 func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 	return a.scanLibraryFolder(path, true)
+}
+
+// ScanConfiguredLibraryFolders indexes all configured library folders from settings as one aggregated library.
+func (a *App) ScanConfiguredLibraryFolders() LibraryScanResult {
+	a.ensureSettingsLoaded()
+	return a.scanLibraryFolders(a.settings.LibraryFolders, true)
 }
 
 func cloneCoverPathByFolder(input map[string]string) map[string]string {

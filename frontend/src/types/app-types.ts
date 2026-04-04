@@ -40,6 +40,8 @@ export type Track = {
     path: string;
     relativePath: string;
     folderPath: string;
+    rootPath: string;
+    rootName: string;
     displayTitle: string;
     displayAlbum: string;
     displayArtist: string;
@@ -107,6 +109,8 @@ export type LibraryIndexedFile = {
     path: string;
     relativePath: string;
     folderPath: string;
+    rootPath: string;
+    rootName: string;
 };
 
 export type LibraryScanResult = {
@@ -175,6 +179,8 @@ export type TextLibraryFile = {
     path: string;
     relativePath: string;
     folderPath: string;
+    rootPath: string;
+    rootName: string;
 };
 
 export type ImageLibraryFile = {
@@ -182,6 +188,8 @@ export type ImageLibraryFile = {
     path: string;
     relativePath: string;
     folderPath: string;
+    rootPath: string;
+    rootName: string;
 };
 
 export type AudioPlaybackState = {
@@ -209,7 +217,14 @@ export type FocusedKeyboardShortcuts = {
     openSettings: string;
 };
 
+export type AppLibraryFolder = {
+    path: string;
+    label: string;
+    releaseDepth: number;
+};
+
 export type AppSettings = {
+    libraryFolders: AppLibraryFolder[];
     libraryPath: string;
     listenBrainzUserToken: string;
     playbackOrder: PlaybackOrderMode;

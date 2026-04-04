@@ -6,6 +6,8 @@ type LibraryIndexedFile struct {
 	Path         string `json:"path"`
 	RelativePath string `json:"relativePath"`
 	FolderPath   string `json:"folderPath"`
+	RootPath     string `json:"rootPath"`
+	RootName     string `json:"rootName"`
 }
 
 // LibraryScanResult contains indexed library content and scan metadata.

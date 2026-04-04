@@ -14,8 +14,10 @@ func (a *App) OpenFolderInFileBrowser(path string) bool {
 		return false
 	}
 
-	if !filepath.IsAbs(cleanPath) && a.libraryRoot != "" {
-		cleanPath = filepath.Join(a.libraryRoot, cleanPath)
+	if !filepath.IsAbs(cleanPath) {
+		if root, ok := a.primaryActiveLibraryRoot(); ok {
+			cleanPath = filepath.Join(root.Path, cleanPath)
+		}
 	}
 
 	if !a.isAllowedLibraryPath(cleanPath) {

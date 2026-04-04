@@ -35,8 +35,8 @@ func (a *App) removePathAndDescendants(path string) {
 	}
 }
 
-func indexFileForRoot(rootPath string, fullPath string, fileName string) (LibraryIndexedFile, bool) {
-	folderPath, relativePath, ok := folderAndRelative(rootPath, fullPath)
+func indexFileForRoot(root libraryRootConfig, fullPath string, fileName string) (LibraryIndexedFile, bool) {
+	folderPath, relativePath, ok := folderAndRelativeForLibraryRoot(root, fullPath)
 	if !ok {
 		return LibraryIndexedFile{}, false
 	}
@@ -46,13 +46,15 @@ func indexFileForRoot(rootPath string, fullPath string, fileName string) (Librar
 		Path:         fullPath,
 		RelativePath: relativePath,
 		FolderPath:   folderPath,
+		RootPath:     root.Path,
+		RootName:     root.Name,
 	}, true
 }
 
-func (a *App) addOrUpdateIndexedFile(rootPath string, fullPath string, fileName string) {
+func (a *App) addOrUpdateIndexedFile(root libraryRootConfig, fullPath string, fileName string) {
 	a.removePathAndDescendants(fullPath)
 
-	indexed, ok := indexFileForRoot(rootPath, fullPath, fileName)
+	indexed, ok := indexFileForRoot(root, fullPath, fileName)
 	if !ok {
 		return
 	}
@@ -67,7 +69,7 @@ func (a *App) addOrUpdateIndexedFile(rootPath string, fullPath string, fileName 
 	}
 }
 
-func (a *App) addOrUpdatePathRecursive(rootPath string, targetPath string) {
+func (a *App) addOrUpdatePathRecursive(root libraryRootConfig, targetPath string) {
 	startTime := time.Now()
 	info, err := os.Stat(targetPath)
 	if err != nil {
@@ -76,7 +78,7 @@ func (a *App) addOrUpdatePathRecursive(rootPath string, targetPath string) {
 	}
 
 	if !info.IsDir() {
-		a.addOrUpdateIndexedFile(rootPath, targetPath, info.Name())
+		a.addOrUpdateIndexedFile(root, targetPath, info.Name())
 		a.logRescanEvent("  - processed single file: %s", targetPath)
 		return
 	}
@@ -88,7 +90,7 @@ func (a *App) addOrUpdatePathRecursive(rootPath string, targetPath string) {
 			return nil
 		}
 
-		a.addOrUpdateIndexedFile(rootPath, currentPath, entry.Name())
+		a.addOrUpdateIndexedFile(root, currentPath, entry.Name())
 		fileCount++
 		return nil
 	})
@@ -172,7 +174,7 @@ func (a *App) snapshotLibraryScanLocked(rootPath string) LibraryScanResult {
 	}
 }
 
-func (a *App) applyIncrementalLibraryChanges(rootPath string, changedPaths []string) (LibraryScanResult, bool) {
+func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScanResult, bool) {
 	startTime := time.Now()
 	a.logRescanEvent("applyIncrementalLibraryChanges START with %d paths", len(changedPaths))
 
@@ -200,11 +202,12 @@ func (a *App) applyIncrementalLibraryChanges(rootPath string, changedPaths []str
 		}
 
 		normalizedChangedPath := filepath.Clean(absoluteChangedPath)
-		if relToRoot, relErr := filepath.Rel(rootPath, normalizedChangedPath); relErr != nil || strings.HasPrefix(relToRoot, "..") {
+		root, ok := a.activeLibraryRootForPath(normalizedChangedPath)
+		if !ok {
 			continue
 		}
 
-		a.addOrUpdatePathRecursive(rootPath, normalizedChangedPath)
+		a.addOrUpdatePathRecursive(root, normalizedChangedPath)
 		hasChanges = true
 	}
 	a.logRescanEvent("applyIncrementalLibraryChanges path processing took %.2fms for %d paths",
@@ -267,31 +270,31 @@ func addLibraryWatchesRecursive(watcher *fsnotify.Watcher, rootPath string, onPr
 	})
 }
 
-func (a *App) startLibraryWatcher(rootPath string, onProgress func()) {
-	a.logRescanEvent("Starting library watcher for: %s", rootPath)
-	normalizedRoot := normalizePath(rootPath)
-	if normalizedRoot == "" {
+func (a *App) startLibraryWatcher(roots []libraryRootConfig, onProgress func()) {
+	if len(roots) == 0 {
 		a.stopLibraryWatcher()
 		return
 	}
 
-	absRoot, err := filepath.Abs(normalizedRoot)
-	if err != nil {
+	rootPaths := make([]string, 0, len(roots))
+	for _, root := range roots {
+		if strings.TrimSpace(root.Path) == "" {
+			continue
+		}
+
+		if info, statErr := os.Stat(root.Path); statErr != nil || !info.IsDir() {
+			continue
+		}
+
+		rootPaths = append(rootPaths, root.Path)
+	}
+
+	if len(rootPaths) == 0 {
+		a.stopLibraryWatcher()
 		return
 	}
 
-	cleanRoot := filepath.Clean(absRoot)
-	if info, statErr := os.Stat(cleanRoot); statErr != nil || !info.IsDir() {
-		return
-	}
-
-	a.indexMu.Lock()
-	indexMissing := a.libraryScan.RootPath != cleanRoot || a.trackByPath == nil || a.textByPath == nil || a.imageByPath == nil
-	a.indexMu.Unlock()
-	if indexMissing {
-		a.logRescanEvent("Library index missing, performing initial scan")
-		_ = a.scanLibraryFolder(cleanRoot, false)
-	}
+	a.logRescanEvent("Starting library watcher for %d roots", len(rootPaths))
 
 	watcher, watcherErr := fsnotify.NewWatcher()
 	if watcherErr != nil {
@@ -300,7 +303,9 @@ func (a *App) startLibraryWatcher(rootPath string, onProgress func()) {
 	}
 	a.logRescanEvent("Watcher created, registering all directories")
 
-	addLibraryWatchesRecursive(watcher, cleanRoot, onProgress)
+	for _, rootPath := range rootPaths {
+		addLibraryWatchesRecursive(watcher, rootPath, onProgress)
+	}
 	a.logRescanEvent("Watcher ready, listening for changes")
 	stopCh := make(chan struct{})
 
@@ -318,7 +323,7 @@ func (a *App) startLibraryWatcher(rootPath string, onProgress func()) {
 		_ = previousWatcher.Close()
 	}
 
-	go func(root string, activeWatcher *fsnotify.Watcher, activeStopCh chan struct{}) {
+	go func(activeWatcher *fsnotify.Watcher, activeStopCh chan struct{}) {
 		defer func() {
 			_ = activeWatcher.Close()
 		}()
@@ -382,7 +387,7 @@ func (a *App) startLibraryWatcher(rootPath string, onProgress func()) {
 				pendingPaths = make(map[string]struct{})
 				a.logRescanEvent("Debounce timer fired, applying incremental changes to %d paths", len(changedPaths))
 
-				scan, changed := a.applyIncrementalLibraryChanges(root, changedPaths)
+				scan, changed := a.applyIncrementalLibraryChanges(changedPaths)
 				if changed && a.ctx != nil {
 					emitStartTime := time.Now()
 					a.logRescanEvent("EventsEmit START: sending scan update event")
@@ -399,7 +404,7 @@ func (a *App) startLibraryWatcher(rootPath string, onProgress func()) {
 				}
 			}
 		}
-	}(cleanRoot, watcher, stopCh)
+	}(watcher, stopCh)
 }
 
 func (a *App) stopLibraryWatcher() {

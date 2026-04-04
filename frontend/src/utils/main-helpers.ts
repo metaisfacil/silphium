@@ -1,4 +1,5 @@
 import type {
+    AppLibraryFolder,
     PlaybackOrderMode,
     Track,
     TrackTags,
@@ -23,6 +24,108 @@ export const asReleaseDepth = (value: unknown): number => {
     }
 
     return Math.min(Math.floor(numeric), 64);
+};
+
+export const libraryFolderPathKey = (path: string): string => path.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+export const normalizeLibraryFolderLabel = (value: unknown): string => String(value || '')
+    .replace(/[\\/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const libraryFolderBaseName = (path: string): string => {
+    const normalized = path.trim().replace(/\\/g, '/');
+    const segments = normalized.split('/').filter((segment) => segment !== '');
+    return segments[segments.length - 1] || 'Library';
+};
+
+const libraryFolderDisplayBase = (folder: AppLibraryFolder): string => normalizeLibraryFolderLabel(folder.label) || libraryFolderBaseName(folder.path);
+
+export const normalizeLibraryFolders = (
+    folders: AppLibraryFolder[] | undefined,
+    legacyPath?: string,
+    legacyReleaseDepth?: number,
+): AppLibraryFolder[] => {
+    const candidates = Array.isArray(folders) && folders.length > 0
+        ? folders
+        : (legacyPath || '').trim() !== ''
+            ? [{ path: legacyPath || '', label: '', releaseDepth: asReleaseDepth(legacyReleaseDepth) }]
+            : [];
+
+    const normalized: AppLibraryFolder[] = [];
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+        const path = String(candidate?.path || '').trim();
+        if (!path) {
+            continue;
+        }
+
+        const key = libraryFolderPathKey(path);
+        if (!key || seen.has(key)) {
+            continue;
+        }
+
+        seen.add(key);
+        normalized.push({
+            path,
+            label: normalizeLibraryFolderLabel(candidate?.label),
+            releaseDepth: asReleaseDepth(candidate?.releaseDepth),
+        });
+    }
+
+    return normalized;
+};
+
+export const buildLibraryRootNameByPath = (folders: AppLibraryFolder[]): Map<string, string> => {
+    const totals = new Map<string, number>();
+    const seen = new Map<string, number>();
+
+    folders.forEach((folder) => {
+        const baseKey = libraryFolderDisplayBase(folder).toLowerCase();
+        totals.set(baseKey, (totals.get(baseKey) || 0) + 1);
+    });
+
+    const names = new Map<string, string>();
+    folders.forEach((folder) => {
+        const baseName = libraryFolderDisplayBase(folder);
+        const baseKey = baseName.toLowerCase();
+        const nextIndex = (seen.get(baseKey) || 0) + 1;
+        seen.set(baseKey, nextIndex);
+        names.set(
+            libraryFolderPathKey(folder.path),
+            (totals.get(baseKey) || 0) > 1 ? `${baseName} (${nextIndex})` : baseName,
+        );
+    });
+
+    return names;
+};
+
+export const findLibraryFolderForFilePath = (filePath: string, folders: AppLibraryFolder[]): AppLibraryFolder | null => {
+    const normalizedFilePath = libraryFolderPathKey(filePath);
+    if (!normalizedFilePath) {
+        return null;
+    }
+
+    let bestMatch: AppLibraryFolder | null = null;
+    let bestMatchLength = -1;
+    for (const folder of folders) {
+        const folderKey = libraryFolderPathKey(folder.path);
+        if (!folderKey) {
+            continue;
+        }
+
+        if (normalizedFilePath !== folderKey && !normalizedFilePath.startsWith(`${folderKey}/`)) {
+            continue;
+        }
+
+        if (folderKey.length <= bestMatchLength) {
+            continue;
+        }
+
+        bestMatch = folder;
+        bestMatchLength = folderKey.length;
+    }
+
+    return bestMatch;
 };
 
 export const formatTime = (seconds: number): string => {

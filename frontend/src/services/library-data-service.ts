@@ -41,6 +41,8 @@ const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
     path: file.path,
     relativePath: file.relativePath || file.name,
     folderPath: file.folderPath || '',
+    rootPath: file.rootPath || '',
+    rootName: file.rootName || '',
     displayTitle: file.name,
     displayAlbum: 'Unknown Album',
     displayArtist: 'Unknown Artist',
@@ -96,6 +98,8 @@ const appendTextFiles = async (textFiles: TextLibraryFile[], files: LibraryIndex
             path: file.path,
             relativePath: file.relativePath,
             folderPath: file.folderPath,
+            rootPath: file.rootPath || '',
+            rootName: file.rootName || '',
         });
         if ((index + 1) % batchSize === 0) {
             await yieldToUi();
@@ -112,6 +116,8 @@ const appendImageFiles = async (imageFiles: ImageLibraryFile[], files: LibraryIn
             path: file.path,
             relativePath: file.relativePath,
             folderPath: file.folderPath,
+            rootPath: file.rootPath || '',
+            rootName: file.rootName || '',
         });
         if ((index + 1) % batchSize === 0) {
             await yieldToUi();

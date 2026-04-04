@@ -3,7 +3,7 @@ import type { PlaybackOrderMode, Track } from '../types/app-types';
 type PlaybackSequencingServiceOptions = {
     getTracks: () => Track[];
     getCurrentTrackIndex: () => number;
-    getReleaseDepth: () => number;
+    getReleaseDepthForTrack: (track: Track) => number;
     initialPlaybackOrderMode?: PlaybackOrderMode;
 };
 
@@ -24,7 +24,7 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
 
     const albumScopePathForTrack = (track: Track): string => {
         const folderPath = track.folderPath || '';
-        const releaseDepth = options.getReleaseDepth();
+        const releaseDepth = options.getReleaseDepthForTrack(track);
         if (releaseDepth <= 0) {
             return folderPath.toLowerCase();
         }
@@ -37,7 +37,16 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
             return '';
         }
 
-        return segments.slice(0, releaseDepth).join('/').toLowerCase();
+        const relativeSegments = track.rootName ? segments.slice(1) : segments;
+        if (relativeSegments.length === 0 || releaseDepth >= relativeSegments.length) {
+            return folderPath.toLowerCase();
+        }
+
+        const scopedSegments = track.rootName
+            ? [segments[0], ...relativeSegments.slice(0, releaseDepth)]
+            : relativeSegments.slice(0, releaseDepth);
+
+        return scopedSegments.join('/').toLowerCase();
     };
 
     const albumScopeKeyForTrack = (track: Track): string => `folder::${albumScopePathForTrack(track)}`;
