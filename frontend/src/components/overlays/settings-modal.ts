@@ -33,6 +33,7 @@ export type SettingsModalElements = {
     settingsAudioOutputDevice: HTMLSelectElement;
     settingsAudioOutputBufferMs: HTMLInputElement;
     settingsApplyAudioNow: HTMLButtonElement;
+    settingsGaplessPlayback: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsPlayerCardLayout: HTMLSelectElement;
     settingsCoverArtPriorityList: HTMLUListElement;
@@ -108,6 +109,13 @@ export const renderSettingsModal = (): string => `
                         <label class="settings-label" for="settings-audio-output-buffer-ms">Audio Output Buffer (ms)</label>
                         <p class="settings-hint">0 uses driver default. Higher values may reduce crackling but increase latency.<br>Applied on next app launch.</p>
                         <input id="settings-audio-output-buffer-ms" class="settings-input" type="number" min="0" max="1000" step="1" inputmode="numeric" placeholder="0">
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-gapless-playback">
+                            <input id="settings-gapless-playback" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Enable gapless playback</span>
+                        </label>
+                        <p class="settings-hint">When supported, trims encoder delay/padding and prequeues the next track for seamless transitions.</p>
                     </div>
                 </div>
                 <div id="settings-panel-ui" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-ui" hidden>
@@ -220,6 +228,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsAudioOutputDevice: root.querySelector('#settings-audio-output-device') as HTMLSelectElement,
     settingsAudioOutputBufferMs: root.querySelector('#settings-audio-output-buffer-ms') as HTMLInputElement,
     settingsApplyAudioNow: root.querySelector('#settings-apply-audio-now') as HTMLButtonElement,
+    settingsGaplessPlayback: root.querySelector('#settings-gapless-playback') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,

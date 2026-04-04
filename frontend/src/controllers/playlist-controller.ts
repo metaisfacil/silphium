@@ -488,7 +488,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         scheduleRender();
     };
 
-    const getNextTrackIndex = (direction: PlaylistDirection): number | undefined => {
+    const resolveNextTrackIndex = (direction: PlaylistDirection, mutateState: boolean): number | undefined => {
         const currentTrackIndex = options.getCurrentTrackIndex();
 
         if (playbackSource === 'playlist') {
@@ -513,6 +513,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             }
 
             if (direction > 0 && editableQueueTrackIndexes && currentPosition >= queueIndexes.length - 1) {
+	            if (!mutateState) {
+	                return undefined;
+	            }
+
                 editableQueueTrackIndexes = null;
                 scheduleRender();
                 return undefined;
@@ -523,6 +527,14 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         return undefined;
+    };
+
+    const getNextTrackIndex = (direction: PlaylistDirection): number | undefined => {
+        return resolveNextTrackIndex(direction, true);
+    };
+
+    const peekNextTrackIndex = (direction: PlaylistDirection): number | undefined => {
+        return resolveNextTrackIndex(direction, false);
     };
 
     const clearEditableQueue = (): void => {
@@ -869,6 +881,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         closeMenu,
         closeModal,
         getNextTrackIndex,
+        peekNextTrackIndex,
         getSequenceOverride: (): PlaylistSequence | null => {
             if (playbackSource === 'playlist') {
                 return loadedPlaylistSequence();

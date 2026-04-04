@@ -30,6 +30,12 @@ endif
 endif
 ICON_INSET = 0.85
 
+ifeq ($(OS),Windows_NT)
+DEV_CMD = powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_dev.ps1 -Ldflags "$(LDFLAGS)"
+else
+DEV_CMD = wails dev -ldflags "$(LDFLAGS)"
+endif
+
 icon:
 	$(PYTHON_ICON) scripts/generate_windows_icon.py --svg frontend/public/silphium.svg --app-png build/appicon.png --ico build/windows/icon.ico --icns build/darwin/iconfile.icns --bundle-icns build/bin/Silphium.app/Contents/Resources/iconfile.icns --inset $(ICON_INSET)
 	@echo "Updated build/windows/icon.ico and build/darwin/iconfile.icns"
@@ -40,4 +46,4 @@ build:
 
 dev:
 	$(MAKE) icon
-	wails dev -ldflags "$(LDFLAGS)"
+	$(DEV_CMD)

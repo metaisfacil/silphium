@@ -41,6 +41,7 @@ export namespace main {
 	export class AudioSettings {
 	    outputDevice?: string;
 	    outputBufferMs?: number;
+	    gaplessPlayback?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AudioSettings(source);
@@ -50,6 +51,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.outputDevice = source["outputDevice"];
 	        this.outputBufferMs = source["outputBufferMs"];
+	        this.gaplessPlayback = source["gaplessPlayback"];
 	    }
 	}
 	export class AppSettings {

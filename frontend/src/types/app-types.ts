@@ -220,6 +220,7 @@ export type FocusedKeyboardShortcuts = {
 export type AudioSettings = {
     outputDevice: string;
     outputBufferMs: number;
+    gaplessPlayback: boolean;
 };
 
 export type AudioOutputDevice = {

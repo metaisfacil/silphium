@@ -1,6 +1,9 @@
 package main
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // InitializeAudioBackend initializes the audio backend and returns its current state.
 func (a *App) InitializeAudioBackend() (AudioPlaybackState, error) {
@@ -24,6 +27,32 @@ func (a *App) AudioLoadTrack(path string) (AudioPlaybackState, error) {
 	}
 
 	return a.audioBackend().LoadTrack(cleanPath)
+}
+
+// AudioQueueNextTrack prepares or clears the next track used for seamless playback.
+func (a *App) AudioQueueNextTrack(currentPath string, nextPath string) (AudioPlaybackState, error) {
+	trimmedCurrentPath := strings.TrimSpace(currentPath)
+	trimmedNextPath := strings.TrimSpace(nextPath)
+
+	cleanCurrentPath := ""
+	if trimmedCurrentPath != "" {
+		cleanCurrentPath = normalizePath(trimmedCurrentPath)
+	}
+
+	cleanNextPath := ""
+	if trimmedNextPath != "" {
+		cleanNextPath = normalizePath(trimmedNextPath)
+	}
+
+	if cleanCurrentPath != "" && !a.isAllowedLibraryPath(cleanCurrentPath) {
+		return AudioPlaybackState{}, errors.New("current track path is outside the selected library")
+	}
+
+	if cleanNextPath != "" && !a.isAllowedLibraryPath(cleanNextPath) {
+		return AudioPlaybackState{}, errors.New("next track path is outside the selected library")
+	}
+
+	return a.audioBackend().QueueNextTrack(cleanCurrentPath, cleanNextPath)
 }
 
 // AudioPlay starts playback of the currently loaded track.

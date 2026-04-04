@@ -16,6 +16,7 @@ export type SettingsFormValues = {
     coverArtPriority: CoverArtPrioritySource[];
     audioOutputDevice: string;
     audioOutputBufferMs: number;
+    gaplessPlayback: boolean;
     preferMusicBrainzMetadata: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
@@ -105,6 +106,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsAudioOutputDevice,
         settingsAudioOutputBufferMs,
         settingsApplyAudioNow,
+        settingsGaplessPlayback,
         settingsPreferMusicBrainzMetadata,
         settingsPlayerCardLayout,
         settingsCoverArtPriorityList,
@@ -611,6 +613,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         audioOutputDevices = values.audioOutputDevices.slice();
         renderAudioOutputDeviceOptions(values.audioOutputDevice || 'default');
         settingsAudioOutputBufferMs.value = values.audioOutputBufferMs > 0 ? String(values.audioOutputBufferMs) : '';
+        settingsGaplessPlayback.checked = !!values.gaplessPlayback;
         settingsPreferMusicBrainzMetadata.checked = !!values.preferMusicBrainzMetadata;
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
@@ -734,6 +737,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             coverArtPriority: coverArtPriority.slice(),
             audioOutputDevice: settingsAudioOutputDevice.value || 'default',
             audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
+            gaplessPlayback: settingsGaplessPlayback.checked,
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
             keyboardShortcuts: getShortcutValues(),
         };
@@ -956,6 +960,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             coverArtPriority: coverArtPriority.slice(),
             audioOutputDevice: settingsAudioOutputDevice.value || 'default',
             audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
+            gaplessPlayback: settingsGaplessPlayback.checked,
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
             keyboardShortcuts: getShortcutValues(),
         };
@@ -981,6 +986,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             coverArtPriority: coverArtPriority.slice(),
             audioOutputDevice: settingsAudioOutputDevice.value || 'default',
             audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
+            gaplessPlayback: settingsGaplessPlayback.checked,
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
             keyboardShortcuts: getShortcutValues(),
         };

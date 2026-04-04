@@ -55,6 +55,7 @@ import {
     AudioLoadTrack,
     AudioPause,
     AudioPlay,
+    AudioQueueNextTrack,
     AudioSeek,
     AudioSetVolume,
     AudioStop,
@@ -68,6 +69,7 @@ import {
     GetSettings,
     InitializeAudioBackend,
     LoadPlaylistFile,
+    LogFrontendMessage,
     LookupArtistByMBID,
     OpenFolderInFileBrowser,
     ReadTrackEmbeddedCover,
@@ -184,6 +186,8 @@ let isSeeking = false;
 let playbackMutationVersion = 0;
 let playPauseToggleInFlight = false;
 let trackNavigationChain: Promise<void> = Promise.resolve();
+let gaplessQueueRequestVersion = 0;
+let queuedGaplessTrackPath = '';
 let availableAudioOutputDevices: AudioOutputDevice[] = [];
 let currentSettings: AppSettings = {
     libraryFolders: [],
@@ -196,6 +200,7 @@ let currentSettings: AppSettings = {
     audio: {
         outputDevice: 'default',
         outputBufferMs: 0,
+        gaplessPlayback: false,
     },
     preferMusicBrainzMetadata: false,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
@@ -237,7 +242,7 @@ const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] 
 };
 const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
     const libraryFolders = normalizeLibraryFolders(settings.libraryFolders, settings.libraryPath, settings.releaseDepth);
-    const rawAudio = settings.audio || { outputDevice: 'default', outputBufferMs: 0 };
+    const rawAudio = settings.audio || { outputDevice: 'default', outputBufferMs: 0, gaplessPlayback: false };
     const normalizedAudioBufferMs = Number.isFinite(rawAudio.outputBufferMs)
         ? Math.max(0, Math.min(1000, Math.round(rawAudio.outputBufferMs)))
         : 0;
@@ -252,6 +257,7 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         audio: {
             outputDevice: (rawAudio.outputDevice || 'default').trim() || 'default',
             outputBufferMs: normalizedAudioBufferMs,
+            gaplessPlayback: !!rawAudio.gaplessPlayback,
         },
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
@@ -1026,6 +1032,132 @@ const currentTrackForPlaybackState = (state: AudioPlaybackState): Track | undefi
     return track;
 };
 
+const applyCoverArtForTrack = async (index: number): Promise<void> => {
+    const track = tracks[index];
+    if (!track) {
+        return;
+    }
+
+    const coverSrc = await resolveCoverForTrack(track);
+    if (index !== currentTrackIndex) {
+        return;
+    }
+
+    if (coverSrc) {
+        coverArtBackground.src = coverSrc;
+        coverArtBackground.classList.add('is-visible');
+        coverArt.src = coverSrc;
+        coverArt.classList.add('is-visible');
+        setBackgroundCover(coverSrc);
+        return;
+    }
+
+    coverArtBackground.removeAttribute('src');
+    coverArtBackground.classList.remove('is-visible');
+    coverArt.removeAttribute('src');
+    coverArt.classList.remove('is-visible');
+    setBackgroundCover();
+};
+
+const syncCurrentTrackFromPlaybackState = (state: AudioPlaybackState): void => {
+    const normalizedSourcePath = state.sourcePath.trim();
+    if (!state.loaded || normalizedSourcePath === '') {
+        return;
+    }
+
+    const activeTrack = tracks[currentTrackIndex];
+    if (activeTrack && activeTrack.path === normalizedSourcePath) {
+        return;
+    }
+
+    const resolvedIndex = ensureTrackIndexForPath(normalizedSourcePath);
+    if (resolvedIndex < 0 || resolvedIndex >= tracks.length) {
+        return;
+    }
+
+    currentTrackIndex = resolvedIndex;
+    gaplessQueueRequestVersion += 1;
+    queuedGaplessTrackPath = '';
+    playlistController.scheduleRender();
+    setCoverFlipped(false);
+    scrobbleService.startTrackSession();
+
+    const track = tracks[resolvedIndex];
+    if (currentSettings.preferMusicBrainzMetadata) {
+        track.mbMetadataResolved = false;
+    }
+
+    if (!libraryController.isSidebarOpen()) {
+        libraryController.setSidebarAutoFolderPath(track.folderPath);
+    }
+
+    refreshNowPlayingLabel();
+    void applyCoverArtForTrack(resolvedIndex);
+    libraryController.renderFolder('none');
+
+    tagRequestVersion += 1;
+    void hydrateCurrentTrackTag(resolvedIndex, tagRequestVersion);
+
+    artistInfoRequestVersion += 1;
+    void hydrateCurrentArtistInfo(resolvedIndex);
+
+    void refreshListenBrainzFeedbackForCurrentTrack(true);
+};
+
+const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState): Promise<void> => {
+    if (!currentSettings.audio.gaplessPlayback || !playbackStateService.isBackendReady()) {
+        return;
+    }
+
+    const playbackState = stateOverride || playbackStateService.getPlaybackState();
+    const activeTrack = currentTrackForPlaybackState(playbackState);
+    if (!playbackState.loaded || !activeTrack) {
+        return;
+    }
+
+    const nextIndex = peekNextTrackIndexForDirection(1);
+    const nextPath = nextIndex !== undefined ? tracks[nextIndex]?.path || '' : '';
+    const requestVersion = ++gaplessQueueRequestVersion;
+
+    if (nextPath === '') {
+        if (queuedGaplessTrackPath === '') {
+            return;
+        }
+
+        queuedGaplessTrackPath = '';
+        logPlaybackDebug(`GaplessQueue clear after="${activeTrack.path}"`);
+        try {
+            await AudioQueueNextTrack(activeTrack.path, '');
+            if (requestVersion !== gaplessQueueRequestVersion) {
+                return;
+            }
+        } catch (error) {
+            console.debug(error);
+            logPlaybackDebug(`GaplessQueue clear failed after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
+        }
+        return;
+    }
+
+    if (nextPath === queuedGaplessTrackPath) {
+        return;
+    }
+
+    queuedGaplessTrackPath = nextPath;
+    logPlaybackDebug(`GaplessQueue next="${nextPath}" after="${activeTrack.path}"`);
+    try {
+        await AudioQueueNextTrack(activeTrack.path, nextPath);
+        if (requestVersion !== gaplessQueueRequestVersion) {
+            return;
+        }
+    } catch (error) {
+        console.debug(error);
+        logPlaybackDebug(`GaplessQueue failed next="${nextPath}" after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
+        if (requestVersion === gaplessQueueRequestVersion) {
+            queuedGaplessTrackPath = '';
+        }
+    }
+};
+
 const maybeSubmitListenBrainz = (state: AudioPlaybackState): void => {
     scrobbleService.maybeSubmit(state, currentTrackForPlaybackState(state), canScrobble());
 };
@@ -1151,9 +1283,40 @@ const updateMediaSessionPositionState = (): void => {
     }
 };
 
+const formatPlaybackStateForLog = (state: AudioPlaybackState): string => {
+    const currentTime = Number.isFinite(state.currentTime) ? state.currentTime.toFixed(2) : '0.00';
+    const duration = Number.isFinite(state.duration) ? state.duration.toFixed(2) : '0.00';
+    const volume = Number.isFinite(state.volume) ? state.volume.toFixed(2) : '0.00';
+    return `loaded=${state.loaded} playing=${state.playing} source="${state.sourcePath || ''}" time=${currentTime}/${duration} volume=${volume} endEventId=${state.endEventId}`;
+};
+
+const describeErrorForLog = (error: unknown): string => {
+    if (error instanceof Error) {
+        return error.stack || error.message || 'Error';
+    }
+
+    if (typeof error === 'string') {
+        return error;
+    }
+
+    try {
+        return JSON.stringify(error);
+    } catch {
+        return String(error);
+    }
+};
+
+const logPlaybackDebug = (message: string): void => {
+    const formatted = `[PLAYBACK] ${message}`;
+    console.debug(formatted);
+    void LogFrontendMessage(formatted).catch(() => {
+    });
+};
+
 const handleAudioError = (error: unknown): void => {
     console.error(error);
     const message = error instanceof Error ? error.message : 'Audio backend error';
+    logPlaybackDebug(`AudioError ${describeErrorForLog(error)}`);
     if (!libraryController.getLibraryRootName()) {
         libraryController.setLibraryPathMessage(message);
     }
@@ -1185,6 +1348,12 @@ const isMissingTrackLoadError = (error: unknown): boolean => {
 };
 
 const applyPlaybackState = (nextState: AudioPlaybackState): void => {
+    if (!nextState.loaded) {
+        gaplessQueueRequestVersion += 1;
+        queuedGaplessTrackPath = '';
+    }
+
+    syncCurrentTrackFromPlaybackState(nextState);
     const transition = playbackStateService.applyPlaybackState(nextState, tracks.length > 0);
     updateTrackLabels();
     updatePlayButton();
@@ -1192,6 +1361,7 @@ const applyPlaybackState = (nextState: AudioPlaybackState): void => {
     updateMediaSessionMetadata();
     updateMediaSessionPlaybackState();
     updateMediaSessionPositionState();
+    void queueGaplessNextTrack(nextState);
 
     if (transition.trackEnded) {
         goToTrack(1);
@@ -1445,6 +1615,15 @@ const nextTrackIndexForDirection = (direction: -1 | 1): number | undefined => {
     }
 
     return playbackSequencingService.nextTrackIndexForDirection(direction);
+};
+
+const peekNextTrackIndexForDirection = (direction: -1 | 1): number | undefined => {
+    const nextPlaylistIndex = playlistController.peekNextTrackIndex(direction);
+    if (nextPlaylistIndex !== undefined) {
+        return nextPlaylistIndex;
+    }
+
+    return playbackSequencingService.peekNextTrackIndexForDirection(direction);
 };
 
 const closePlayOrderMenu = (): void => {
@@ -2239,6 +2418,8 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
         return;
     }
 
+    gaplessQueueRequestVersion += 1;
+    queuedGaplessTrackPath = '';
     currentTrackIndex = index;
     playlistController.scheduleRender();
     setCoverFlipped(false);
@@ -2253,10 +2434,14 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
         libraryController.setSidebarAutoFolderPath(track.folderPath);
     }
 
+    logPlaybackDebug(`LoadTrack request index=${index} path="${track.path}" recovery=${allowMissingTrackRecovery}`);
+
     try {
         const nextState = await AudioLoadTrack(track.path) as AudioPlaybackState;
+        logPlaybackDebug(`LoadTrack success ${formatPlaybackStateForLog(nextState)}`);
         applyPlaybackState(nextState);
     } catch (error) {
+        logPlaybackDebug(`LoadTrack failed path="${track.path}" error=${describeErrorForLog(error)}`);
         if (allowMissingTrackRecovery && isMissingTrackLoadError(error) && hasConfiguredLibraryFolders()) {
             const failedTrackPath = track.path.toLowerCase();
             const failedRelativePath = track.relativePath.toLowerCase();
@@ -2300,24 +2485,7 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
     }
 
     refreshNowPlayingLabel();
-    const coverSrc = await resolveCoverForTrack(track);
-    if (index !== currentTrackIndex) {
-        return;
-    }
-
-    if (coverSrc) {
-        coverArtBackground.src = coverSrc;
-        coverArtBackground.classList.add('is-visible');
-        coverArt.src = coverSrc;
-        coverArt.classList.add('is-visible');
-        setBackgroundCover(coverSrc);
-    } else {
-        coverArtBackground.removeAttribute('src');
-        coverArtBackground.classList.remove('is-visible');
-        coverArt.removeAttribute('src');
-        coverArt.classList.remove('is-visible');
-        setBackgroundCover();
-    }
+    await applyCoverArtForTrack(index);
 
     updateMediaSessionMetadata();
 
@@ -2336,17 +2504,21 @@ const playCurrentTrack = async (): Promise<void> => {
     }
 
     if (currentTrackIndex === -1 || !playbackStateService.isBackendReady()) {
+        logPlaybackDebug(`Play skipped currentTrackIndex=${currentTrackIndex} backendReady=${playbackStateService.isBackendReady()}`);
         return;
     }
 
     if (await shouldSkipLoadedTrack()) {
+        logPlaybackDebug(`Play redirected due to silent-track heuristic currentIndex=${currentTrackIndex}`);
         goToTrack(1);
         return;
     }
 
     playbackMutationVersion += 1;
+    logPlaybackDebug(`Play request index=${currentTrackIndex} path="${tracks[currentTrackIndex]?.path || ''}"`);
     try {
         const nextState = await AudioPlay() as AudioPlaybackState;
+        logPlaybackDebug(`Play success ${formatPlaybackStateForLog(nextState)}`);
         applyPlaybackState(nextState);
     } catch (error) {
         handleAudioError(error);
@@ -2355,12 +2527,15 @@ const playCurrentTrack = async (): Promise<void> => {
 
 const pauseCurrentTrack = async (): Promise<void> => {
     if (!playbackStateService.isBackendReady()) {
+        logPlaybackDebug('Pause skipped because backend is not ready');
         return;
     }
 
     playbackMutationVersion += 1;
+    logPlaybackDebug(`Pause request index=${currentTrackIndex} path="${tracks[currentTrackIndex]?.path || ''}"`);
     try {
         const nextState = await AudioPause() as AudioPlaybackState;
+        logPlaybackDebug(`Pause success ${formatPlaybackStateForLog(nextState)}`);
         applyPlaybackState(nextState);
     } catch (error) {
         handleAudioError(error);
@@ -2369,12 +2544,14 @@ const pauseCurrentTrack = async (): Promise<void> => {
 
 const toggleCurrentTrack = async (): Promise<void> => {
     if (!playbackStateService.isBackendReady() || playPauseToggleInFlight) {
+        logPlaybackDebug(`Toggle skipped backendReady=${playbackStateService.isBackendReady()} inFlight=${playPauseToggleInFlight}`);
         return;
     }
 
     playPauseToggleInFlight = true;
     try {
         const playbackState = playbackStateService.getPlaybackState();
+        logPlaybackDebug(`Toggle request ${formatPlaybackStateForLog(playbackState)}`);
         if (playbackState.playing) {
             await pauseCurrentTrack();
             return;
@@ -2388,9 +2565,11 @@ const toggleCurrentTrack = async (): Promise<void> => {
 
 const goToTrackInternal = async (direction: -1 | 1): Promise<void> => {
     if (tracks.length === 0) {
+        logPlaybackDebug(`GoToTrack skipped direction=${direction} because there are no tracks`);
         return;
     }
 
+    logPlaybackDebug(`GoToTrack start direction=${direction} currentIndex=${currentTrackIndex}`);
     const playbackState = playbackStateService.getPlaybackState();
     if (playbackState.loaded && playbackState.playing) {
         await pauseCurrentTrack();
@@ -2399,8 +2578,11 @@ const goToTrackInternal = async (direction: -1 | 1): Promise<void> => {
     for (let attempt = 0; attempt < tracks.length; attempt += 1) {
         const nextIndex = nextTrackIndexForDirection(direction);
         if (nextIndex === undefined) {
+            logPlaybackDebug(`GoToTrack direction=${direction} found no next index on attempt=${attempt}`);
             return;
         }
+
+        logPlaybackDebug(`GoToTrack candidate direction=${direction} nextIndex=${nextIndex} path="${tracks[nextIndex]?.path || ''}" attempt=${attempt}`);
 
         await loadTrack(nextIndex);
         if (!(await shouldSkipLoadedTrack())) {
@@ -2425,6 +2607,8 @@ const stopCurrentTrack = async (): Promise<void> => {
         return;
     }
 
+    gaplessQueueRequestVersion += 1;
+    queuedGaplessTrackPath = '';
     try {
         const nextState = await AudioStop() as AudioPlaybackState;
         applyPlaybackState(nextState);
@@ -3011,6 +3195,7 @@ settingsController = createSettingsController({
         coverArtPriority: currentSettings.coverArtPriority,
         audioOutputDevice: currentSettings.audio.outputDevice,
         audioOutputBufferMs: currentSettings.audio.outputBufferMs,
+        gaplessPlayback: currentSettings.audio.gaplessPlayback,
         audioOutputDevices: availableAudioOutputDevices,
         preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
@@ -3024,6 +3209,7 @@ settingsController = createSettingsController({
         coverArtPriority,
         audioOutputDevice,
         audioOutputBufferMs,
+        gaplessPlayback,
         preferMusicBrainzMetadata,
         keyboardShortcuts,
     }): Promise<void> => {
@@ -3041,6 +3227,7 @@ settingsController = createSettingsController({
                 audio: {
                     outputDevice: audioOutputDevice,
                     outputBufferMs: audioOutputBufferMs,
+                    gaplessPlayback,
                 },
                 preferMusicBrainzMetadata,
                 keyboardShortcuts,
@@ -3057,6 +3244,18 @@ settingsController = createSettingsController({
                 closeListenBrainzFeedbackMenu();
             }
 
+            if (!currentSettings.audio.gaplessPlayback) {
+                gaplessQueueRequestVersion += 1;
+                queuedGaplessTrackPath = '';
+                if (playbackStateService.isBackendReady()) {
+                    void AudioQueueNextTrack('', '').catch((error: unknown) => {
+                        console.debug(error);
+                    });
+                }
+            } else {
+                void queueGaplessNextTrack();
+            }
+
             void refreshListenBrainzFeedbackForCurrentTrack(true);
         } catch (error) {
             console.error(error);
@@ -3070,6 +3269,7 @@ settingsController = createSettingsController({
         coverArtPriority,
         audioOutputDevice,
         audioOutputBufferMs,
+        gaplessPlayback,
         preferMusicBrainzMetadata,
         keyboardShortcuts,
     }): Promise<void> => {
@@ -3086,6 +3286,7 @@ settingsController = createSettingsController({
             audio: {
                 outputDevice: audioOutputDevice,
                 outputBufferMs: audioOutputBufferMs,
+                gaplessPlayback,
             },
             preferMusicBrainzMetadata,
             keyboardShortcuts,
@@ -3098,6 +3299,16 @@ settingsController = createSettingsController({
         playbackStateService.setBackendReady(true);
         applyPlaybackState(nextState);
         updatePlayButton();
+
+        if (!currentSettings.audio.gaplessPlayback) {
+            gaplessQueueRequestVersion += 1;
+            queuedGaplessTrackPath = '';
+            if (playbackStateService.isBackendReady()) {
+                void AudioQueueNextTrack('', '').catch((error: unknown) => {
+                    console.debug(error);
+                });
+            }
+        }
     },
     forceReload: async (): Promise<void> => {
         await scanConfiguredLibraryFolders();

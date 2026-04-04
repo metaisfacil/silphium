@@ -213,11 +213,57 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
         return nextIndex;
     };
 
+    const peekNextTrackIndexForDirection = (direction: -1 | 1): number | undefined => {
+        const orderedIndexes = orderedTrackIndexesForScope();
+        if (orderedIndexes.length === 0) {
+            return undefined;
+        }
+
+        if (!isShuffleMode()) {
+            const currentPosition = orderedIndexes.indexOf(options.getCurrentTrackIndex());
+            if (currentPosition < 0) {
+                return orderedIndexes[0];
+            }
+
+            const nextPosition = (currentPosition + direction + orderedIndexes.length) % orderedIndexes.length;
+            return orderedIndexes[nextPosition];
+        }
+
+        const scopeKey = currentShuffleScopeKey();
+        let previewHistory = shuffleHistory.slice();
+        let previewCursor = shuffleCursor;
+        if (shuffleScopeKey !== scopeKey) {
+            previewHistory = [];
+            previewCursor = -1;
+        }
+
+        const currentTrackIndex = options.getCurrentTrackIndex();
+        if (previewCursor < 0) {
+            previewHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
+            previewCursor = 0;
+        }
+
+        if (direction < 0) {
+            if (previewCursor > 0) {
+                return previewHistory[previewCursor - 1];
+            }
+
+            return previewHistory[previewCursor];
+        }
+
+        if (previewCursor < previewHistory.length - 1) {
+            return previewHistory[previewCursor + 1];
+        }
+
+        return pickRandomTrackIndex(orderedIndexes, previewHistory[previewCursor]);
+    };
+
     return {
         baseSequenceIndexes,
         getPlaybackOrderLabel: (): string => playbackOrderLabelByMode[playbackOrderMode],
         getPlaybackOrderMode: (): PlaybackOrderMode => playbackOrderMode,
         nextTrackIndexForDirection,
+        peekNextTrackIndexForDirection,
         resetShuffleHistory,
         setPlaybackOrderMode: (nextMode: PlaybackOrderMode): boolean => {
             if (playbackOrderMode === nextMode) {

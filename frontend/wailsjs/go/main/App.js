@@ -22,6 +22,10 @@ export function AudioPlay() {
   return window['go']['main']['App']['AudioPlay']();
 }
 
+export function AudioQueueNextTrack(arg1, arg2) {
+  return window['go']['main']['App']['AudioQueueNextTrack'](arg1, arg2);
+}
+
 export function AudioReinitializeBackend() {
   return window['go']['main']['App']['AudioReinitializeBackend']();
 }

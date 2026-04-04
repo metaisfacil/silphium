@@ -12,6 +12,8 @@ export function AudioPause():Promise<main.AudioPlaybackState>;
 
 export function AudioPlay():Promise<main.AudioPlaybackState>;
 
+export function AudioQueueNextTrack(arg1:string,arg2:string):Promise<main.AudioPlaybackState>;
+
 export function AudioReinitializeBackend():Promise<main.AudioPlaybackState>;
 
 export function AudioSeek(arg1:number):Promise<main.AudioPlaybackState>;

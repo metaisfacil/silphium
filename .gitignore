@@ -2,6 +2,7 @@
 /Silphium
 /build/bin/
 /build/bin/**
+/build/.make-dev.pid
 /build/appicon.png
 build/appicon.png
 appicon.png
