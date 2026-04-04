@@ -2043,6 +2043,100 @@ const handleFocusedHardwareMediaKey = (event: KeyboardEvent): boolean => {
     return false;
 };
 
+const nonTypingInputTypes = new Set([
+    'button',
+    'checkbox',
+    'color',
+    'file',
+    'hidden',
+    'image',
+    'radio',
+    'range',
+    'reset',
+    'submit',
+]);
+
+const isTypingFieldElement = (element: Element | null): boolean => {
+    if (!element) {
+        return false;
+    }
+
+    if (element instanceof HTMLTextAreaElement) {
+        return true;
+    }
+
+    if (element instanceof HTMLInputElement) {
+        const inputType = (element.type || 'text').toLowerCase();
+        return !nonTypingInputTypes.has(inputType);
+    }
+
+    if (element instanceof HTMLElement && element.isContentEditable) {
+        return true;
+    }
+
+    const role = element.getAttribute('role');
+    return role === 'textbox' || role === 'searchbox';
+};
+
+const shouldSuppressFocusedShortcut = (event: KeyboardEvent): boolean => {
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    if (isTypingFieldElement(eventTarget)) {
+        return true;
+    }
+
+    const activeElement = document.activeElement instanceof Element ? document.activeElement : null;
+    return activeElement !== eventTarget && isTypingFieldElement(activeElement);
+};
+
+const handleFocusedKeyboardShortcut = (event: KeyboardEvent): boolean => {
+    if (event.repeat || shouldSuppressFocusedShortcut(event)) {
+        return false;
+    }
+
+    const ctrlOnlyModifier = event.ctrlKey && !event.altKey && !event.metaKey;
+    if (ctrlOnlyModifier && event.code === 'KeyF') {
+        if (!libraryController.isSidebarOpen()) {
+            libraryController.setSidebarOpen(true);
+        }
+
+        window.requestAnimationFrame(() => {
+            librarySearch.focus();
+        });
+        return true;
+    }
+
+    if (ctrlOnlyModifier && event.code === 'KeyP') {
+        settingsController.open();
+        return true;
+    }
+
+    if (event.ctrlKey || event.altKey || event.metaKey) {
+        return false;
+    }
+
+    if (event.code === 'Space') {
+        dispatchExternalPlaybackAction('playpause');
+        return true;
+    }
+
+    if (event.code === 'KeyN') {
+        dispatchExternalPlaybackAction('next');
+        return true;
+    }
+
+    if (event.code === 'KeyP') {
+        dispatchExternalPlaybackAction('previous');
+        return true;
+    }
+
+    if (event.code === 'KeyZ') {
+        dispatchExternalPlaybackAction('stop');
+        return true;
+    }
+
+    return false;
+};
+
 const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
     const changed = playbackSequencingService.setPlaybackOrderMode(nextMode);
     if (!changed) {
@@ -2723,6 +2817,11 @@ document.addEventListener('keydown', (event) => {
     if (imageModalController.handleEscape()) {
         return;
     }
+
+    if (libraryController.isSidebarOpen()) {
+        libraryController.setSidebarOpen(false);
+        return;
+    }
 });
 
 playPause.addEventListener('click', () => {
@@ -2930,7 +3029,7 @@ document.addEventListener('keydown', () => {
 }, { capture: true });
 
 document.addEventListener('keydown', (event) => {
-    if (handleFocusedHardwareMediaKey(event)) {
+    if (handleFocusedHardwareMediaKey(event) || handleFocusedKeyboardShortcut(event)) {
         event.preventDefault();
         event.stopPropagation();
         return;
