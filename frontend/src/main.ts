@@ -183,6 +183,7 @@ let aboutModalHideTimer: number | undefined;
 let isSeeking = false;
 let playbackMutationVersion = 0;
 let playPauseToggleInFlight = false;
+let trackNavigationChain: Promise<void> = Promise.resolve();
 let availableAudioOutputDevices: AudioOutputDevice[] = [];
 let currentSettings: AppSettings = {
     libraryFolders: [],
@@ -2385,27 +2386,38 @@ const toggleCurrentTrack = async (): Promise<void> => {
     }
 };
 
-const goToTrack = (direction: -1 | 1): void => {
+const goToTrackInternal = async (direction: -1 | 1): Promise<void> => {
     if (tracks.length === 0) {
         return;
     }
 
-    void (async () => {
-        for (let attempt = 0; attempt < tracks.length; attempt += 1) {
-            const nextIndex = nextTrackIndexForDirection(direction);
-            if (nextIndex === undefined) {
-                return;
-            }
+    const playbackState = playbackStateService.getPlaybackState();
+    if (playbackState.loaded && playbackState.playing) {
+        await pauseCurrentTrack();
+    }
 
-            await loadTrack(nextIndex);
-            if (!(await shouldSkipLoadedTrack())) {
-                await playCurrentTrack();
-                return;
-            }
+    for (let attempt = 0; attempt < tracks.length; attempt += 1) {
+        const nextIndex = nextTrackIndexForDirection(direction);
+        if (nextIndex === undefined) {
+            return;
         }
 
-        await playCurrentTrack();
-    })();
+        await loadTrack(nextIndex);
+        if (!(await shouldSkipLoadedTrack())) {
+            await playCurrentTrack();
+            return;
+        }
+    }
+
+    await playCurrentTrack();
+};
+
+const goToTrack = (direction: -1 | 1): void => {
+    trackNavigationChain = trackNavigationChain
+        .then(() => goToTrackInternal(direction))
+        .catch((error) => {
+            console.error(error);
+        });
 };
 
 const stopCurrentTrack = async (): Promise<void> => {
