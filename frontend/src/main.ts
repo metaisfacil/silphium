@@ -20,7 +20,7 @@ import { createPlaybackSequencingService } from './services/playback-sequencing-
 import { createScrobbleService } from './services/scrobble-service';
 import { createPlaybackStateService } from './services/playback-state-service';
 import { createTrackMetadataService } from './services/track-metadata-service';
-import { getMediaControlsElements, renderMediaControls } from './components/media-controls';
+import { getMediaControlsElements, renderMediaControls, renderPlayPauseIcon } from './components/media-controls';
 import {
     getAboutModalElements,
     getImageFileModalElements,
@@ -950,7 +950,7 @@ const maybeSubmitListenBrainz = (state: AudioPlaybackState): void => {
 
 const updatePlayButton = (): void => {
     const playbackState = playbackStateService.getPlaybackState();
-    playPause.textContent = playbackState.playing ? '⏸' : '▶';
+    playPause.innerHTML = renderPlayPauseIcon(playbackState.playing ? 'pause' : 'play');
     playPause.dataset.state = playbackState.playing ? 'pause' : 'play';
     playPause.setAttribute('aria-label', playbackState.playing ? 'Pause' : 'Play');
 };

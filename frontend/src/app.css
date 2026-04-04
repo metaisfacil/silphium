@@ -1417,6 +1417,12 @@
     transition: background 150ms ease, transform 100ms ease;
 }
 
+.control-btn .control-icon {
+    width: clamp(1.12rem, 3.9cqw, 1.42rem);
+    height: clamp(1.12rem, 3.9cqw, 1.42rem);
+    display: block;
+}
+
 .control-btn:hover {
     background: rgba(0, 0, 0, 0.2);
 }
@@ -1449,8 +1455,13 @@
 }
 
 .listenbrainz-love-btn {
-    font-size: clamp(1rem, 3.4cqw, 1.18rem);
+    position: relative;
     opacity: 0.52;
+}
+
+.listenbrainz-love-btn .control-icon {
+    width: clamp(1.02rem, 3.55cqw, 1.24rem);
+    height: clamp(1.02rem, 3.55cqw, 1.24rem);
 }
 
 .listenbrainz-love-btn.is-loved {
@@ -1462,16 +1473,24 @@
 .listenbrainz-love-btn.is-hated {
     color: rgba(255, 214, 130, 0.96);
     opacity: 1;
-    text-decoration: line-through;
-    text-decoration-thickness: 0.11rem;
-    text-decoration-color: rgba(255, 214, 130, 0.85);
+}
+
+.listenbrainz-love-btn.is-hated::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 1.1rem;
+    height: 2px;
+    border-radius: 999px;
+    transform: translate(-50%, -50%) rotate(-38deg);
+    background: rgba(255, 214, 130, 0.88);
 }
 
 .listenbrainz-love-btn.is-loading {
     opacity: 1;
     color: transparent;
     text-shadow: none;
-    text-decoration: none;
 }
 
 .listenbrainz-love-btn.is-loading::after {
@@ -1503,6 +1522,11 @@
     font-weight: 600;
 }
 
+.control-btn.primary .control-icon {
+    width: clamp(1.26rem, 4.35cqw, 1.56rem);
+    height: clamp(1.26rem, 4.35cqw, 1.56rem);
+}
+
 .volume-wrap {
     position: relative;
 }
@@ -1510,6 +1534,10 @@
 .volume-wrap .control-btn {
     width: 100%;
     height: 100%;
+}
+
+.volume-wrap .control-btn .control-icon {
+    opacity: 0.84;
 }
 
 .volume-popout {
