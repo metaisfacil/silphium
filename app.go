@@ -52,6 +52,9 @@ type App struct {
 	libraryDerivedIndexDirty               bool
 	libraryDerivedIndexBuilding            bool
 	libraryDerivedIndexGeneration          uint64
+	trackTagsCacheMu                       sync.Mutex
+	trackTagsCacheByPath                   map[string]trackTagsCacheEntry
+	trackTagsCacheOrder                    []string
 	libraryScan                            LibraryScanResult
 	scanInProgress                         bool
 	scanRemainingImmediateChildrenByFolder map[string]int

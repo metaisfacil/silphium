@@ -33,7 +33,7 @@ type PlaylistControllerOptions = {
     getCurrentTrackIndex: () => number;
     getPlaybackOrderLabel: () => string;
     getBaseSequence: () => PlaylistSequence;
-    ensureTrackTagsResolved: (index: number) => Promise<void>;
+    ensureTrackTagsResolvedBatch: (indexes: number[]) => Promise<void>;
     selectPlaylistFile: () => Promise<string>;
     selectPlaylistSaveFile: () => Promise<string>;
     loadPlaylistData: (playlistPath: string) => Promise<LoadedPlaylistData | null>;
@@ -336,6 +336,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         setHydrationProgress(alreadyResolved, totalTracks);
 
         const workerCount = Math.min(4, pending.length);
+        const batchSize = 12;
         let cursor = 0;
         let completed = alreadyResolved;
 
@@ -346,17 +347,18 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 }
 
                 const nextCursor = cursor;
-                cursor += 1;
+                cursor += batchSize;
                 if (nextCursor >= pending.length) {
                     return;
                 }
 
-                await options.ensureTrackTagsResolved(pending[nextCursor]);
+                const batch = pending.slice(nextCursor, Math.min(nextCursor + batchSize, pending.length));
+                await options.ensureTrackTagsResolvedBatch(batch);
                 if (runId !== hydrationRunId) {
                     return;
                 }
 
-                completed += 1;
+                completed += batch.length;
                 setHydrationProgress(completed, totalTracks);
 
                 scheduleRender();

@@ -879,6 +879,13 @@ const ensureTrackTagsResolved = async (index: number): Promise<void> => {
     }
 };
 
+const ensureTrackTagsResolvedBatch = async (indexes: number[]): Promise<void> => {
+    await trackMetadataService.ensureTrackTagsResolvedBatch(indexes);
+    if (indexes.includes(currentTrackIndex)) {
+        refreshNowPlayingLabel();
+    }
+};
+
 const matchesSilenceTitleHeuristic = (track: Track): boolean => {
     const titles = [
         track.displayTitle,
@@ -2030,7 +2037,7 @@ playlistController = createPlaylistController({
     getCurrentTrackIndex: () => currentTrackIndex,
     getPlaybackOrderLabel: () => playbackSequencingService.getPlaybackOrderLabel(),
     getBaseSequence: () => baseSequenceIndexes(),
-    ensureTrackTagsResolved,
+    ensureTrackTagsResolvedBatch,
     selectPlaylistFile: SelectPlaylistFile,
     selectPlaylistSaveFile: SelectPlaylistSaveFile,
     loadPlaylistData,

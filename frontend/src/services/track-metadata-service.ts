@@ -29,6 +29,91 @@ type HydrateTrackResult = {
 export type TrackMetadataService = ReturnType<typeof createTrackMetadataService>;
 
 export const createTrackMetadataService = (options: TrackMetadataServiceOptions) => {
+    const applyResolvedTrackTags = (index: number, tags?: TrackTags): boolean => {
+        const latestTrack = options.getTracks()[index];
+        if (!latestTrack) {
+            return false;
+        }
+
+        const metadata = buildDisplayMetadata(latestTrack, tags);
+        options.setTrack(index, {
+            ...latestTrack,
+            displayTitle: metadata.title,
+            displayAlbum: metadata.album,
+            displayArtist: metadata.artist,
+            displayLyrics: normalizeTrackLyrics(tags),
+            displayTrackNumber: tags?.trackNumber?.trim() || '',
+            displayTrackTotal: tags?.trackTotal?.trim() || '',
+            displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
+            technicalDetails: technicalDetailsFromTags(tags),
+            allFileTags: allFileTagsFromTags(tags),
+            tagsResolved: true,
+            mbMetadataResolved: false,
+            mbIds: {
+                recordingId: tags?.recordingId || undefined,
+                releaseId: tags?.releaseId || undefined,
+                artistId: tags?.artistIds?.[0] || tags?.artistId || undefined,
+            },
+            artistMbids: (tags?.artistIds && tags.artistIds.length > 0)
+                ? tags.artistIds
+                : (tags?.artistId ? [tags.artistId] : []),
+            mbArtistCredits: [],
+        });
+
+        return true;
+    };
+
+    const ensureTrackTagsBatchInternal = async (indexes: number[], requestVersion?: number): Promise<void> => {
+        if (indexes.length === 0) {
+            return;
+        }
+
+        const uniqueIndexes = Array.from(new Set(indexes));
+        const unresolvedIndexes: number[] = [];
+        const paths: string[] = [];
+        const seenPaths = new Set<string>();
+
+        for (const index of uniqueIndexes) {
+            const track = options.getTracks()[index];
+            if (!track || track.tagsResolved) {
+                continue;
+            }
+
+            unresolvedIndexes.push(index);
+            if (!seenPaths.has(track.path)) {
+                seenPaths.add(track.path);
+                paths.push(track.path);
+            }
+        }
+
+        if (paths.length === 0) {
+            return;
+        }
+
+        try {
+            const tagByPath = await options.readTrackTags(paths);
+            if (requestVersion !== undefined && requestVersion !== options.getTagRequestVersion()) {
+                return;
+            }
+
+            for (const index of unresolvedIndexes) {
+                if (requestVersion !== undefined && requestVersion !== options.getTagRequestVersion()) {
+                    return;
+                }
+
+                const latestTrack = options.getTracks()[index];
+                if (!latestTrack || latestTrack.tagsResolved) {
+                    continue;
+                }
+
+                const tags = tagByPath[latestTrack.path] as TrackTags | undefined;
+                applyResolvedTrackTags(index, tags);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     const ensureTrackTagsInternal = async (index: number, requestVersion?: number): Promise<{ resolved: boolean; updated: boolean }> => {
         const tracks = options.getTracks();
         if (index < 0 || index >= tracks.length) {
@@ -52,30 +137,9 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
             }
 
             const tags = tagByPath[latestTrack.path] as TrackTags | undefined;
-            const metadata = buildDisplayMetadata(latestTrack, tags);
-            options.setTrack(index, {
-                ...latestTrack,
-                displayTitle: metadata.title,
-                displayAlbum: metadata.album,
-                displayArtist: metadata.artist,
-                displayLyrics: normalizeTrackLyrics(tags),
-                displayTrackNumber: tags?.trackNumber?.trim() || '',
-                displayTrackTotal: tags?.trackTotal?.trim() || '',
-                displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
-                technicalDetails: technicalDetailsFromTags(tags),
-                allFileTags: allFileTagsFromTags(tags),
-                tagsResolved: true,
-                mbMetadataResolved: false,
-                mbIds: {
-                    recordingId: tags?.recordingId || undefined,
-                    releaseId: tags?.releaseId || undefined,
-                    artistId: tags?.artistIds?.[0] || tags?.artistId || undefined,
-                },
-                artistMbids: (tags?.artistIds && tags.artistIds.length > 0)
-                    ? tags.artistIds
-                    : (tags?.artistId ? [tags.artistId] : []),
-                mbArtistCredits: [],
-            });
+            if (!applyResolvedTrackTags(index, tags)) {
+                return { resolved: false, updated: false };
+            }
 
             return { resolved: true, updated: true };
         } catch (error) {
@@ -145,6 +209,9 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
     return {
         ensureTrackTagsResolved: async (index: number): Promise<void> => {
             await ensureTrackTagsInternal(index);
+        },
+        ensureTrackTagsResolvedBatch: async (indexes: number[]): Promise<void> => {
+            await ensureTrackTagsBatchInternal(indexes);
         },
         hydrateTrack: async (index: number, requestVersion: number): Promise<HydrateTrackResult> => {
             const { resolved, updated: updatedTags } = await ensureTrackTagsInternal(index, requestVersion);

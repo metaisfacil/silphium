@@ -2,13 +2,14 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	taglib "go.senan.xyz/taglib"
 )
@@ -47,6 +48,34 @@ type TrackBlob struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
 	Data string `json:"data"`
+}
+
+const (
+	trackTagsWorkerLimit = 8
+	trackTagsCacheLimit  = 4096
+)
+
+type trackTagsFileSignature struct {
+	Size      int64
+	ModUnixNs int64
+}
+
+type trackTagsCacheEntry struct {
+	Signature   trackTagsFileSignature
+	Tags        TrackTags
+	HasMetadata bool
+}
+
+type readTrackTagsJob struct {
+	path      string
+	signature trackTagsFileSignature
+}
+
+type readTrackTagsResult struct {
+	path        string
+	signature   trackTagsFileSignature
+	tags        TrackTags
+	hasMetadata bool
 }
 
 func firstTagValue(tags map[string][]string, keys ...string) string {
@@ -136,33 +165,7 @@ func extractTrackNumbers(tags map[string][]string) (string, string) {
 	return strings.TrimSpace(number), strings.TrimSpace(total)
 }
 
-type ffprobeAudioStream struct {
-	CodecName        string `json:"codec_name"`
-	CodecLongName    string `json:"codec_long_name"`
-	Profile          string `json:"profile"`
-	SampleRate       string `json:"sample_rate"`
-	BitsPerRawSample string `json:"bits_per_raw_sample"`
-	BitsPerSample    int    `json:"bits_per_sample"`
-	SampleFmt        string `json:"sample_fmt"`
-	Channels         int    `json:"channels"`
-	ChannelLayout    string `json:"channel_layout"`
-	BitRate          string `json:"bit_rate"`
-	Duration         string `json:"duration"`
-}
-
-type ffprobeFormatOutput struct {
-	FormatName string `json:"format_name"`
-	BitRate    string `json:"bit_rate"`
-	Duration   string `json:"duration"`
-	Size       string `json:"size"`
-}
-
-type ffprobeAudioOutput struct {
-	Streams []ffprobeAudioStream `json:"streams"`
-	Format  ffprobeFormatOutput  `json:"format"`
-}
-
-// TrackTechnicalMetadata contains parsed ffprobe-derived technical audio properties.
+// TrackTechnicalMetadata contains parsed audio technical properties.
 type TrackTechnicalMetadata struct {
 	BitDepth        int
 	SampleRate      int
@@ -179,21 +182,22 @@ type TrackTechnicalMetadata struct {
 	FileSizeBytes   int64
 }
 
-func bitDepthFromSampleFmt(sampleFmt string) int {
-	switch strings.ToLower(strings.TrimSpace(sampleFmt)) {
-	case "u8", "u8p":
-		return 8
-	case "s16", "s16p":
-		return 16
-	case "s24", "s24p":
-		return 24
-	case "s32", "s32p", "flt", "fltp":
-		return 32
-	case "dbl", "dblp":
-		return 64
-	default:
-		return 0
-	}
+var trackTagsIntegerPattern = regexp.MustCompile(`\d+`)
+
+var codecByContainer = map[string]string{
+	"flac": "FLAC",
+	"mp3":  "MP3",
+	"ogg":  "VORBIS",
+	"oga":  "VORBIS",
+	"opus": "OPUS",
+	"m4a":  "AAC",
+	"aac":  "AAC",
+	"wav":  "PCM",
+	"aif":  "PCM",
+	"aiff": "PCM",
+	"wma":  "WMA",
+	"ape":  "APE",
+	"wv":   "WAVPACK",
 }
 
 func parseIntValue(value string) int {
@@ -203,21 +207,20 @@ func parseIntValue(value string) int {
 	}
 
 	parsed, err := strconv.Atoi(trimmed)
-	if err != nil {
+	if err == nil {
+		if parsed > 0 {
+			return parsed
+		}
 		return 0
 	}
 
-	return parsed
-}
-
-func parseInt64Value(value string) int64 {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
+	match := trackTagsIntegerPattern.FindString(trimmed)
+	if match == "" {
 		return 0
 	}
 
-	parsed, err := strconv.ParseInt(trimmed, 10, 64)
-	if err != nil {
+	parsed, err = strconv.Atoi(match)
+	if err != nil || parsed <= 0 {
 		return 0
 	}
 
@@ -231,81 +234,122 @@ func parseFloatValue(value string) float64 {
 	}
 
 	parsed, err := strconv.ParseFloat(trimmed, 64)
-	if err != nil {
+	if err != nil || parsed <= 0 {
 		return 0
 	}
 
 	return parsed
 }
 
-func readTrackTechnicalMetadata(path string) TrackTechnicalMetadata {
+func inferContainerFromPath(path string) string {
+	return strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+}
+
+func inferChannelLayout(channels int) string {
+	switch channels {
+	case 1:
+		return "mono"
+	case 2:
+		return "stereo"
+	case 6:
+		return "5.1"
+	case 8:
+		return "7.1"
+	default:
+		return ""
+	}
+}
+
+func parseBitDepthFromTags(tags map[string][]string) int {
+	return parseIntValue(firstTagValue(tags,
+		"BITDEPTH",
+		"BITS_PER_SAMPLE",
+		"BITSPERSAMPLE",
+		"BPS",
+		"BITS",
+	))
+}
+
+func inferCodecFromContainerAndTags(container string, tags map[string][]string) string {
+	codec := strings.ToUpper(strings.TrimSpace(firstTagValue(tags,
+		"CODEC",
+		"AUDIOCODEC",
+		"AUDIO_CODEC",
+		"MEDIA_CODEC",
+		"FORMAT",
+	)))
+	if codec != "" {
+		return codec
+	}
+
+	if mapped, ok := codecByContainer[container]; ok {
+		return mapped
+	}
+
+	return ""
+}
+
+func readTrackTechnicalMetadata(path string, tags map[string][]string) TrackTechnicalMetadata {
 	metadata := TrackTechnicalMetadata{}
 
 	if fileInfo, statErr := os.Stat(path); statErr == nil && !fileInfo.IsDir() {
 		metadata.FileSizeBytes = fileInfo.Size()
 	}
 
-	ffprobePath, err := exec.LookPath("ffprobe")
-	if err != nil {
-		return metadata
-	}
-
-	command := exec.Command(
-		ffprobePath,
-		"-v", "error",
-		"-select_streams", "a:0",
-		"-show_entries", "stream=codec_name,codec_long_name,profile,sample_rate,bits_per_raw_sample,bits_per_sample,sample_fmt,channels,channel_layout,bit_rate,duration:format=format_name,bit_rate,duration,size",
-		"-of", "json",
-		path,
-	)
-
-	rawOutput, err := command.Output()
-	if err != nil {
-		return metadata
-	}
-
-	var parsed ffprobeAudioOutput
-	if err := json.Unmarshal(rawOutput, &parsed); err != nil {
-		return metadata
-	}
-
-	metadata.Container = strings.TrimSpace(parsed.Format.FormatName)
-	metadata.OverallBitRate = parseIntValue(parsed.Format.BitRate)
-	metadata.DurationSeconds = parseFloatValue(parsed.Format.Duration)
-	if metadata.FileSizeBytes == 0 {
-		metadata.FileSizeBytes = parseInt64Value(parsed.Format.Size)
-	}
-
-	if len(parsed.Streams) == 0 {
-		return metadata
-	}
-
-	stream := parsed.Streams[0]
-	metadata.SampleRate = parseIntValue(stream.SampleRate)
-	metadata.Codec = strings.ToUpper(strings.TrimSpace(stream.CodecName))
-	metadata.CodecLong = strings.TrimSpace(stream.CodecLongName)
-	metadata.CodecProfile = strings.TrimSpace(stream.Profile)
-	metadata.SampleFormat = strings.TrimSpace(stream.SampleFmt)
-	metadata.Channels = stream.Channels
-	metadata.ChannelLayout = strings.TrimSpace(stream.ChannelLayout)
-	metadata.BitRate = parseIntValue(stream.BitRate)
-
-	bitDepth := 0
-	if stream.BitsPerRawSample != "" {
-		if parsedDepth, parseErr := strconv.Atoi(stream.BitsPerRawSample); parseErr == nil {
-			bitDepth = parsedDepth
+	if properties, err := taglib.ReadProperties(path); err == nil {
+		metadata.SampleRate = int(properties.SampleRate)
+		metadata.Channels = int(properties.Channels)
+		if properties.Bitrate > 0 {
+			bitRate := int(properties.Bitrate) * 1000
+			metadata.BitRate = bitRate
+			metadata.OverallBitRate = bitRate
+		}
+		if properties.Length > 0 {
+			metadata.DurationSeconds = properties.Length.Seconds()
 		}
 	}
-	if bitDepth == 0 {
-		bitDepth = stream.BitsPerSample
-	}
-	if bitDepth == 0 {
-		bitDepth = bitDepthFromSampleFmt(stream.SampleFmt)
-	}
-	metadata.BitDepth = bitDepth
 
+	container := strings.TrimSpace(strings.ToLower(firstTagValue(tags, "CONTAINER", "FILETYPE", "FORMAT")))
+	if container == "" {
+		container = inferContainerFromPath(path)
+	}
+	metadata.Container = container
+	metadata.Codec = inferCodecFromContainerAndTags(container, tags)
+	if metadata.Codec != "" {
+		metadata.CodecLong = metadata.Codec
+	}
+	metadata.CodecProfile = firstTagValue(tags, "CODECPROFILE", "CODEC_PROFILE", "PROFILE")
+	metadata.SampleFormat = firstTagValue(tags, "SAMPLEFORMAT", "SAMPLE_FMT", "SAMPLE_FORMAT")
+	metadata.ChannelLayout = firstTagValue(tags, "CHANNELLAYOUT", "CHANNEL_LAYOUT")
+	if metadata.ChannelLayout == "" {
+		metadata.ChannelLayout = inferChannelLayout(metadata.Channels)
+	}
+	metadata.BitDepth = parseBitDepthFromTags(tags)
+
+	if metadata.SampleRate == 0 {
+		metadata.SampleRate = parseIntValue(firstTagValue(tags, "SAMPLERATE", "SAMPLE_RATE", "SAMPLE RATE"))
+	}
+	if metadata.Channels == 0 {
+		metadata.Channels = parseIntValue(firstTagValue(tags, "CHANNELS", "CHANNEL_COUNT", "CHANNELCOUNT"))
+		if metadata.ChannelLayout == "" {
+			metadata.ChannelLayout = inferChannelLayout(metadata.Channels)
+		}
+	}
+	if metadata.BitRate == 0 {
+		bitRate := parseIntValue(firstTagValue(tags, "BITRATE", "BIT_RATE", "BANDWIDTH"))
+		if bitRate > 0 {
+			if bitRate < 1000 {
+				bitRate *= 1000
+			}
+			metadata.BitRate = bitRate
+			metadata.OverallBitRate = bitRate
+		}
+	}
 	if metadata.DurationSeconds == 0 {
-		metadata.DurationSeconds = parseFloatValue(stream.Duration)
+		durationSeconds := parseFloatValue(firstTagValue(tags, "DURATION", "LENGTH"))
+		if durationSeconds > 0 {
+			metadata.DurationSeconds = durationSeconds
+		}
 	}
 
 	return metadata
@@ -396,26 +440,222 @@ func hasAnyTrackMetadata(trackTags TrackTags) bool {
 		trackTags.UnsyncedLyrics != ""
 }
 
+func trackTagsFileSignatureForPath(path string) (trackTagsFileSignature, bool) {
+	fileInfo, err := os.Stat(path)
+	if err != nil || fileInfo.IsDir() {
+		return trackTagsFileSignature{}, false
+	}
+
+	return trackTagsFileSignature{
+		Size:      fileInfo.Size(),
+		ModUnixNs: fileInfo.ModTime().UnixNano(),
+	}, true
+}
+
+func (a *App) normalizeTrackTagPaths(paths []string) []string {
+	normalized := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+
+	for _, rawPath := range paths {
+		path := strings.TrimSpace(rawPath)
+		if path == "" || !a.isAllowedLibraryPath(path) {
+			continue
+		}
+
+		if _, exists := seen[path]; exists {
+			continue
+		}
+
+		seen[path] = struct{}{}
+		normalized = append(normalized, path)
+	}
+
+	return normalized
+}
+
+func resolveTrackTagsWorkerCount(jobCount int) int {
+	if jobCount <= 0 {
+		return 0
+	}
+
+	workerCount := runtime.NumCPU()
+	if workerCount < 2 {
+		workerCount = 2
+	}
+	if workerCount > trackTagsWorkerLimit {
+		workerCount = trackTagsWorkerLimit
+	}
+	if workerCount > jobCount {
+		workerCount = jobCount
+	}
+
+	return workerCount
+}
+
+func (a *App) removeTrackTagsCacheOrderEntryLocked(path string) {
+	for idx, cachedPath := range a.trackTagsCacheOrder {
+		if cachedPath != path {
+			continue
+		}
+
+		a.trackTagsCacheOrder = append(a.trackTagsCacheOrder[:idx], a.trackTagsCacheOrder[idx+1:]...)
+		return
+	}
+}
+
+func (a *App) touchTrackTagsCacheOrderLocked(path string) {
+	a.removeTrackTagsCacheOrderEntryLocked(path)
+	a.trackTagsCacheOrder = append(a.trackTagsCacheOrder, path)
+}
+
+func (a *App) getTrackTagsCache(path string, signature trackTagsFileSignature) (TrackTags, bool, bool) {
+	a.trackTagsCacheMu.Lock()
+	defer a.trackTagsCacheMu.Unlock()
+
+	entry, exists := a.trackTagsCacheByPath[path]
+	if !exists {
+		return TrackTags{}, false, false
+	}
+
+	if entry.Signature != signature {
+		delete(a.trackTagsCacheByPath, path)
+		a.removeTrackTagsCacheOrderEntryLocked(path)
+		return TrackTags{}, false, false
+	}
+
+	a.touchTrackTagsCacheOrderLocked(path)
+	return entry.Tags, entry.HasMetadata, true
+}
+
+func (a *App) putTrackTagsCache(path string, signature trackTagsFileSignature, tags TrackTags, hasMetadata bool) {
+	a.trackTagsCacheMu.Lock()
+	defer a.trackTagsCacheMu.Unlock()
+
+	if a.trackTagsCacheByPath == nil {
+		a.trackTagsCacheByPath = make(map[string]trackTagsCacheEntry, trackTagsCacheLimit)
+	}
+
+	a.trackTagsCacheByPath[path] = trackTagsCacheEntry{
+		Signature:   signature,
+		Tags:        tags,
+		HasMetadata: hasMetadata,
+	}
+	a.touchTrackTagsCacheOrderLocked(path)
+
+	for len(a.trackTagsCacheOrder) > trackTagsCacheLimit {
+		evictedPath := a.trackTagsCacheOrder[0]
+		a.trackTagsCacheOrder = a.trackTagsCacheOrder[1:]
+		delete(a.trackTagsCacheByPath, evictedPath)
+	}
+}
+
+func readTrackTagsForPath(path string) (TrackTags, bool) {
+	tags, err := taglib.ReadTags(path)
+	if err != nil {
+		return TrackTags{}, false
+	}
+
+	trackTags := buildTrackTags(tags, readTrackTechnicalMetadata(path, tags))
+	if !hasAnyTrackMetadata(trackTags) {
+		return TrackTags{}, false
+	}
+
+	return trackTags, true
+}
+
 // ReadTrackTags reads tag and technical metadata for track files by path.
 func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
-	tagByPath := make(map[string]TrackTags, len(paths))
+	startedAt := time.Now()
+	normalizedPaths := a.normalizeTrackTagPaths(paths)
+	tagByPath := make(map[string]TrackTags, len(normalizedPaths))
+	if len(normalizedPaths) == 0 {
+		return tagByPath
+	}
 
-	for _, path := range paths {
-		if strings.TrimSpace(path) == "" || !a.isAllowedLibraryPath(path) {
+	jobs := make(chan readTrackTagsJob, len(normalizedPaths))
+	results := make(chan readTrackTagsResult, len(normalizedPaths))
+	queuedJobs := 0
+	cacheHits := 0
+
+	for _, path := range normalizedPaths {
+		signature, ok := trackTagsFileSignatureForPath(path)
+		if !ok {
 			continue
 		}
 
-		tags, err := taglib.ReadTags(path)
-		if err != nil {
+		if cachedTags, cachedHasMetadata, cacheHit := a.getTrackTagsCache(path, signature); cacheHit {
+			cacheHits++
+			if cachedHasMetadata {
+				tagByPath[path] = cachedTags
+			}
 			continue
 		}
 
-		trackTags := buildTrackTags(tags, readTrackTechnicalMetadata(path))
-		if !hasAnyTrackMetadata(trackTags) {
+		jobs <- readTrackTagsJob{
+			path:      path,
+			signature: signature,
+		}
+		queuedJobs++
+	}
+	close(jobs)
+
+	workerCount := resolveTrackTagsWorkerCount(queuedJobs)
+	if workerCount == 0 {
+		if len(normalizedPaths) > 1 {
+			a.logRescanEvent(
+				"ReadTrackTags END: requested=%d cacheHits=%d parsed=%d returned=%d workers=%d took %.2fms",
+				len(normalizedPaths),
+				cacheHits,
+				queuedJobs,
+				len(tagByPath),
+				workerCount,
+				time.Since(startedAt).Seconds()*1000,
+			)
+		}
+		return tagByPath
+	}
+
+	var workerWaitGroup sync.WaitGroup
+	for workerIndex := 0; workerIndex < workerCount; workerIndex++ {
+		workerWaitGroup.Add(1)
+		go func() {
+			defer workerWaitGroup.Done()
+			for job := range jobs {
+				trackTags, hasMetadata := readTrackTagsForPath(job.path)
+				results <- readTrackTagsResult{
+					path:        job.path,
+					signature:   job.signature,
+					tags:        trackTags,
+					hasMetadata: hasMetadata,
+				}
+			}
+		}()
+	}
+
+	go func() {
+		workerWaitGroup.Wait()
+		close(results)
+	}()
+
+	for result := range results {
+		a.putTrackTagsCache(result.path, result.signature, result.tags, result.hasMetadata)
+		if !result.hasMetadata {
 			continue
 		}
 
-		tagByPath[path] = trackTags
+		tagByPath[result.path] = result.tags
+	}
+
+	if len(normalizedPaths) > 1 {
+		a.logRescanEvent(
+			"ReadTrackTags END: requested=%d cacheHits=%d parsed=%d returned=%d workers=%d took %.2fms",
+			len(normalizedPaths),
+			cacheHits,
+			queuedJobs,
+			len(tagByPath),
+			workerCount,
+			time.Since(startedAt).Seconds()*1000,
+		)
 	}
 
 	return tagByPath
@@ -455,7 +695,7 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 			continue
 		}
 
-		technical := readTrackTechnicalMetadata(tempPath)
+		technical := readTrackTechnicalMetadata(tempPath, tags)
 		_ = os.Remove(tempPath)
 		trackTags := buildTrackTags(tags, technical)
 		if !hasAnyTrackMetadata(trackTags) {
