@@ -7,6 +7,7 @@ export type PlaylistModalElements = {
     playlistHydrationProgress: HTMLParagraphElement;
     playlistHydrationCount: HTMLSpanElement;
     playlistList: HTMLUListElement;
+    playlistOpen: HTMLButtonElement;
     playlistCreate: HTMLButtonElement;
     playlistAddCurrent: HTMLButtonElement;
     playlistSaveAs: HTMLButtonElement;
@@ -29,9 +30,14 @@ export const renderPlaylistModal = (): string => `
             </header>
             <ul id="playlist-list" class="playlist-list"></ul>
             <footer class="playlist-actions">
-                <button id="playlist-create" class="playlist-action-btn" type="button" title="Create new playlist" aria-label="Create new playlist"><svg class="playlist-action-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6 3.5C4.9 3.5 4 4.4 4 5.5V18.5C4 19.6 4.9 20.5 6 20.5H18C19.1 20.5 20 19.6 20 18.5V9L14.5 3.5H6ZM14 5.6L17.9 9.5H14V5.6ZM7.5 11H16.5V12.5H7.5V11ZM7.5 14H16.5V15.5H7.5V14Z"/></svg></button>
-                <button id="playlist-add-current" class="playlist-action-btn" type="button" title="Add to current" aria-label="Add to current"><svg class="playlist-action-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M10.75 4.75C10.75 4.06 11.31 3.5 12 3.5C12.69 3.5 13.25 4.06 13.25 4.75V10.75H19.25C19.94 10.75 20.5 11.31 20.5 12C20.5 12.69 19.94 13.25 19.25 13.25H13.25V19.25C13.25 19.94 12.69 20.5 12 20.5C11.31 20.5 10.75 19.94 10.75 19.25V13.25H4.75C4.06 13.25 3.5 12.69 3.5 12C3.5 11.31 4.06 10.75 4.75 10.75H10.75V4.75Z"/></svg></button>
-                <button id="playlist-save-as" class="playlist-action-btn" type="button" title="Save" aria-label="Save"><svg class="playlist-action-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6 3.5C4.9 3.5 4 4.4 4 5.5V18.5C4 19.6 4.9 20.5 6 20.5H18C19.1 20.5 20 19.6 20 18.5V8.5L15 3.5H6ZM8 6H13V9H8V6ZM7.5 12H16.5V17.5H7.5V12Z"/></svg></button>
+                <div class="playlist-actions-left">
+                    <button id="playlist-add-current" class="playlist-action-btn" type="button" title="Add track to current playlist" aria-label="Add track to current playlist"><svg class="playlist-action-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M10.75 4.75C10.75 4.06 11.31 3.5 12 3.5C12.69 3.5 13.25 4.06 13.25 4.75V10.75H19.25C19.94 10.75 20.5 11.31 20.5 12C20.5 12.69 19.94 13.25 19.25 13.25H13.25V19.25C13.25 19.94 12.69 20.5 12 20.5C11.31 20.5 10.75 19.94 10.75 19.25V13.25H4.75C4.06 13.25 3.5 12.69 3.5 12C3.5 11.31 4.06 10.75 4.75 10.75H10.75V4.75Z"/></svg></button>
+                </div>
+                <div class="playlist-actions-right">
+                    <button id="playlist-create" class="playlist-action-btn" type="button" title="Create new playlist" aria-label="Create new playlist"><svg class="playlist-action-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6 3.5C4.9 3.5 4 4.4 4 5.5V18.5C4 19.6 4.9 20.5 6 20.5H18C19.1 20.5 20 19.6 20 18.5V9L14.5 3.5H6ZM14 5.6L17.9 9.5H14V5.6ZM7.5 11H16.5V12.5H7.5V11ZM7.5 14H16.5V15.5H7.5V14Z"/></svg></button>
+                    <button id="playlist-open" class="playlist-action-btn" type="button" title="Open playlist" aria-label="Open playlist"><svg class="playlist-action-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M4 6.5C4 5.12 5.12 4 6.5 4H10.09C10.75 4 11.37 4.26 11.83 4.72L13.11 6H17.5C18.88 6 20 7.12 20 8.5V17.5C20 18.88 18.88 20 17.5 20H6.5C5.12 20 4 18.88 4 17.5V6.5ZM12.75 10.75C12.75 10.06 13.31 9.5 14 9.5C14.69 9.5 15.25 10.06 15.25 10.75V12.75H17.25C17.94 12.75 18.5 13.31 18.5 14C18.5 14.69 17.94 15.25 17.25 15.25H15.25V17.25C15.25 17.94 14.69 18.5 14 18.5C13.31 18.5 12.75 17.94 12.75 17.25V15.25H10.75C10.06 15.25 9.5 14.69 9.5 14C9.5 13.31 10.06 12.75 10.75 12.75H12.75V10.75Z"/></svg></button>
+                    <button id="playlist-save-as" class="playlist-action-btn" type="button" title="Save" aria-label="Save"><svg class="playlist-action-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6 3.5C4.9 3.5 4 4.4 4 5.5V18.5C4 19.6 4.9 20.5 6 20.5H18C19.1 20.5 20 19.6 20 18.5V8.5L15 3.5H6ZM8 6H13V9H8V6ZM7.5 12H16.5V17.5H7.5V12Z"/></svg></button>
+                </div>
             </footer>
         </section>
     </div>
@@ -46,6 +52,7 @@ export const getPlaylistModalElements = (root: ParentNode): PlaylistModalElement
     playlistHydrationProgress: root.querySelector('#playlist-hydration-progress') as HTMLParagraphElement,
     playlistHydrationCount: root.querySelector('#playlist-hydration-count') as HTMLSpanElement,
     playlistList: root.querySelector('#playlist-list') as HTMLUListElement,
+    playlistOpen: root.querySelector('#playlist-open') as HTMLButtonElement,
     playlistCreate: root.querySelector('#playlist-create') as HTMLButtonElement,
     playlistAddCurrent: root.querySelector('#playlist-add-current') as HTMLButtonElement,
     playlistSaveAs: root.querySelector('#playlist-save-as') as HTMLButtonElement,

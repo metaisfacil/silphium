@@ -57,6 +57,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistHydrationProgress,
         playlistHydrationCount,
         playlistList,
+        playlistOpen,
         playlistCreate,
         playlistAddCurrent,
         playlistSaveAs,
@@ -696,6 +697,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     });
 
     playlistLoadBtn.addEventListener('click', () => {
+        void loadSelectedPlaylist();
+    });
+
+    playlistOpen.addEventListener('click', () => {
         void loadSelectedPlaylist();
     });
 

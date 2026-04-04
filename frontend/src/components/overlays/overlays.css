@@ -1413,10 +1413,17 @@
 
 .playlist-actions {
     display: flex;
-    justify-content: flex-end;
-    gap: 0.45rem;
+    align-items: center;
+    justify-content: space-between;
     padding: 0.55rem 0.7rem 0.7rem;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.playlist-actions-left,
+.playlist-actions-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
 }
 
 .playlist-action-btn {
