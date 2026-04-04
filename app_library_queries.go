@@ -1,10 +1,26 @@
 package main
 
 import (
-	"sort"
 	"strings"
 	"time"
 )
+
+func searchQueryForLog(query string) string {
+	trimmed := strings.TrimSpace(query)
+	if len(trimmed) <= 80 {
+		return trimmed
+	}
+
+	return trimmed[:77] + "..."
+}
+
+func folderPathForLog(folderPath string) string {
+	if strings.TrimSpace(folderPath) == "" {
+		return "/"
+	}
+
+	return folderPath
+}
 
 // GetLibraryIndexedFilePage returns a paginated slice of indexed files for initial frontend hydration.
 func (a *App) GetLibraryIndexedFilePage(kind string, offset int, limit int) LibraryIndexedFilePage {
@@ -49,80 +65,54 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 	}
 
 	lockWaitStart := time.Now()
-	a.logRescanEvent("GetLibraryFolderPage waiting for indexMu lock: %s", normalizedFolderPath)
+	a.logRescanEvent("GetLibraryFolderPage waiting for indexMu lock: folder=%s", folderPathForLog(normalizedFolderPath))
 	a.indexMu.Lock()
-	a.logRescanEvent("GetLibraryFolderPage acquired lock (waited %.2fms)", time.Since(lockWaitStart).Seconds()*1000)
+	a.logRescanEvent(
+		"GetLibraryFolderPage acquired lock (waited %.2fms): folder=%s",
+		time.Since(lockWaitStart).Seconds()*1000,
+		folderPathForLog(normalizedFolderPath),
+	)
 	defer a.indexMu.Unlock()
 
-	folderEntriesByPath := make(map[string]LibraryBrowserEntry)
-	trackEntries := make([]LibraryBrowserEntry, 0)
-	textEntries := make([]LibraryBrowserEntry, 0)
-	imageEntries := make([]LibraryBrowserEntry, 0)
-
-	appendEntry := func(indexed LibraryIndexedFile, kind string, destination *[]LibraryBrowserEntry) {
-		if indexed.FolderPath == normalizedFolderPath {
-			*destination = append(*destination, browserEntryFromIndexedFile(kind, indexed))
-			return
-		}
-
-		childFolderPath, childOk := directChildFolderPath(normalizedFolderPath, indexed.FolderPath)
-		if !childOk {
-			return
-		}
-
-		if _, exists := folderEntriesByPath[childFolderPath]; !exists {
-			folderEntriesByPath[childFolderPath] = folderBrowserEntry(childFolderPath)
-		}
+	entries := []LibraryBrowserEntry{}
+	mode := "fallback-map"
+	if !a.scanInProgress {
+		a.maybeStartLibraryDerivedIndexRebuildLocked()
 	}
 
-	for _, indexed := range a.trackByPath {
-		appendEntry(indexed, "track", &trackEntries)
-	}
-	for _, indexed := range a.textByPath {
-		appendEntry(indexed, "text-file", &textEntries)
-	}
-	for _, indexed := range a.imageByPath {
-		appendEntry(indexed, "image-file", &imageEntries)
+	if a.isLibraryDerivedIndexReadyLocked() {
+		entries = a.folderEntriesByFolder[normalizedFolderPath]
+		mode = "derived-index"
+	} else {
+		entries = a.buildFolderEntriesFromMapsLocked(normalizedFolderPath)
 	}
 
-	folderEntries := make([]LibraryBrowserEntry, 0, len(folderEntriesByPath))
-	for _, entry := range folderEntriesByPath {
-		folderEntries = append(folderEntries, entry)
-	}
-
-	sort.SliceStable(folderEntries, func(i int, j int) bool {
-		return strings.ToLower(folderEntries[i].Path) < strings.ToLower(folderEntries[j].Path)
-	})
-	sort.SliceStable(trackEntries, func(i int, j int) bool {
-		return strings.ToLower(trackEntries[i].Name) < strings.ToLower(trackEntries[j].Name)
-	})
-	sort.SliceStable(textEntries, func(i int, j int) bool {
-		return strings.ToLower(textEntries[i].Name) < strings.ToLower(textEntries[j].Name)
-	})
-	sort.SliceStable(imageEntries, func(i int, j int) bool {
-		return strings.ToLower(imageEntries[i].Name) < strings.ToLower(imageEntries[j].Name)
-	})
-
-	entries := make([]LibraryBrowserEntry, 0, len(folderEntries)+len(trackEntries)+len(textEntries)+len(imageEntries))
-	entries = append(entries, folderEntries...)
-	entries = append(entries, trackEntries...)
-	entries = append(entries, textEntries...)
-	entries = append(entries, imageEntries...)
-
+	pagedEntries := copyPagedLibraryEntries(entries, offset, limit)
 	result := LibraryFolderPage{
 		FolderPath:   normalizedFolderPath,
 		Offset:       offset,
 		Limit:        limit,
 		TotalEntries: len(entries),
-		Entries:      pagedLibraryEntries(entries, offset, limit),
+		Entries:      pagedEntries,
 	}
-	a.logRescanEvent("GetLibraryFolderPage END: %d total entries, took %.2fms", len(entries), time.Since(queryStartTime).Seconds()*1000)
+	a.logRescanEvent(
+		"GetLibraryFolderPage END: folder=%s mode=%s total=%d page=%d offset=%d limit=%d took %.2fms",
+		folderPathForLog(normalizedFolderPath),
+		mode,
+		len(entries),
+		len(pagedEntries),
+		offset,
+		limit,
+		time.Since(queryStartTime).Seconds()*1000,
+	)
 	return result
 }
 
 // SearchLibrary returns paginated server-side search results across folders and indexed files.
 func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPage {
+	queryStartTime := time.Now()
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
+	logQuery := searchQueryForLog(query)
 	if limit <= 0 {
 		limit = 100
 	}
@@ -136,98 +126,48 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 		}
 	}
 
+	lockWaitStart := time.Now()
+	a.logRescanEvent("SearchLibrary waiting for indexMu lock: query=%q", logQuery)
 	a.indexMu.Lock()
+	a.logRescanEvent("SearchLibrary acquired lock (waited %.2fms): query=%q", time.Since(lockWaitStart).Seconds()*1000, logQuery)
 	defer a.indexMu.Unlock()
 
-	folderPaths := make(map[string]struct{})
-	folderMatchesByPath := make(map[string]LibraryBrowserEntry)
-	trackMatches := make([]LibraryBrowserEntry, 0)
-	textMatches := make([]LibraryBrowserEntry, 0)
-	imageMatches := make([]LibraryBrowserEntry, 0)
-
-	collectFolderAncestors := func(folderPath string) {
-		if folderPath == "" {
-			return
-		}
-
-		segments := strings.Split(folderPath, "/")
-		cumulative := ""
-		for _, segment := range segments {
-			if segment == "" {
-				continue
-			}
-
-			if cumulative == "" {
-				cumulative = segment
-			} else {
-				cumulative += "/" + segment
-			}
-
-			folderPaths[cumulative] = struct{}{}
-		}
+	entries := []LibraryBrowserEntry{}
+	mode := "fallback-map"
+	if !a.scanInProgress {
+		a.maybeStartLibraryDerivedIndexRebuildLocked()
 	}
 
-	matchIndexedFile := func(indexed LibraryIndexedFile, kind string, destination *[]LibraryBrowserEntry) {
-		collectFolderAncestors(indexed.FolderPath)
-		candidateName := strings.ToLower(indexed.Name)
-		candidateRelativePath := strings.ToLower(indexed.RelativePath)
-		if strings.Contains(candidateName, normalizedQuery) || strings.Contains(candidateRelativePath, normalizedQuery) {
-			*destination = append(*destination, browserEntryFromIndexedFile(kind, indexed))
-		}
+	if a.isLibraryDerivedIndexReadyLocked() {
+		var derivedMode string
+		entries, derivedMode = a.buildSearchResultsLocked(normalizedQuery)
+		mode = "derived-" + derivedMode
+	} else {
+		entries = a.buildSearchEntriesFromMapsLocked(normalizedQuery)
 	}
 
-	for _, indexed := range a.trackByPath {
-		matchIndexedFile(indexed, "track", &trackMatches)
-	}
-	for _, indexed := range a.textByPath {
-		matchIndexedFile(indexed, "text-file", &textMatches)
-	}
-	for _, indexed := range a.imageByPath {
-		matchIndexedFile(indexed, "image-file", &imageMatches)
-	}
+	pagedEntries := copyPagedLibraryEntries(entries, offset, limit)
 
-	for folderPath := range folderPaths {
-		folderName := folderPath
-		if lastSlash := strings.LastIndex(folderPath, "/"); lastSlash >= 0 {
-			folderName = folderPath[lastSlash+1:]
-		}
-
-		if strings.Contains(strings.ToLower(folderPath), normalizedQuery) || strings.Contains(strings.ToLower(folderName), normalizedQuery) {
-			folderMatchesByPath[folderPath] = folderBrowserEntry(folderPath)
-		}
-	}
-
-	folderMatches := make([]LibraryBrowserEntry, 0, len(folderMatchesByPath))
-	for _, entry := range folderMatchesByPath {
-		folderMatches = append(folderMatches, entry)
-	}
-
-	sort.SliceStable(folderMatches, func(i int, j int) bool {
-		return strings.ToLower(folderMatches[i].Path) < strings.ToLower(folderMatches[j].Path)
-	})
-	sort.SliceStable(trackMatches, func(i int, j int) bool {
-		return strings.ToLower(trackMatches[i].RelativePath) < strings.ToLower(trackMatches[j].RelativePath)
-	})
-	sort.SliceStable(textMatches, func(i int, j int) bool {
-		return strings.ToLower(textMatches[i].RelativePath) < strings.ToLower(textMatches[j].RelativePath)
-	})
-	sort.SliceStable(imageMatches, func(i int, j int) bool {
-		return strings.ToLower(imageMatches[i].RelativePath) < strings.ToLower(imageMatches[j].RelativePath)
-	})
-
-	entries := make([]LibraryBrowserEntry, 0, len(folderMatches)+len(trackMatches)+len(textMatches)+len(imageMatches))
-	entries = append(entries, folderMatches...)
-	entries = append(entries, trackMatches...)
-	entries = append(entries, textMatches...)
-	entries = append(entries, imageMatches...)
-
-	return LibrarySearchPage{
+	result := LibrarySearchPage{
 		Query:        query,
 		Offset:       offset,
 		Limit:        limit,
 		TotalEntries: len(entries),
-		Entries:      pagedLibraryEntries(entries, offset, limit),
+		Entries:      pagedEntries,
 	}
+
+	a.logRescanEvent(
+		"SearchLibrary END: query=%q mode=%s total=%d page=%d offset=%d limit=%d took %.2fms",
+		logQuery,
+		mode,
+		len(entries),
+		len(pagedEntries),
+		offset,
+		limit,
+		time.Since(queryStartTime).Seconds()*1000,
+	)
+
+	return result
 }
 
 // IsLibraryFolderImmediateDescendantsEnumerated reports whether a folder's
@@ -278,6 +218,7 @@ func (a *App) GetLibraryFolderCoverPath(folderPath string) string {
 
 // GetLibraryFolderTrackPaths resolves all audio tracks under a folder subtree for queue actions.
 func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
+	queryStartTime := time.Now()
 	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
 	if !ok {
 		return []string{}
@@ -286,28 +227,31 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	a.indexMu.Lock()
 	defer a.indexMu.Unlock()
 
-	prefix := ""
-	if normalizedFolderPath != "" {
-		prefix = normalizedFolderPath + "/"
+	mode := "fallback-map"
+	if !a.scanInProgress {
+		a.maybeStartLibraryDerivedIndexRebuildLocked()
 	}
 
-	trackFiles := make([]LibraryIndexedFile, 0)
-	for _, indexed := range a.trackByPath {
-		if normalizedFolderPath == "" || indexed.FolderPath == normalizedFolderPath || strings.HasPrefix(indexed.FolderPath, prefix) {
-			trackFiles = append(trackFiles, indexed)
-		}
+	if a.isLibraryDerivedIndexReadyLocked() {
+		mode = "derived-index"
+		paths := a.getFolderTrackPathsFromDerivedIndexLocked(normalizedFolderPath)
+		a.logRescanEvent(
+			"GetLibraryFolderTrackPaths END: folder=%s mode=%s tracks=%d took %.2fms",
+			folderPathForLog(normalizedFolderPath),
+			mode,
+			len(paths),
+			time.Since(queryStartTime).Seconds()*1000,
+		)
+		return paths
 	}
 
-	sort.SliceStable(trackFiles, func(i int, j int) bool {
-		left := strings.ToLower(relativePathWithinFolder(normalizedFolderPath, trackFiles[i].RelativePath))
-		right := strings.ToLower(relativePathWithinFolder(normalizedFolderPath, trackFiles[j].RelativePath))
-		return left < right
-	})
-
-	paths := make([]string, 0, len(trackFiles))
-	for _, indexed := range trackFiles {
-		paths = append(paths, indexed.Path)
-	}
-
+	paths := a.getFolderTrackPathsFromMapsLocked(normalizedFolderPath)
+	a.logRescanEvent(
+		"GetLibraryFolderTrackPaths END: folder=%s mode=%s tracks=%d took %.2fms",
+		folderPathForLog(normalizedFolderPath),
+		mode,
+		len(paths),
+		time.Since(queryStartTime).Seconds()*1000,
+	)
 	return paths
 }

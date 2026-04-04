@@ -223,6 +223,8 @@ func (a *App) applyIncrementalLibraryChanges(rootPath string, changedPaths []str
 	a.libraryScan.TextFileCount = len(a.textByPath)
 	a.libraryScan.ImageFileCount = len(a.imageByPath)
 	a.libraryScan.TotalEntries = a.libraryScan.TrackCount + a.libraryScan.TextFileCount + a.libraryScan.ImageFileCount
+	a.markLibraryDerivedIndexDirtyLocked()
+	a.maybeStartLibraryDerivedIndexRebuildLocked()
 
 	// Emit only the lightweight metadata — the frontend no longer uses the file arrays
 	// for incremental updates, and serializing 150K+ entries over IPC takes several seconds.

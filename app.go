@@ -38,6 +38,20 @@ type App struct {
 	trackByPath                            map[string]LibraryIndexedFile
 	textByPath                             map[string]LibraryIndexedFile
 	imageByPath                            map[string]LibraryIndexedFile
+	folderEntriesByFolder                  map[string][]LibraryBrowserEntry
+	folderChildPathsByFolder               map[string][]string
+	trackFilesByFolder                     map[string][]LibraryIndexedFile
+	searchFolderEntries                    []LibraryBrowserEntry
+	searchTrackEntries                     []LibraryBrowserEntry
+	searchTextEntries                      []LibraryBrowserEntry
+	searchImageEntries                     []LibraryBrowserEntry
+	searchResultsByQuery                   map[string][]LibraryBrowserEntry
+	searchCacheOrder                       []string
+	searchLastQuery                        string
+	searchLastResults                      []LibraryBrowserEntry
+	libraryDerivedIndexDirty               bool
+	libraryDerivedIndexBuilding            bool
+	libraryDerivedIndexGeneration          uint64
 	libraryScan                            LibraryScanResult
 	scanInProgress                         bool
 	scanRemainingImmediateChildrenByFolder map[string]int
