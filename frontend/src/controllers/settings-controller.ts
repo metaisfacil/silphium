@@ -1,12 +1,17 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import type { CoverArtPrioritySource, FocusedKeyboardShortcuts, PlayerCardLayout } from '../types/app-types';
+import type { AppLibraryFolder, CoverArtPrioritySource, FocusedKeyboardShortcuts, PlayerCardLayout } from '../types/app-types';
+import { asReleaseDepth, libraryFolderPathKey, normalizeLibraryFolderLabel, normalizeLibraryFolders } from '../utils/main-helpers';
 import { formatShortcutBindingFromKeyboardEvent, normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 
-export type SettingsFormValues = {
-    libraryPath: string;
-    listenBrainzUserToken: string;
+type LibraryFolderDialogValues = {
+    label: string;
     releaseDepth: number;
+};
+
+export type SettingsFormValues = {
+    libraryFolders: AppLibraryFolder[];
+    listenBrainzUserToken: string;
     favoritePlaylists: string[];
     coverArtPriority: CoverArtPrioritySource[];
     preferMusicBrainzMetadata: boolean;
@@ -70,15 +75,24 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsPanelPlaylists,
         settingsPanelUi,
         settingsPanelShortcuts,
-        settingsBrowse,
+        settingsLibraryFolderList,
+        settingsAddLibraryFolder,
+        settingsRemoveLibraryFolder,
         settingsFavoritePlaylistList,
         settingsAddFavoritePlaylist,
         settingsRemoveFavoritePlaylist,
         settingsForceReload,
         settingsSave,
-        settingsLibraryPath,
+        settingsLibraryDepthModal,
+        settingsLibraryDepthBackdrop,
+        settingsLibraryDepthForm,
+        settingsLibraryDepthTitle,
+        settingsLibraryDepthLabelInput,
+        settingsLibraryDepthInput,
+        settingsLibraryDepthStatus,
+        settingsLibraryDepthCancel,
+        settingsLibraryDepthConfirm,
         settingsListenBrainzToken,
-        settingsReleaseDepth,
         settingsPreferMusicBrainzMetadata,
         settingsPlayerCardLayout,
         settingsCoverArtPriorityList,
@@ -96,8 +110,17 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     let favoritePlaylists: string[] = [];
     let selectedFavoritePlaylistIndex = -1;
+    let libraryFolders: AppLibraryFolder[] = [];
+    let selectedLibraryFolderIndex = -1;
+    let lastLibraryFolderClickIndex = -1;
+    let lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
+    let pendingLibraryDepthResolver: ((value: LibraryFolderDialogValues | null) => void) | null = null;
+    let libraryDepthReturnFocusTarget: HTMLElement | null = null;
+    let forceReloadInProgress = false;
+    let forceReloadEtaSeconds: number | null = null;
     let coverArtPriority: CoverArtPrioritySource[] = [...defaultCoverArtPriority];
     let draggedCoverPriorityIndex = -1;
+    const libraryFolderRepeatClickWindowMs = 400;
 
     const normalizeFavoritePlaylists = (items: string[]): string[] => {
         const deduped = new Set<string>();
@@ -137,6 +160,184 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         settingsRemoveFavoritePlaylist.disabled = selectedFavoritePlaylistIndex < 0;
+    };
+
+    const renderLibraryFolderList = (): void => {
+        settingsLibraryFolderList.innerHTML = '';
+
+        if (libraryFolders.length === 0) {
+            settingsLibraryFolderList.innerHTML = '<li class="settings-library-folder-empty">No library folders configured.</li>';
+            settingsRemoveLibraryFolder.disabled = true;
+            return;
+        }
+
+        libraryFolders.forEach((folder, index) => {
+            const item = document.createElement('li');
+            item.className = 'settings-library-folder-item';
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `settings-library-folder-item-btn${index === selectedLibraryFolderIndex ? ' is-selected' : ''}`;
+            button.dataset.libraryFolderIndex = String(index);
+            button.title = [
+                folder.label ? `Label: ${folder.label}` : '',
+                folder.path,
+                'Double-click to change label and release depth',
+            ].filter((line) => line !== '').join('\n');
+
+            const pathLabel = document.createElement('span');
+            pathLabel.className = 'settings-library-folder-path';
+            pathLabel.textContent = folder.path;
+
+            const meta = document.createElement('span');
+            meta.className = 'settings-library-folder-meta';
+
+            if (folder.label) {
+                const labelBadge = document.createElement('span');
+                labelBadge.className = 'settings-library-folder-label-badge';
+                labelBadge.textContent = `Label: ${folder.label}`;
+                meta.append(labelBadge);
+            }
+
+            const depthBadge = document.createElement('span');
+            depthBadge.className = 'settings-library-folder-depth-badge';
+            depthBadge.textContent = folder.releaseDepth > 0 ? `Depth ${folder.releaseDepth}` : 'Whole folder';
+
+            meta.append(depthBadge);
+
+            button.append(pathLabel, meta);
+            item.append(button);
+            settingsLibraryFolderList.append(item);
+        });
+
+        settingsRemoveLibraryFolder.disabled = selectedLibraryFolderIndex < 0;
+    };
+
+    const setSelectedLibraryFolderIndex = (nextIndex: number): void => {
+        if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= libraryFolders.length) {
+            selectedLibraryFolderIndex = -1;
+        } else {
+            selectedLibraryFolderIndex = nextIndex;
+        }
+
+        renderLibraryFolderList();
+    };
+
+    const formatEtaLabel = (secondsRemaining: number | null): string => {
+        if (secondsRemaining === null || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) {
+            return '';
+        }
+
+        const wholeSeconds = Math.max(1, Math.ceil(secondsRemaining));
+        if (wholeSeconds < 60) {
+            return `~${wholeSeconds}s`;
+        }
+
+        const minutes = Math.floor(wholeSeconds / 60);
+        const seconds = wholeSeconds % 60;
+        if (seconds === 0) {
+            return `~${minutes}m`;
+        }
+
+        return `~${minutes}m ${seconds}s`;
+    };
+
+    const refreshForceReloadStatus = (): void => {
+        if (!forceReloadInProgress) {
+            return;
+        }
+
+        const etaLabel = formatEtaLabel(forceReloadEtaSeconds);
+        settingsStatus.textContent = etaLabel
+            ? `Reloading library... ${etaLabel} remaining`
+            : 'Reloading library...';
+    };
+
+    const setForceReloadEtaSeconds = (secondsRemaining: number | null): void => {
+        if (!forceReloadInProgress) {
+            return;
+        }
+
+        const normalized = (secondsRemaining === null || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0)
+            ? null
+            : Math.ceil(secondsRemaining);
+
+        if (forceReloadEtaSeconds === normalized) {
+            return;
+        }
+
+        forceReloadEtaSeconds = normalized;
+        refreshForceReloadStatus();
+    };
+
+    const closeLibraryDepthDialog = (value: LibraryFolderDialogValues | null, restoreFocus: boolean): void => {
+        if (settingsLibraryDepthModal.hidden) {
+            return;
+        }
+
+        settingsLibraryDepthModal.hidden = true;
+	    settingsLibraryDepthTitle.textContent = 'Library Folder Settings';
+	    settingsLibraryDepthLabelInput.value = '';
+        settingsLibraryDepthInput.value = '';
+        settingsLibraryDepthStatus.textContent = '';
+        settingsLibraryDepthConfirm.textContent = 'Apply';
+
+        const resolve = pendingLibraryDepthResolver;
+        pendingLibraryDepthResolver = null;
+
+        const focusTarget = libraryDepthReturnFocusTarget;
+        libraryDepthReturnFocusTarget = null;
+
+        resolve?.(value);
+
+        if (restoreFocus && focusTarget) {
+            window.requestAnimationFrame(() => {
+                focusTarget.focus();
+            });
+        }
+    };
+
+    const openLibraryDepthDialog = (
+        initialValues: LibraryFolderDialogValues,
+        confirmLabel: string,
+        title: string,
+    ): Promise<LibraryFolderDialogValues | null> => {
+        closeLibraryDepthDialog(null, false);
+
+        settingsLibraryDepthTitle.textContent = title;
+        settingsLibraryDepthLabelInput.value = initialValues.label;
+        settingsLibraryDepthInput.value = initialValues.releaseDepth > 0 ? String(initialValues.releaseDepth) : '';
+        settingsLibraryDepthStatus.textContent = '';
+        settingsLibraryDepthConfirm.textContent = confirmLabel;
+        libraryDepthReturnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        settingsLibraryDepthModal.hidden = false;
+
+        window.requestAnimationFrame(() => {
+	        settingsLibraryDepthLabelInput.focus();
+	        settingsLibraryDepthLabelInput.select();
+        });
+
+        return new Promise<LibraryFolderDialogValues | null>((resolve) => {
+            pendingLibraryDepthResolver = resolve;
+        });
+    };
+
+    const editLibraryFolderSettings = async (index: number): Promise<boolean> => {
+        const folder = libraryFolders[index];
+        if (!folder) {
+            return false;
+        }
+
+	    const nextValues = await openLibraryDepthDialog({ label: folder.label, releaseDepth: folder.releaseDepth }, 'Save', 'Library Folder Settings');
+	    if (nextValues === null) {
+            return false;
+        }
+
+	    folder.label = nextValues.label;
+	    folder.releaseDepth = nextValues.releaseDepth;
+        setSelectedLibraryFolderIndex(index);
+        settingsLibraryFolderList.focus();
+        return true;
     };
 
     const labelForCoverArtPriority = (source: CoverArtPrioritySource): string => {
@@ -268,8 +469,51 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     bindShortcutCaptureInput(settingsShortcutFocusLibraryFilter);
     bindShortcutCaptureInput(settingsShortcutOpenSettings);
 
+    settingsLibraryDepthLabelInput.addEventListener('input', () => {
+        settingsLibraryDepthStatus.textContent = '';
+    });
+
+    settingsLibraryDepthInput.addEventListener('input', () => {
+        settingsLibraryDepthStatus.textContent = '';
+    });
+
+    settingsLibraryDepthBackdrop.addEventListener('click', () => {
+        closeLibraryDepthDialog(null, true);
+    });
+
+    settingsLibraryDepthCancel.addEventListener('click', () => {
+        closeLibraryDepthDialog(null, true);
+    });
+
+    settingsLibraryDepthForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+
+        const normalizedLabel = normalizeLibraryFolderLabel(settingsLibraryDepthLabelInput.value);
+
+        const trimmed = settingsLibraryDepthInput.value.trim();
+        if (trimmed === '') {
+            closeLibraryDepthDialog({ label: normalizedLabel, releaseDepth: 0 }, false);
+            return;
+        }
+
+        if (!/^\d+$/.test(trimmed)) {
+            settingsLibraryDepthStatus.textContent = 'Enter a whole number 0 or greater.';
+            settingsLibraryDepthInput.focus();
+            settingsLibraryDepthInput.select();
+            return;
+        }
+
+        closeLibraryDepthDialog({
+            label: normalizedLabel,
+            releaseDepth: asReleaseDepth(Number.parseInt(trimmed, 10)),
+        }, false);
+    });
+
     const close = (): void => {
+        closeLibraryDepthDialog(null, false);
         settingsModal.classList.remove('is-visible');
+        lastLibraryFolderClickIndex = -1;
+        lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
 
         if (hideTimer !== undefined) {
             window.clearTimeout(hideTimer);
@@ -289,24 +533,36 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         const values = options.getValues();
-        settingsLibraryPath.value = values.libraryPath || '';
+        libraryFolders = normalizeLibraryFolders(values.libraryFolders);
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
-        settingsReleaseDepth.value = values.releaseDepth > 0 ? String(values.releaseDepth) : '';
         settingsPreferMusicBrainzMetadata.checked = !!values.preferMusicBrainzMetadata;
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
         favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
         coverArtPriority = normalizeCoverArtPriority(values.coverArtPriority);
+        selectedLibraryFolderIndex = libraryFolders.length > 0 ? 0 : -1;
         selectedFavoritePlaylistIndex = -1;
+        lastLibraryFolderClickIndex = -1;
+        lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
+        renderLibraryFolderList();
         renderFavoritePlaylistList();
         renderCoverArtPriorityList();
-        settingsStatus.textContent = '';
+        if (forceReloadInProgress) {
+            refreshForceReloadStatus();
+        } else {
+            settingsStatus.textContent = '';
+        }
         setActiveTab('general');
         settingsModal.hidden = false;
         window.requestAnimationFrame(() => {
             settingsModal.classList.add('is-visible');
         });
-        settingsLibraryPath.focus();
+        if (libraryFolders.length > 0) {
+            settingsLibraryFolderList.focus();
+            return;
+        }
+
+        settingsAddLibraryFolder.focus();
     };
 
     trigger.addEventListener('click', () => {
@@ -321,7 +577,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         close();
     });
 
-    settingsBrowse.addEventListener('click', async () => {
+    settingsAddLibraryFolder.addEventListener('click', async () => {
         settingsStatus.textContent = '';
 
         try {
@@ -330,7 +586,40 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
                 return;
             }
 
-            settingsLibraryPath.value = selectedFolder;
+            const selectedFolderKey = libraryFolderPathKey(selectedFolder);
+            const existingIndex = libraryFolders.findIndex((folder) => libraryFolderPathKey(folder.path) === selectedFolderKey);
+            const existingFolder = existingIndex >= 0 ? libraryFolders[existingIndex] : null;
+
+	        const nextValues = await openLibraryDepthDialog(
+	            {
+	                label: existingFolder?.label || '',
+	                releaseDepth: existingFolder?.releaseDepth || 0,
+	            },
+	            existingFolder ? 'Save' : 'Add Folder',
+	            existingFolder ? 'Library Folder Settings' : 'Add Library Folder',
+	        );
+	        if (nextValues === null) {
+                return;
+            }
+
+            if (existingIndex >= 0) {
+                libraryFolders[existingIndex] = {
+                    ...libraryFolders[existingIndex],
+	                label: nextValues.label,
+	                releaseDepth: nextValues.releaseDepth,
+                };
+                setSelectedLibraryFolderIndex(existingIndex);
+                settingsLibraryFolderList.focus();
+                return;
+            }
+
+	        libraryFolders = normalizeLibraryFolders([...libraryFolders, {
+	            path: selectedFolder,
+	            label: nextValues.label,
+	            releaseDepth: nextValues.releaseDepth,
+	        }]);
+            setSelectedLibraryFolderIndex(libraryFolders.findIndex((folder) => libraryFolderPathKey(folder.path) === selectedFolderKey));
+            settingsLibraryFolderList.focus();
         } catch (error) {
             console.error(error);
             settingsStatus.textContent = 'Unable to open folder picker.';
@@ -339,6 +628,12 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     settingsTabGeneral.addEventListener('click', () => {
         setActiveTab('general');
+        if (libraryFolders.length > 0) {
+            settingsLibraryFolderList.focus();
+            return;
+        }
+
+        settingsAddLibraryFolder.focus();
     });
 
     settingsTabPlaylists.addEventListener('click', () => {
@@ -378,6 +673,53 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         selectedFavoritePlaylistIndex = nextIndex;
         renderFavoritePlaylistList();
+    });
+
+    settingsLibraryFolderList.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const button = target.closest('[data-library-folder-index]');
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const nextIndex = Number(button.dataset.libraryFolderIndex);
+        if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= libraryFolders.length) {
+            return;
+        }
+
+        const isRepeatClick = nextIndex === lastLibraryFolderClickIndex
+            && event.timeStamp - lastLibraryFolderClickAt <= libraryFolderRepeatClickWindowMs;
+
+        lastLibraryFolderClickIndex = nextIndex;
+        lastLibraryFolderClickAt = event.timeStamp;
+        setSelectedLibraryFolderIndex(nextIndex);
+
+        if (!isRepeatClick) {
+            return;
+        }
+
+        lastLibraryFolderClickIndex = -1;
+        lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
+	    void editLibraryFolderSettings(nextIndex);
+    });
+
+    settingsRemoveLibraryFolder.addEventListener('click', () => {
+        if (selectedLibraryFolderIndex < 0 || selectedLibraryFolderIndex >= libraryFolders.length) {
+            return;
+        }
+
+        libraryFolders.splice(selectedLibraryFolderIndex, 1);
+        if (libraryFolders.length === 0) {
+            selectedLibraryFolderIndex = -1;
+        } else if (selectedLibraryFolderIndex >= libraryFolders.length) {
+            selectedLibraryFolderIndex = libraryFolders.length - 1;
+        }
+
+        renderLibraryFolderList();
     });
 
     settingsCoverArtPriorityList.addEventListener('dragstart', (event) => {
@@ -497,9 +839,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsSave.disabled = true;
         settingsForceReload.disabled = true;
         const formValues: SettingsFormValues = {
-            libraryPath: settingsLibraryPath.value,
+            libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
             listenBrainzUserToken: settingsListenBrainzToken.value,
-            releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
@@ -521,25 +862,30 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         const formValues: SettingsFormValues = {
-            libraryPath: settingsLibraryPath.value,
+            libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
             listenBrainzUserToken: settingsListenBrainzToken.value,
-            releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
             keyboardShortcuts: getShortcutValues(),
         };
 
-        settingsStatus.textContent = 'Reloading library...';
+        forceReloadInProgress = true;
+        forceReloadEtaSeconds = null;
+        refreshForceReloadStatus();
         settingsForceReload.disabled = true;
         settingsSave.disabled = true;
 
         try {
             await options.save(formValues);
             await options.forceReload(formValues);
+            forceReloadInProgress = false;
+            forceReloadEtaSeconds = null;
             settingsStatus.textContent = 'Library reloaded.';
         } catch (error) {
             console.error(error);
+            forceReloadInProgress = false;
+            forceReloadEtaSeconds = null;
             settingsStatus.textContent = 'Unable to force reload library.';
         } finally {
             settingsForceReload.disabled = false;
@@ -555,9 +901,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
                 return false;
             }
 
+            if (!settingsLibraryDepthModal.hidden) {
+                closeLibraryDepthDialog(null, true);
+                return true;
+            }
+
             close();
             return true;
         },
         open,
+        setForceReloadEtaSeconds,
     };
 };

@@ -122,6 +122,10 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
+export function ScanConfiguredLibraryFolders() {
+  return window['go']['main']['App']['ScanConfiguredLibraryFolders']();
+}
+
 export function ScanLibraryFolder(arg1) {
   return window['go']['main']['App']['ScanLibraryFolder'](arg1);
 }

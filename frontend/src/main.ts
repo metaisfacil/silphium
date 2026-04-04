@@ -48,6 +48,7 @@ import {
 import { UI_TIMINGS_MS } from './constants/ui-timings';
 import { getSidebarElements, renderSidebar } from './components/sidebar';
 import {
+    ScanConfiguredLibraryFolders,
     AudioGetState,
     AudioLoadTrack,
     AudioPause,
@@ -73,7 +74,6 @@ import {
     ReadTrackTags,
     SavePlaylistFile,
     SaveSettings,
-    ScanLibraryFolder,
     SearchLibrary,
     SelectLibraryFolder,
     SelectPlaylistFile,
@@ -85,6 +85,7 @@ import { main as WailsModels } from '../wailsjs/go/models';
 import { BrowserOpenURL, EventsOn, OnFileDrop } from '../wailsjs/runtime/runtime';
 import { applyMbLinks, openMbLink } from './musicbrainz';
 import type {
+    AppLibraryFolder,
     AppSettings,
     AudioPlaybackState,
     CoverArtPrioritySource,
@@ -105,9 +106,13 @@ import {
     asPlaybackOrderMode,
     asReleaseDepth,
     base64ToObjectUrl,
+    buildLibraryRootNameByPath,
+    findLibraryFolderForFilePath,
     folderKeyForPath,
     formatTime,
+    libraryFolderPathKey,
     mimeTypeForFileName,
+    normalizeLibraryFolders,
     renderTechnicalInfoContent,
     taggedTrackPosition,
 } from './utils/main-helpers';
@@ -174,6 +179,7 @@ let technicalInfoModalHideTimer: number | undefined;
 let aboutModalHideTimer: number | undefined;
 let isSeeking = false;
 let currentSettings: AppSettings = {
+    libraryFolders: [],
     libraryPath: '',
     listenBrainzUserToken: '',
     playbackOrder: 'ordered-library',
@@ -218,11 +224,13 @@ const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] 
     return ordered;
 };
 const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
+    const libraryFolders = normalizeLibraryFolders(settings.libraryFolders, settings.libraryPath, settings.releaseDepth);
     return {
-        libraryPath: settings.libraryPath || '',
+        libraryFolders,
+        libraryPath: libraryFolders[0]?.path || '',
         listenBrainzUserToken: settings.listenBrainzUserToken || '',
         playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
-        releaseDepth: asReleaseDepth(settings.releaseDepth),
+        releaseDepth: libraryFolders[0]?.releaseDepth || 0,
         favoritePlaylists: Array.isArray(settings.favoritePlaylists) ? settings.favoritePlaylists : [],
         coverArtPriority: normalizeCoverArtPriority(settings.coverArtPriority),
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
@@ -237,7 +245,7 @@ const scrobbleService = createScrobbleService({
 const playbackSequencingService = createPlaybackSequencingService({
     getTracks: () => tracks,
     getCurrentTrackIndex: () => currentTrackIndex,
-    getReleaseDepth: () => asReleaseDepth(currentSettings.releaseDepth),
+    getReleaseDepthForTrack: (track: Track) => releaseDepthForTrack(track),
     initialPlaybackOrderMode: currentSettings.playbackOrder,
 });
 const supportsMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
@@ -844,6 +852,19 @@ const rebuildImageFilePathIndex = (): void => {
     });
 };
 
+const configuredLibraryFolderForPath = (path: string): AppLibraryFolder | null => {
+    return findLibraryFolderForFilePath(path, currentSettings.libraryFolders);
+};
+
+const configuredLibraryRootNameByPath = (): Map<string, string> => {
+    return buildLibraryRootNameByPath(currentSettings.libraryFolders);
+};
+
+const releaseDepthForTrack = (track: Pick<Track, 'rootPath'>): number => {
+    const folder = configuredLibraryFolderForPath(track.rootPath || '');
+    return folder ? asReleaseDepth(folder.releaseDepth) : 0;
+};
+
 const trackIndexForPath = (path: string): number => {
     const normalizedPath = path.trim().toLowerCase();
     if (!normalizedPath) {
@@ -869,18 +890,27 @@ const createPlaceholderTrackForPath = (trackPath: string): Track => {
     const segments = normalizedPathForSplit.split('/').filter((segment) => segment !== '');
     const fileName = segments[segments.length - 1] || normalizedPath;
 
-    const normalizedRootPath = currentSettings.libraryPath.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    const matchingLibraryFolder = configuredLibraryFolderForPath(normalizedPath);
+    const normalizedRootPath = (matchingLibraryFolder?.path || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    const rootName = matchingLibraryFolder
+        ? (configuredLibraryRootNameByPath().get(libraryFolderPathKey(matchingLibraryFolder.path)) || '')
+        : '';
     const normalizedLowerPath = normalizedPathForSplit.toLowerCase();
     const normalizedLowerRootPath = normalizedRootPath.toLowerCase();
 
     let relativePath = fileName;
+    let folderPath = '';
     if (normalizedRootPath && normalizedLowerPath.startsWith(`${normalizedLowerRootPath}/`)) {
-        relativePath = normalizedPathForSplit.slice(normalizedRootPath.length + 1);
-    }
+        const libraryRelativePath = normalizedPathForSplit.slice(normalizedRootPath.length + 1);
+        const libraryRelativeFolderPath = libraryRelativePath.includes('/')
+            ? libraryRelativePath.slice(0, libraryRelativePath.lastIndexOf('/'))
+            : '';
 
-    const folderPath = relativePath.includes('/')
-        ? relativePath.slice(0, relativePath.lastIndexOf('/'))
-        : '';
+        relativePath = rootName ? `${rootName}/${libraryRelativePath}` : libraryRelativePath;
+        folderPath = rootName
+            ? (libraryRelativeFolderPath ? `${rootName}/${libraryRelativeFolderPath}` : rootName)
+            : libraryRelativeFolderPath;
+    }
 
     return {
         title: fileName,
@@ -888,6 +918,8 @@ const createPlaceholderTrackForPath = (trackPath: string): Track => {
         path: normalizedPath,
         relativePath,
         folderPath,
+        rootPath: matchingLibraryFolder?.path || '',
+        rootName,
         displayTitle: fileName,
         displayAlbum: 'Unknown Album',
         displayArtist: 'Unknown Artist',
@@ -1588,8 +1620,8 @@ const closeTextFileModal = (): void => {
     textFileCode.textContent = '';
 };
 
-const releaseRootPathForFolder = (folderPath: string): string => {
-    const normalizedFolderPath = folderPath || '';
+const releaseRootPathForTrack = (track: Track): string => {
+    const normalizedFolderPath = track.folderPath || '';
     const segments = normalizedFolderPath
         .split('/')
         .filter((segment) => segment !== '');
@@ -1598,21 +1630,31 @@ const releaseRootPathForFolder = (folderPath: string): string => {
         return '';
     }
 
-    const releaseDepth = asReleaseDepth(currentSettings.releaseDepth);
-    if (releaseDepth <= 0 || releaseDepth >= segments.length) {
+    const releaseDepth = releaseDepthForTrack(track);
+    const relativeSegments = track.rootName ? segments.slice(1) : segments;
+    if (releaseDepth <= 0 || relativeSegments.length === 0 || releaseDepth >= relativeSegments.length) {
         return normalizedFolderPath;
     }
 
-    return segments.slice(0, releaseDepth).join('/');
+    const scopedSegments = track.rootName
+        ? [segments[0], ...relativeSegments.slice(0, releaseDepth)]
+        : relativeSegments.slice(0, releaseDepth);
+
+    return scopedSegments.join('/');
 };
 
-const collectReleaseImageFiles = (folderPath: string): ImageLibraryFile[] => {
-    const releaseRootPath = releaseRootPathForFolder(folderPath || '');
+const collectReleaseImageFiles = (track: Track): ImageLibraryFile[] => {
+    const releaseRootPath = releaseRootPathForTrack(track);
     const releaseRootPathLower = releaseRootPath.toLowerCase();
     const prefix = releaseRootPathLower ? `${releaseRootPathLower}/` : '';
+    const trackRootPathKey = libraryFolderPathKey(track.rootPath || '');
 
     return imageFiles
         .filter((candidate) => {
+            if (libraryFolderPathKey(candidate.rootPath || '') !== trackRootPathKey) {
+                return false;
+            }
+
             const candidateFolderPath = (candidate.folderPath || '').toLowerCase();
             if (!releaseRootPathLower) {
                 return candidateFolderPath === '';
@@ -1666,7 +1708,7 @@ const openCoverImageModal = (): void => {
         return;
     }
 
-    const gallery = collectReleaseImageFiles(activeTrack.folderPath || '');
+    const gallery = collectReleaseImageFiles(activeTrack);
     if (gallery.length === 0) {
         imageModalController.openPreview(coverArt.src);
         return;
@@ -1958,18 +2000,23 @@ const updateLibraryLoadingEtaFromProgress = (progress: LibraryScanProgress): voi
         : 0;
 
     if (!progress || !Number.isFinite(progress.etaSeconds)) {
-        libraryController.setLibraryLoadingEtaSeconds(clientTailSeconds > 0 ? clientTailSeconds : null);
+        const fallbackEtaSeconds = clientTailSeconds > 0 ? clientTailSeconds : null;
+        libraryController.setLibraryLoadingEtaSeconds(fallbackEtaSeconds);
+        settingsController.setForceReloadEtaSeconds(fallbackEtaSeconds);
         return;
     }
 
     const backendSeconds = Math.max(0, Math.ceil(progress.etaSeconds));
     const blendedEtaSeconds = backendSeconds + clientTailSeconds;
-    libraryController.setLibraryLoadingEtaSeconds(blendedEtaSeconds > 0 ? blendedEtaSeconds : null);
+    const nextEtaSeconds = blendedEtaSeconds > 0 ? blendedEtaSeconds : null;
+    libraryController.setLibraryLoadingEtaSeconds(nextEtaSeconds);
+    settingsController.setForceReloadEtaSeconds(nextEtaSeconds);
 };
 
-const applyLibraryPath = async (selectedPath: string): Promise<void> => {
-    const cleanPath = selectedPath.trim();
-    if (!cleanPath) {
+const hasConfiguredLibraryFolders = (): boolean => currentSettings.libraryFolders.length > 0;
+
+const scanConfiguredLibraryFolders = async (): Promise<void> => {
+    if (!hasConfiguredLibraryFolders()) {
         await clearLibrarySelection();
         return;
     }
@@ -1981,11 +2028,13 @@ const applyLibraryPath = async (selectedPath: string): Promise<void> => {
     libraryController.setLibraryLoadingEtaSeconds(null);
     libraryController.setLibraryLoadingStatusLabel('');
     try {
-        libraryController.setLibraryPathMessage('Scanning folder…');
-        const scanResult = await ScanLibraryFolder(cleanPath) as LibraryScanResult;
+        libraryController.setLibraryPathMessage(currentSettings.libraryFolders.length > 1 ? 'Scanning library folders…' : 'Scanning folder…');
+        const scanResult = await ScanConfiguredLibraryFolders() as LibraryScanResult;
         markLibraryScanResolved();
         if (libraryClientFinalizeEstimateMs > 0) {
-            libraryController.setLibraryLoadingEtaSeconds(Math.max(1, Math.ceil(libraryClientFinalizeEstimateMs / 1000)));
+            const finalizeEtaSeconds = Math.max(1, Math.ceil(libraryClientFinalizeEstimateMs / 1000));
+            libraryController.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
+            settingsController.setForceReloadEtaSeconds(finalizeEtaSeconds);
         }
         await loadLibraryScan(scanResult);
     } finally {
@@ -2001,26 +2050,21 @@ const handleLibraryScanUpdatedEvent = (scanResult: LibraryScanResult): void => {
     logRescan('handleLibraryScanUpdatedEvent START: %d tracks, %d text, %d images',
         scanResult.trackCount, scanResult.textFileCount, scanResult.imageFileCount);
 
-    const expectedRootPath = currentSettings.libraryPath.trim();
-    if (!expectedRootPath) {
+    if (!hasConfiguredLibraryFolders()) {
         return;
     }
 
-    if (!scanResult || !scanResult.rootPath) {
-        return;
-    }
-
-    if (scanResult.rootPath.trim().toLowerCase() !== expectedRootPath.toLowerCase()) {
+    if (!scanResult) {
         return;
     }
 
     const previousRootName = libraryController.getLibraryRootName().trim();
-    const nextRootName = (scanResult.rootName || 'Selected folder').trim();
+    const nextRootName = (scanResult.rootName || (currentSettings.libraryFolders.length > 1 ? 'Selected folders' : 'Selected folder')).trim();
     if (!previousRootName || previousRootName !== nextRootName) {
         libraryController.setCurrentFolderPath('');
     }
 
-    libraryController.setLibraryRootName(nextRootName || 'Selected folder');
+    libraryController.setLibraryRootName(nextRootName || (currentSettings.libraryFolders.length > 1 ? 'Selected folders' : 'Selected folder'));
     libraryController.setLibraryIndexTruncated(!!scanResult.truncated);
 
     // For incremental updates, refresh the visible folder with a short debounce to
@@ -2039,8 +2083,8 @@ const initializeSettings = async (): Promise<void> => {
         setPlaybackOrderMode(currentSettings.playbackOrder);
         void refreshListenBrainzFeedbackForCurrentTrack(true);
 
-        if (settings.libraryPath) {
-            await applyLibraryPath(settings.libraryPath);
+        if (currentSettings.libraryFolders.length > 0) {
+            await scanConfiguredLibraryFolders();
             void refreshListenBrainzFeedbackForCurrentTrack(true);
             return;
         }
@@ -2178,7 +2222,7 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
         const nextState = await AudioLoadTrack(track.path) as AudioPlaybackState;
         applyPlaybackState(nextState);
     } catch (error) {
-        if (allowMissingTrackRecovery && isMissingTrackLoadError(error) && currentSettings.libraryPath.trim() !== '') {
+        if (allowMissingTrackRecovery && isMissingTrackLoadError(error) && hasConfiguredLibraryFolders()) {
             const failedTrackPath = track.path.toLowerCase();
             const failedRelativePath = track.relativePath.toLowerCase();
             const failedName = track.name.toLowerCase();
@@ -2188,8 +2232,8 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
             libraryController.setLibraryLoadingEtaSeconds(null);
             libraryController.setLibraryLoadingStatusLabel('');
             try {
-                libraryController.setLibraryPathMessage('Track missing. Rescanning folder…');
-                const scanResult = await ScanLibraryFolder(currentSettings.libraryPath.trim()) as LibraryScanResult;
+                libraryController.setLibraryPathMessage('Track missing. Rescanning library…');
+                const scanResult = await ScanConfiguredLibraryFolders() as LibraryScanResult;
                 markLibraryScanResolved();
                 if (libraryClientFinalizeEstimateMs > 0) {
                     libraryController.setLibraryLoadingEtaSeconds(Math.max(1, Math.ceil(libraryClientFinalizeEstimateMs / 1000)));
@@ -2605,11 +2649,13 @@ const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
 
 const savePlaybackOrderSetting = async (): Promise<void> => {
     try {
+        const primaryLibraryFolder = currentSettings.libraryFolders[0];
         const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
+            libraryFolders: currentSettings.libraryFolders,
             libraryPath: currentSettings.libraryPath,
             listenBrainzUserToken: currentSettings.listenBrainzUserToken,
             playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
-            releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
+            releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
             favoritePlaylists: currentSettings.favoritePlaylists,
             coverArtPriority: currentSettings.coverArtPriority,
             preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
@@ -2710,7 +2756,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     logRescan('loadLibraryScan START: preserveFolderView=%s, %d tracks, %d text, %d images',
         options?.preserveFolderView || false, scanResult.trackCount, scanResult.textFileCount, scanResult.imageFileCount);
 
-    if (!scanResult.rootPath) {
+    if (!scanResult) {
         return;
     }
 
@@ -2746,7 +2792,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     logRescan('  - loaded paged collections: %.2fms', performance.now() - stepTime);
 
     const previousRootName = libraryController.getLibraryRootName().trim();
-    const nextRootName = (scanResult.rootName || 'Selected folder').trim();
+    const nextRootName = (scanResult.rootName || (currentSettings.libraryFolders.length > 1 ? 'Selected folders' : 'Selected folder')).trim();
     const canPreserveExistingFolderView = previousRootName !== '' && previousRootName === nextRootName;
     const folderPathBeforeSwap = canPreserveExistingFolderView
         ? libraryController.getCurrentFolderPath()
@@ -2824,7 +2870,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
 
     stepTime = performance.now();
     await libraryController.rebuildLibraryTree(
-        scanResult.rootName || 'Selected folder',
+        scanResult.rootName || (currentSettings.libraryFolders.length > 1 ? 'Selected folders' : 'Selected folder'),
         scanResult.truncated,
         tracks,
         textFiles,
@@ -2896,9 +2942,8 @@ settingsController = createSettingsController({
     trigger: librarySettings,
     elements: settingsElements,
     getValues: () => ({
-        libraryPath: currentSettings.libraryPath,
+        libraryFolders: currentSettings.libraryFolders,
         listenBrainzUserToken: currentSettings.listenBrainzUserToken,
-        releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
         favoritePlaylists: currentSettings.favoritePlaylists,
         coverArtPriority: currentSettings.coverArtPriority,
         preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
@@ -2907,20 +2952,22 @@ settingsController = createSettingsController({
     selectLibraryFolder: SelectLibraryFolder,
     selectPlaylistFile: SelectPlaylistFile,
     save: async ({
-        libraryPath: requestedLibraryPath,
+        libraryFolders: requestedLibraryFolders,
         listenBrainzUserToken,
-        releaseDepth,
         favoritePlaylists,
         coverArtPriority,
         preferMusicBrainzMetadata,
         keyboardShortcuts,
     }): Promise<void> => {
         try {
+            const normalizedLibraryFolders = normalizeLibraryFolders(requestedLibraryFolders);
+            const primaryLibraryFolder = normalizedLibraryFolders[0];
             const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
-                libraryPath: requestedLibraryPath,
+                libraryFolders: normalizedLibraryFolders,
+                libraryPath: primaryLibraryFolder?.path || '',
                 listenBrainzUserToken,
                 playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
-                releaseDepth: asReleaseDepth(releaseDepth),
+                releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
                 favoritePlaylists,
                 coverArtPriority,
                 preferMusicBrainzMetadata,
@@ -2944,8 +2991,8 @@ settingsController = createSettingsController({
             libraryController.setLibraryPathMessage('Unable to save settings.');
         }
     },
-    forceReload: async ({ libraryPath: requestedLibraryPath }): Promise<void> => {
-        await applyLibraryPath(requestedLibraryPath || '');
+    forceReload: async (): Promise<void> => {
+        await scanConfiguredLibraryFolders();
     },
     getPlayerCardLayout: getStoredLayout,
     setPlayerCardLayout: applyPlayerCardLayout,
@@ -3455,6 +3502,10 @@ document.addEventListener('click', (e) => {
     }
 
     if (playlistController.handleDocumentClick(target)) {
+        return;
+    }
+
+    if (clickPath.includes(settingsElements.settingsModal)) {
         return;
     }
 

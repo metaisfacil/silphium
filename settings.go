@@ -18,9 +18,16 @@ type FocusedKeyboardShortcuts struct {
 	OpenSettings       string `json:"openSettings"`
 }
 
+type AppLibraryFolder struct {
+	Path         string `json:"path"`
+	Label        string `json:"label,omitempty"`
+	ReleaseDepth int    `json:"releaseDepth,omitempty"`
+}
+
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
-	LibraryPath               string                   `json:"libraryPath"`
+	LibraryFolders            []AppLibraryFolder       `json:"libraryFolders,omitempty"`
+	LibraryPath               string                   `json:"libraryPath,omitempty"`
 	ListenBrainzUserToken     string                   `json:"listenBrainzUserToken"`
 	PlaybackOrder             string                   `json:"playbackOrder"`
 	ReleaseDepth              int                      `json:"releaseDepth,omitempty"`
@@ -107,11 +114,69 @@ func normalizeCoverArtPriority(priority []string) []string {
 	return ordered
 }
 
+func normalizeReleaseDepth(value int) int {
+	if value < 0 {
+		return 0
+	}
+
+	if value > maxReleaseDepth {
+		return maxReleaseDepth
+	}
+
+	return value
+}
+
+func normalizeLibraryFolderLabel(value string) string {
+	normalized := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(value, "\\", " "), "/", " "))
+	if normalized == "" {
+		return ""
+	}
+
+	return strings.Join(strings.Fields(normalized), " ")
+}
+
+func normalizeLibraryFolders(folders []AppLibraryFolder, legacyPath string, legacyReleaseDepth int) []AppLibraryFolder {
+	candidates := make([]AppLibraryFolder, 0, len(folders)+1)
+	if len(folders) > 0 {
+		candidates = append(candidates, folders...)
+	} else if strings.TrimSpace(legacyPath) != "" {
+		candidates = append(candidates, AppLibraryFolder{
+			Path:         legacyPath,
+			ReleaseDepth: legacyReleaseDepth,
+		})
+	}
+
+	normalizedFolders := make([]AppLibraryFolder, 0, len(candidates))
+	seenPaths := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		normalizedPath := normalizePath(candidate.Path)
+		if normalizedPath == "" {
+			continue
+		}
+
+		if absolutePath, err := filepath.Abs(normalizedPath); err == nil {
+			normalizedPath = filepath.Clean(absolutePath)
+		}
+
+		if _, exists := seenPaths[normalizedPath]; exists {
+			continue
+		}
+
+		seenPaths[normalizedPath] = struct{}{}
+		normalizedFolders = append(normalizedFolders, AppLibraryFolder{
+			Path:         normalizedPath,
+			Label:        normalizeLibraryFolderLabel(candidate.Label),
+			ReleaseDepth: normalizeReleaseDepth(candidate.ReleaseDepth),
+		})
+	}
+
+	return normalizedFolders
+}
+
 func normalizeAppSettings(settings AppSettings) AppSettings {
 	token := strings.TrimSpace(settings.ListenBrainzUserToken)
-	path := strings.TrimSpace(settings.LibraryPath)
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
-	releaseDepth := settings.ReleaseDepth
+	libraryFolders := normalizeLibraryFolders(settings.LibraryFolders, settings.LibraryPath, settings.ReleaseDepth)
 	coverArtPriority := normalizeCoverArtPriority(settings.CoverArtPriority)
 	preferMusicBrainzMetadata := settings.PreferMusicBrainzMetadata
 	keyboardShortcuts := normalizeFocusedKeyboardShortcuts(settings.KeyboardShortcuts)
@@ -135,26 +200,19 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		seenFavoritePlaylists[normalized] = struct{}{}
 		favoritePlaylists = append(favoritePlaylists, normalized)
 	}
-	if releaseDepth < 0 {
-		releaseDepth = 0
-	}
-	if releaseDepth > maxReleaseDepth {
-		releaseDepth = maxReleaseDepth
-	}
-	if path == "" {
-		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth, FavoritePlaylists: favoritePlaylists, CoverArtPriority: coverArtPriority, PreferMusicBrainzMetadata: preferMusicBrainzMetadata, KeyboardShortcuts: keyboardShortcuts}
-	}
-
-	path = normalizePath(path)
-	if absolutePath, err := filepath.Abs(path); err == nil {
-		path = filepath.Clean(absolutePath)
+	legacyLibraryPath := ""
+	legacyReleaseDepth := 0
+	if len(libraryFolders) > 0 {
+		legacyLibraryPath = libraryFolders[0].Path
+		legacyReleaseDepth = libraryFolders[0].ReleaseDepth
 	}
 
 	return AppSettings{
-		LibraryPath:               path,
+		LibraryFolders:            libraryFolders,
+		LibraryPath:               legacyLibraryPath,
 		ListenBrainzUserToken:     token,
 		PlaybackOrder:             playbackOrder,
-		ReleaseDepth:              releaseDepth,
+		ReleaseDepth:              legacyReleaseDepth,
 		FavoritePlaylists:         favoritePlaylists,
 		CoverArtPriority:          coverArtPriority,
 		PreferMusicBrainzMetadata: preferMusicBrainzMetadata,
@@ -215,10 +273,6 @@ func (a *App) loadStoredSettings() {
 	}
 
 	a.settings = settings
-	a.libraryRoot = settings.LibraryPath
-	if settings.LibraryPath == "" {
-		a.stopLibraryWatcher()
-	}
 }
 
 func (a *App) ensureSettingsLoaded() {
@@ -245,9 +299,5 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	}
 
 	a.settings = normalized
-	a.libraryRoot = normalized.LibraryPath
-	if normalized.LibraryPath == "" {
-		a.stopLibraryWatcher()
-	}
 	return normalized, nil
 }

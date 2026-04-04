@@ -10,15 +10,24 @@ export type SettingsModalElements = {
     settingsPanelPlaylists: HTMLDivElement;
     settingsPanelUi: HTMLDivElement;
     settingsPanelShortcuts: HTMLDivElement;
-    settingsBrowse: HTMLButtonElement;
+    settingsLibraryFolderList: HTMLUListElement;
+    settingsAddLibraryFolder: HTMLButtonElement;
+    settingsRemoveLibraryFolder: HTMLButtonElement;
     settingsFavoritePlaylistList: HTMLUListElement;
     settingsAddFavoritePlaylist: HTMLButtonElement;
     settingsRemoveFavoritePlaylist: HTMLButtonElement;
     settingsForceReload: HTMLButtonElement;
     settingsSave: HTMLButtonElement;
-    settingsLibraryPath: HTMLInputElement;
+    settingsLibraryDepthModal: HTMLDivElement;
+    settingsLibraryDepthBackdrop: HTMLDivElement;
+    settingsLibraryDepthForm: HTMLFormElement;
+    settingsLibraryDepthTitle: HTMLParagraphElement;
+    settingsLibraryDepthLabelInput: HTMLInputElement;
+    settingsLibraryDepthInput: HTMLInputElement;
+    settingsLibraryDepthStatus: HTMLParagraphElement;
+    settingsLibraryDepthCancel: HTMLButtonElement;
+    settingsLibraryDepthConfirm: HTMLButtonElement;
     settingsListenBrainzToken: HTMLInputElement;
-    settingsReleaseDepth: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsPlayerCardLayout: HTMLSelectElement;
     settingsCoverArtPriorityList: HTMLUListElement;
@@ -48,22 +57,18 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-general" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-library-path">Library Folder</label>
-                        <p class="settings-hint">Choose the root library folder Silphium scans for files.</p>
-                        <div class="settings-path-row">
-                            <input id="settings-library-path" class="settings-input" type="text" placeholder="No folder selected">
-                            <button id="settings-browse" class="settings-browse-btn" type="button" aria-label="Choose folder">...</button>
+                        <label class="settings-label" for="settings-library-folder-list">Library Folders</label>
+                        <p class="settings-hint">Add one or more library roots. A folder settings dialog opens after adding a folder, and you can double-click an existing entry to change its label or release depth.</p>
+                        <ul id="settings-library-folder-list" class="settings-library-folder-list" role="listbox" aria-label="Library folders" tabindex="0"></ul>
+                        <div class="settings-list-actions">
+                            <button id="settings-add-library-folder" class="settings-list-btn" type="button" title="Add library folder" aria-label="Add library folder">+</button>
+                            <button id="settings-remove-library-folder" class="settings-list-btn" type="button" title="Remove selected library folder" aria-label="Remove selected library folder" disabled>-</button>
                         </div>
                     </div>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz User Token</label>
                         <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
                         <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
-                    </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-release-depth">Release Folder Depth</label>
-                        <p class="settings-hint">Depth from the library root where each release starts.</p>
-                        <input id="settings-release-depth" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="Optional">
                     </div>
                     <div class="settings-field settings-toggle-field">
                         <label class="settings-checkbox-row" for="settings-prefer-musicbrainz-metadata">
@@ -135,6 +140,27 @@ export const renderSettingsModal = (): string => `
                 </div>
             </div>
         </section>
+        <div id="settings-library-depth-modal" class="settings-submodal" hidden>
+            <div id="settings-library-depth-backdrop" class="settings-submodal-backdrop"></div>
+            <form id="settings-library-depth-form" class="settings-subdialog" role="dialog" aria-modal="true" aria-labelledby="settings-library-depth-title">
+                <p id="settings-library-depth-title" class="settings-subdialog-title">Library Folder Settings</p>
+                <div class="settings-field">
+                    <label class="settings-label" for="settings-library-depth-label-input">Custom Label</label>
+                    <p class="settings-hint">Overrides the name shown for this library in the app.<br>Leave blank to use the folder name.</p>
+                    <input id="settings-library-depth-label-input" class="settings-input" type="text" maxlength="120" placeholder="Optional">
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label" for="settings-library-depth-input">Release Folder Depth</label>
+                    <p class="settings-hint">Enter how many folder levels below this library root a release begins.<br>Use 0 to treat the whole folder as one release.</p>
+                    <input id="settings-library-depth-input" class="settings-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
+                </div>
+                <p id="settings-library-depth-status" class="settings-subdialog-status" aria-live="polite"></p>
+                <div class="settings-subdialog-actions">
+                    <button id="settings-library-depth-cancel" class="settings-secondary-btn" type="button">Cancel</button>
+                    <button id="settings-library-depth-confirm" class="upload-btn" type="submit">Apply</button>
+                </div>
+            </form>
+        </div>
     </div>
 `;
 
@@ -150,15 +176,24 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
     settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,
     settingsPanelShortcuts: root.querySelector('#settings-panel-shortcuts') as HTMLDivElement,
-    settingsBrowse: root.querySelector('#settings-browse') as HTMLButtonElement,
+    settingsLibraryFolderList: root.querySelector('#settings-library-folder-list') as HTMLUListElement,
+    settingsAddLibraryFolder: root.querySelector('#settings-add-library-folder') as HTMLButtonElement,
+    settingsRemoveLibraryFolder: root.querySelector('#settings-remove-library-folder') as HTMLButtonElement,
     settingsFavoritePlaylistList: root.querySelector('#settings-favourite-playlist-list') as HTMLUListElement,
     settingsAddFavoritePlaylist: root.querySelector('#settings-add-favorite-playlist') as HTMLButtonElement,
     settingsRemoveFavoritePlaylist: root.querySelector('#settings-remove-favorite-playlist') as HTMLButtonElement,
     settingsForceReload: root.querySelector('#settings-force-reload') as HTMLButtonElement,
     settingsSave: root.querySelector('#settings-save') as HTMLButtonElement,
-    settingsLibraryPath: root.querySelector('#settings-library-path') as HTMLInputElement,
+    settingsLibraryDepthModal: root.querySelector('#settings-library-depth-modal') as HTMLDivElement,
+    settingsLibraryDepthBackdrop: root.querySelector('#settings-library-depth-backdrop') as HTMLDivElement,
+    settingsLibraryDepthForm: root.querySelector('#settings-library-depth-form') as HTMLFormElement,
+    settingsLibraryDepthTitle: root.querySelector('#settings-library-depth-title') as HTMLParagraphElement,
+    settingsLibraryDepthLabelInput: root.querySelector('#settings-library-depth-label-input') as HTMLInputElement,
+    settingsLibraryDepthInput: root.querySelector('#settings-library-depth-input') as HTMLInputElement,
+    settingsLibraryDepthStatus: root.querySelector('#settings-library-depth-status') as HTMLParagraphElement,
+    settingsLibraryDepthCancel: root.querySelector('#settings-library-depth-cancel') as HTMLButtonElement,
+    settingsLibraryDepthConfirm: root.querySelector('#settings-library-depth-confirm') as HTMLButtonElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
-    settingsReleaseDepth: root.querySelector('#settings-release-depth') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,

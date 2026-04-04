@@ -1,5 +1,21 @@
 export namespace main {
 	
+	export class AppLibraryFolder {
+	    path: string;
+	    label?: string;
+	    releaseDepth?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppLibraryFolder(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.label = source["label"];
+	        this.releaseDepth = source["releaseDepth"];
+	    }
+	}
 	export class FocusedKeyboardShortcuts {
 	    playPauseToggle: string;
 	    nextTrack: string;
@@ -23,7 +39,8 @@ export namespace main {
 	    }
 	}
 	export class AppSettings {
-	    libraryPath: string;
+	    libraryFolders?: AppLibraryFolder[];
+	    libraryPath?: string;
 	    listenBrainzUserToken: string;
 	    playbackOrder: string;
 	    releaseDepth?: number;
@@ -38,6 +55,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.libraryFolders = this.convertValues(source["libraryFolders"], AppLibraryFolder);
 	        this.libraryPath = source["libraryPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	        this.playbackOrder = source["playbackOrder"];
@@ -168,6 +186,8 @@ export namespace main {
 	    path: string;
 	    relativePath: string;
 	    folderPath: string;
+	    rootPath: string;
+	    rootName: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LibraryIndexedFile(source);
@@ -179,6 +199,8 @@ export namespace main {
 	        this.path = source["path"];
 	        this.relativePath = source["relativePath"];
 	        this.folderPath = source["folderPath"];
+	        this.rootPath = source["rootPath"];
+	        this.rootName = source["rootName"];
 	    }
 	}
 	export class LibraryIndexedFilePage {

@@ -28,7 +28,7 @@ var AppVersion = "dev"
 // App contains runtime state and service dependencies for the Wails backend.
 type App struct {
 	ctx                                    context.Context
-	libraryRoot                            string
+	activeLibraryRoots                     []libraryRootConfig
 	audio                                  *AudioBackend
 	settings                               AppSettings
 	settingsPath                           string
@@ -62,6 +62,7 @@ type App struct {
 	libraryScan                            LibraryScanResult
 	scanInProgress                         bool
 	scanRemainingImmediateChildrenByFolder map[string]int
+	scanEntryMs                            float64
 	scanFinalizeMs                         float64
 	scanWatcherMs                          float64
 	searchGeneration                       atomic.Uint64

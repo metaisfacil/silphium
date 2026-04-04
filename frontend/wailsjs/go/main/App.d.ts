@@ -62,6 +62,8 @@ export function SavePlaylistFile(arg1:string,arg2:Array<string>):Promise<boolean
 
 export function SaveSettings(arg1:main.AppSettings):Promise<main.AppSettings>;
 
+export function ScanConfiguredLibraryFolders():Promise<main.LibraryScanResult>;
+
 export function ScanLibraryFolder(arg1:string):Promise<main.LibraryScanResult>;
 
 export function SearchLibrary(arg1:string,arg2:number,arg3:number):Promise<main.LibrarySearchPage>;

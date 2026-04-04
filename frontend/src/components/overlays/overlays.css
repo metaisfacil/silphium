@@ -323,6 +323,61 @@
     transform: translateY(0) scale(1);
 }
 
+.settings-submodal {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+}
+
+.settings-submodal[hidden] {
+    display: none;
+}
+
+.settings-submodal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.52);
+    backdrop-filter: blur(2px);
+}
+
+.settings-subdialog {
+    position: relative;
+    width: min(27rem, calc(100vw - 4rem));
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 0.85rem;
+    background: rgba(18, 18, 20, 0.98);
+    box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.4);
+}
+
+#settings-library-depth-form .settings-field {
+    gap: 0.72rem;
+}
+
+.settings-subdialog-title {
+    margin: 0;
+    font-size: 0.88rem;
+    opacity: 0.92;
+}
+
+.settings-subdialog-status {
+    margin: -0.1rem 0 0;
+    min-height: 1.05rem;
+    font-size: 0.76rem;
+    color: rgba(255, 210, 170, 0.9);
+}
+
+.settings-subdialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.55rem;
+}
+
 .settings-header {
     display: flex;
     align-items: center;
@@ -484,7 +539,25 @@
     overflow: auto;
 }
 
+.settings-library-folder-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.55rem;
+    background: rgba(0, 0, 0, 0.22);
+    min-height: 9.4rem;
+    max-height: 13rem;
+    overflow: auto;
+}
+
 .settings-favorite-empty {
+    font-size: 0.78rem;
+    opacity: 0.62;
+    padding: 0.25rem 0.3rem;
+}
+
+.settings-library-folder-empty {
     font-size: 0.78rem;
     opacity: 0.62;
     padding: 0.25rem 0.3rem;
@@ -495,7 +568,16 @@
     padding: 0;
 }
 
+.settings-library-folder-item {
+    margin: 0;
+    padding: 0;
+}
+
 .settings-favorite-item + .settings-favorite-item {
+    margin-top: 0.25rem;
+}
+
+.settings-library-folder-item + .settings-library-folder-item {
     margin-top: 0.25rem;
 }
 
@@ -515,13 +597,73 @@
     text-overflow: ellipsis;
 }
 
+.settings-library-folder-item-btn {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.55rem;
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 0.42rem;
+    background: rgba(255, 255, 255, 0.04);
+    color: inherit;
+    font: inherit;
+    font-size: 0.76rem;
+    padding: 0.32rem 0.42rem;
+    cursor: pointer;
+}
+
 .settings-favorite-item-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-library-folder-item-btn:hover {
     background: rgba(255, 255, 255, 0.12);
 }
 
 .settings-favorite-item-btn.is-selected {
     background: rgba(255, 255, 255, 0.2);
     border-color: rgba(255, 255, 255, 0.34);
+}
+
+.settings-library-folder-item-btn.is-selected {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.34);
+}
+
+.settings-library-folder-path {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.settings-library-folder-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.settings-library-folder-label-badge,
+.settings-library-folder-depth-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0.12rem 0.42rem;
+    font-size: 0.66rem;
+    letter-spacing: 0.02em;
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.settings-library-folder-label-badge {
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .settings-list-actions {
