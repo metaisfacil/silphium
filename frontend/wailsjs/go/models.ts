@@ -28,6 +28,7 @@ export namespace main {
 	    playbackOrder: string;
 	    releaseDepth?: number;
 	    favoritePlaylists?: string[];
+	    coverArtPriority?: string[];
 	    preferMusicBrainzMetadata: boolean;
 	    keyboardShortcuts: FocusedKeyboardShortcuts;
 	
@@ -42,6 +43,7 @@ export namespace main {
 	        this.playbackOrder = source["playbackOrder"];
 	        this.releaseDepth = source["releaseDepth"];
 	        this.favoritePlaylists = source["favoritePlaylists"];
+	        this.coverArtPriority = source["coverArtPriority"];
 	        this.preferMusicBrainzMetadata = source["preferMusicBrainzMetadata"];
 	        this.keyboardShortcuts = this.convertValues(source["keyboardShortcuts"], FocusedKeyboardShortcuts);
 	    }
@@ -86,6 +88,20 @@ export namespace main {
 	        this.volume = source["volume"];
 	        this.sourcePath = source["sourcePath"];
 	        this.endEventId = source["endEventId"];
+	    }
+	}
+	export class EmbeddedCoverArt {
+	    base64: string;
+	    mimeType: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EmbeddedCoverArt(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.base64 = source["base64"];
+	        this.mimeType = source["mimeType"];
 	    }
 	}
 	

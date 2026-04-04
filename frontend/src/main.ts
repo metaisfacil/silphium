@@ -67,6 +67,7 @@ import {
     LoadPlaylistFile,
     LookupArtistByMBID,
     OpenFolderInFileBrowser,
+    ReadTrackEmbeddedCover,
     ReadFileBase64,
     ReadTextFile,
     ReadTrackTags,
@@ -86,6 +87,7 @@ import { applyMbLinks, openMbLink } from './musicbrainz';
 import type {
     AppSettings,
     AudioPlaybackState,
+    CoverArtPrioritySource,
     ImageLibraryFile,
     LibraryFolderPage,
     LibraryIndexedFilePage,
@@ -177,6 +179,7 @@ let currentSettings: AppSettings = {
     playbackOrder: 'ordered-library',
     releaseDepth: 0,
     favoritePlaylists: [],
+    coverArtPriority: ['file', 'embedded'],
     preferMusicBrainzMetadata: false,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
@@ -185,9 +188,35 @@ let sidebarQueueTrackIndexes: number[] = [];
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
 const coverMediaArtworkByFolder = new Map<string, { src: string; type: string }>();
+const coverUrlByTrackPath = new Map<string, string>();
+const coverMediaArtworkByTrackPath = new Map<string, { src: string; type: string }>();
+const coverSourceByTrackPath = new Map<string, CoverArtPrioritySource>();
 const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const aboutModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
+const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] | undefined): CoverArtPrioritySource[] => {
+    const ordered: CoverArtPrioritySource[] = [];
+    const seen = new Set<CoverArtPrioritySource>();
+
+    for (const rawSource of sources || []) {
+        const source = rawSource === 'embedded' ? 'embedded' : rawSource === 'file' ? 'file' : undefined;
+        if (!source || seen.has(source)) {
+            continue;
+        }
+
+        seen.add(source);
+        ordered.push(source);
+    }
+
+    for (const fallback of defaultCoverArtPriority) {
+        if (!seen.has(fallback)) {
+            ordered.push(fallback);
+        }
+    }
+
+    return ordered;
+};
 const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
     return {
         libraryPath: settings.libraryPath || '',
@@ -195,6 +224,7 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
         releaseDepth: asReleaseDepth(settings.releaseDepth),
         favoritePlaylists: Array.isArray(settings.favoritePlaylists) ? settings.favoritePlaylists : [],
+        coverArtPriority: normalizeCoverArtPriority(settings.coverArtPriority),
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
     };
@@ -983,8 +1013,9 @@ const updateMediaSessionMetadata = (): void => {
         album: activeTrack.displayAlbum || 'Unknown Album',
     };
 
+    const trackKey = activeTrack.path.trim().toLowerCase();
     const folderKey = folderKeyForPath(activeTrack.folderPath || '');
-    const cachedArtwork = coverMediaArtworkByFolder.get(folderKey);
+    const cachedArtwork = coverMediaArtworkByTrackPath.get(trackKey) || coverMediaArtworkByFolder.get(folderKey);
     if (cachedArtwork) {
         metadataInit.artwork = [{
             src: cachedArtwork.src,
@@ -1588,6 +1619,12 @@ const openCoverImageModal = (): void => {
         return;
     }
 
+    const source = coverSourceByTrackPath.get(trackPathKey(activeTrack.path));
+    if (source === 'embedded') {
+        imageModalController.openPreview(coverArt.src);
+        return;
+    }
+
     const gallery = collectReleaseImageFiles(activeTrack.folderPath || '');
     if (gallery.length === 0) {
         imageModalController.openPreview(coverArt.src);
@@ -1823,6 +1860,9 @@ const clearLibrarySelection = async (): Promise<void> => {
         },
     });
     coverMediaArtworkByFolder.clear();
+    coverUrlByTrackPath.clear();
+    coverMediaArtworkByTrackPath.clear();
+    coverSourceByTrackPath.clear();
 
     tracks = [];
     textFiles = [];
@@ -1981,7 +2021,9 @@ const initializeAppVersion = async (): Promise<void> => {
     }
 };
 
-const resolveCoverForTrack = async (track: Track): Promise<string | undefined> => {
+const trackPathKey = (trackPath: string): string => trackPath.trim().toLowerCase();
+
+const resolveFolderCoverForTrack = async (track: Track): Promise<string | undefined> => {
     const folderKey = folderKeyForPath(track.folderPath);
     const cached = coverUrlByFolder.get(folderKey);
     if (cached) {
@@ -2015,6 +2057,61 @@ const resolveCoverForTrack = async (track: Track): Promise<string | undefined> =
     });
     objectUrls.push(coverUrl);
     return coverUrl;
+};
+
+const resolveEmbeddedCoverForTrack = async (track: Track): Promise<string | undefined> => {
+    const trackKey = trackPathKey(track.path);
+    if (!trackKey) {
+        return undefined;
+    }
+
+    const cached = coverUrlByTrackPath.get(trackKey);
+    if (cached) {
+        return cached;
+    }
+
+    const embeddedCover = await ReadTrackEmbeddedCover(track.path) as { base64?: string; mimeType?: string };
+    const base64 = embeddedCover.base64 || '';
+    if (!base64) {
+        return undefined;
+    }
+
+    const mimeType = embeddedCover.mimeType && embeddedCover.mimeType.startsWith('image/')
+        ? embeddedCover.mimeType
+        : 'image/jpeg';
+    const coverUrl = base64ToObjectUrl(base64, mimeType);
+    coverUrlByTrackPath.set(trackKey, coverUrl);
+    coverMediaArtworkByTrackPath.set(trackKey, {
+        src: `data:${mimeType};base64,${base64}`,
+        type: mimeType,
+    });
+    objectUrls.push(coverUrl);
+    return coverUrl;
+};
+
+const resolveCoverForTrack = async (track: Track): Promise<string | undefined> => {
+    const trackKey = trackPathKey(track.path);
+    const priority = normalizeCoverArtPriority(currentSettings.coverArtPriority);
+
+    for (const source of priority) {
+        const coverUrl = source === 'embedded'
+            ? await resolveEmbeddedCoverForTrack(track)
+            : await resolveFolderCoverForTrack(track);
+
+        if (!coverUrl) {
+            continue;
+        }
+
+        if (trackKey) {
+            coverSourceByTrackPath.set(trackKey, source);
+        }
+        return coverUrl;
+    }
+
+    if (trackKey) {
+        coverSourceByTrackPath.delete(trackKey);
+    }
+    return undefined;
 };
 
 const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promise<void> => {
@@ -2473,6 +2570,7 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
             releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
             favoritePlaylists: currentSettings.favoritePlaylists,
+            coverArtPriority: currentSettings.coverArtPriority,
             preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
             keyboardShortcuts: currentSettings.keyboardShortcuts,
         })) as AppSettings;
@@ -2630,6 +2728,9 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         },
     });
     coverMediaArtworkByFolder.clear();
+    coverUrlByTrackPath.clear();
+    coverMediaArtworkByTrackPath.clear();
+    coverSourceByTrackPath.clear();
     logRescan('  - cleared runtime data: %.2fms', performance.now() - stepTime);
 
     stepTime = performance.now();
@@ -2758,6 +2859,7 @@ settingsController = createSettingsController({
         listenBrainzUserToken: currentSettings.listenBrainzUserToken,
         releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
         favoritePlaylists: currentSettings.favoritePlaylists,
+        coverArtPriority: currentSettings.coverArtPriority,
         preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
     }),
@@ -2768,6 +2870,7 @@ settingsController = createSettingsController({
         listenBrainzUserToken,
         releaseDepth,
         favoritePlaylists,
+        coverArtPriority,
         preferMusicBrainzMetadata,
         keyboardShortcuts,
     }): Promise<void> => {
@@ -2778,6 +2881,7 @@ settingsController = createSettingsController({
                 playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
                 releaseDepth: asReleaseDepth(releaseDepth),
                 favoritePlaylists,
+                coverArtPriority,
                 preferMusicBrainzMetadata,
                 keyboardShortcuts,
             })) as AppSettings;

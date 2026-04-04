@@ -114,11 +114,20 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 			continue
 		}
 
+		folderPath := filepath.ToSlash(filepath.Dir(resolved))
+		relativePath := filepath.Base(resolved)
+		if strings.TrimSpace(a.libraryRoot) != "" {
+			if relFolderPath, relPath, ok := folderAndRelative(a.libraryRoot, resolved); ok {
+				folderPath = relFolderPath
+				relativePath = relPath
+			}
+		}
+
 		result.TrackFiles = append(result.TrackFiles, LibraryIndexedFile{
 			Name:         filepath.Base(resolved),
 			Path:         resolved,
-			RelativePath: filepath.Base(resolved),
-			FolderPath:   filepath.ToSlash(filepath.Dir(resolved)),
+			RelativePath: relativePath,
+			FolderPath:   folderPath,
 		})
 	}
 

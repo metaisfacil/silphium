@@ -1,6 +1,6 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import type { FocusedKeyboardShortcuts, PlayerCardLayout } from '../types/app-types';
+import type { CoverArtPrioritySource, FocusedKeyboardShortcuts, PlayerCardLayout } from '../types/app-types';
 import { formatShortcutBindingFromKeyboardEvent, normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 
 export type SettingsFormValues = {
@@ -8,8 +8,38 @@ export type SettingsFormValues = {
     listenBrainzUserToken: string;
     releaseDepth: number;
     favoritePlaylists: string[];
+    coverArtPriority: CoverArtPrioritySource[];
     preferMusicBrainzMetadata: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
+};
+
+const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
+
+const normalizeCoverArtPriority = (items: string[]): CoverArtPrioritySource[] => {
+    const ordered: CoverArtPrioritySource[] = [];
+    const seen = new Set<CoverArtPrioritySource>();
+    for (const item of items) {
+        const normalized = item.trim().toLowerCase();
+        if (normalized !== 'file' && normalized !== 'embedded') {
+            continue;
+        }
+
+        const source = normalized as CoverArtPrioritySource;
+        if (seen.has(source)) {
+            continue;
+        }
+
+        seen.add(source);
+        ordered.push(source);
+    }
+
+    for (const fallback of defaultCoverArtPriority) {
+        if (!seen.has(fallback)) {
+            ordered.push(fallback);
+        }
+    }
+
+    return ordered;
 };
 
 type SettingsControllerOptions = {
@@ -51,6 +81,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsReleaseDepth,
         settingsPreferMusicBrainzMetadata,
         settingsPlayerCardLayout,
+        settingsCoverArtPriorityList,
         settingsShortcutPlayPauseToggle,
         settingsShortcutNextTrack,
         settingsShortcutPreviousTrack,
@@ -65,6 +96,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     let favoritePlaylists: string[] = [];
     let selectedFavoritePlaylistIndex = -1;
+    let coverArtPriority: CoverArtPrioritySource[] = [...defaultCoverArtPriority];
+    let draggedCoverPriorityIndex = -1;
 
     const normalizeFavoritePlaylists = (items: string[]): string[] => {
         const deduped = new Set<string>();
@@ -104,6 +137,57 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         settingsRemoveFavoritePlaylist.disabled = selectedFavoritePlaylistIndex < 0;
+    };
+
+    const labelForCoverArtPriority = (source: CoverArtPrioritySource): string => {
+        if (source === 'embedded') {
+            return 'Embedded track artwork';
+        }
+
+        return 'Separate image file in release folder';
+    };
+
+    const moveCoverArtPriority = (fromIndex: number, toIndex: number): void => {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= coverArtPriority.length || toIndex >= coverArtPriority.length) {
+            return;
+        }
+
+        if (fromIndex === toIndex) {
+            return;
+        }
+
+        const next = coverArtPriority.slice();
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved);
+        coverArtPriority = normalizeCoverArtPriority(next);
+    };
+
+    const clearCoverArtDragState = (): void => {
+        draggedCoverPriorityIndex = -1;
+        settingsCoverArtPriorityList.classList.remove('is-dragging');
+        settingsCoverArtPriorityList.querySelectorAll('.is-drop-target').forEach((node) => {
+            node.classList.remove('is-drop-target');
+        });
+    };
+
+    const renderCoverArtPriorityList = (): void => {
+        settingsCoverArtPriorityList.innerHTML = '';
+
+        coverArtPriority.forEach((source, index) => {
+            const item = document.createElement('li');
+            item.className = 'settings-priority-item';
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'settings-priority-item-btn';
+            button.dataset.coverArtPriorityIndex = String(index);
+            button.draggable = true;
+            button.title = 'Drag to change priority';
+            button.innerHTML = `<span class="settings-priority-handle" aria-hidden="true">=</span><span class="settings-priority-label">${labelForCoverArtPriority(source)}</span>`;
+
+            item.append(button);
+            settingsCoverArtPriorityList.append(item);
+        });
     };
 
     const setActiveTab = (tab: 'general' | 'playlists' | 'ui' | 'shortcuts'): void => {
@@ -212,8 +296,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
         favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
+        coverArtPriority = normalizeCoverArtPriority(values.coverArtPriority);
         selectedFavoritePlaylistIndex = -1;
         renderFavoritePlaylistList();
+        renderCoverArtPriorityList();
         settingsStatus.textContent = '';
         setActiveTab('general');
         settingsModal.hidden = false;
@@ -294,6 +380,87 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         renderFavoritePlaylistList();
     });
 
+    settingsCoverArtPriorityList.addEventListener('dragstart', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const item = target.closest('[data-cover-art-priority-index]');
+        if (!(item instanceof HTMLElement)) {
+            return;
+        }
+
+        const index = Number(item.dataset.coverArtPriorityIndex);
+        if (!Number.isInteger(index) || index < 0 || index >= coverArtPriority.length) {
+            return;
+        }
+
+        draggedCoverPriorityIndex = index;
+        settingsCoverArtPriorityList.classList.add('is-dragging');
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(index));
+        }
+    });
+
+    settingsCoverArtPriorityList.addEventListener('dragover', (event) => {
+        if (draggedCoverPriorityIndex < 0) {
+            return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const item = target.closest('[data-cover-art-priority-index]');
+        if (!(item instanceof HTMLElement)) {
+            return;
+        }
+
+        event.preventDefault();
+        settingsCoverArtPriorityList.querySelectorAll('.is-drop-target').forEach((node) => {
+            if (node !== item) {
+                node.classList.remove('is-drop-target');
+            }
+        });
+        item.classList.add('is-drop-target');
+    });
+
+    settingsCoverArtPriorityList.addEventListener('drop', (event) => {
+        if (draggedCoverPriorityIndex < 0) {
+            return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            clearCoverArtDragState();
+            return;
+        }
+
+        const item = target.closest('[data-cover-art-priority-index]');
+        if (!(item instanceof HTMLElement)) {
+            clearCoverArtDragState();
+            return;
+        }
+
+        event.preventDefault();
+        const destinationIndex = Number(item.dataset.coverArtPriorityIndex);
+        if (!Number.isInteger(destinationIndex)) {
+            clearCoverArtDragState();
+            return;
+        }
+
+        moveCoverArtPriority(draggedCoverPriorityIndex, destinationIndex);
+        clearCoverArtDragState();
+        renderCoverArtPriorityList();
+    });
+
+    settingsCoverArtPriorityList.addEventListener('dragend', () => {
+        clearCoverArtDragState();
+    });
+
     settingsAddFavoritePlaylist.addEventListener('click', async () => {
         settingsStatus.textContent = '';
 
@@ -334,6 +501,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             listenBrainzUserToken: settingsListenBrainzToken.value,
             releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
             favoritePlaylists: favoritePlaylists.slice(),
+            coverArtPriority: coverArtPriority.slice(),
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
             keyboardShortcuts: getShortcutValues(),
         };
@@ -357,6 +525,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             listenBrainzUserToken: settingsListenBrainzToken.value,
             releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
             favoritePlaylists: favoritePlaylists.slice(),
+            coverArtPriority: coverArtPriority.slice(),
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
             keyboardShortcuts: getShortcutValues(),
         };

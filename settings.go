@@ -25,6 +25,7 @@ type AppSettings struct {
 	PlaybackOrder             string                   `json:"playbackOrder"`
 	ReleaseDepth              int                      `json:"releaseDepth,omitempty"`
 	FavoritePlaylists         []string                 `json:"favoritePlaylists,omitempty"`
+	CoverArtPriority          []string                 `json:"coverArtPriority,omitempty"`
 	PreferMusicBrainzMetadata bool                     `json:"preferMusicBrainzMetadata"`
 	KeyboardShortcuts         FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
@@ -37,6 +38,10 @@ const defaultShortcutPreviousTrack = "P"
 const defaultShortcutStopPlayback = "Z"
 const defaultShortcutFocusLibraryFilter = "Ctrl+F"
 const defaultShortcutOpenSettings = "Ctrl+P"
+const coverArtPriorityFile = "file"
+const coverArtPriorityEmbedded = "embedded"
+
+var defaultCoverArtPriority = []string{coverArtPriorityFile, coverArtPriorityEmbedded}
 
 func normalizePlaybackOrder(value string) string {
 	switch strings.TrimSpace(value) {
@@ -67,11 +72,47 @@ func normalizeFocusedKeyboardShortcuts(shortcuts FocusedKeyboardShortcuts) Focus
 	}
 }
 
+func normalizeCoverArtPriority(priority []string) []string {
+	if len(priority) == 0 {
+		return append([]string{}, defaultCoverArtPriority...)
+	}
+
+	ordered := make([]string, 0, len(defaultCoverArtPriority))
+	seen := make(map[string]struct{}, len(defaultCoverArtPriority))
+	for _, item := range priority {
+		normalized := strings.ToLower(strings.TrimSpace(item))
+		switch normalized {
+		case coverArtPriorityFile, coverArtPriorityEmbedded:
+			if _, exists := seen[normalized]; exists {
+				continue
+			}
+
+			seen[normalized] = struct{}{}
+			ordered = append(ordered, normalized)
+		}
+	}
+
+	for _, fallback := range defaultCoverArtPriority {
+		if _, exists := seen[fallback]; exists {
+			continue
+		}
+
+		ordered = append(ordered, fallback)
+	}
+
+	if len(ordered) == 0 {
+		return append([]string{}, defaultCoverArtPriority...)
+	}
+
+	return ordered
+}
+
 func normalizeAppSettings(settings AppSettings) AppSettings {
 	token := strings.TrimSpace(settings.ListenBrainzUserToken)
 	path := strings.TrimSpace(settings.LibraryPath)
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
 	releaseDepth := settings.ReleaseDepth
+	coverArtPriority := normalizeCoverArtPriority(settings.CoverArtPriority)
 	preferMusicBrainzMetadata := settings.PreferMusicBrainzMetadata
 	keyboardShortcuts := normalizeFocusedKeyboardShortcuts(settings.KeyboardShortcuts)
 	favoritePlaylists := make([]string, 0, len(settings.FavoritePlaylists))
@@ -101,7 +142,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		releaseDepth = maxReleaseDepth
 	}
 	if path == "" {
-		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth, FavoritePlaylists: favoritePlaylists, PreferMusicBrainzMetadata: preferMusicBrainzMetadata, KeyboardShortcuts: keyboardShortcuts}
+		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth, FavoritePlaylists: favoritePlaylists, CoverArtPriority: coverArtPriority, PreferMusicBrainzMetadata: preferMusicBrainzMetadata, KeyboardShortcuts: keyboardShortcuts}
 	}
 
 	path = normalizePath(path)
@@ -115,6 +156,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		PlaybackOrder:             playbackOrder,
 		ReleaseDepth:              releaseDepth,
 		FavoritePlaylists:         favoritePlaylists,
+		CoverArtPriority:          coverArtPriority,
 		PreferMusicBrainzMetadata: preferMusicBrainzMetadata,
 		KeyboardShortcuts:         keyboardShortcuts,
 	}

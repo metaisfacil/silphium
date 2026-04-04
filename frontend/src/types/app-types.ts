@@ -196,6 +196,8 @@ export type AudioPlaybackState = {
 
 export type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
 
+export type CoverArtPrioritySource = 'file' | 'embedded';
+
 export type PlayerCardLayout = 'default' | 'release';
 
 export type FocusedKeyboardShortcuts = {
@@ -213,6 +215,7 @@ export type AppSettings = {
     playbackOrder: PlaybackOrderMode;
     releaseDepth: number;
     favoritePlaylists: string[];
+    coverArtPriority: CoverArtPrioritySource[];
     preferMusicBrainzMetadata: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };

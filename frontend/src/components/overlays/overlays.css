@@ -583,6 +583,64 @@
     appearance: auto;
 }
 
+.settings-priority-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.55rem;
+    background: rgba(0, 0, 0, 0.22);
+    display: grid;
+    gap: 0.25rem;
+}
+
+.settings-priority-item {
+    margin: 0;
+    padding: 0;
+}
+
+.settings-priority-item-btn {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid transparent;
+    border-radius: 0.42rem;
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    font: inherit;
+    font-size: 0.76rem;
+    text-align: left;
+    padding: 0.36rem 0.44rem;
+    cursor: grab;
+}
+
+.settings-priority-item-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.settings-priority-handle {
+    font-size: 0.72rem;
+    opacity: 0.62;
+    line-height: 1;
+}
+
+.settings-priority-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.settings-priority-list.is-dragging .settings-priority-item-btn {
+    cursor: grabbing;
+}
+
+.settings-priority-item-btn.is-drop-target {
+    border-color: rgba(255, 255, 255, 0.42);
+    background: rgba(255, 255, 255, 0.18);
+}
+
 .settings-status {
     margin: 0;
     min-height: 1.1rem;

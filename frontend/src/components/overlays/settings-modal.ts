@@ -21,6 +21,7 @@ export type SettingsModalElements = {
     settingsReleaseDepth: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsPlayerCardLayout: HTMLSelectElement;
+    settingsCoverArtPriorityList: HTMLUListElement;
     settingsShortcutPlayPauseToggle: HTMLInputElement;
     settingsShortcutNextTrack: HTMLInputElement;
     settingsShortcutPreviousTrack: HTMLInputElement;
@@ -92,6 +93,11 @@ export const renderSettingsModal = (): string => `
                             <option value="release">Release-focused — Artist, cover, label &amp; year</option>
                         </select>
                     </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-cover-art-priority-list">Cover Art Source Priority</label>
+                        <p class="settings-hint">Drag to reorder. Top entry is tried first. Separate cover files are preferred by default.</p>
+                        <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
+                    </div>
                 </div>
                 <div id="settings-panel-shortcuts" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-shortcuts" hidden>
                     <p class="settings-hint">Click a field and press a key combination. Use Delete to clear.</p>
@@ -155,6 +161,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsReleaseDepth: root.querySelector('#settings-release-depth') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
+    settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,
     settingsShortcutPlayPauseToggle: root.querySelector('#settings-shortcut-play-pause') as HTMLInputElement,
     settingsShortcutNextTrack: root.querySelector('#settings-shortcut-next-track') as HTMLInputElement,
     settingsShortcutPreviousTrack: root.querySelector('#settings-shortcut-previous-track') as HTMLInputElement,

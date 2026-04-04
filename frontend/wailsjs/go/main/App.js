@@ -102,6 +102,10 @@ export function ReadTextFile(arg1) {
   return window['go']['main']['App']['ReadTextFile'](arg1);
 }
 
+export function ReadTrackEmbeddedCover(arg1) {
+  return window['go']['main']['App']['ReadTrackEmbeddedCover'](arg1);
+}
+
 export function ReadTrackTags(arg1) {
   return window['go']['main']['App']['ReadTrackTags'](arg1);
 }

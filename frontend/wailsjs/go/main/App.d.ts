@@ -52,6 +52,8 @@ export function ReadFileBase64(arg1:string):Promise<string>;
 
 export function ReadTextFile(arg1:string):Promise<string>;
 
+export function ReadTrackEmbeddedCover(arg1:string):Promise<main.EmbeddedCoverArt>;
+
 export function ReadTrackTags(arg1:Array<string>):Promise<Record<string, main.TrackTags>>;
 
 export function ReadTrackTagsFromBlobs(arg1:Array<main.TrackBlob>):Promise<Record<string, main.TrackTags>>;
