@@ -129,7 +129,8 @@ export const renderMusicBrainzEntityContent = (
 ): void => {
     contentElement.innerHTML = '';
 
-    titleElement.textContent = 'MusicBrainz info';
+    const entityTypeLabel = (entity.entityType || 'entity').trim().toLowerCase();
+    titleElement.textContent = `MusicBrainz ${entityTypeLabel} info`;
 
     const details = [...entity.facts];
     const disambiguation = entity.summary?.trim() || '';

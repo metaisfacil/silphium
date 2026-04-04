@@ -682,7 +682,7 @@
     padding: 0.9rem 1rem 1rem;
     text-align: center;
     display: grid;
-    gap: 0.6rem;
+    gap: 0.3rem;
 }
 
 .about-logo-wrap {
@@ -884,7 +884,11 @@
     overflow: hidden;
     opacity: 0;
     transform: translateY(8px) scale(0.985);
-    transition: opacity 220ms ease, transform 220ms ease;
+    transition: opacity 220ms ease, transform 220ms ease, width 220ms ease, height 220ms ease;
+}
+
+.mb-entity-dialog.is-resizing .mb-entity-content {
+    overflow: hidden;
 }
 
 .mb-entity-modal.is-visible .mb-entity-backdrop {

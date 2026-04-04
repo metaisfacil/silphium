@@ -1417,11 +1417,74 @@ const closeMusicBrainzEntityModal = (): void => {
     }, musicBrainzEntityModalTransitionMs);
 };
 
-const lockMusicBrainzDialogWidth = (): void => {
-    const width = Math.ceil(musicBrainzEntityDialog.getBoundingClientRect().width);
-    if (width > 0) {
-        musicBrainzEntityDialog.style.width = `${width}px`;
+const animateMusicBrainzDialogResize = (updateContent: () => void): void => {
+    const modalVisible = !musicBrainzEntityModal.hidden && musicBrainzEntityModal.classList.contains('is-visible');
+    if (!modalVisible) {
+        updateContent();
+        return;
     }
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const startRect = musicBrainzEntityDialog.getBoundingClientRect();
+    const startWidth = Math.ceil(startRect.width);
+    const startHeight = Math.ceil(startRect.height);
+
+    updateContent();
+
+    musicBrainzEntityDialog.style.width = '';
+    musicBrainzEntityDialog.style.height = '';
+
+    const targetRect = musicBrainzEntityDialog.getBoundingClientRect();
+    const targetWidth = Math.ceil(targetRect.width);
+    const targetHeight = Math.ceil(targetRect.height);
+    if (
+        prefersReducedMotion
+        || startWidth <= 0
+        || startHeight <= 0
+        || targetWidth <= 0
+        || targetHeight <= 0
+        || (Math.abs(targetWidth - startWidth) < 2 && Math.abs(targetHeight - startHeight) < 2)
+    ) {
+        return;
+    }
+
+    const targetContentWidth = Math.ceil(musicBrainzEntityContent.getBoundingClientRect().width);
+    musicBrainzEntityDialog.classList.add('is-resizing');
+    musicBrainzEntityContent.style.width = `${targetContentWidth}px`;
+    musicBrainzEntityDialog.style.width = `${startWidth}px`;
+    musicBrainzEntityDialog.style.height = `${startHeight}px`;
+    void musicBrainzEntityDialog.offsetWidth;
+    musicBrainzEntityDialog.style.width = `${targetWidth}px`;
+    musicBrainzEntityDialog.style.height = `${targetHeight}px`;
+
+    let cleanupTimer: number | undefined;
+    const cleanup = (): void => {
+        if (cleanupTimer !== undefined) {
+            window.clearTimeout(cleanupTimer);
+            cleanupTimer = undefined;
+        }
+
+        musicBrainzEntityDialog.removeEventListener('transitionend', handleTransitionEnd);
+        musicBrainzEntityDialog.classList.remove('is-resizing');
+        musicBrainzEntityDialog.style.width = '';
+        musicBrainzEntityDialog.style.height = '';
+        musicBrainzEntityContent.style.width = '';
+    };
+
+    const handleTransitionEnd = (event: TransitionEvent): void => {
+        if (event.target !== musicBrainzEntityDialog) {
+            return;
+        }
+
+        if (event.propertyName !== 'width' && event.propertyName !== 'height') {
+            return;
+        }
+
+        cleanup();
+    };
+
+    musicBrainzEntityDialog.addEventListener('transitionend', handleTransitionEnd);
+    cleanupTimer = window.setTimeout(cleanup, musicBrainzEntityModalTransitionMs + 120);
 };
 
 const openMusicBrainzEntityForCurrentTrack = async (entityType: MusicBrainzEntityType): Promise<void> => {
@@ -1447,7 +1510,8 @@ const openMusicBrainzEntityForCurrentTrack = async (entityType: MusicBrainzEntit
     }
 
     musicBrainzEntityDialog.style.width = '';
-    musicBrainzEntityTitle.textContent = 'MusicBrainz info';
+    musicBrainzEntityDialog.style.height = '';
+    musicBrainzEntityTitle.textContent = `MusicBrainz ${entityType} info`;
     musicBrainzEntityContent.innerHTML = '<p class="mb-entity-empty">Loading from MusicBrainz...</p>';
     musicBrainzEntityModal.hidden = false;
     window.requestAnimationFrame(() => {
@@ -1456,13 +1520,15 @@ const openMusicBrainzEntityForCurrentTrack = async (entityType: MusicBrainzEntit
 
     const entityInfo = await lookupMusicBrainzEntity(entityType, mbid);
     if (!entityInfo.found) {
-        musicBrainzEntityContent.innerHTML = '<p class="mb-entity-empty">No details found for this MusicBrainz ID.</p>';
-        lockMusicBrainzDialogWidth();
+        animateMusicBrainzDialogResize(() => {
+            musicBrainzEntityContent.innerHTML = '<p class="mb-entity-empty">No details found for this MusicBrainz ID.</p>';
+        });
         return;
     }
 
-    renderMusicBrainzEntityContent(entityInfo, musicBrainzEntityTitle, musicBrainzEntityContent);
-    lockMusicBrainzDialogWidth();
+    animateMusicBrainzDialogResize(() => {
+        renderMusicBrainzEntityContent(entityInfo, musicBrainzEntityTitle, musicBrainzEntityContent);
+    });
 };
 
 const closeTechnicalInfoModal = (): void => {
