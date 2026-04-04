@@ -178,9 +178,8 @@ let musicBrainzEntityModalHideTimer: number | undefined;
 let technicalInfoModalHideTimer: number | undefined;
 let aboutModalHideTimer: number | undefined;
 let isSeeking = false;
-type PlayPauseIntent = 'play' | 'pause';
-let playPauseCommandInFlight = false;
-let pendingPlayPauseIntent: PlayPauseIntent | null = null;
+let playbackMutationVersion = 0;
+let playPauseToggleInFlight = false;
 let currentSettings: AppSettings = {
     libraryFolders: [],
     libraryPath: '',
@@ -1016,9 +1015,16 @@ const maybeSubmitListenBrainz = (state: AudioPlaybackState): void => {
 
 const updatePlayButton = (): void => {
     const playbackState = playbackStateService.getPlaybackState();
-    playPause.innerHTML = renderPlayPauseIcon(playbackState.playing ? 'pause' : 'play');
-    playPause.dataset.state = playbackState.playing ? 'pause' : 'play';
-    playPause.setAttribute('aria-label', playbackState.playing ? 'Pause' : 'Play');
+    const nextState = playbackState.playing ? 'pause' : 'play';
+    const nextLabel = playbackState.playing ? 'Pause' : 'Play';
+    if (playPause.dataset.state !== nextState) {
+        playPause.innerHTML = renderPlayPauseIcon(nextState);
+        playPause.dataset.state = nextState;
+    }
+
+    if (playPause.getAttribute('aria-label') !== nextLabel) {
+        playPause.setAttribute('aria-label', nextLabel);
+    }
 };
 
 const updateTrackLabels = (): void => {
@@ -1180,8 +1186,13 @@ const syncPlaybackState = async (): Promise<void> => {
         return;
     }
 
+    const requestVersion = playbackMutationVersion;
     try {
         const nextState = await AudioGetState() as AudioPlaybackState;
+        if (requestVersion !== playbackMutationVersion) {
+            return;
+        }
+
         applyPlaybackState(nextState);
     } catch (error) {
         handleAudioError(error);
@@ -2313,6 +2324,7 @@ const playCurrentTrack = async (): Promise<void> => {
         return;
     }
 
+    playbackMutationVersion += 1;
     try {
         const nextState = await AudioPlay() as AudioPlaybackState;
         applyPlaybackState(nextState);
@@ -2326,6 +2338,7 @@ const pauseCurrentTrack = async (): Promise<void> => {
         return;
     }
 
+    playbackMutationVersion += 1;
     try {
         const nextState = await AudioPause() as AudioPlaybackState;
         applyPlaybackState(nextState);
@@ -2334,37 +2347,23 @@ const pauseCurrentTrack = async (): Promise<void> => {
     }
 };
 
-const drainPlayPauseIntentQueue = async (): Promise<void> => {
-    if (playPauseCommandInFlight) {
+const toggleCurrentTrack = async (): Promise<void> => {
+    if (!playbackStateService.isBackendReady() || playPauseToggleInFlight) {
         return;
     }
 
-    playPauseCommandInFlight = true;
+    playPauseToggleInFlight = true;
     try {
-        while (pendingPlayPauseIntent) {
-            const intent = pendingPlayPauseIntent;
-            pendingPlayPauseIntent = null;
-            const playbackState = playbackStateService.getPlaybackState();
-
-            if (intent === 'play') {
-                if (!playbackState.playing) {
-                    await playCurrentTrack();
-                }
-                continue;
-            }
-
-            if (playbackState.playing) {
-                await pauseCurrentTrack();
-            }
+        const playbackState = playbackStateService.getPlaybackState();
+        if (playbackState.playing) {
+            await pauseCurrentTrack();
+            return;
         }
-    } finally {
-        playPauseCommandInFlight = false;
-    }
-};
 
-const requestPlayPauseIntent = (intent: PlayPauseIntent): void => {
-    pendingPlayPauseIntent = intent;
-    void drainPlayPauseIntentQueue();
+        await playCurrentTrack();
+    } finally {
+        playPauseToggleInFlight = false;
+    }
 };
 
 const goToTrack = (direction: -1 | 1): void => {
@@ -2446,12 +2445,7 @@ const dispatchExternalPlaybackAction = (action: ExternalPlaybackAction): void =>
     }
 
     if (action === 'playpause') {
-        const playbackState = playbackStateService.getPlaybackState();
-        if (playbackState.playing) {
-            void pauseCurrentTrack();
-        } else {
-            void playCurrentTrack();
-        }
+        void toggleCurrentTrack();
         return;
     }
 
@@ -3417,13 +3411,7 @@ listenBrainzFeedbackHateBtn.addEventListener('click', () => {
 });
 
 playPause.addEventListener('click', () => {
-    const playbackState = playbackStateService.getPlaybackState();
-    if (!playbackState.playing) {
-        requestPlayPauseIntent('play');
-        return;
-    }
-
-    requestPlayPauseIntent('pause');
+    void toggleCurrentTrack();
 });
 
 playPause.addEventListener('contextmenu', (event) => {
