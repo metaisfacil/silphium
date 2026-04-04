@@ -81,7 +81,7 @@ import {
     SubmitListenBrainzRecordingFeedback,
 } from '../wailsjs/go/main/App';
 import { main as WailsModels } from '../wailsjs/go/models';
-import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime';
+import { BrowserOpenURL, EventsOn, OnFileDrop } from '../wailsjs/runtime/runtime';
 import { applyMbLinks, openMbLink } from './musicbrainz';
 import type {
     AppSettings,
@@ -2830,6 +2830,22 @@ playlistController = createPlaylistController({
         resetShuffleHistory();
     },
 });
+
+OnFileDrop((_, __, paths: string[]) => {
+    const droppedPaths = (paths || []).map((path) => path.trim()).filter((path) => path !== '');
+    if (droppedPaths.length === 0) {
+        return;
+    }
+
+    const droppedPlaylistPath = droppedPaths.find((path) => /\.(m3u8?|M3U8?)$/.test(path));
+    if (!droppedPlaylistPath) {
+        return;
+    }
+
+    void playlistController.loadPlaylistByPath(droppedPlaylistPath).catch((error: unknown) => {
+        console.error(error);
+    });
+}, false);
 
 imageModalController = createImageModalController({
     elements: imageModalElements,

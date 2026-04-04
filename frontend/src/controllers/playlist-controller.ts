@@ -126,6 +126,32 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const normalizePlaylistPath = (playlistPath: string): string => playlistPath.trim().toLowerCase();
 
+    const loadPlaylistByPath = async (playlistPath: string): Promise<boolean> => {
+        const normalizedPath = playlistPath.trim();
+        if (!normalizedPath) {
+            return false;
+        }
+
+        const loadedPlaylist = await options.loadPlaylistData(normalizedPath);
+        if (!loadedPlaylist || loadedPlaylist.trackIndexes.length === 0) {
+            return false;
+        }
+
+        loadedPlaylistTrackIndexes = loadedPlaylist.trackIndexes;
+        loadedPlaylistName = loadedPlaylist.name || '';
+        loadedPlaylistPath = normalizedPath;
+        editableQueueTrackIndexes = null;
+        selectedSource = 'playlist';
+        playbackSource = 'playlist';
+        selectedFavoriteIndex = null;
+        dragFromPosition = null;
+        options.onExternalPlaylistLoaded();
+        hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
+        await options.onTrackChosen(loadedPlaylist.trackIndexes[0]);
+        openModal();
+        return true;
+    };
+
     const loadedPlaylistSequence = (): PlaylistSequence | null => {
         if (!loadedPlaylistTrackIndexes || loadedPlaylistTrackIndexes.length === 0) {
             return null;
@@ -524,23 +550,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 return;
             }
 
-            const loadedPlaylist = await options.loadPlaylistData(selectedPath);
-            if (!loadedPlaylist || loadedPlaylist.trackIndexes.length === 0) {
-                return;
-            }
-
-            loadedPlaylistTrackIndexes = loadedPlaylist.trackIndexes;
-            loadedPlaylistName = loadedPlaylist.name || '';
-            loadedPlaylistPath = selectedPath;
-            editableQueueTrackIndexes = null;
-            selectedSource = 'playlist';
-            playbackSource = 'playlist';
-            selectedFavoriteIndex = null;
-            dragFromPosition = null;
-            options.onExternalPlaylistLoaded();
-            hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
-            await options.onTrackChosen(loadedPlaylist.trackIndexes[0]);
-            openModal();
+            await loadPlaylistByPath(selectedPath);
         } catch (error) {
             console.error(error);
         }
@@ -893,6 +903,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         refreshFavorites: () => {
             updateHeaderSourceControl();
         },
+        loadPlaylistByPath,
     };
 };
 
