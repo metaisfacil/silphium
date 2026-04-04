@@ -1058,6 +1058,8 @@
 
 .track-meta {
     margin: 0;
+    width: 100%;
+    min-width: 0;
 }
 
 .track-line {
@@ -1066,6 +1068,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
 }
 
 .track-title {
@@ -1076,13 +1079,25 @@
 }
 
 .track-title-row {
-    display: inline-flex;
+    display: inline-grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: baseline;
     gap: 0.45rem;
+    width: fit-content;
     max-width: 100%;
+    margin: 0 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.track-title-row .track-title {
+    min-width: 0;
 }
 
 .track-album {
+    display: block;
+    width: 100%;
+    max-width: 100%;
     font-size: clamp(0.82rem, calc(1.6cqh + 0.55cqw), 1rem);
     line-height: 1.2;
     opacity: 0.72;
@@ -1096,6 +1111,9 @@
 }
 
 .track-artist {
+    display: block;
+    width: 100%;
+    max-width: 100%;
     font-size: clamp(0.78rem, 2.8cqw, 0.95rem);
     opacity: 0.55;
 }
