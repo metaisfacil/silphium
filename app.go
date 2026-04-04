@@ -19,6 +19,7 @@ func init() {
 const libraryScanUpdatedEvent = "silphium:library:scan-updated"
 const libraryScanProgressEvent = "silphium:library:scan-progress"
 const libraryRescanLogEvent = "silphium:library:rescan-log"
+const mediaKeyEvent = "silphium:media:key"
 
 // AppVersion is set at build time via -ldflags "-X main.AppVersion=...".
 var AppVersion = "dev"
@@ -55,6 +56,8 @@ type App struct {
 	trackTagsCacheMu                       sync.Mutex
 	trackTagsCacheByPath                   map[string]trackTagsCacheEntry
 	trackTagsCacheOrder                    []string
+	mediaKeyWatcherStop                    chan struct{}
+	mediaKeyWatcherDone                    chan struct{}
 	libraryScan                            LibraryScanResult
 	scanInProgress                         bool
 	scanRemainingImmediateChildrenByFolder map[string]int
@@ -85,9 +88,11 @@ func (a *App) logRescanEvent(message string, args ...interface{}) {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.loadStoredSettings()
+	a.startMediaKeyWatcher()
 }
 
 func (a *App) shutdown(context.Context) {
+	a.stopMediaKeyWatcher()
 	a.stopLibraryWatcher()
 }
 
