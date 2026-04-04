@@ -407,11 +407,13 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         if (!currentFolderPath) {
+            appendSeparator();
             appendText(`${libraryRootName}${partialSuffix}`);
             libraryBack.disabled = true;
             return;
         }
 
+        appendSeparator();
         appendFolderButton(`${libraryRootName}${partialSuffix}`, '');
 
         let cumulativePath = '';
