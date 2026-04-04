@@ -200,6 +200,7 @@ const coverSourceByTrackPath = new Map<string, CoverArtPrioritySource>();
 const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const aboutModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+const selectedLibraryRootLabel = 'Selected folders';
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] | undefined): CoverArtPrioritySource[] => {
     const ordered: CoverArtPrioritySource[] = [];
@@ -2059,12 +2060,12 @@ const handleLibraryScanUpdatedEvent = (scanResult: LibraryScanResult): void => {
     }
 
     const previousRootName = libraryController.getLibraryRootName().trim();
-    const nextRootName = (scanResult.rootName || (currentSettings.libraryFolders.length > 1 ? 'Selected folders' : 'Selected folder')).trim();
+    const nextRootName = selectedLibraryRootLabel;
     if (!previousRootName || previousRootName !== nextRootName) {
         libraryController.setCurrentFolderPath('');
     }
 
-    libraryController.setLibraryRootName(nextRootName || (currentSettings.libraryFolders.length > 1 ? 'Selected folders' : 'Selected folder'));
+    libraryController.setLibraryRootName(nextRootName);
     libraryController.setLibraryIndexTruncated(!!scanResult.truncated);
 
     // For incremental updates, refresh the visible folder with a short debounce to
@@ -2792,7 +2793,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     logRescan('  - loaded paged collections: %.2fms', performance.now() - stepTime);
 
     const previousRootName = libraryController.getLibraryRootName().trim();
-    const nextRootName = (scanResult.rootName || (currentSettings.libraryFolders.length > 1 ? 'Selected folders' : 'Selected folder')).trim();
+    const nextRootName = selectedLibraryRootLabel;
     const canPreserveExistingFolderView = previousRootName !== '' && previousRootName === nextRootName;
     const folderPathBeforeSwap = canPreserveExistingFolderView
         ? libraryController.getCurrentFolderPath()
@@ -2870,7 +2871,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
 
     stepTime = performance.now();
     await libraryController.rebuildLibraryTree(
-        scanResult.rootName || (currentSettings.libraryFolders.length > 1 ? 'Selected folders' : 'Selected folder'),
+        selectedLibraryRootLabel,
         scanResult.truncated,
         tracks,
         textFiles,
