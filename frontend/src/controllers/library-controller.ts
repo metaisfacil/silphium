@@ -706,7 +706,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         pane.className = 'library-list-pane library-search-pane';
 
         if (!activeSearchResult) {
-            pane.innerHTML = `<li class="empty">${librarySearchPending ? 'Searching...' : 'No files match your search'}</li>`;
+            pane.innerHTML = `<li class="empty${librarySearchPending ? ' is-searching' : ''}">${librarySearchPending ? 'Searching...' : 'No files match your search'}</li>`;
             return pane;
         }
 
@@ -725,13 +725,13 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         appendSearchTreeRows(rootList, buildSearchTree(activeSearchResult.entries));
 
         if (rootList.childElementCount === 0) {
-            pane.innerHTML = `<li class="empty">${activeSearchResult.loading ? 'Searching...' : 'No files match your search'}</li>`;
+            pane.innerHTML = `<li class="empty${activeSearchResult.loading ? ' is-searching' : ''}">${activeSearchResult.loading ? 'Searching...' : 'No files match your search'}</li>`;
             return pane;
         }
 
         if (activeSearchResult.loading || activeSearchResult.errorMessage) {
             const statusRow = document.createElement('li');
-            statusRow.className = 'empty';
+            statusRow.className = activeSearchResult.loading ? 'empty is-searching' : 'empty';
             statusRow.textContent = activeSearchResult.loading
                 ? 'Searching...'
                 : activeSearchResult.errorMessage as string;
@@ -1204,7 +1204,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             libraryBrowser.innerHTML = '';
             const loadingPane = document.createElement('ul');
             loadingPane.className = 'library-list-pane library-search-pane current';
-            loadingPane.innerHTML = '<li class="empty">Searching...</li>';
+            loadingPane.innerHTML = '<li class="empty is-searching">Searching...</li>';
             libraryBrowser.append(loadingPane);
             setViewportLoadingIndicatorVisible(false);
             return;

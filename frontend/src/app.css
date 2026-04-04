@@ -496,6 +496,11 @@
     opacity: 0.75;
 }
 
+.library-list-pane .empty.is-searching {
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
 .library-list-pane.from-right {
     transform: translateX(100%);
     opacity: 0;
