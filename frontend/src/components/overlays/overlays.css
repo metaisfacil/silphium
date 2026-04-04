@@ -400,6 +400,13 @@
     gap: 0.55rem;
 }
 
+.settings-shortcuts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 0.8rem;
+}
+
 .settings-toggle-field {
     gap: 0.42rem;
 }

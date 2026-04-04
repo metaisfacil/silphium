@@ -95,29 +95,31 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-shortcuts" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-shortcuts" hidden>
                     <p class="settings-hint">Click a field and press a key combination. Use Delete to clear.</p>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-shortcut-play-pause">Play/Pause toggle</label>
-                        <input id="settings-shortcut-play-pause" class="settings-input" type="text" readonly spellcheck="false" placeholder="Space">
-                    </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-shortcut-next-track">Next track</label>
-                        <input id="settings-shortcut-next-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="N">
-                    </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-shortcut-previous-track">Previous track</label>
-                        <input id="settings-shortcut-previous-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="P">
-                    </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-shortcut-stop-playback">Stop playback</label>
-                        <input id="settings-shortcut-stop-playback" class="settings-input" type="text" readonly spellcheck="false" placeholder="Z">
-                    </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-shortcut-focus-library-filter">Focus library filter</label>
-                        <input id="settings-shortcut-focus-library-filter" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+F">
-                    </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-shortcut-open-settings">Open settings modal</label>
-                        <input id="settings-shortcut-open-settings" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+P">
+                    <div class="settings-shortcuts-grid">
+                        <div class="settings-field">
+                            <label class="settings-label" for="settings-shortcut-play-pause">Play/Pause toggle</label>
+                            <input id="settings-shortcut-play-pause" class="settings-input" type="text" readonly spellcheck="false" placeholder="Space">
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label" for="settings-shortcut-next-track">Next track</label>
+                            <input id="settings-shortcut-next-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="N">
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label" for="settings-shortcut-previous-track">Previous track</label>
+                            <input id="settings-shortcut-previous-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="P">
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label" for="settings-shortcut-stop-playback">Stop playback</label>
+                            <input id="settings-shortcut-stop-playback" class="settings-input" type="text" readonly spellcheck="false" placeholder="Z">
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label" for="settings-shortcut-focus-library-filter">Focus library filter</label>
+                            <input id="settings-shortcut-focus-library-filter" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+F">
+                        </div>
+                        <div class="settings-field">
+                            <label class="settings-label" for="settings-shortcut-open-settings">Open settings modal</label>
+                            <input id="settings-shortcut-open-settings" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+P">
+                        </div>
                     </div>
                 </div>
                 <p id="settings-status" class="settings-status"></p>
