@@ -26,6 +26,8 @@ export function GetLibraryFolderTrackPaths(arg1:string):Promise<Array<string>>;
 
 export function GetLibraryIndexedFilePage(arg1:string,arg2:number,arg3:number):Promise<main.LibraryIndexedFilePage>;
 
+export function GetListenBrainzRecordingFeedback(arg1:string):Promise<number>;
+
 export function GetSettings():Promise<main.AppSettings>;
 
 export function InitializeAudioBackend():Promise<main.AudioPlaybackState>;
@@ -67,3 +69,5 @@ export function SelectPlaylistFile():Promise<string>;
 export function SelectPlaylistSaveFile():Promise<string>;
 
 export function SubmitListenBrainz(arg1:string,arg2:main.ListenBrainzTrackMetadata,arg3:number):Promise<void>;
+
+export function SubmitListenBrainzRecordingFeedback(arg1:string,arg2:number):Promise<void>;

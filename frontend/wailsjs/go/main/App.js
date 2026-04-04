@@ -50,6 +50,10 @@ export function GetLibraryIndexedFilePage(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetLibraryIndexedFilePage'](arg1, arg2, arg3);
 }
 
+export function GetListenBrainzRecordingFeedback(arg1) {
+  return window['go']['main']['App']['GetListenBrainzRecordingFeedback'](arg1);
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
@@ -132,4 +136,8 @@ export function SelectPlaylistSaveFile() {
 
 export function SubmitListenBrainz(arg1, arg2, arg3) {
   return window['go']['main']['App']['SubmitListenBrainz'](arg1, arg2, arg3);
+}
+
+export function SubmitListenBrainzRecordingFeedback(arg1, arg2) {
+  return window['go']['main']['App']['SubmitListenBrainzRecordingFeedback'](arg1, arg2);
 }

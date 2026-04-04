@@ -7,11 +7,21 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
 const listenBrainzSubmitURL = "https://api.listenbrainz.org/1/submit-listens"
+const listenBrainzRecordingFeedbackURL = "https://api.listenbrainz.org/1/feedback/recording-feedback"
+const listenBrainzValidateTokenURL = "https://api.listenbrainz.org/1/validate-token"
+const listenBrainzGetFeedbackForRecordingsPath = "/1/feedback/user/%s/get-feedback-for-recordings"
+
+var listenBrainzFetchMu sync.Mutex
+var nextListenBrainzFetchAt time.Time
+var listenBrainzUserNameCacheMu sync.Mutex
+var listenBrainzUserNameCache = map[string]string{}
 
 // ListenBrainzTrackMetadata is the frontend-facing metadata shape for listen submissions.
 type ListenBrainzTrackMetadata struct {
@@ -53,13 +63,152 @@ type listenBrainzSubmitResponse struct {
 	Message string `json:"message"`
 }
 
-// SubmitListenBrainz sends a playing_now or single listen event to the ListenBrainz API.
-func (a *App) SubmitListenBrainz(listenType string, metadata ListenBrainzTrackMetadata, listenedAt int64) error {
+type listenBrainzValidateTokenResponse struct {
+	Code     int    `json:"code"`
+	Error    string `json:"error"`
+	Message  string `json:"message"`
+	Valid    bool   `json:"valid"`
+	UserName string `json:"user_name"`
+}
+
+type listenBrainzRecordingFeedbackRequest struct {
+	RecordingMBID string `json:"recording_mbid,omitempty"`
+	Score         int    `json:"score"`
+}
+
+type listenBrainzRecordingFeedbackLookupRequest struct {
+	RecordingMBIDs []string `json:"recording_mbids,omitempty"`
+}
+
+type listenBrainzRecordingFeedbackItem struct {
+	UserID        string `json:"user_id"`
+	RecordingMSID string `json:"recording_msid"`
+	RecordingMBID string `json:"recording_mbid"`
+	Score         int    `json:"score"`
+}
+
+type listenBrainzRecordingFeedbackLookupResponse struct {
+	Code     int                                 `json:"code"`
+	Error    string                              `json:"error"`
+	Message  string                              `json:"message"`
+	Count    int                                 `json:"count"`
+	Total    int                                 `json:"total_count"`
+	Offset   int                                 `json:"offset"`
+	Feedback []listenBrainzRecordingFeedbackItem `json:"feedback"`
+}
+
+func waitForListenBrainzRequestSlot() {
+	listenBrainzFetchMu.Lock()
+	defer listenBrainzFetchMu.Unlock()
+
+	now := time.Now()
+	if now.Before(nextListenBrainzFetchAt) {
+		time.Sleep(nextListenBrainzFetchAt.Sub(now))
+	}
+
+	nextListenBrainzFetchAt = time.Now().Add(1 * time.Second)
+}
+
+func normalizedListenBrainzFeedbackScore(score int) int {
+	switch score {
+	case -1, 0, 1:
+		return score
+	default:
+		return 0
+	}
+}
+
+func parseListenBrainzError(statusCode int, responseBody []byte, fallback string) error {
+	parsedResponse := listenBrainzSubmitResponse{}
+	if err := json.Unmarshal(responseBody, &parsedResponse); err == nil {
+		if strings.TrimSpace(parsedResponse.Error) != "" {
+			return errors.New(strings.TrimSpace(parsedResponse.Error))
+		}
+
+		if strings.TrimSpace(parsedResponse.Message) != "" {
+			return errors.New(strings.TrimSpace(parsedResponse.Message))
+		}
+	}
+
+	return fmt.Errorf("%s with status %d", fallback, statusCode)
+}
+
+func (a *App) listenBrainzToken() (string, error) {
 	a.ensureSettingsLoaded()
 
 	token := strings.TrimSpace(a.settings.ListenBrainzUserToken)
 	if token == "" {
-		return errors.New("listenbrainz token is not configured")
+		return "", errors.New("listenbrainz token is not configured")
+	}
+
+	return token, nil
+}
+
+func (a *App) listenBrainzUserName(token string) (string, error) {
+	listenBrainzUserNameCacheMu.Lock()
+	cachedUserName, hasCachedUserName := listenBrainzUserNameCache[token]
+	listenBrainzUserNameCacheMu.Unlock()
+	if hasCachedUserName && strings.TrimSpace(cachedUserName) != "" {
+		return cachedUserName, nil
+	}
+
+	waitForListenBrainzRequestSlot()
+
+	request, err := http.NewRequest(http.MethodGet, listenBrainzValidateTokenURL, nil)
+	if err != nil {
+		return "", err
+	}
+
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
+	responseBody, readErr := io.ReadAll(response.Body)
+	if readErr != nil {
+		return "", fmt.Errorf("unable to read listenbrainz validate-token response")
+	}
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz validate-token request failed")
+	}
+
+	parsedResponse := listenBrainzValidateTokenResponse{}
+	if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
+		return "", errors.New("invalid listenbrainz validate-token response")
+	}
+
+	if !parsedResponse.Valid {
+		if strings.TrimSpace(parsedResponse.Message) != "" {
+			return "", errors.New(strings.TrimSpace(parsedResponse.Message))
+		}
+		return "", errors.New("listenbrainz token is invalid")
+	}
+
+	userName := strings.TrimSpace(parsedResponse.UserName)
+	if userName == "" {
+		return "", errors.New("listenbrainz validate-token response did not include user name")
+	}
+
+	listenBrainzUserNameCacheMu.Lock()
+	listenBrainzUserNameCache[token] = userName
+	listenBrainzUserNameCacheMu.Unlock()
+
+	return userName, nil
+}
+
+// SubmitListenBrainz sends a playing_now or single listen event to the ListenBrainz API.
+func (a *App) SubmitListenBrainz(listenType string, metadata ListenBrainzTrackMetadata, listenedAt int64) error {
+	token, err := a.listenBrainzToken()
+	if err != nil {
+		return err
 	}
 
 	normalizedType := strings.TrimSpace(strings.ToLower(listenType))
@@ -100,6 +249,8 @@ func (a *App) SubmitListenBrainz(listenType string, metadata ListenBrainzTrackMe
 		return err
 	}
 
+	waitForListenBrainzRequestSlot()
+
 	httpRequest, err := http.NewRequest(http.MethodPost, listenBrainzSubmitURL, bytes.NewReader(rawRequest))
 	if err != nil {
 		return err
@@ -126,15 +277,138 @@ func (a *App) SubmitListenBrainz(listenType string, metadata ListenBrainzTrackMe
 		return fmt.Errorf("listenbrainz submit failed with status %d", response.StatusCode)
 	}
 
-	parsedResponse := listenBrainzSubmitResponse{}
-	if err := json.Unmarshal(responseBody, &parsedResponse); err == nil {
-		if strings.TrimSpace(parsedResponse.Error) != "" {
-			return fmt.Errorf("listenbrainz submit failed: %s", parsedResponse.Error)
-		}
-		if strings.TrimSpace(parsedResponse.Message) != "" {
-			return fmt.Errorf("listenbrainz submit failed: %s", parsedResponse.Message)
+	return parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz submit failed")
+}
+
+// SubmitListenBrainzRecordingFeedback submits love/hate feedback (-1, 0, or 1) for a recording MBID.
+func (a *App) SubmitListenBrainzRecordingFeedback(recordingMBID string, score int) error {
+	token, err := a.listenBrainzToken()
+	if err != nil {
+		return err
+	}
+
+	cleanRecordingMBID := strings.TrimSpace(recordingMBID)
+	if cleanRecordingMBID == "" {
+		return errors.New("recording mbid is required")
+	}
+
+	normalizedScore := normalizedListenBrainzFeedbackScore(score)
+	if normalizedScore != score {
+		return errors.New("listenbrainz feedback score must be -1, 0, or 1")
+	}
+
+	requestBody := listenBrainzRecordingFeedbackRequest{
+		RecordingMBID: cleanRecordingMBID,
+		Score:         normalizedScore,
+	}
+
+	rawRequest, err := json.Marshal(requestBody)
+	if err != nil {
+		return err
+	}
+
+	waitForListenBrainzRequestSlot()
+
+	httpRequest, err := http.NewRequest(http.MethodPost, listenBrainzRecordingFeedbackURL, bytes.NewReader(rawRequest))
+	if err != nil {
+		return err
+	}
+
+	httpRequest.Header.Set("Accept", "application/json")
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	response, err := httpClient.Do(httpRequest)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		return nil
+	}
+
+	responseBody, readErr := io.ReadAll(response.Body)
+	if readErr != nil {
+		return fmt.Errorf("listenbrainz feedback submit failed with status %d", response.StatusCode)
+	}
+
+	return parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz feedback submit failed")
+}
+
+// GetListenBrainzRecordingFeedback fetches this user's current feedback score for a recording MBID.
+func (a *App) GetListenBrainzRecordingFeedback(recordingMBID string) (int, error) {
+	token, err := a.listenBrainzToken()
+	if err != nil {
+		return 0, err
+	}
+
+	cleanRecordingMBID := strings.TrimSpace(recordingMBID)
+	if cleanRecordingMBID == "" {
+		return 0, errors.New("recording mbid is required")
+	}
+
+	userName, err := a.listenBrainzUserName(token)
+	if err != nil {
+		return 0, err
+	}
+
+	requestBody := listenBrainzRecordingFeedbackLookupRequest{
+		RecordingMBIDs: []string{cleanRecordingMBID},
+	}
+
+	rawRequest, err := json.Marshal(requestBody)
+	if err != nil {
+		return 0, err
+	}
+
+	requestURL := fmt.Sprintf(
+		"https://api.listenbrainz.org"+listenBrainzGetFeedbackForRecordingsPath,
+		url.PathEscape(userName),
+	)
+
+	waitForListenBrainzRequestSlot()
+
+	httpRequest, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(rawRequest))
+	if err != nil {
+		return 0, err
+	}
+
+	httpRequest.Header.Set("Accept", "application/json")
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	response, err := httpClient.Do(httpRequest)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
+	responseBody, readErr := io.ReadAll(response.Body)
+	if readErr != nil {
+		return 0, fmt.Errorf("unable to read listenbrainz feedback response")
+	}
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return 0, parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz feedback lookup failed")
+	}
+
+	parsedResponse := listenBrainzRecordingFeedbackLookupResponse{}
+	if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
+		return 0, errors.New("invalid listenbrainz feedback response")
+	}
+
+	for _, feedback := range parsedResponse.Feedback {
+		if strings.EqualFold(strings.TrimSpace(feedback.RecordingMBID), cleanRecordingMBID) {
+			return normalizedListenBrainzFeedbackScore(feedback.Score), nil
 		}
 	}
 
-	return fmt.Errorf("listenbrainz submit failed with status %d", response.StatusCode)
+	return 0, nil
 }

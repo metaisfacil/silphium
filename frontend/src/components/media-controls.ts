@@ -32,6 +32,10 @@ export type MediaControlsElements = {
     currentTimeLabel: HTMLSpanElement;
     trackDurationLabel: HTMLSpanElement;
     seek: HTMLInputElement;
+    listenBrainzLoveBtn: HTMLButtonElement;
+    listenBrainzFeedbackMenu: HTMLDivElement;
+    listenBrainzFeedbackLoveBtn: HTMLButtonElement;
+    listenBrainzFeedbackHateBtn: HTMLButtonElement;
     playlistBtn: HTMLButtonElement;
     back: HTMLButtonElement;
     playPause: HTMLButtonElement;
@@ -91,6 +95,7 @@ export const renderMediaControls = (): string => `
         </div>
         <input id="seek" class="slider" type="range" min="0" max="0" value="0" step="0.1">
         <div class="controls-row">
+          <button id="listenbrainz-love-btn" class="control-btn listenbrainz-love-btn" type="button" aria-label="Love on ListenBrainz" title="Love on ListenBrainz">♥</button>
           <button id="playlist-btn" class="control-btn" type="button" aria-label="Playlist"><svg width="18" height="18" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M 4 5 C 3.446 5 3 5.446 3 6 C 3 6.554 3.446 7 4 7 L 19 7 C 19.554 7 20 6.554 20 6 C 20 5.446 19.554 5 19 5 L 4 5 z M 4 12 C 3.446 12 3 12.446 3 13 C 3 13.554 3.446 14 4 14 L 22 14 C 22.554 14 23 13.554 23 13 C 23 12.446 22.554 12 22 12 L 4 12 z M 21.949219 17.003906 C 21.606467 17.003906 21.272206 17.037416 20.949219 17.103516 L 20.949219 20.955078 L 17.099609 20.955078 C 17.033519 21.278118 17 21.612328 17 21.955078 C 17 22.297828 17.033519 22.632088 17.099609 22.955078 L 20.949219 22.955078 L 20.949219 26.804688 C 21.272206 26.870788 21.606467 26.904297 21.949219 26.904297 C 22.29197 26.904297 22.626178 26.870788 22.949219 26.804688 L 22.949219 22.955078 L 26.800781 22.955078 C 26.866921 22.632088 26.900391 22.297828 26.900391 21.955078 C 26.900391 21.612328 26.866921 21.278118 26.800781 20.955078 L 22.949219 20.955078 L 22.949219 17.103516 C 22.626178 17.037416 22.29197 17.003906 21.949219 17.003906 z M 4 19 C 3.446 19 3 19.446 3 20 C 3 20.554 3.446 21 4 21 L 14 21 C 14.554 21 15 20.554 15 20 C 15 19.446 14.554 19 14 19 L 4 19 z"/></svg></button>
           <button id="back" class="control-btn" type="button" aria-label="Previous track">◀◀</button>
           <button id="play-pause" class="control-btn primary" type="button" aria-label="Play">▶</button>
@@ -101,6 +106,10 @@ export const renderMediaControls = (): string => `
               <input id="volume" class="slider" type="range" min="0" max="1" value="0.8" step="0.01">
             </div>
           </div>
+        </div>
+        <div id="listenbrainz-feedback-menu" class="track-meta-menu listenbrainz-feedback-menu" role="menu" aria-label="ListenBrainz feedback" hidden>
+          <button id="listenbrainz-feedback-love-btn" class="track-meta-menu-item" type="button" role="menuitem">Love</button>
+          <button id="listenbrainz-feedback-hate-btn" class="track-meta-menu-item" type="button" role="menuitem">Hate</button>
         </div>
       </section>
       <aside id="lyrics-panel" class="lyrics-panel" aria-hidden="true">
@@ -145,6 +154,10 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     currentTimeLabel: root.querySelector('#current-time') as HTMLSpanElement,
     trackDurationLabel: root.querySelector('#track-duration') as HTMLSpanElement,
     seek: root.querySelector('#seek') as HTMLInputElement,
+    listenBrainzLoveBtn: root.querySelector('#listenbrainz-love-btn') as HTMLButtonElement,
+    listenBrainzFeedbackMenu: root.querySelector('#listenbrainz-feedback-menu') as HTMLDivElement,
+    listenBrainzFeedbackLoveBtn: root.querySelector('#listenbrainz-feedback-love-btn') as HTMLButtonElement,
+    listenBrainzFeedbackHateBtn: root.querySelector('#listenbrainz-feedback-hate-btn') as HTMLButtonElement,
     playlistBtn: root.querySelector('#playlist-btn') as HTMLButtonElement,
     back: root.querySelector('#back') as HTMLButtonElement,
     playPause: root.querySelector('#play-pause') as HTMLButtonElement,

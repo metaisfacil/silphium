@@ -60,6 +60,7 @@ import {
     GetLibraryFolderPage,
     GetLibraryFolderTrackPaths,
     GetLibraryIndexedFilePage,
+    GetListenBrainzRecordingFeedback,
     IsLibraryFolderImmediateDescendantsEnumerated,
     GetSettings,
     InitializeAudioBackend,
@@ -76,6 +77,7 @@ import {
     SelectPlaylistFile,
     SelectPlaylistSaveFile,
     SubmitListenBrainz,
+    SubmitListenBrainzRecordingFeedback,
 } from '../wailsjs/go/main/App';
 import { main as WailsModels } from '../wailsjs/go/models';
 import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime';
@@ -345,6 +347,10 @@ const {
     currentTimeLabel,
     trackDurationLabel,
     seek,
+    listenBrainzLoveBtn,
+    listenBrainzFeedbackMenu,
+    listenBrainzFeedbackLoveBtn,
+    listenBrainzFeedbackHateBtn,
     playlistBtn,
     back,
     playPause,
@@ -635,6 +641,155 @@ const scheduleLibraryIncrementalFolderRefresh = (): void => {
 };
 
 const canScrobble = (): boolean => currentSettings.listenBrainzUserToken.trim() !== '';
+
+type ListenBrainzFeedbackScore = -1 | 0 | 1;
+
+const listenBrainzFeedbackScoreByRecordingMbid = new Map<string, ListenBrainzFeedbackScore>();
+let listenBrainzFeedbackFetchKey = '';
+let listenBrainzFeedbackFetchVersion = 0;
+let listenBrainzFeedbackFetchInFlight = false;
+let listenBrainzFeedbackSubmitInFlight = false;
+let currentListenBrainzFeedbackScore: ListenBrainzFeedbackScore = 0;
+
+const normalizeListenBrainzFeedbackScore = (value: number): ListenBrainzFeedbackScore => {
+    if (value === 1 || value === -1) {
+        return value;
+    }
+
+    return 0;
+};
+
+const currentTrackRecordingMbid = (): string => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return '';
+    }
+
+    return (tracks[currentTrackIndex].mbIds.recordingId || '').trim();
+};
+
+const updateListenBrainzLoveButton = (): void => {
+    const hasToken = canScrobble();
+    const recordingMbid = currentTrackRecordingMbid();
+    const isLoading = listenBrainzFeedbackSubmitInFlight || listenBrainzFeedbackFetchInFlight;
+    const canUseButton = hasToken && recordingMbid !== '' && !isLoading;
+
+    listenBrainzLoveBtn.disabled = false;
+    listenBrainzLoveBtn.classList.toggle('is-disabled', !canUseButton);
+    listenBrainzLoveBtn.classList.toggle('is-loading', isLoading);
+    listenBrainzLoveBtn.setAttribute('aria-disabled', canUseButton ? 'false' : 'true');
+    listenBrainzLoveBtn.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+    listenBrainzLoveBtn.classList.toggle('is-loved', currentListenBrainzFeedbackScore === 1);
+    listenBrainzLoveBtn.classList.toggle('is-hated', currentListenBrainzFeedbackScore === -1);
+    listenBrainzLoveBtn.setAttribute('aria-pressed', currentListenBrainzFeedbackScore === 1 ? 'true' : 'false');
+
+    if (isLoading) {
+        listenBrainzLoveBtn.title = 'Syncing ListenBrainz feedback...';
+    } else if (!hasToken) {
+        listenBrainzLoveBtn.title = 'Set a ListenBrainz token in Settings to enable this button.';
+    } else if (recordingMbid === '') {
+        listenBrainzLoveBtn.title = 'No recording MBID found for this track.';
+    } else if (currentListenBrainzFeedbackScore === 1) {
+        listenBrainzLoveBtn.title = 'Loved on ListenBrainz. Click to un-love, or right-click for Love/Hate options.';
+    } else if (currentListenBrainzFeedbackScore === -1) {
+        listenBrainzLoveBtn.title = 'Marked as hated on ListenBrainz. Left-click to submit Love. Right-click for options.';
+    } else {
+        listenBrainzLoveBtn.title = 'Submit Love on ListenBrainz. Right-click for Love/Hate options.';
+    }
+};
+
+const resetListenBrainzFeedbackState = (): void => {
+    listenBrainzFeedbackFetchVersion += 1;
+    listenBrainzFeedbackFetchKey = '';
+    listenBrainzFeedbackFetchInFlight = false;
+    listenBrainzFeedbackSubmitInFlight = false;
+    currentListenBrainzFeedbackScore = 0;
+    updateListenBrainzLoveButton();
+};
+
+const refreshListenBrainzFeedbackForCurrentTrack = async (force = false): Promise<void> => {
+    const token = currentSettings.listenBrainzUserToken.trim();
+    const recordingMbid = currentTrackRecordingMbid();
+    const normalizedRecordingMbid = recordingMbid.toLowerCase();
+    const fetchKey = `${token.toLowerCase()}|${normalizedRecordingMbid}`;
+
+    if (!token || recordingMbid === '') {
+        listenBrainzFeedbackFetchKey = fetchKey;
+        listenBrainzFeedbackFetchInFlight = false;
+        currentListenBrainzFeedbackScore = 0;
+        updateListenBrainzLoveButton();
+        return;
+    }
+
+    if (!force && fetchKey === listenBrainzFeedbackFetchKey) {
+        listenBrainzFeedbackFetchInFlight = false;
+        const cachedScore = listenBrainzFeedbackScoreByRecordingMbid.get(normalizedRecordingMbid);
+        if (cachedScore !== undefined) {
+            currentListenBrainzFeedbackScore = cachedScore;
+            updateListenBrainzLoveButton();
+        }
+        return;
+    }
+
+    listenBrainzFeedbackFetchKey = fetchKey;
+    const requestVersion = ++listenBrainzFeedbackFetchVersion;
+    const cachedScore = listenBrainzFeedbackScoreByRecordingMbid.get(normalizedRecordingMbid);
+    if (cachedScore !== undefined) {
+        currentListenBrainzFeedbackScore = cachedScore;
+    } else {
+        currentListenBrainzFeedbackScore = 0;
+    }
+
+    listenBrainzFeedbackFetchInFlight = true;
+    updateListenBrainzLoveButton();
+
+    try {
+        const score = await GetListenBrainzRecordingFeedback(recordingMbid) as number;
+        if (requestVersion !== listenBrainzFeedbackFetchVersion) {
+            return;
+        }
+
+        const normalizedScore = normalizeListenBrainzFeedbackScore(score);
+        listenBrainzFeedbackScoreByRecordingMbid.set(normalizedRecordingMbid, normalizedScore);
+        currentListenBrainzFeedbackScore = normalizedScore;
+    } catch (error) {
+        console.error(error);
+    } finally {
+        if (requestVersion === listenBrainzFeedbackFetchVersion) {
+            listenBrainzFeedbackFetchInFlight = false;
+            updateListenBrainzLoveButton();
+        }
+    }
+};
+
+const submitListenBrainzFeedbackForCurrentTrack = async (score: ListenBrainzFeedbackScore): Promise<void> => {
+    if (score !== 1 && score !== -1 && score !== 0) {
+        return;
+    }
+
+    const token = currentSettings.listenBrainzUserToken.trim();
+    const recordingMbid = currentTrackRecordingMbid();
+    if (!token || recordingMbid === '' || listenBrainzFeedbackSubmitInFlight) {
+        updateListenBrainzLoveButton();
+        return;
+    }
+
+    listenBrainzFeedbackSubmitInFlight = true;
+    updateListenBrainzLoveButton();
+
+    try {
+        await SubmitListenBrainzRecordingFeedback(recordingMbid, score);
+        const normalizedRecordingMbid = recordingMbid.toLowerCase();
+        listenBrainzFeedbackScoreByRecordingMbid.set(normalizedRecordingMbid, score);
+        if (normalizedRecordingMbid === currentTrackRecordingMbid().toLowerCase()) {
+            currentListenBrainzFeedbackScore = score;
+        }
+    } catch (error) {
+        console.error(error);
+    } finally {
+        listenBrainzFeedbackSubmitInFlight = false;
+        updateListenBrainzLoveButton();
+    }
+};
 
 const rebuildTrackPathIndex = (): void => {
     trackIndexByPath.clear();
@@ -1080,6 +1235,7 @@ const refreshNowPlayingLabel = (): void => {
 
     updateExplorationButton(document, activeTrack);
     updateMediaSessionMetadata();
+    void refreshListenBrainzFeedbackForCurrentTrack();
 
     playlistController.scheduleRender();
 };
@@ -1167,6 +1323,39 @@ const closeSidebarQueueMenu = (): void => {
     sidebarQueueTrackIndexes = [];
 };
 
+const closeListenBrainzFeedbackMenu = (): void => {
+    listenBrainzFeedbackMenu.hidden = true;
+};
+
+const openListenBrainzFeedbackMenu = (clientX: number, clientY: number): void => {
+    closePlayOrderMenu();
+    closeTrackMetaMenu();
+    closeSidebarQueueMenu();
+    playlistController.closeMenu();
+
+    const canSubmitFeedback = canScrobble() && currentTrackRecordingMbid() !== '' && !listenBrainzFeedbackSubmitInFlight;
+    listenBrainzFeedbackLoveBtn.disabled = !canSubmitFeedback;
+    listenBrainzFeedbackHateBtn.disabled = !canSubmitFeedback;
+
+    listenBrainzFeedbackMenu.hidden = false;
+
+    const margin = 10;
+    const menuRect = listenBrainzFeedbackMenu.getBoundingClientRect();
+    const cardRect = playerCard.getBoundingClientRect();
+
+    const relativeX = clientX - cardRect.left;
+    const relativeY = clientY - cardRect.top;
+
+    const maxX = Math.max(margin, cardRect.width - menuRect.width - margin);
+    const maxY = Math.max(margin, cardRect.height - menuRect.height - margin);
+
+    const clampedX = Math.max(margin, Math.min(relativeX, maxX));
+    const clampedY = Math.max(margin, Math.min(relativeY, maxY));
+
+    listenBrainzFeedbackMenu.style.left = `${clampedX}px`;
+    listenBrainzFeedbackMenu.style.top = `${clampedY}px`;
+};
+
 const openSidebarQueueMenu = (clientX: number, clientY: number, trackIndexes: number[]): void => {
     if (trackIndexes.length === 0) {
         return;
@@ -1174,6 +1363,7 @@ const openSidebarQueueMenu = (clientX: number, clientY: number, trackIndexes: nu
 
     closePlayOrderMenu();
     closeTrackMetaMenu();
+    closeListenBrainzFeedbackMenu();
     playlistController.closeMenu();
 
     sidebarQueueTrackIndexes = trackIndexes;
@@ -1194,6 +1384,7 @@ const openTrackMetaMenu = (clientX: number, clientY: number, includeFolderAction
     }
 
     closePlayOrderMenu();
+    closeListenBrainzFeedbackMenu();
     trackMetaParentFolderBtn.hidden = !includeFolderAction;
     trackMetaMenu.hidden = false;
 
@@ -1245,6 +1436,7 @@ const updatePlayOrderMenuState = (): void => {
 
 const openPlayOrderMenu = (clientX: number, clientY: number): void => {
     closeTrackMetaMenu();
+    closeListenBrainzFeedbackMenu();
     updatePlayOrderMenuState();
     playOrderMenu.hidden = false;
 
@@ -1583,6 +1775,7 @@ const openTechnicalInfoModal = async (): Promise<void> => {
 
 const clearLibrarySelection = async (): Promise<void> => {
     closeSidebarQueueMenu();
+    closeListenBrainzFeedbackMenu();
     closeMusicBrainzEntityModal();
     closeTechnicalInfoModal();
 
@@ -1645,6 +1838,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     applyMbLinks(trackTitle, trackAlbum, trackArtist, {});
     applyMbLinks(trackTitleInline, trackReleaseAlbum, trackArtistHeader, {});
     updateExplorationButton(document, undefined);
+    resetListenBrainzFeedbackState();
 
     coverArt.removeAttribute('src');
     coverArtBackground.removeAttribute('src');
@@ -1737,14 +1931,17 @@ const handleLibraryScanUpdatedEvent = (scanResult: LibraryScanResult): void => {
 
 const initializeSettings = async (): Promise<void> => {
     applyPlayerCardLayout(getStoredLayout());
+    resetListenBrainzFeedbackState();
 
     try {
         const settings = await GetSettings() as AppSettings;
         currentSettings = normalizeAppSettings(settings);
         setPlaybackOrderMode(currentSettings.playbackOrder);
+        void refreshListenBrainzFeedbackForCurrentTrack(true);
 
         if (settings.libraryPath) {
             await applyLibraryPath(settings.libraryPath);
+            void refreshListenBrainzFeedbackForCurrentTrack(true);
             return;
         }
     } catch (error) {
@@ -1752,6 +1949,7 @@ const initializeSettings = async (): Promise<void> => {
     }
 
     libraryController.renderFolder('none');
+    void refreshListenBrainzFeedbackForCurrentTrack(true);
 };
 
 const initializeAppVersion = async (): Promise<void> => {
@@ -2475,6 +2673,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
 
     if (tracks.length === 0) {
         logRescan('loadLibraryScan: no tracks found');
+        closeListenBrainzFeedbackMenu();
         currentTrackIndex = -1;
         libraryController.setCurrentFolderPath('');
         trackTitle.textContent = 'No audio tracks found';
@@ -2503,6 +2702,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         setCoverFlipped(false);
         resetArtistInfoPanel();
         updateExplorationButton(document, undefined);
+        resetListenBrainzFeedbackState();
         libraryController.renderFolder('none');
         playlistController.refreshOpenModal();
         logRescan('loadLibraryScan END: total time %.2fms (no tracks)', performance.now() - startTime);
@@ -2569,6 +2769,12 @@ settingsController = createSettingsController({
             playlistController.refreshFavorites();
 
             resetShuffleHistory();
+
+            if (!canScrobble()) {
+                closeListenBrainzFeedbackMenu();
+            }
+
+            void refreshListenBrainzFeedbackForCurrentTrack(true);
         } catch (error) {
             console.error(error);
             libraryController.setLibraryPathMessage('Unable to save settings.');
@@ -2880,6 +3086,11 @@ document.addEventListener('keydown', (event) => {
         return;
     }
 
+    if (!listenBrainzFeedbackMenu.hidden) {
+        closeListenBrainzFeedbackMenu();
+        return;
+    }
+
     if (!sidebarQueueMenu.hidden) {
         closeSidebarQueueMenu();
         return;
@@ -2913,6 +3124,32 @@ document.addEventListener('keydown', (event) => {
         libraryController.setSidebarOpen(false);
         return;
     }
+});
+
+listenBrainzLoveBtn.addEventListener('click', () => {
+    if (listenBrainzLoveBtn.getAttribute('aria-disabled') === 'true') {
+        return;
+    }
+
+    closeListenBrainzFeedbackMenu();
+    const nextScore: ListenBrainzFeedbackScore = currentListenBrainzFeedbackScore === 1 ? 0 : 1;
+    void submitListenBrainzFeedbackForCurrentTrack(nextScore);
+});
+
+listenBrainzLoveBtn.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openListenBrainzFeedbackMenu(event.clientX, event.clientY);
+});
+
+listenBrainzFeedbackLoveBtn.addEventListener('click', () => {
+    closeListenBrainzFeedbackMenu();
+    void submitListenBrainzFeedbackForCurrentTrack(1);
+});
+
+listenBrainzFeedbackHateBtn.addEventListener('click', () => {
+    closeListenBrainzFeedbackMenu();
+    void submitListenBrainzFeedbackForCurrentTrack(-1);
 });
 
 playPause.addEventListener('click', () => {
@@ -3025,6 +3262,10 @@ document.addEventListener('click', (e) => {
         closeSidebarQueueMenu();
     }
 
+    if (!listenBrainzFeedbackMenu.hidden && !listenBrainzFeedbackMenu.contains(target) && !listenBrainzLoveBtn.contains(target)) {
+        closeListenBrainzFeedbackMenu();
+    }
+
     if (!volumeRow.contains(target)) {
         volumeRow.classList.remove('open');
     }
@@ -3065,6 +3306,10 @@ document.addEventListener('click', (e) => {
         return;
     }
 
+    if (clickPath.includes(listenBrainzFeedbackMenu)) {
+        return;
+    }
+
     if (!libraryController.isSidebarOpen()) {
         return;
     }
@@ -3084,6 +3329,14 @@ document.addEventListener('contextmenu', (event) => {
     const target = event.target as Node;
     if (!sidebarQueueMenu.hidden && !sidebarQueueMenu.contains(target)) {
         closeSidebarQueueMenu();
+    }
+
+    if (!listenBrainzFeedbackMenu.hidden && !listenBrainzFeedbackMenu.contains(target) && !listenBrainzLoveBtn.contains(target)) {
+        closeListenBrainzFeedbackMenu();
+    }
+
+    if (listenBrainzLoveBtn.contains(target) || listenBrainzFeedbackMenu.contains(target)) {
+        return;
     }
 
     if (trackTitle.contains(target) || trackAlbum.contains(target) || trackArtist.contains(target) || trackTitleInline.contains(target) || trackReleaseAlbum.contains(target) || trackArtistHeader.contains(target) || trackMetaMenu.contains(target)) {
@@ -3106,6 +3359,10 @@ document.addEventListener('scroll', () => {
 
     if (!trackMetaMenu.hidden) {
         closeTrackMetaMenu();
+    }
+
+    if (!listenBrainzFeedbackMenu.hidden) {
+        closeListenBrainzFeedbackMenu();
     }
 
     playlistController.closeMenu();
@@ -3133,6 +3390,10 @@ document.addEventListener('keydown', (event) => {
 
     if (event.key === 'Escape' && !trackMetaMenu.hidden) {
         closeTrackMetaMenu();
+    }
+
+    if (event.key === 'Escape' && !listenBrainzFeedbackMenu.hidden) {
+        closeListenBrainzFeedbackMenu();
     }
 
     if (event.key === 'Escape') {
@@ -3228,6 +3489,7 @@ updateTrackLabels();
 updatePlayOrderMenuState();
 libraryController.refreshSidebarToggleState();
 refreshLyricsPanel();
+resetListenBrainzFeedbackState();
 initializeMediaSessionIntegration();
 void initializeBackendPlayback();
 void initializeSettings();

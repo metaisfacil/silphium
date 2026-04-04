@@ -1426,6 +1426,80 @@
     background: rgba(0, 0, 0, 0.3);
 }
 
+.control-btn:disabled {
+    opacity: 0.38;
+    cursor: default;
+}
+
+.control-btn.is-disabled {
+    opacity: 0.38;
+    cursor: default;
+}
+
+.control-btn:disabled:hover,
+.control-btn:disabled:active {
+    background: transparent;
+    transform: none;
+}
+
+.control-btn.is-disabled:hover,
+.control-btn.is-disabled:active {
+    background: transparent;
+    transform: none;
+}
+
+.listenbrainz-love-btn {
+    position: relative;
+    font-size: clamp(1rem, 3.4cqw, 1.18rem);
+    opacity: 0.52;
+}
+
+.listenbrainz-love-btn.is-loved {
+    color: rgba(255, 120, 150, 0.98);
+    opacity: 1;
+    text-shadow: 0 0 0.45rem rgba(255, 86, 126, 0.45);
+}
+
+.listenbrainz-love-btn.is-hated {
+    color: rgba(255, 214, 130, 0.96);
+    opacity: 1;
+    text-decoration: line-through;
+    text-decoration-thickness: 0.11rem;
+    text-decoration-color: rgba(255, 214, 130, 0.85);
+}
+
+.listenbrainz-love-btn.is-loading {
+    opacity: 1;
+    color: transparent;
+    text-shadow: none;
+    text-decoration: none;
+}
+
+.listenbrainz-love-btn.is-loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 0.95rem;
+    height: 0.95rem;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.28);
+    border-top-color: rgba(255, 255, 255, 0.95);
+    box-sizing: border-box;
+    animation: listenbrainz-love-spin 0.85s linear infinite;
+}
+
+@keyframes listenbrainz-love-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.listenbrainz-feedback-menu {
+    position: absolute;
+    max-width: calc(100% - 1rem);
+}
+
 .control-btn.primary {
     font-weight: 600;
 }
