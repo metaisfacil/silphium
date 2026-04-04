@@ -3,7 +3,11 @@
 /build/bin/
 /build/bin/**
 /build/appicon.png
+build/appicon.png
+appicon.png
 /build/windows/icon.ico
+build/windows/icon.ico
+icon.ico
 *.exe
 
 # ---- Frontend (Vite/Node) ----
