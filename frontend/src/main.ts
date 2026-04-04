@@ -77,6 +77,7 @@ import {
     SelectPlaylistSaveFile,
     SubmitListenBrainz,
 } from '../wailsjs/go/main/App';
+import { main as WailsModels } from '../wailsjs/go/models';
 import { BrowserOpenURL, EventsOn } from '../wailsjs/runtime/runtime';
 import { applyMbLinks, openMbLink } from './musicbrainz';
 import type {
@@ -112,6 +113,12 @@ import {
     renderMusicBrainzEntityContent,
 } from './utils/musicbrainz-entity-helpers';
 import { scheduleMusicBrainzRequest } from './utils/musicbrainz-request-scheduler';
+import {
+    defaultFocusedKeyboardShortcuts,
+    formatShortcutBindingFromKeyboardEvent,
+    normalizeFocusedKeyboardShortcuts,
+    shortcutBindingUsesCode,
+} from './utils/shortcut-bindings';
 
 const app = document.querySelector('#app') as HTMLElement | null;
 
@@ -168,6 +175,7 @@ let currentSettings: AppSettings = {
     releaseDepth: 0,
     favoritePlaylists: [],
     preferMusicBrainzMetadata: false,
+    keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
 let trackMetaMenuTarget: HTMLElement | null = null;
 let sidebarQueueTrackIndexes: number[] = [];
@@ -177,6 +185,18 @@ const coverMediaArtworkByFolder = new Map<string, { src: string; type: string }>
 const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const aboutModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
+    return {
+        libraryPath: settings.libraryPath || '',
+        listenBrainzUserToken: settings.listenBrainzUserToken || '',
+        playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
+        releaseDepth: asReleaseDepth(settings.releaseDepth),
+        favoritePlaylists: Array.isArray(settings.favoritePlaylists) ? settings.favoritePlaylists : [],
+        preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
+        keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
+    };
+};
+
 const playbackStateService = createPlaybackStateService();
 const scrobbleService = createScrobbleService({
     submitListenBrainz: SubmitListenBrainz,
@@ -1644,14 +1664,7 @@ const initializeSettings = async (): Promise<void> => {
 
     try {
         const settings = await GetSettings() as AppSettings;
-        currentSettings = {
-            libraryPath: settings.libraryPath || '',
-            listenBrainzUserToken: settings.listenBrainzUserToken || '',
-            playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
-            releaseDepth: asReleaseDepth(settings.releaseDepth),
-            favoritePlaylists: Array.isArray(settings.favoritePlaylists) ? settings.favoritePlaylists : [],
-            preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
-        };
+        currentSettings = normalizeAppSettings(settings);
         setPlaybackOrderMode(currentSettings.playbackOrder);
 
         if (settings.libraryPath) {
@@ -2093,8 +2106,13 @@ const handleFocusedKeyboardShortcut = (event: KeyboardEvent): boolean => {
         return false;
     }
 
-    const ctrlOnlyModifier = event.ctrlKey && !event.altKey && !event.metaKey;
-    if (ctrlOnlyModifier && event.code === 'KeyF') {
+    const eventBinding = formatShortcutBindingFromKeyboardEvent(event);
+    if (!eventBinding) {
+        return false;
+    }
+
+    const shortcuts = currentSettings.keyboardShortcuts;
+    if (eventBinding === shortcuts.focusLibraryFilter) {
         if (!libraryController.isSidebarOpen()) {
             libraryController.setSidebarOpen(true);
         }
@@ -2105,36 +2123,42 @@ const handleFocusedKeyboardShortcut = (event: KeyboardEvent): boolean => {
         return true;
     }
 
-    if (ctrlOnlyModifier && event.code === 'KeyP') {
+    if (eventBinding === shortcuts.openSettings) {
         settingsController.open();
         return true;
     }
 
-    if (event.ctrlKey || event.altKey || event.metaKey) {
-        return false;
-    }
-
-    if (event.code === 'Space') {
+    if (eventBinding === shortcuts.playPauseToggle) {
         dispatchExternalPlaybackAction('playpause');
         return true;
     }
 
-    if (event.code === 'KeyN') {
+    if (eventBinding === shortcuts.nextTrack) {
         dispatchExternalPlaybackAction('next');
         return true;
     }
 
-    if (event.code === 'KeyP') {
+    if (eventBinding === shortcuts.previousTrack) {
         dispatchExternalPlaybackAction('previous');
         return true;
     }
 
-    if (event.code === 'KeyZ') {
+    if (eventBinding === shortcuts.stopPlayback) {
         dispatchExternalPlaybackAction('stop');
         return true;
     }
 
     return false;
+};
+
+const focusedShortcutBindingsUseCode = (code: string): boolean => {
+    const shortcuts = currentSettings.keyboardShortcuts;
+    return shortcutBindingUsesCode(shortcuts.playPauseToggle, code)
+        || shortcutBindingUsesCode(shortcuts.nextTrack, code)
+        || shortcutBindingUsesCode(shortcuts.previousTrack, code)
+        || shortcutBindingUsesCode(shortcuts.stopPlayback, code)
+        || shortcutBindingUsesCode(shortcuts.focusLibraryFilter, code)
+        || shortcutBindingUsesCode(shortcuts.openSettings, code);
 };
 
 const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
@@ -2150,23 +2174,17 @@ const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
 
 const savePlaybackOrderSetting = async (): Promise<void> => {
     try {
-        const savedSettings = await SaveSettings({
+        const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
             libraryPath: currentSettings.libraryPath,
             listenBrainzUserToken: currentSettings.listenBrainzUserToken,
             playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
             releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
             favoritePlaylists: currentSettings.favoritePlaylists,
             preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
-        }) as AppSettings;
+            keyboardShortcuts: currentSettings.keyboardShortcuts,
+        })) as AppSettings;
 
-        currentSettings = {
-            libraryPath: savedSettings.libraryPath || '',
-            listenBrainzUserToken: savedSettings.listenBrainzUserToken || '',
-            playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
-            releaseDepth: asReleaseDepth(savedSettings.releaseDepth),
-            favoritePlaylists: Array.isArray(savedSettings.favoritePlaylists) ? savedSettings.favoritePlaylists : [],
-            preferMusicBrainzMetadata: !!savedSettings.preferMusicBrainzMetadata,
-        };
+        currentSettings = normalizeAppSettings(savedSettings);
         setPlaybackOrderMode(currentSettings.playbackOrder);
     } catch (error) {
         console.error(error);
@@ -2446,6 +2464,7 @@ settingsController = createSettingsController({
         releaseDepth: asReleaseDepth(currentSettings.releaseDepth),
         favoritePlaylists: currentSettings.favoritePlaylists,
         preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
+        keyboardShortcuts: currentSettings.keyboardShortcuts,
     }),
     selectLibraryFolder: SelectLibraryFolder,
     selectPlaylistFile: SelectPlaylistFile,
@@ -2455,25 +2474,20 @@ settingsController = createSettingsController({
         releaseDepth,
         favoritePlaylists,
         preferMusicBrainzMetadata,
+        keyboardShortcuts,
     }): Promise<void> => {
         try {
-            const savedSettings = await SaveSettings({
+            const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
                 libraryPath: requestedLibraryPath,
                 listenBrainzUserToken,
                 playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
                 releaseDepth: asReleaseDepth(releaseDepth),
                 favoritePlaylists,
                 preferMusicBrainzMetadata,
-            }) as AppSettings;
+                keyboardShortcuts,
+            })) as AppSettings;
 
-            currentSettings = {
-                libraryPath: savedSettings.libraryPath || '',
-                listenBrainzUserToken: savedSettings.listenBrainzUserToken || '',
-                playbackOrder: asPlaybackOrderMode(savedSettings.playbackOrder || ''),
-                releaseDepth: asReleaseDepth(savedSettings.releaseDepth),
-                favoritePlaylists: Array.isArray(savedSettings.favoritePlaylists) ? savedSettings.favoritePlaylists : [],
-                preferMusicBrainzMetadata: !!savedSettings.preferMusicBrainzMetadata,
-            };
+            currentSettings = normalizeAppSettings(savedSettings);
             setPlaybackOrderMode(currentSettings.playbackOrder);
 
             playlistController.refreshFavorites();
@@ -3029,7 +3043,8 @@ document.addEventListener('keydown', () => {
 }, { capture: true });
 
 document.addEventListener('keydown', (event) => {
-    if (handleFocusedHardwareMediaKey(event) || handleFocusedKeyboardShortcut(event)) {
+    const suppressCapsLockToggle = event.code === 'CapsLock' && focusedShortcutBindingsUseCode('CapsLock');
+    if (handleFocusedHardwareMediaKey(event) || handleFocusedKeyboardShortcut(event) || suppressCapsLockToggle) {
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -3055,6 +3070,12 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('keyup', (event) => {
+    if (event.code === 'CapsLock' && focusedShortcutBindingsUseCode('CapsLock')) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+    }
+
     if (event.key === 'Control') {
         setCtrlHeldState(false);
     }

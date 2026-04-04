@@ -198,6 +198,15 @@ export type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-a
 
 export type PlayerCardLayout = 'default' | 'release';
 
+export type FocusedKeyboardShortcuts = {
+    playPauseToggle: string;
+    nextTrack: string;
+    previousTrack: string;
+    stopPlayback: string;
+    focusLibraryFilter: string;
+    openSettings: string;
+};
+
 export type AppSettings = {
     libraryPath: string;
     listenBrainzUserToken: string;
@@ -205,6 +214,7 @@ export type AppSettings = {
     releaseDepth: number;
     favoritePlaylists: string[];
     preferMusicBrainzMetadata: boolean;
+    keyboardShortcuts: FocusedKeyboardShortcuts;
 };
 
 export type MusicBrainzEntityType = 'recording' | 'release' | 'artist' | 'label';

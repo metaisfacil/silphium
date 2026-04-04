@@ -9,18 +9,34 @@ import (
 
 const appSettingsFileName = "silphium.settings.json"
 
+type FocusedKeyboardShortcuts struct {
+	PlayPauseToggle    string `json:"playPauseToggle"`
+	NextTrack          string `json:"nextTrack"`
+	PreviousTrack      string `json:"previousTrack"`
+	StopPlayback       string `json:"stopPlayback"`
+	FocusLibraryFilter string `json:"focusLibraryFilter"`
+	OpenSettings       string `json:"openSettings"`
+}
+
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
-	LibraryPath               string   `json:"libraryPath"`
-	ListenBrainzUserToken     string   `json:"listenBrainzUserToken"`
-	PlaybackOrder             string   `json:"playbackOrder"`
-	ReleaseDepth              int      `json:"releaseDepth,omitempty"`
-	FavoritePlaylists         []string `json:"favoritePlaylists,omitempty"`
-	PreferMusicBrainzMetadata bool     `json:"preferMusicBrainzMetadata"`
+	LibraryPath               string                   `json:"libraryPath"`
+	ListenBrainzUserToken     string                   `json:"listenBrainzUserToken"`
+	PlaybackOrder             string                   `json:"playbackOrder"`
+	ReleaseDepth              int                      `json:"releaseDepth,omitempty"`
+	FavoritePlaylists         []string                 `json:"favoritePlaylists,omitempty"`
+	PreferMusicBrainzMetadata bool                     `json:"preferMusicBrainzMetadata"`
+	KeyboardShortcuts         FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
 
 const defaultPlaybackOrder = "ordered-library"
 const maxReleaseDepth = 64
+const defaultShortcutPlayPauseToggle = "Space"
+const defaultShortcutNextTrack = "N"
+const defaultShortcutPreviousTrack = "P"
+const defaultShortcutStopPlayback = "Z"
+const defaultShortcutFocusLibraryFilter = "Ctrl+F"
+const defaultShortcutOpenSettings = "Ctrl+P"
 
 func normalizePlaybackOrder(value string) string {
 	switch strings.TrimSpace(value) {
@@ -31,12 +47,33 @@ func normalizePlaybackOrder(value string) string {
 	}
 }
 
+func normalizeKeyboardShortcutBinding(value, fallback string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback
+	}
+
+	return trimmed
+}
+
+func normalizeFocusedKeyboardShortcuts(shortcuts FocusedKeyboardShortcuts) FocusedKeyboardShortcuts {
+	return FocusedKeyboardShortcuts{
+		PlayPauseToggle:    normalizeKeyboardShortcutBinding(shortcuts.PlayPauseToggle, defaultShortcutPlayPauseToggle),
+		NextTrack:          normalizeKeyboardShortcutBinding(shortcuts.NextTrack, defaultShortcutNextTrack),
+		PreviousTrack:      normalizeKeyboardShortcutBinding(shortcuts.PreviousTrack, defaultShortcutPreviousTrack),
+		StopPlayback:       normalizeKeyboardShortcutBinding(shortcuts.StopPlayback, defaultShortcutStopPlayback),
+		FocusLibraryFilter: normalizeKeyboardShortcutBinding(shortcuts.FocusLibraryFilter, defaultShortcutFocusLibraryFilter),
+		OpenSettings:       normalizeKeyboardShortcutBinding(shortcuts.OpenSettings, defaultShortcutOpenSettings),
+	}
+}
+
 func normalizeAppSettings(settings AppSettings) AppSettings {
 	token := strings.TrimSpace(settings.ListenBrainzUserToken)
 	path := strings.TrimSpace(settings.LibraryPath)
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
 	releaseDepth := settings.ReleaseDepth
 	preferMusicBrainzMetadata := settings.PreferMusicBrainzMetadata
+	keyboardShortcuts := normalizeFocusedKeyboardShortcuts(settings.KeyboardShortcuts)
 	favoritePlaylists := make([]string, 0, len(settings.FavoritePlaylists))
 	seenFavoritePlaylists := make(map[string]struct{})
 	for _, candidate := range settings.FavoritePlaylists {
@@ -64,7 +101,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		releaseDepth = maxReleaseDepth
 	}
 	if path == "" {
-		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth, FavoritePlaylists: favoritePlaylists, PreferMusicBrainzMetadata: preferMusicBrainzMetadata}
+		return AppSettings{ListenBrainzUserToken: token, PlaybackOrder: playbackOrder, ReleaseDepth: releaseDepth, FavoritePlaylists: favoritePlaylists, PreferMusicBrainzMetadata: preferMusicBrainzMetadata, KeyboardShortcuts: keyboardShortcuts}
 	}
 
 	path = normalizePath(path)
@@ -79,6 +116,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		ReleaseDepth:              releaseDepth,
 		FavoritePlaylists:         favoritePlaylists,
 		PreferMusicBrainzMetadata: preferMusicBrainzMetadata,
+		KeyboardShortcuts:         keyboardShortcuts,
 	}
 }
 

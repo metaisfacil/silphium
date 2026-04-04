@@ -1,5 +1,27 @@
 export namespace main {
 	
+	export class FocusedKeyboardShortcuts {
+	    playPauseToggle: string;
+	    nextTrack: string;
+	    previousTrack: string;
+	    stopPlayback: string;
+	    focusLibraryFilter: string;
+	    openSettings: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FocusedKeyboardShortcuts(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.playPauseToggle = source["playPauseToggle"];
+	        this.nextTrack = source["nextTrack"];
+	        this.previousTrack = source["previousTrack"];
+	        this.stopPlayback = source["stopPlayback"];
+	        this.focusLibraryFilter = source["focusLibraryFilter"];
+	        this.openSettings = source["openSettings"];
+	    }
+	}
 	export class AppSettings {
 	    libraryPath: string;
 	    listenBrainzUserToken: string;
@@ -7,6 +29,7 @@ export namespace main {
 	    releaseDepth?: number;
 	    favoritePlaylists?: string[];
 	    preferMusicBrainzMetadata: boolean;
+	    keyboardShortcuts: FocusedKeyboardShortcuts;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppSettings(source);
@@ -20,7 +43,26 @@ export namespace main {
 	        this.releaseDepth = source["releaseDepth"];
 	        this.favoritePlaylists = source["favoritePlaylists"];
 	        this.preferMusicBrainzMetadata = source["preferMusicBrainzMetadata"];
+	        this.keyboardShortcuts = this.convertValues(source["keyboardShortcuts"], FocusedKeyboardShortcuts);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class AudioPlaybackState {
 	    loaded: boolean;
@@ -46,6 +88,7 @@ export namespace main {
 	        this.endEventId = source["endEventId"];
 	    }
 	}
+	
 	export class LibraryBrowserEntry {
 	    kind: string;
 	    name: string;

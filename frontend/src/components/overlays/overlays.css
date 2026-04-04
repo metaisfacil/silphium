@@ -348,6 +348,7 @@
 .settings-tabs {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.35rem;
 }
 

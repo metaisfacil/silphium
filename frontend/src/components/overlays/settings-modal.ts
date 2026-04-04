@@ -5,9 +5,11 @@ export type SettingsModalElements = {
     settingsTabGeneral: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
     settingsTabUi: HTMLButtonElement;
+    settingsTabShortcuts: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
     settingsPanelUi: HTMLDivElement;
+    settingsPanelShortcuts: HTMLDivElement;
     settingsBrowse: HTMLButtonElement;
     settingsFavoritePlaylistList: HTMLUListElement;
     settingsAddFavoritePlaylist: HTMLButtonElement;
@@ -19,6 +21,12 @@ export type SettingsModalElements = {
     settingsReleaseDepth: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsPlayerCardLayout: HTMLSelectElement;
+    settingsShortcutPlayPauseToggle: HTMLInputElement;
+    settingsShortcutNextTrack: HTMLInputElement;
+    settingsShortcutPreviousTrack: HTMLInputElement;
+    settingsShortcutStopPlayback: HTMLInputElement;
+    settingsShortcutFocusLibraryFilter: HTMLInputElement;
+    settingsShortcutOpenSettings: HTMLInputElement;
     settingsStatus: HTMLParagraphElement;
 };
 
@@ -35,6 +43,7 @@ export const renderSettingsModal = (): string => `
                     <button id="settings-tab-general" class="settings-tab is-active" type="button" role="tab" aria-controls="settings-panel-general" aria-selected="true">General</button>
                     <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
                     <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
+                    <button id="settings-tab-shortcuts" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-shortcuts" aria-selected="false">Shortcuts</button>
                 </div>
                 <div id="settings-panel-general" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-field">
@@ -84,6 +93,33 @@ export const renderSettingsModal = (): string => `
                         </select>
                     </div>
                 </div>
+                <div id="settings-panel-shortcuts" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-shortcuts" hidden>
+                    <p class="settings-hint">Click a field and press a key combination. Use Delete to clear.</p>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-shortcut-play-pause">Play/Pause toggle</label>
+                        <input id="settings-shortcut-play-pause" class="settings-input" type="text" readonly spellcheck="false" placeholder="Space">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-shortcut-next-track">Next track</label>
+                        <input id="settings-shortcut-next-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="N">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-shortcut-previous-track">Previous track</label>
+                        <input id="settings-shortcut-previous-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="P">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-shortcut-stop-playback">Stop playback</label>
+                        <input id="settings-shortcut-stop-playback" class="settings-input" type="text" readonly spellcheck="false" placeholder="Z">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-shortcut-focus-library-filter">Focus library filter</label>
+                        <input id="settings-shortcut-focus-library-filter" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+F">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-shortcut-open-settings">Open settings modal</label>
+                        <input id="settings-shortcut-open-settings" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+P">
+                    </div>
+                </div>
                 <p id="settings-status" class="settings-status"></p>
                 <div class="settings-actions">
                     <button id="settings-force-reload" class="settings-secondary-btn" type="button">Force Reload</button>
@@ -101,9 +137,11 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsTabGeneral: root.querySelector('#settings-tab-general') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
+    settingsTabShortcuts: root.querySelector('#settings-tab-shortcuts') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
     settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,
+    settingsPanelShortcuts: root.querySelector('#settings-panel-shortcuts') as HTMLDivElement,
     settingsBrowse: root.querySelector('#settings-browse') as HTMLButtonElement,
     settingsFavoritePlaylistList: root.querySelector('#settings-favourite-playlist-list') as HTMLUListElement,
     settingsAddFavoritePlaylist: root.querySelector('#settings-add-favorite-playlist') as HTMLButtonElement,
@@ -115,5 +153,11 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsReleaseDepth: root.querySelector('#settings-release-depth') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
+    settingsShortcutPlayPauseToggle: root.querySelector('#settings-shortcut-play-pause') as HTMLInputElement,
+    settingsShortcutNextTrack: root.querySelector('#settings-shortcut-next-track') as HTMLInputElement,
+    settingsShortcutPreviousTrack: root.querySelector('#settings-shortcut-previous-track') as HTMLInputElement,
+    settingsShortcutStopPlayback: root.querySelector('#settings-shortcut-stop-playback') as HTMLInputElement,
+    settingsShortcutFocusLibraryFilter: root.querySelector('#settings-shortcut-focus-library-filter') as HTMLInputElement,
+    settingsShortcutOpenSettings: root.querySelector('#settings-shortcut-open-settings') as HTMLInputElement,
     settingsStatus: root.querySelector('#settings-status') as HTMLParagraphElement,
 });

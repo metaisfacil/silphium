@@ -1,6 +1,7 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import type { PlayerCardLayout } from '../types/app-types';
+import type { FocusedKeyboardShortcuts, PlayerCardLayout } from '../types/app-types';
+import { formatShortcutBindingFromKeyboardEvent, normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 
 export type SettingsFormValues = {
     libraryPath: string;
@@ -8,6 +9,7 @@ export type SettingsFormValues = {
     releaseDepth: number;
     favoritePlaylists: string[];
     preferMusicBrainzMetadata: boolean;
+    keyboardShortcuts: FocusedKeyboardShortcuts;
 };
 
 type SettingsControllerOptions = {
@@ -33,9 +35,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabGeneral,
         settingsTabPlaylists,
         settingsTabUi,
+        settingsTabShortcuts,
         settingsPanelGeneral,
         settingsPanelPlaylists,
         settingsPanelUi,
+        settingsPanelShortcuts,
         settingsBrowse,
         settingsFavoritePlaylistList,
         settingsAddFavoritePlaylist,
@@ -47,6 +51,12 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsReleaseDepth,
         settingsPreferMusicBrainzMetadata,
         settingsPlayerCardLayout,
+        settingsShortcutPlayPauseToggle,
+        settingsShortcutNextTrack,
+        settingsShortcutPreviousTrack,
+        settingsShortcutStopPlayback,
+        settingsShortcutFocusLibraryFilter,
+        settingsShortcutOpenSettings,
         settingsStatus,
     } = elements;
 
@@ -96,20 +106,83 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsRemoveFavoritePlaylist.disabled = selectedFavoritePlaylistIndex < 0;
     };
 
-    const setActiveTab = (tab: 'general' | 'playlists' | 'ui'): void => {
+    const setActiveTab = (tab: 'general' | 'playlists' | 'ui' | 'shortcuts'): void => {
         const generalActive = tab === 'general';
         const playlistsActive = tab === 'playlists';
         const uiActive = tab === 'ui';
+        const shortcutsActive = tab === 'shortcuts';
         settingsTabGeneral.classList.toggle('is-active', generalActive);
         settingsTabPlaylists.classList.toggle('is-active', playlistsActive);
         settingsTabUi.classList.toggle('is-active', uiActive);
+        settingsTabShortcuts.classList.toggle('is-active', shortcutsActive);
         settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
         settingsTabPlaylists.setAttribute('aria-selected', playlistsActive ? 'true' : 'false');
         settingsTabUi.setAttribute('aria-selected', uiActive ? 'true' : 'false');
+        settingsTabShortcuts.setAttribute('aria-selected', shortcutsActive ? 'true' : 'false');
         settingsPanelGeneral.hidden = !generalActive;
         settingsPanelPlaylists.hidden = !playlistsActive;
         settingsPanelUi.hidden = !uiActive;
+        settingsPanelShortcuts.hidden = !shortcutsActive;
     };
+
+    const getShortcutValues = (): FocusedKeyboardShortcuts => {
+        return normalizeFocusedKeyboardShortcuts({
+            playPauseToggle: settingsShortcutPlayPauseToggle.value,
+            nextTrack: settingsShortcutNextTrack.value,
+            previousTrack: settingsShortcutPreviousTrack.value,
+            stopPlayback: settingsShortcutStopPlayback.value,
+            focusLibraryFilter: settingsShortcutFocusLibraryFilter.value,
+            openSettings: settingsShortcutOpenSettings.value,
+        });
+    };
+
+    const setShortcutValues = (shortcuts: FocusedKeyboardShortcuts): void => {
+        settingsShortcutPlayPauseToggle.value = shortcuts.playPauseToggle;
+        settingsShortcutNextTrack.value = shortcuts.nextTrack;
+        settingsShortcutPreviousTrack.value = shortcuts.previousTrack;
+        settingsShortcutStopPlayback.value = shortcuts.stopPlayback;
+        settingsShortcutFocusLibraryFilter.value = shortcuts.focusLibraryFilter;
+        settingsShortcutOpenSettings.value = shortcuts.openSettings;
+    };
+
+    const bindShortcutCaptureInput = (input: HTMLInputElement): void => {
+        input.addEventListener('focus', () => {
+            input.select();
+        });
+
+        input.addEventListener('keydown', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (event.key === 'Delete') {
+                input.value = '';
+                return;
+            }
+
+            const binding = formatShortcutBindingFromKeyboardEvent(event);
+            if (!binding) {
+                return;
+            }
+
+            input.value = binding;
+        });
+
+        input.addEventListener('keyup', (event) => {
+            if (event.code !== 'CapsLock') {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+        });
+    };
+
+    bindShortcutCaptureInput(settingsShortcutPlayPauseToggle);
+    bindShortcutCaptureInput(settingsShortcutNextTrack);
+    bindShortcutCaptureInput(settingsShortcutPreviousTrack);
+    bindShortcutCaptureInput(settingsShortcutStopPlayback);
+    bindShortcutCaptureInput(settingsShortcutFocusLibraryFilter);
+    bindShortcutCaptureInput(settingsShortcutOpenSettings);
 
     const close = (): void => {
         settingsModal.classList.remove('is-visible');
@@ -137,6 +210,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsReleaseDepth.value = values.releaseDepth > 0 ? String(values.releaseDepth) : '';
         settingsPreferMusicBrainzMetadata.checked = !!values.preferMusicBrainzMetadata;
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
+        setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
         favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
         selectedFavoritePlaylistIndex = -1;
         renderFavoritePlaylistList();
@@ -188,6 +262,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     settingsTabUi.addEventListener('click', () => {
         setActiveTab('ui');
+    });
+
+    settingsTabShortcuts.addEventListener('click', () => {
+        setActiveTab('shortcuts');
+        settingsShortcutPlayPauseToggle.focus();
     });
 
     settingsPlayerCardLayout.addEventListener('change', () => {
@@ -256,6 +335,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
             favoritePlaylists: favoritePlaylists.slice(),
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
+            keyboardShortcuts: getShortcutValues(),
         };
         close();
 
@@ -278,6 +358,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             releaseDepth: Number.parseInt(settingsReleaseDepth.value, 10) || 0,
             favoritePlaylists: favoritePlaylists.slice(),
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
+            keyboardShortcuts: getShortcutValues(),
         };
 
         settingsStatus.textContent = 'Reloading library...';
