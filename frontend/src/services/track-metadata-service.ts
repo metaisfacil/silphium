@@ -44,7 +44,7 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
             displayLyrics: normalizeTrackLyrics(tags),
             displayTrackNumber: tags?.trackNumber?.trim() || '',
             displayTrackTotal: tags?.trackTotal?.trim() || '',
-            displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec),
+            displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec, tags?.overallBitRate ?? tags?.bitRate),
             technicalDetails: technicalDetailsFromTags(tags),
             allFileTags: allFileTagsFromTags(tags),
             tagsResolved: true,

@@ -1143,6 +1143,20 @@
     opacity: 0.32;
 }
 
+.track-technical-value {
+    display: inline;
+}
+
+.track-technical-separator {
+    display: inline-block;
+    font-size: 0.82em;
+    line-height: 1;
+    vertical-align: baseline;
+    transform: translateY(-0.16em);
+    margin: 0 0.5em;
+    opacity: 0.88;
+}
+
 .track-line[data-mb-url],
 .track-release-album[data-mb-url],
 .track-release-label[data-mb-url],

@@ -1222,6 +1222,47 @@ const refreshLyricsPanel = (): void => {
     updateLyricsPanelVisibility();
 };
 
+const technicalLabelSeparator = ' • ';
+
+const setTechnicalLabel = (button: HTMLButtonElement, label: string): void => {
+    button.textContent = '';
+    button.classList.remove('has-technical-separator');
+
+    const cleaned = label.trim();
+    if (!cleaned) {
+        return;
+    }
+
+    const separatorIndex = cleaned.indexOf(technicalLabelSeparator);
+    if (separatorIndex < 0) {
+        button.textContent = cleaned;
+        return;
+    }
+
+    const left = cleaned.slice(0, separatorIndex).trim();
+    const right = cleaned.slice(separatorIndex + technicalLabelSeparator.length).trim();
+    if (!left || !right) {
+        button.textContent = cleaned;
+        return;
+    }
+
+    const leftSpan = document.createElement('span');
+    leftSpan.className = 'track-technical-value';
+    leftSpan.textContent = left;
+
+    const separatorSpan = document.createElement('span');
+    separatorSpan.className = 'track-technical-separator';
+    separatorSpan.setAttribute('aria-hidden', 'true');
+    separatorSpan.textContent = '•';
+
+    const rightSpan = document.createElement('span');
+    rightSpan.className = 'track-technical-value';
+    rightSpan.textContent = right;
+
+    button.append(leftSpan, separatorSpan, rightSpan);
+    button.classList.add('has-technical-separator');
+};
+
 const refreshNowPlayingLabel = (): void => {
     if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
         return;
@@ -1232,9 +1273,9 @@ const refreshNowPlayingLabel = (): void => {
     trackAlbum.textContent = activeTrack.displayAlbum;
     trackPosition.textContent = taggedTrackPosition(activeTrack);
     trackArtist.textContent = activeTrack.displayArtist;
-    trackTechnical.textContent = activeTrack.displayTechnical || 'Details';
+    setTechnicalLabel(trackTechnical, activeTrack.displayTechnical || 'Details');
     trackTechnical.disabled = false;
-    trackTechnicalAlt.textContent = activeTrack.displayTechnical || 'Details';
+    setTechnicalLabel(trackTechnicalAlt, activeTrack.displayTechnical || 'Details');
     trackTechnicalAlt.disabled = false;
     trackReleaseAlbum.textContent = activeTrack.displayAlbum;
     trackTitleInline.textContent = activeTrack.displayTitle;
@@ -1879,9 +1920,9 @@ const clearLibrarySelection = async (): Promise<void> => {
     trackAlbum.textContent = 'Unknown Album';
     trackPosition.textContent = '';
     trackArtist.textContent = 'Unknown Artist';
-    trackTechnical.textContent = '';
+    setTechnicalLabel(trackTechnical, '');
     trackTechnical.disabled = true;
-    trackTechnicalAlt.textContent = '';
+    setTechnicalLabel(trackTechnicalAlt, '');
     trackTechnicalAlt.disabled = true;
     trackArtistHeader.textContent = '';
     trackReleaseAlbum.textContent = '';
@@ -2800,9 +2841,9 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         trackAlbum.textContent = 'Unknown Album';
         trackPosition.textContent = '';
         trackArtist.textContent = 'Unknown Artist';
-        trackTechnical.textContent = '';
+        setTechnicalLabel(trackTechnical, '');
         trackTechnical.disabled = true;
-        trackTechnicalAlt.textContent = '';
+        setTechnicalLabel(trackTechnicalAlt, '');
         trackTechnicalAlt.disabled = true;
         trackArtistHeader.textContent = '';
         trackReleaseAlbum.textContent = '';

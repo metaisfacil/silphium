@@ -141,10 +141,30 @@ export const taggedTrackPosition = (track: Track): string => {
     return `(${number}/${total})`;
 };
 
-export const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, codec?: string): string => {
+export const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, codec?: string, bitRate?: number): string => {
+    const isKnownLossyCodec = (codecLabel: string): boolean => {
+        return codecLabel === 'MP3'
+            || codecLabel === 'AAC'
+            || codecLabel === 'HE-AAC'
+            || codecLabel === 'OPUS'
+            || codecLabel === 'VORBIS'
+            || codecLabel === 'OGG'
+            || codecLabel === 'WMA';
+    };
+
     const hasBitDepth = Number.isFinite(bitDepth) && (bitDepth as number) > 0;
     const hasSampleRate = Number.isFinite(sampleRate) && (sampleRate as number) > 0;
+    const hasBitRate = Number.isFinite(bitRate) && (bitRate as number) > 0;
     const codecLabel = (codec || '').trim().toUpperCase();
+    const isLossyCodec = isKnownLossyCodec(codecLabel);
+    const shouldShowBitDepth = hasBitDepth && !isLossyCodec;
+
+    let bitRateLabel = '';
+    if (hasBitRate) {
+        const kbps = (bitRate as number) / 1000;
+        const kbpsLabel = Number.isInteger(kbps) ? String(kbps) : kbps.toFixed(1).replace(/\.0$/, '');
+        bitRateLabel = `${kbpsLabel}k`;
+    }
 
     let rateLabel = '';
     if (hasSampleRate) {
@@ -153,8 +173,10 @@ export const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, 
     }
 
     const technicalParts: string[] = [];
-    if (hasBitDepth || hasSampleRate) {
-        const depthLabel = hasBitDepth ? String(bitDepth) : '?';
+    if (shouldShowBitDepth || hasSampleRate) {
+        const depthLabel = shouldShowBitDepth
+            ? String(bitDepth)
+            : (isLossyCodec && bitRateLabel ? bitRateLabel : '?');
         const ratePart = hasSampleRate ? rateLabel : '?';
         technicalParts.push(`${depthLabel}/${ratePart}`);
     }
@@ -171,7 +193,7 @@ export const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, 
         return technicalParts[0];
     }
 
-    return `${technicalParts[0]} ‣ ${technicalParts[1]}`;
+    return `${technicalParts[0]} • ${technicalParts[1]}`;
 };
 
 export const technicalDetailsFromTags = (tags?: TrackTags): TrackTechnicalDetails => ({
