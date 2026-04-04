@@ -1302,7 +1302,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         renderFolder('none');
         librarySearchDebounceHandle = window.setTimeout(() => {
             librarySearchDebounceHandle = undefined;
-            if (requestVersion !== librarySearchRequestVersion || normalizedQuery !== normalizedLibrarySearchQuery()) {
+            if (requestVersion != librarySearchRequestVersion || normalizedQuery != normalizedLibrarySearchQuery()) {
                 return;
             }
 
@@ -1352,6 +1352,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         event.preventDefault();
         event.stopPropagation();
+
         clearLibrarySearch();
         renderFolder('none');
     });

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -63,6 +64,7 @@ type App struct {
 	scanRemainingImmediateChildrenByFolder map[string]int
 	scanFinalizeMs                         float64
 	scanWatcherMs                          float64
+	searchGeneration                       atomic.Uint64
 }
 
 // NewApp creates a new App application struct

@@ -113,11 +113,28 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 	queryStartTime := time.Now()
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	logQuery := searchQueryForLog(query)
+	searchGeneration := a.searchGeneration.Load()
+	if offset <= 0 {
+		searchGeneration = a.searchGeneration.Add(1)
+	}
+	searchCanceled := func() bool {
+		return a.searchGeneration.Load() != searchGeneration
+	}
 	if limit <= 0 {
 		limit = 100
 	}
 
 	if normalizedQuery == "" {
+		return LibrarySearchPage{
+			Query:   query,
+			Offset:  offset,
+			Limit:   limit,
+			Entries: []LibraryBrowserEntry{},
+		}
+	}
+
+	if searchCanceled() {
+		a.logRescanEvent("SearchLibrary CANCELED before lock: query=%q offset=%d", logQuery, offset)
 		return LibrarySearchPage{
 			Query:   query,
 			Offset:  offset,
@@ -132,18 +149,46 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 	a.logRescanEvent("SearchLibrary acquired lock (waited %.2fms): query=%q", time.Since(lockWaitStart).Seconds()*1000, logQuery)
 	defer a.indexMu.Unlock()
 
+	if searchCanceled() {
+		a.logRescanEvent("SearchLibrary CANCELED after lock: query=%q offset=%d", logQuery, offset)
+		return LibrarySearchPage{
+			Query:   query,
+			Offset:  offset,
+			Limit:   limit,
+			Entries: []LibraryBrowserEntry{},
+		}
+	}
+
 	entries := []LibraryBrowserEntry{}
 	mode := "fallback-map"
+	canceled := false
 	if !a.scanInProgress {
 		a.maybeStartLibraryDerivedIndexRebuildLocked()
 	}
 
 	if a.isLibraryDerivedIndexReadyLocked() {
 		var derivedMode string
-		entries, derivedMode = a.buildSearchResultsLocked(normalizedQuery)
+		entries, derivedMode, canceled = a.buildSearchResultsLocked(normalizedQuery, searchCanceled)
 		mode = "derived-" + derivedMode
 	} else {
-		entries = a.buildSearchEntriesFromMapsLocked(normalizedQuery)
+		entries, canceled = a.buildSearchEntriesFromMapsLocked(normalizedQuery, searchCanceled)
+	}
+
+	if canceled || searchCanceled() {
+		a.logRescanEvent(
+			"SearchLibrary CANCELED: query=%q mode=%s offset=%d limit=%d took %.2fms",
+			logQuery,
+			mode,
+			offset,
+			limit,
+			time.Since(queryStartTime).Seconds()*1000,
+		)
+		return LibrarySearchPage{
+			Query:   query,
+			Offset:  offset,
+			Limit:   limit,
+			Entries: []LibraryBrowserEntry{},
+		}
 	}
 
 	pagedEntries := copyPagedLibraryEntries(entries, offset, limit)

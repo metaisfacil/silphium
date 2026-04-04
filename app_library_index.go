@@ -300,19 +300,23 @@ func libraryEntryMatchesSearchQuery(entry LibraryBrowserEntry, normalizedQuery s
 	}
 }
 
-func filterSearchEntries(entries []LibraryBrowserEntry, normalizedQuery string) []LibraryBrowserEntry {
+func filterSearchEntries(entries []LibraryBrowserEntry, normalizedQuery string, shouldCancel func() bool) ([]LibraryBrowserEntry, bool) {
 	if len(entries) == 0 {
-		return []LibraryBrowserEntry{}
+		return []LibraryBrowserEntry{}, false
 	}
 
 	filtered := make([]LibraryBrowserEntry, 0, len(entries))
-	for _, entry := range entries {
+	for index, entry := range entries {
+		if shouldCancel != nil && index%256 == 0 && shouldCancel() {
+			return []LibraryBrowserEntry{}, true
+		}
+
 		if libraryEntryMatchesSearchQuery(entry, normalizedQuery) {
 			filtered = append(filtered, entry)
 		}
 	}
 
-	return filtered
+	return filtered, false
 }
 
 func (a *App) rememberSearchResultLocked(normalizedQuery string, entries []LibraryBrowserEntry) {
@@ -333,21 +337,40 @@ func (a *App) rememberSearchResultLocked(normalizedQuery string, entries []Libra
 	}
 }
 
-func (a *App) buildSearchResultsLocked(normalizedQuery string) ([]LibraryBrowserEntry, string) {
+func (a *App) buildSearchResultsLocked(normalizedQuery string, shouldCancel func() bool) ([]LibraryBrowserEntry, string, bool) {
 	if cachedEntries, exists := a.searchResultsByQuery[normalizedQuery]; exists {
-		return cachedEntries, "cache-hit"
+		return cachedEntries, "cache-hit", false
 	}
 
 	var entries []LibraryBrowserEntry
 	mode := "full-filter"
 	if a.searchLastQuery != "" && strings.HasPrefix(normalizedQuery, a.searchLastQuery) && len(a.searchLastResults) > 0 {
-		entries = filterSearchEntries(a.searchLastResults, normalizedQuery)
+		var canceled bool
+		entries, canceled = filterSearchEntries(a.searchLastResults, normalizedQuery, shouldCancel)
+		if canceled {
+			return []LibraryBrowserEntry{}, mode, true
+		}
 		mode = "prefix-filter"
 	} else {
-		folderMatches := filterSearchEntries(a.searchFolderEntries, normalizedQuery)
-		trackMatches := filterSearchEntries(a.searchTrackEntries, normalizedQuery)
-		textMatches := filterSearchEntries(a.searchTextEntries, normalizedQuery)
-		imageMatches := filterSearchEntries(a.searchImageEntries, normalizedQuery)
+		folderMatches, canceled := filterSearchEntries(a.searchFolderEntries, normalizedQuery, shouldCancel)
+		if canceled {
+			return []LibraryBrowserEntry{}, mode, true
+		}
+
+		trackMatches, canceled := filterSearchEntries(a.searchTrackEntries, normalizedQuery, shouldCancel)
+		if canceled {
+			return []LibraryBrowserEntry{}, mode, true
+		}
+
+		textMatches, canceled := filterSearchEntries(a.searchTextEntries, normalizedQuery, shouldCancel)
+		if canceled {
+			return []LibraryBrowserEntry{}, mode, true
+		}
+
+		imageMatches, canceled := filterSearchEntries(a.searchImageEntries, normalizedQuery, shouldCancel)
+		if canceled {
+			return []LibraryBrowserEntry{}, mode, true
+		}
 
 		entries = make([]LibraryBrowserEntry, 0, len(folderMatches)+len(trackMatches)+len(textMatches)+len(imageMatches))
 		entries = append(entries, folderMatches...)
@@ -356,10 +379,14 @@ func (a *App) buildSearchResultsLocked(normalizedQuery string) ([]LibraryBrowser
 		entries = append(entries, imageMatches...)
 	}
 
+	if shouldCancel != nil && shouldCancel() {
+		return []LibraryBrowserEntry{}, mode, true
+	}
+
 	a.rememberSearchResultLocked(normalizedQuery, entries)
 	a.searchLastQuery = normalizedQuery
 	a.searchLastResults = entries
-	return entries, mode
+	return entries, mode, false
 }
 
 func copyPagedLibraryEntries(entries []LibraryBrowserEntry, offset int, limit int) []LibraryBrowserEntry {
@@ -417,7 +444,7 @@ func (a *App) buildFolderEntriesFromMapsLocked(normalizedFolderPath string) []Li
 	return entries
 }
 
-func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string) []LibraryBrowserEntry {
+func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCancel func() bool) ([]LibraryBrowserEntry, bool) {
 	folderPaths := make(map[string]struct{})
 	folderMatchesByPath := make(map[string]LibraryBrowserEntry)
 	trackMatches := make([]LibraryBrowserEntry, 0)
@@ -455,17 +482,38 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string) []Library
 		}
 	}
 
+	trackIndex := 0
 	for _, indexed := range a.trackByPath {
+		if shouldCancel != nil && trackIndex%256 == 0 && shouldCancel() {
+			return []LibraryBrowserEntry{}, true
+		}
+		trackIndex++
 		matchIndexedFile(indexed, "track", &trackMatches)
 	}
+	textIndex := 0
 	for _, indexed := range a.textByPath {
+		if shouldCancel != nil && textIndex%256 == 0 && shouldCancel() {
+			return []LibraryBrowserEntry{}, true
+		}
+		textIndex++
 		matchIndexedFile(indexed, "text-file", &textMatches)
 	}
+	imageIndex := 0
 	for _, indexed := range a.imageByPath {
+		if shouldCancel != nil && imageIndex%256 == 0 && shouldCancel() {
+			return []LibraryBrowserEntry{}, true
+		}
+		imageIndex++
 		matchIndexedFile(indexed, "image-file", &imageMatches)
 	}
 
+	folderIndex := 0
 	for folderPath := range folderPaths {
+		if shouldCancel != nil && folderIndex%256 == 0 && shouldCancel() {
+			return []LibraryBrowserEntry{}, true
+		}
+		folderIndex++
+
 		folderName := folderPath
 		if lastSlash := strings.LastIndex(folderPath, "/"); lastSlash >= 0 {
 			folderName = folderPath[lastSlash+1:]
@@ -491,7 +539,7 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string) []Library
 	entries = append(entries, trackMatches...)
 	entries = append(entries, textMatches...)
 	entries = append(entries, imageMatches...)
-	return entries
+	return entries, false
 }
 
 func (a *App) getFolderTrackPathsFromMapsLocked(normalizedFolderPath string) []string {
