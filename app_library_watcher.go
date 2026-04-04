@@ -174,6 +174,8 @@ func (a *App) snapshotLibraryScanLocked(rootPath string) LibraryScanResult {
 	}
 }
 
+// applyIncrementalLibraryChanges resolves the owning root for each changed path
+// so one debounced watcher batch can update multiple configured library folders.
 func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScanResult, bool) {
 	startTime := time.Now()
 	a.logRescanEvent("applyIncrementalLibraryChanges START with %d paths", len(changedPaths))
