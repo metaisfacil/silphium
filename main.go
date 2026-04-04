@@ -19,7 +19,7 @@ func main() {
 	err := wails.Run(&options.App{
 		Title:     "Silphium",
 		Width:     580,
-		Height:    768,
+		Height:    825,
 		MinWidth:  580,
 		MinHeight: 700,
 		AssetServer: &assetserver.Options{
