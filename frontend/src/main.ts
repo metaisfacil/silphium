@@ -178,6 +178,9 @@ let musicBrainzEntityModalHideTimer: number | undefined;
 let technicalInfoModalHideTimer: number | undefined;
 let aboutModalHideTimer: number | undefined;
 let isSeeking = false;
+type PlayPauseIntent = 'play' | 'pause';
+let playPauseCommandInFlight = false;
+let pendingPlayPauseIntent: PlayPauseIntent | null = null;
 let currentSettings: AppSettings = {
     libraryFolders: [],
     libraryPath: '',
@@ -2331,6 +2334,39 @@ const pauseCurrentTrack = async (): Promise<void> => {
     }
 };
 
+const drainPlayPauseIntentQueue = async (): Promise<void> => {
+    if (playPauseCommandInFlight) {
+        return;
+    }
+
+    playPauseCommandInFlight = true;
+    try {
+        while (pendingPlayPauseIntent) {
+            const intent = pendingPlayPauseIntent;
+            pendingPlayPauseIntent = null;
+            const playbackState = playbackStateService.getPlaybackState();
+
+            if (intent === 'play') {
+                if (!playbackState.playing) {
+                    await playCurrentTrack();
+                }
+                continue;
+            }
+
+            if (playbackState.playing) {
+                await pauseCurrentTrack();
+            }
+        }
+    } finally {
+        playPauseCommandInFlight = false;
+    }
+};
+
+const requestPlayPauseIntent = (intent: PlayPauseIntent): void => {
+    pendingPlayPauseIntent = intent;
+    void drainPlayPauseIntentQueue();
+};
+
 const goToTrack = (direction: -1 | 1): void => {
     if (tracks.length === 0) {
         return;
@@ -3383,11 +3419,11 @@ listenBrainzFeedbackHateBtn.addEventListener('click', () => {
 playPause.addEventListener('click', () => {
     const playbackState = playbackStateService.getPlaybackState();
     if (!playbackState.playing) {
-        void playCurrentTrack();
+        requestPlayPauseIntent('play');
         return;
     }
 
-    void pauseCurrentTrack();
+    requestPlayPauseIntent('pause');
 });
 
 playPause.addEventListener('contextmenu', (event) => {
