@@ -1,5 +1,5 @@
 <p align="center">
-	<img src="./silphium.svg" alt="Silphium logo" width="125" />
+	<img src="./frontend/public/silphium.svg" alt="Silphium logo" width="125" />
 </p>
 
 # Silphium

@@ -16,7 +16,7 @@ export const renderAboutModal = (): string => `
             </header>
             <div class="about-content">
                 <div class="about-logo-wrap">
-                    <img class="about-logo" src="/silphium-logo.svg" alt="Silphium logo">
+                    <img class="about-logo" src="/silphium.svg" alt="Silphium logo">
                 </div>
                 <p class="about-name"><strong>Silphium</strong></p>
                 <p id="about-version" class="about-version">dev</p>
