@@ -158,6 +158,10 @@ export function SelectPlaylistSaveFile() {
   return window['go']['main']['App']['SelectPlaylistSaveFile']();
 }
 
+export function ShowErrorDialog(arg1, arg2) {
+  return window['go']['main']['App']['ShowErrorDialog'](arg1, arg2);
+}
+
 export function SubmitListenBrainz(arg1, arg2, arg3) {
   return window['go']['main']['App']['SubmitListenBrainz'](arg1, arg2, arg3);
 }

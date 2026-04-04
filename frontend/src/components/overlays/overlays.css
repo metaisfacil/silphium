@@ -1443,6 +1443,21 @@
     background: rgba(255, 255, 255, 0.12);
 }
 
+.playlist-menu-item:disabled {
+    opacity: 0.42;
+    cursor: default;
+}
+
+.playlist-menu-item:disabled:hover {
+    background: transparent;
+}
+
+.playlist-menu-divider {
+    height: 1px;
+    margin: 0.3rem 0.4rem;
+    background: rgba(255, 255, 255, 0.16);
+}
+
 .track-meta-menu {
     position: fixed;
     left: 0;
@@ -1479,6 +1494,115 @@
 
 .track-meta-menu-item:hover {
     background: rgba(255, 255, 255, 0.12);
+}
+
+.error-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 44;
+    display: grid;
+    place-items: center;
+}
+
+.error-modal[hidden] {
+    display: none;
+}
+
+.error-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+
+.error-dialog {
+    position: relative;
+    width: min(460px, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    background: rgba(18, 18, 20, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.9rem;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.error-modal.is-visible .error-backdrop {
+    opacity: 1;
+}
+
+.error-modal.is-visible .error-dialog {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.error-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.error-title {
+    margin: 0;
+    font-size: 0.86rem;
+    font-weight: 700;
+    opacity: 0.95;
+}
+
+.error-close {
+    width: 1.8rem;
+    height: 1.8rem;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.error-content {
+    padding: 0.9rem;
+    text-align: left;
+}
+
+.error-message {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    opacity: 0.92;
+}
+
+.error-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.95rem;
+}
+
+.error-ok {
+    min-width: 4.1rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.45rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: inherit;
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 0.34rem 0.7rem;
+    cursor: pointer;
+}
+
+.error-ok:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .playlist-modal {

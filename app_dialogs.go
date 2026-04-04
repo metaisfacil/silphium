@@ -61,3 +61,23 @@ func (a *App) SelectPlaylistSaveFile() string {
 
 	return cleanPath
 }
+
+// ShowErrorDialog displays an application error dialog with the provided title and message.
+func (a *App) ShowErrorDialog(title string, message string) {
+	cleanTitle := strings.TrimSpace(title)
+	if cleanTitle == "" {
+		cleanTitle = "Error"
+	}
+
+	cleanMessage := strings.TrimSpace(message)
+	if cleanMessage == "" {
+		cleanMessage = "An unexpected error occurred."
+	}
+
+	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:    runtime.ErrorDialog,
+		Title:   cleanTitle,
+		Message: cleanMessage,
+		Buttons: []string{"OK"},
+	})
+}

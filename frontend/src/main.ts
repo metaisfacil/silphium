@@ -23,6 +23,7 @@ import { createTrackMetadataService } from './services/track-metadata-service';
 import { getMediaControlsElements, renderMediaControls, renderPlayPauseIcon } from './components/media-controls';
 import {
     getAboutModalElements,
+    getErrorModalElements,
     getImageFileModalElements,
     getMusicBrainzEntityModalElements,
     getPlayOrderMenuElements,
@@ -35,6 +36,7 @@ import {
     getTrackMetaMenuElements,
     renderImageFileModal,
     renderAboutModal,
+    renderErrorModal,
     renderMusicBrainzEntityModal,
     renderPlayOrderMenu,
     renderPlaylistMenu,
@@ -149,6 +151,7 @@ app.innerHTML = `
         ${renderSidebar()}
         ${renderMediaControls()}
         ${renderAboutModal()}
+        ${renderErrorModal()}
         ${renderTextFileModal()}
         ${renderImageFileModal()}
         ${renderMusicBrainzEntityModal()}
@@ -182,6 +185,7 @@ let playbackPollHandle: number | undefined;
 let musicBrainzEntityModalHideTimer: number | undefined;
 let technicalInfoModalHideTimer: number | undefined;
 let aboutModalHideTimer: number | undefined;
+let errorModalHideTimer: number | undefined;
 let isSeeking = false;
 let playbackMutationVersion = 0;
 let playPauseToggleInFlight = false;
@@ -207,6 +211,7 @@ let currentSettings: AppSettings = {
 };
 let trackMetaMenuTarget: HTMLElement | null = null;
 let sidebarQueueTrackIndexes: number[] = [];
+let sidebarQueueFeedbackTrackIndex: number | null = null;
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
 const coverMediaArtworkByFolder = new Map<string, { src: string; type: string }>();
@@ -216,6 +221,7 @@ const coverSourceByTrackPath = new Map<string, CoverArtPrioritySource>();
 const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const aboutModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+const errorModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const selectedLibraryRootLabel = 'Selected folders';
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] | undefined): CoverArtPrioritySource[] => {
@@ -635,6 +641,7 @@ trackArtistHeader.addEventListener('contextmenu', (event) => {
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
 const { aboutModal, aboutBackdrop, aboutClose, aboutVersion, aboutRepoLink } = getAboutModalElements(document);
+const { errorModal, errorBackdrop, errorTitle, errorMessage: errorModalMessage, errorClose, errorOk } = getErrorModalElements(document);
 const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileClose } = getTextFileModalElements(document);
 const imageModalElements = getImageFileModalElements(document);
 const {
@@ -649,7 +656,15 @@ const { technicalInfoModal, technicalInfoBackdrop, technicalInfoTitle, technical
 const settingsElements = getSettingsModalElements(document);
 const { playOrderMenu } = getPlayOrderMenuElements(document);
 const { trackMetaMenu, trackMetaOpenMbBtn, trackMetaParentFolderBtn } = getTrackMetaMenuElements(document);
-const { sidebarQueueMenu, sidebarQueueAddNext, sidebarQueueEnd } = getSidebarQueueMenuElements(document);
+const {
+    sidebarQueueMenu,
+    sidebarQueuePlay,
+    sidebarQueueAddNext,
+    sidebarQueueEnd,
+    sidebarQueueFeedbackDivider,
+    sidebarQueueLove,
+    sidebarQueueHate,
+} = getSidebarQueueMenuElements(document);
 const playlistMenuElements = getPlaylistMenuElements(document);
 const playlistModalElements = getPlaylistModalElements(document);
 let settingsController: SettingsController;
@@ -827,13 +842,20 @@ const refreshListenBrainzFeedbackForCurrentTrack = async (force = false): Promis
     }
 };
 
-const submitListenBrainzFeedbackForCurrentTrack = async (score: ListenBrainzFeedbackScore): Promise<void> => {
+const submitListenBrainzFeedbackForTrack = async (trackIndex: number, score: ListenBrainzFeedbackScore): Promise<void> => {
     if (score !== 1 && score !== -1 && score !== 0) {
         return;
     }
 
+    if (!Number.isInteger(trackIndex) || trackIndex < 0 || trackIndex >= tracks.length) {
+        updateListenBrainzLoveButton();
+        return;
+    }
+
     const token = currentSettings.listenBrainzUserToken.trim();
-    const recordingMbid = currentTrackRecordingMbid();
+    await trackMetadataService.ensureTrackTagsResolved(trackIndex);
+    const latestTrack = tracks[trackIndex];
+    const recordingMbid = latestTrack ? (latestTrack.mbIds.recordingId || '').trim() : '';
     if (!token || recordingMbid === '' || listenBrainzFeedbackSubmitInFlight) {
         updateListenBrainzLoveButton();
         return;
@@ -855,6 +877,15 @@ const submitListenBrainzFeedbackForCurrentTrack = async (score: ListenBrainzFeed
         listenBrainzFeedbackSubmitInFlight = false;
         updateListenBrainzLoveButton();
     }
+};
+
+const submitListenBrainzFeedbackForCurrentTrack = async (score: ListenBrainzFeedbackScore): Promise<void> => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        updateListenBrainzLoveButton();
+        return;
+    }
+
+    await submitListenBrainzFeedbackForTrack(currentTrackIndex, score);
 };
 
 const rebuildTrackPathIndex = (): void => {
@@ -1638,6 +1669,7 @@ const closeTrackMetaMenu = (): void => {
 const closeSidebarQueueMenu = (): void => {
     sidebarQueueMenu.hidden = true;
     sidebarQueueTrackIndexes = [];
+    sidebarQueueFeedbackTrackIndex = null;
 };
 
 const closeListenBrainzFeedbackMenu = (): void => {
@@ -1673,7 +1705,12 @@ const openListenBrainzFeedbackMenu = (clientX: number, clientY: number): void =>
     listenBrainzFeedbackMenu.style.top = `${clampedY}px`;
 };
 
-const openSidebarQueueMenu = (clientX: number, clientY: number, trackIndexes: number[]): void => {
+const openSidebarQueueMenu = (
+    clientX: number,
+    clientY: number,
+    trackIndexes: number[],
+    feedbackTrackIndex?: number,
+): void => {
     if (trackIndexes.length === 0) {
         return;
     }
@@ -1684,6 +1721,26 @@ const openSidebarQueueMenu = (clientX: number, clientY: number, trackIndexes: nu
     playlistController.closeMenu();
 
     sidebarQueueTrackIndexes = trackIndexes;
+    const canShowFeedbackActions = Number.isInteger(feedbackTrackIndex)
+        && (feedbackTrackIndex as number) >= 0
+        && (feedbackTrackIndex as number) < tracks.length;
+    const hasListenBrainzToken = canScrobble();
+    sidebarQueueFeedbackTrackIndex = canShowFeedbackActions ? (feedbackTrackIndex as number) : null;
+    sidebarQueueFeedbackDivider.hidden = !canShowFeedbackActions;
+    sidebarQueueLove.hidden = !canShowFeedbackActions;
+    sidebarQueueHate.hidden = !canShowFeedbackActions;
+    sidebarQueueLove.disabled = canShowFeedbackActions ? !hasListenBrainzToken : false;
+    sidebarQueueHate.disabled = canShowFeedbackActions ? !hasListenBrainzToken : false;
+    sidebarQueueLove.setAttribute('aria-disabled', sidebarQueueLove.disabled ? 'true' : 'false');
+    sidebarQueueHate.setAttribute('aria-disabled', sidebarQueueHate.disabled ? 'true' : 'false');
+    const feedbackDisabledTitle = 'Set a ListenBrainz token in Settings to enable Love/Hate.';
+    const feedbackEnabledTitle = 'Submit ListenBrainz feedback for this track.';
+    sidebarQueueLove.title = canShowFeedbackActions
+        ? (hasListenBrainzToken ? feedbackEnabledTitle : feedbackDisabledTitle)
+        : '';
+    sidebarQueueHate.title = canShowFeedbackActions
+        ? (hasListenBrainzToken ? feedbackEnabledTitle : feedbackDisabledTitle)
+        : '';
     sidebarQueueMenu.hidden = false;
 
     const margin = 10;
@@ -1693,6 +1750,44 @@ const openSidebarQueueMenu = (clientX: number, clientY: number, trackIndexes: nu
 
     sidebarQueueMenu.style.left = `${Math.max(margin, clampedX)}px`;
     sidebarQueueMenu.style.top = `${Math.max(margin, clampedY)}px`;
+};
+
+const playSidebarQueueSelection = async (trackIndexes: number[]): Promise<void> => {
+    const [firstTrackIndex, ...remainingTrackIndexes] = trackIndexes.filter((trackIndex) => (
+        Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < tracks.length
+    ));
+
+    if (!Number.isInteger(firstTrackIndex)) {
+        return;
+    }
+
+    await loadTrack(firstTrackIndex);
+    await playCurrentTrack();
+
+    if (remainingTrackIndexes.length > 0) {
+        playlistController.addToQueueNext(remainingTrackIndexes);
+    }
+};
+
+const submitSidebarQueueFeedback = async (trackIndex: number | null, score: ListenBrainzFeedbackScore): Promise<void> => {
+    if (trackIndex === null) {
+        return;
+    }
+
+    const track = tracks[trackIndex];
+    if (!track) {
+        return;
+    }
+
+    await trackMetadataService.ensureTrackTagsResolved(trackIndex);
+    const latestTrack = tracks[trackIndex];
+    const recordingMbid = latestTrack ? (latestTrack.mbIds.recordingId || '').trim() : '';
+    if (recordingMbid === '') {
+        openErrorModal('Missing MusicBrainz Recording ID', 'This track does not have a recording MBID, so Love/Hate cannot be submitted. Tag the file using MusicBrainz Picard first.');
+        return;
+    }
+
+    await submitListenBrainzFeedbackForTrack(trackIndex, score);
 };
 
 const openTrackMetaMenu = (clientX: number, clientY: number, includeFolderAction: boolean): void => {
@@ -1952,6 +2047,33 @@ const openAboutModal = (): void => {
     aboutModal.hidden = false;
     window.requestAnimationFrame(() => {
         aboutModal.classList.add('is-visible');
+    });
+};
+
+const closeErrorModal = (): void => {
+    errorModal.classList.remove('is-visible');
+
+    if (errorModalHideTimer !== undefined) {
+        window.clearTimeout(errorModalHideTimer);
+    }
+
+    errorModalHideTimer = window.setTimeout(() => {
+        errorModal.hidden = true;
+        errorModalHideTimer = undefined;
+    }, errorModalTransitionMs);
+};
+
+const openErrorModal = (title: string, message: string): void => {
+    if (errorModalHideTimer !== undefined) {
+        window.clearTimeout(errorModalHideTimer);
+        errorModalHideTimer = undefined;
+    }
+
+    errorTitle.textContent = title.trim() || 'Error';
+    errorModalMessage.textContent = message.trim() || 'An unexpected error occurred.';
+    errorModal.hidden = false;
+    window.requestAnimationFrame(() => {
+        errorModal.classList.add('is-visible');
     });
 };
 
@@ -3448,8 +3570,8 @@ libraryController = createLibraryController({
             void imageModalController.openImageFile(imageFile);
         }
     },
-    onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[]) => {
-        openSidebarQueueMenu(clientX, clientY, trackIndexes);
+    onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number) => {
+        openSidebarQueueMenu(clientX, clientY, trackIndexes, feedbackTrackIndex);
     },
     onSidebarClosed: () => {
         closeSidebarQueueMenu();
@@ -3558,6 +3680,28 @@ sidebarQueueAddNext.addEventListener('click', () => {
     closeSidebarQueueMenu();
 });
 
+sidebarQueuePlay.addEventListener('click', () => {
+    if (sidebarQueueTrackIndexes.length === 0) {
+        return;
+    }
+
+    const trackIndexes = sidebarQueueTrackIndexes.slice();
+    closeSidebarQueueMenu();
+    void playSidebarQueueSelection(trackIndexes);
+});
+
+sidebarQueueLove.addEventListener('click', () => {
+    const feedbackTrackIndex = sidebarQueueFeedbackTrackIndex;
+    closeSidebarQueueMenu();
+    void submitSidebarQueueFeedback(feedbackTrackIndex, 1);
+});
+
+sidebarQueueHate.addEventListener('click', () => {
+    const feedbackTrackIndex = sidebarQueueFeedbackTrackIndex;
+    closeSidebarQueueMenu();
+    void submitSidebarQueueFeedback(feedbackTrackIndex, -1);
+});
+
 sidebarQueueEnd.addEventListener('click', () => {
     if (sidebarQueueTrackIndexes.length === 0) {
         return;
@@ -3565,6 +3709,21 @@ sidebarQueueEnd.addEventListener('click', () => {
 
     playlistController.addToQueueEnd(sidebarQueueTrackIndexes);
     closeSidebarQueueMenu();
+});
+
+errorBackdrop.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeErrorModal();
+});
+
+errorClose.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeErrorModal();
+});
+
+errorOk.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeErrorModal();
 });
 
 textFileBackdrop.addEventListener('click', () => {
@@ -3639,6 +3798,11 @@ document.addEventListener('keydown', (event) => {
 
     if (!sidebarQueueMenu.hidden) {
         closeSidebarQueueMenu();
+        return;
+    }
+
+    if (!errorModal.hidden) {
+        closeErrorModal();
         return;
     }
 
@@ -3831,6 +3995,10 @@ document.addEventListener('click', (e) => {
     }
 
     if (sidebarQueueMenu.contains(target)) {
+        return;
+    }
+
+    if (errorModal.contains(target)) {
         return;
     }
 
