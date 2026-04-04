@@ -46,6 +46,8 @@ export function LookupMusicBrainzExploration(arg1:string,arg2:string,arg3:Array<
 
 export function LookupTrackMusicBrainzMetadata(arg1:string,arg2:string):Promise<main.MusicBrainzTrackMetadata>;
 
+export function OpenFolderInFileBrowser(arg1:string):Promise<boolean>;
+
 export function ReadFileBase64(arg1:string):Promise<string>;
 
 export function ReadTextFile(arg1:string):Promise<string>;

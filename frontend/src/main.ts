@@ -66,6 +66,7 @@ import {
     InitializeAudioBackend,
     LoadPlaylistFile,
     LookupArtistByMBID,
+    OpenFolderInFileBrowser,
     ReadFileBase64,
     ReadTextFile,
     ReadTrackTags,
@@ -355,6 +356,7 @@ const {
     back,
     playPause,
     forward,
+    openFolderBtn,
     volume,
 } = getMediaControlsElements(document);
 const openMbOnCtrlClick = (event: MouseEvent, target: HTMLElement): void => {
@@ -1415,6 +1417,23 @@ const openCurrentTrackFolderInSidebar = (): void => {
     }
 
     navigateSidebarToFolder(targetFolderPath);
+};
+
+const openCurrentTrackFolderInFileBrowser = async (): Promise<void> => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return;
+    }
+
+    const trackPath = tracks[currentTrackIndex].path || '';
+    if (trackPath === '') {
+        return;
+    }
+
+    try {
+        await OpenFolderInFileBrowser(trackPath);
+    } catch (error) {
+        console.error(error);
+    }
 };
 
 const updatePlayOrderMenuState = (): void => {
@@ -3205,6 +3224,10 @@ back.addEventListener('click', () => {
 
 forward.addEventListener('click', () => {
     goToTrack(1);
+});
+
+openFolderBtn.addEventListener('click', () => {
+    void openCurrentTrackFolderInFileBrowser();
 });
 
 seek.addEventListener('input', () => {

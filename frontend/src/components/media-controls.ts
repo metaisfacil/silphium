@@ -40,6 +40,7 @@ export type MediaControlsElements = {
     back: HTMLButtonElement;
     playPause: HTMLButtonElement;
     forward: HTMLButtonElement;
+    openFolderBtn: HTMLButtonElement;
     volume: HTMLInputElement;
 };
 
@@ -106,6 +107,7 @@ export const renderMediaControls = (): string => `
               <input id="volume" class="slider" type="range" min="0" max="1" value="0.8" step="0.01">
             </div>
           </div>
+          <button id="open-folder-btn" class="control-btn open-folder-btn" type="button" aria-label="Open containing folder" title="Open containing folder">📁</button>
         </div>
         <div id="listenbrainz-feedback-menu" class="track-meta-menu listenbrainz-feedback-menu" role="menu" aria-label="ListenBrainz feedback" hidden>
           <button id="listenbrainz-feedback-love-btn" class="track-meta-menu-item" type="button" role="menuitem">Love</button>
@@ -162,5 +164,6 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     back: root.querySelector('#back') as HTMLButtonElement,
     playPause: root.querySelector('#play-pause') as HTMLButtonElement,
     forward: root.querySelector('#forward') as HTMLButtonElement,
+    openFolderBtn: root.querySelector('#open-folder-btn') as HTMLButtonElement,
     volume: root.querySelector('#volume') as HTMLInputElement,
 });

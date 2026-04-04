@@ -1449,7 +1449,6 @@
 }
 
 .listenbrainz-love-btn {
-    position: relative;
     font-size: clamp(1rem, 3.4cqw, 1.18rem);
     opacity: 0.52;
 }
@@ -1535,4 +1534,8 @@
     opacity: 1;
     pointer-events: auto;
     transform: translate(-50%, 0);
+}
+
+.open-folder-btn {
+    font-size: clamp(0.9rem, 3.2cqw, 1.05rem);
 }
