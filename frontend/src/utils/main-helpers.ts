@@ -238,7 +238,7 @@ export const taggedTrackPosition = (track: Track): string => {
     }
 
     if (!total) {
-        return `(${number})`;
+        return `(#${number})`;
     }
 
     return `(${number}/${total})`;
