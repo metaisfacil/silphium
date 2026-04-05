@@ -3251,9 +3251,10 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     const folderPathBeforeSwap = canPreserveExistingFolderView
         ? libraryController.getCurrentFolderPath()
         : '';
-    const searchQueryBeforeSwap = canPreserveExistingFolderView
-        ? libraryController.getLibrarySearchQuery()
-        : '';
+    const searchStateBeforeSwap = canPreserveExistingFolderView
+        ? libraryController.getLibrarySearchStateSnapshot()
+        : null;
+    const shouldRestoreSearchState = (searchStateBeforeSwap?.query || '').trim() !== '';
 
     // Keep previous library UI usable while pages are being loaded, then swap in one step.
     stepTime = performance.now();
@@ -3367,8 +3368,8 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         resetArtistInfoPanel();
         updateExplorationButton(document, undefined);
         resetListenBrainzFeedbackState();
-        if (searchQueryBeforeSwap.trim() !== '') {
-            libraryController.restoreLibrarySearchQuery(searchQueryBeforeSwap);
+        if (shouldRestoreSearchState && searchStateBeforeSwap) {
+            libraryController.restoreLibrarySearchState(searchStateBeforeSwap);
         } else {
             libraryController.renderFolder('none');
         }
@@ -3377,16 +3378,16 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         return;
     }
 
-    const preferredFolderPath = options?.currentFolderPath ?? folderPathBeforeSwap;
-    if (preferredFolderPath) {
-        libraryController.navigateToFolder(preferredFolderPath);
+    if (shouldRestoreSearchState && searchStateBeforeSwap) {
+        libraryController.restoreLibrarySearchState(searchStateBeforeSwap);
     } else {
-        libraryController.setCurrentFolderPath('');
-        libraryController.renderFolder('none');
-    }
-
-    if (searchQueryBeforeSwap.trim() !== '') {
-        libraryController.restoreLibrarySearchQuery(searchQueryBeforeSwap);
+        const preferredFolderPath = options?.currentFolderPath ?? folderPathBeforeSwap;
+        if (preferredFolderPath) {
+            libraryController.navigateToFolder(preferredFolderPath);
+        } else {
+            libraryController.setCurrentFolderPath('');
+            libraryController.renderFolder('none');
+        }
     }
 
     if (!options?.preserveFolderView) {

@@ -40,6 +40,13 @@ type SearchResultState = {
     errorMessage: string | null;
 };
 
+type LibrarySearchStateSnapshot = {
+    query: string;
+    pending: boolean;
+    result: SearchResultState | null;
+    expandedFolderPaths: string[];
+};
+
 type LibraryControllerOptions = {
     app: HTMLElement;
     sidebarToggle: HTMLButtonElement;
@@ -305,6 +312,53 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         librarySearchQuery = '';
         librarySearch.value = '';
         cancelLibrarySearch();
+    };
+
+    const cloneSearchResultState = (state: SearchResultState | null): SearchResultState | null => {
+        if (!state) {
+            return null;
+        }
+
+        return {
+            entries: [...state.entries],
+            entryKeys: new Set(state.entryKeys),
+            loading: state.loading,
+            errorMessage: state.errorMessage,
+        };
+    };
+
+    const getLibrarySearchStateSnapshot = (): LibrarySearchStateSnapshot => {
+        return {
+            query: librarySearchQuery,
+            pending: librarySearchPending,
+            result: cloneSearchResultState(activeSearchResult),
+            expandedFolderPaths: Array.from(expandedSearchFolders),
+        };
+    };
+
+    const restoreLibrarySearchState = (snapshot: LibrarySearchStateSnapshot): void => {
+        clearScheduledLibrarySearch();
+        librarySearchRequestVersion += 1;
+
+        librarySearchQuery = snapshot.query || '';
+        librarySearch.value = librarySearchQuery;
+
+        expandedSearchFolders.clear();
+        for (const folderPath of snapshot.expandedFolderPaths || []) {
+            expandedSearchFolders.add(folderPath);
+        }
+
+        if (normalizedLibrarySearchQuery() === '') {
+            librarySearchPending = false;
+            activeSearchResult = null;
+        } else {
+            librarySearchPending = !!snapshot.pending;
+            activeSearchResult = cloneSearchResultState(snapshot.result);
+        }
+
+        if (sidebarOpen) {
+            renderFolder('none');
+        }
     };
 
     const currentPane = (): HTMLUListElement | null => {
@@ -1621,6 +1675,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         clearLibrarySearch,
         firstTrackIndexFromRandomAlbumFolder,
         getLibrarySearchQuery: () => librarySearchQuery,
+        getLibrarySearchStateSnapshot,
         getLibraryRootName: () => libraryRootName,
         getSidebarAutoFolderPath: () => sidebarAutoFolderPath,
         getCurrentFolderPath: () => currentFolderPath,
@@ -1643,10 +1698,14 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             libraryPath.textContent = message;
         },
         restoreLibrarySearchQuery: (query: string) => {
-            const nextQuery = query || '';
-            librarySearch.value = nextQuery;
-            setLibrarySearchQuery(nextQuery);
+            restoreLibrarySearchState({
+                query,
+                pending: false,
+                result: null,
+                expandedFolderPaths: [],
+            });
         },
+        restoreLibrarySearchState,
         setLibraryRootName: (rootName: string) => {
             libraryRootName = rootName;
         },
