@@ -1821,6 +1821,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         if (event instanceof InputEvent && event.inputType === 'insertFromPaste') {
             const pastedValue = librarySearch.value;
+            const normalizedPath = normalizePastedLibraryPath(pastedValue);
+            if (!normalizedPath || !isLikelyAbsoluteLibraryPath(normalizedPath)) {
+                setLibrarySearchQuery(pastedValue);
+                return;
+            }
+
             librarySearch.value = librarySearchQuery;
             suppressNextLibrarySearchPasteInput = true;
             void tryHandlePastedLibraryPath(pastedValue);
