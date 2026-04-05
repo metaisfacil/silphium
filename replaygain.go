@@ -15,6 +15,7 @@ import (
 
 const replayGainCacheLimit = 4096
 
+// ReplayGainSource describes where the ReplayGain values were obtained from.
 type ReplayGainSource string
 
 const (
@@ -24,6 +25,7 @@ const (
 	replayGainSourceAlbumCalc  ReplayGainSource = "album-calculated"
 )
 
+// ReplayGainInfo stores the gain, peak, and provenance for a ReplayGain result.
 type ReplayGainInfo struct {
 	GainDB float64 `json:"gainDb,omitempty"`
 	Peak   float64 `json:"peak,omitempty"`
@@ -64,6 +66,7 @@ func sanitizeReplayGainInfo(info ReplayGainInfo) ReplayGainInfo {
 	return info
 }
 
+// Scale converts the ReplayGain value to a linear amplitude multiplier.
 func (info ReplayGainInfo) Scale() float64 {
 	sanitized := sanitizeReplayGainInfo(info)
 	scale := math.Pow(10, sanitized.GainDB/20)
