@@ -57,6 +57,18 @@ type App struct {
 	trackTagsCacheMu                       sync.Mutex
 	trackTagsCacheByPath                   map[string]trackTagsCacheEntry
 	trackTagsCacheOrder                    []string
+	musicBrainzTagMu                       sync.Mutex
+	musicBrainzTagStore                    musicBrainzTagDatabaseStore
+	musicBrainzTagStoreLoaded              bool
+	musicBrainzTagStoreDirty               bool
+	musicBrainzTagLastPersistAt            time.Time
+	musicBrainzTagEntityKeysByTag          map[string]map[string]struct{}
+	musicBrainzTagReleaseFoldersByID       map[string]map[string]struct{}
+	musicBrainzTagArtistFoldersByID        map[string]map[string]struct{}
+	musicBrainzTagWorkerWake               chan struct{}
+	musicBrainzTagWorkerStop               chan struct{}
+	musicBrainzTagWorkerDone               chan struct{}
+	musicBrainzTagWorkGeneration           atomic.Uint64
 	mediaKeyWatcherStop                    chan struct{}
 	mediaKeyWatcherDone                    chan struct{}
 	libraryScan                            LibraryScanResult
@@ -96,11 +108,14 @@ func (a *App) startup(ctx context.Context) {
 	a.audioBackend().SetFFmpegPath(a.settings.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(a.settings.Audio)
 	a.startMediaKeyWatcher()
+	a.startMusicBrainzTagWorker()
+	a.notifyMusicBrainzTagWorker()
 }
 
 func (a *App) shutdown(context.Context) {
 	a.stopMediaKeyWatcher()
 	a.stopLibraryWatcher()
+	a.stopMusicBrainzTagWorker()
 	if err := a.audioBackend().Close(); err != nil {
 		log.Printf("failed to close audio backend: %v", err)
 	}

@@ -20,6 +20,8 @@ export type SettingsFormValues = {
     gaplessPlayback: boolean;
     replayGainEnabled: boolean;
     preferMusicBrainzMetadata: boolean;
+    musicBrainzTagDatabaseEnabled: boolean;
+    musicBrainzTagWorkerCores: number;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
 
@@ -131,6 +133,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsGaplessPlayback,
         settingsReplayGain,
         settingsPreferMusicBrainzMetadata,
+        settingsMusicBrainzTagDatabaseEnabled,
+        settingsMusicBrainzTagWorkerCores,
         settingsPlayerCardLayout,
         settingsCoverArtPriorityList,
         settingsShortcutPlayPauseToggle,
@@ -172,6 +176,19 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         return Array.from(deduped);
+    };
+
+    const normalizeMusicBrainzTagWorkerCores = (value: string): number => {
+        const parsed = Number.parseInt(value.trim(), 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            return 0;
+        }
+
+        return Math.min(Math.floor(parsed), 128);
+    };
+
+    const refreshMusicBrainzTagWorkerControls = (): void => {
+        settingsMusicBrainzTagWorkerCores.disabled = !settingsMusicBrainzTagDatabaseEnabled.checked;
     };
 
     const renderFavoritePlaylistList = (): void => {
@@ -698,6 +715,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsGaplessPlayback.checked = !!values.gaplessPlayback;
         settingsReplayGain.checked = !!values.replayGainEnabled;
         settingsPreferMusicBrainzMetadata.checked = !!values.preferMusicBrainzMetadata;
+        settingsMusicBrainzTagDatabaseEnabled.checked = !!values.musicBrainzTagDatabaseEnabled;
+        settingsMusicBrainzTagWorkerCores.value = values.musicBrainzTagWorkerCores > 0 ? String(values.musicBrainzTagWorkerCores) : '';
+        refreshMusicBrainzTagWorkerControls();
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
         favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
@@ -813,6 +833,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsAudioOutputDevice.focus();
     });
 
+    settingsMusicBrainzTagDatabaseEnabled.addEventListener('change', () => {
+        refreshMusicBrainzTagWorkerControls();
+    });
+
     settingsApplyAudioNow.addEventListener('click', async () => {
         if (settingsApplyAudioNow.disabled) {
             return;
@@ -829,6 +853,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             gaplessPlayback: settingsGaplessPlayback.checked,
             replayGainEnabled: settingsReplayGain.checked,
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
+            musicBrainzTagDatabaseEnabled: settingsMusicBrainzTagDatabaseEnabled.checked,
+            musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
             keyboardShortcuts: getShortcutValues(),
         };
 
@@ -1070,6 +1096,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             gaplessPlayback: settingsGaplessPlayback.checked,
             replayGainEnabled: settingsReplayGain.checked,
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
+            musicBrainzTagDatabaseEnabled: settingsMusicBrainzTagDatabaseEnabled.checked,
+            musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
             keyboardShortcuts: getShortcutValues(),
         };
 
@@ -1103,6 +1131,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             gaplessPlayback: settingsGaplessPlayback.checked,
             replayGainEnabled: settingsReplayGain.checked,
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
+            musicBrainzTagDatabaseEnabled: settingsMusicBrainzTagDatabaseEnabled.checked,
+            musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
             keyboardShortcuts: getShortcutValues(),
         };
 

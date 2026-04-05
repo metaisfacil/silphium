@@ -58,6 +58,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		a.activeLibraryRoots = nil
 		a.indexMu.Unlock()
 		a.setLibraryIndexFromScan(result)
+		a.notifyMusicBrainzTagWorker()
 		return result
 	}
 
@@ -607,6 +608,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 	result.ImageFileCount = len(result.ImageFiles)
 
 	a.setLibraryIndexFromScan(result)
+	a.notifyMusicBrainzTagWorker()
 	emitScanUpdated(true)
 
 	sortIndexMs := float64(time.Since(finalizationStartedAt).Milliseconds())

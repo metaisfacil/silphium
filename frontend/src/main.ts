@@ -231,6 +231,8 @@ let currentSettings: AppSettings = {
         replayGainEnabled: false,
     },
     preferMusicBrainzMetadata: false,
+    musicBrainzTagDatabaseEnabled: false,
+    musicBrainzTagWorkerCores: 1,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
 let startupInitializationComplete = false;
@@ -310,6 +312,10 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
             replayGainEnabled: !!rawAudio.replayGainEnabled,
         },
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
+        musicBrainzTagDatabaseEnabled: !!settings.musicBrainzTagDatabaseEnabled,
+        musicBrainzTagWorkerCores: Number.isFinite(settings.musicBrainzTagWorkerCores)
+            ? Math.max(1, Math.min(128, Math.floor(settings.musicBrainzTagWorkerCores || 1)))
+            : 1,
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
     };
 };
@@ -3277,6 +3283,7 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
         const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
             libraryFolders: currentSettings.libraryFolders,
             libraryPath: currentSettings.libraryPath,
+            ffmpegPath: currentSettings.ffmpegPath,
             listenBrainzUserToken: currentSettings.listenBrainzUserToken,
             playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
             releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
@@ -3284,6 +3291,8 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             coverArtPriority: currentSettings.coverArtPriority,
             audio: currentSettings.audio,
             preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
+            musicBrainzTagDatabaseEnabled: currentSettings.musicBrainzTagDatabaseEnabled,
+            musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
             keyboardShortcuts: currentSettings.keyboardShortcuts,
         })) as AppSettings;
 
@@ -3593,6 +3602,8 @@ settingsController = createSettingsController({
         replayGainEnabled: currentSettings.audio.replayGainEnabled,
         audioOutputDevices: availableAudioOutputDevices,
         preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
+        musicBrainzTagDatabaseEnabled: currentSettings.musicBrainzTagDatabaseEnabled,
+        musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
     }),
     selectLibraryFolder: SelectLibraryFolder,
@@ -3608,6 +3619,8 @@ settingsController = createSettingsController({
         gaplessPlayback,
         replayGainEnabled,
         preferMusicBrainzMetadata,
+        musicBrainzTagDatabaseEnabled,
+        musicBrainzTagWorkerCores,
         keyboardShortcuts,
     }): Promise<void> => {
         const ffmpegStatus = await validateConfiguredFFmpegPath(ffmpegPath);
@@ -3633,6 +3646,8 @@ settingsController = createSettingsController({
                 replayGainEnabled,
             },
             preferMusicBrainzMetadata,
+            musicBrainzTagDatabaseEnabled,
+            musicBrainzTagWorkerCores,
             keyboardShortcuts,
         })) as AppSettings;
 
@@ -3677,6 +3692,8 @@ settingsController = createSettingsController({
         gaplessPlayback,
         replayGainEnabled,
         preferMusicBrainzMetadata,
+        musicBrainzTagDatabaseEnabled,
+        musicBrainzTagWorkerCores,
         keyboardShortcuts,
     }): Promise<AudioOutputDevice[]> => {
         const ffmpegStatus = await validateConfiguredFFmpegPath(ffmpegPath);
@@ -3702,6 +3719,8 @@ settingsController = createSettingsController({
                 replayGainEnabled,
             },
             preferMusicBrainzMetadata,
+            musicBrainzTagDatabaseEnabled,
+            musicBrainzTagWorkerCores,
             keyboardShortcuts,
         })) as AppSettings;
 

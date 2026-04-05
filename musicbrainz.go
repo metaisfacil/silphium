@@ -4,13 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"sort"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -141,9 +137,6 @@ const musicBrainzExplorationLabelBrowseLimit = "18"
 const musicBrainzExplorationLabelArtistLimit = 10
 const musicBrainzExplorationLabelCompilationLimit = 6
 const musicBrainzExplorationBandRelationLimit = 6
-
-var musicBrainzFetchMu sync.Mutex
-var nextMusicBrainzFetchAt time.Time
 
 func newMusicBrainzExplorationBuilder() *musicBrainzExplorationBuilder {
 	return &musicBrainzExplorationBuilder{
@@ -354,60 +347,12 @@ func (b *musicBrainzExplorationBuilder) sortedEdges() []MusicBrainzExplorationEd
 	return edges
 }
 
-func waitForMusicBrainzRequestSlot() {
-	musicBrainzFetchMu.Lock()
-	defer musicBrainzFetchMu.Unlock()
-
-	now := time.Now()
-	if now.Before(nextMusicBrainzFetchAt) {
-		time.Sleep(nextMusicBrainzFetchAt.Sub(now))
-	}
-
-	nextMusicBrainzFetchAt = time.Now().Add(1 * time.Second)
-}
-
 func fetchMusicBrainzJSON(requestURL string) ([]byte, bool) {
-	waitForMusicBrainzRequestSlot()
-
-	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
-	if err != nil {
-		return nil, false
-	}
-
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("User-Agent", musicBrainzUserAgent)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, false
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		return nil, false
-	}
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, false
-	}
-
-	return responseBody, true
+	return fetchMusicBrainzJSONWithPriority(requestURL, musicBrainzRequestPriorityInteractive)
 }
 
 func fetchMusicBrainzPayload(requestURL string) (map[string]any, bool) {
-	responseBody, ok := fetchMusicBrainzJSON(requestURL)
-	if !ok {
-		return nil, false
-	}
-
-	payload := make(map[string]any)
-	if err := json.Unmarshal(responseBody, &payload); err != nil {
-		return nil, false
-	}
-
-	return payload, true
+	return fetchMusicBrainzPayloadWithPriority(requestURL, musicBrainzRequestPriorityInteractive)
 }
 
 func musicBrainzEntitySubtitle(entityType string) string {
@@ -1072,27 +1017,8 @@ func (a *App) LookupArtistByMBID(mbid string) MusicBrainzArtistInfo {
 	}
 
 	requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/artist/%s?fmt=json&inc=genres+tags+url-rels", cleanMBID)
-	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
-	if err != nil {
-		return MusicBrainzArtistInfo{Found: false}
-	}
-
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("User-Agent", musicBrainzUserAgent)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	response, err := client.Do(request)
-	if err != nil {
-		return MusicBrainzArtistInfo{Found: false}
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		return MusicBrainzArtistInfo{Found: false}
-	}
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
+	responseBody, ok := fetchMusicBrainzJSON(requestURL)
+	if !ok {
 		return MusicBrainzArtistInfo{Found: false}
 	}
 

@@ -152,6 +152,7 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 	a.libraryScan.TotalEntries = a.libraryScan.TrackCount + a.libraryScan.TextFileCount + a.libraryScan.ImageFileCount
 	a.markLibraryDerivedIndexDirtyLocked()
 	a.maybeStartLibraryDerivedIndexRebuildLocked()
+	a.notifyMusicBrainzTagWorker()
 
 	// Emit only the lightweight metadata — the frontend no longer uses the file arrays
 	// for incremental updates, and serializing 150K+ entries over IPC takes several seconds.
