@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -20,6 +21,64 @@ func folderPathForLog(folderPath string) string {
 	}
 
 	return folderPath
+}
+
+func (a *App) resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPath string) string {
+	normalizedFolderPath, ok := normalizeLibraryRelativePath(virtualFolderPath)
+	if !ok {
+		return ""
+	}
+
+	if !a.scanInProgress {
+		a.maybeStartLibraryDerivedIndexRebuildLocked()
+	}
+
+	if a.isLibraryDerivedIndexReadyLocked() {
+		if _, exists := a.folderEntriesByFolder[normalizedFolderPath]; exists {
+			return normalizedFolderPath
+		}
+		return ""
+	}
+
+	if len(a.buildFolderEntriesFromMapsLocked(normalizedFolderPath)) > 0 {
+		return normalizedFolderPath
+	}
+
+	return ""
+}
+
+// ResolveLibraryFolderForPath resolves an absolute filesystem path to the currently available virtual library folder path.
+func (a *App) ResolveLibraryFolderForPath(path string) string {
+	absolutePath, ok := absoluteNormalizedPath(path)
+	if !ok {
+		return ""
+	}
+
+	a.indexMu.Lock()
+	defer a.indexMu.Unlock()
+
+	if indexed, exists := a.trackByPath[absolutePath]; exists {
+		return indexed.FolderPath
+	}
+	if indexed, exists := a.textByPath[absolutePath]; exists {
+		return indexed.FolderPath
+	}
+	if indexed, exists := a.imageByPath[absolutePath]; exists {
+		return indexed.FolderPath
+	}
+
+	root, ok := a.activeLibraryRootForPath(absolutePath)
+	if !ok {
+		return ""
+	}
+
+	relativePath, err := filepath.Rel(root.Path, absolutePath)
+	if err != nil {
+		return ""
+	}
+
+	virtualFolderPath := buildVirtualLibraryPath(root.Name, filepath.ToSlash(relativePath))
+	return a.resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPath)
 }
 
 // GetLibraryIndexedFilePage returns a paginated slice of indexed files for initial frontend hydration.

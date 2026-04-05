@@ -72,6 +72,7 @@ import {
     GetLibraryFolderTrackCount,
     GetLibraryFolderTrackPaths,
     GetLibraryIndexedFilePage,
+    ResolveLibraryFolderForPath,
     GetListenBrainzRecordingFeedback,
     IsLibraryFolderImmediateDescendantsEnumerated,
     GetSettings,
@@ -3087,6 +3088,9 @@ libraryController = createLibraryController({
     getCurrentTrackIndex: () => currentTrackIndex,
     loadFolderPage: async (folderPath: string, offset: number, limit: number): Promise<LibraryFolderPage> => {
         return await GetLibraryFolderPage(folderPath, offset, limit) as LibraryFolderPage;
+    },
+    resolveLibraryFolderForAbsolutePath: async (path: string): Promise<string> => {
+        return await ResolveLibraryFolderForPath(path);
     },
     isFolderImmediateDescendantsEnumerated: async (folderPath: string): Promise<boolean> => {
         return await IsLibraryFolderImmediateDescendantsEnumerated(folderPath);

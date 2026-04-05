@@ -6,6 +6,7 @@ import type {
     TextLibraryFile,
     Track,
 } from '../types/app-types';
+import { libraryFolderPathKey } from '../utils/main-helpers';
 
 type RenderDirection = 'none' | 'forward' | 'back';
 
@@ -47,6 +48,12 @@ type LibrarySearchStateSnapshot = {
     expandedFolderPaths: string[];
 };
 
+type PastedPathLookupCache = {
+    indexedFolderPathByKey: Map<string, string>;
+    indexedFileFolderPathByKey: Map<string, string>;
+    monitoredRoots: Array<{ path: string; name: string }>;
+};
+
 type LibraryControllerOptions = {
     app: HTMLElement;
     sidebarToggle: HTMLButtonElement;
@@ -61,6 +68,7 @@ type LibraryControllerOptions = {
     getImageFiles: () => ImageLibraryFile[];
     getCurrentTrackIndex: () => number;
     loadFolderPage: (folderPath: string, offset: number, limit: number) => Promise<LibraryFolderPage>;
+    resolveLibraryFolderForAbsolutePath: (path: string) => Promise<string>;
     isFolderImmediateDescendantsEnumerated: (folderPath: string) => Promise<boolean>;
     searchLibrary: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
     resolveTrackIndex: (path: string) => number;
@@ -108,7 +116,13 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     let librarySearchPending = false;
     let librarySearchRequestVersion = 0;
     let librarySearchDebounceHandle: number | undefined;
+    let suppressNextLibrarySearchPasteInput = false;
     let activeSearchResult: SearchResultState | null = null;
+    let pastedPathLookupCache: PastedPathLookupCache = {
+        indexedFolderPathByKey: new Map<string, string>(),
+        indexedFileFolderPathByKey: new Map<string, string>(),
+        monitoredRoots: [],
+    };
     let paneVersionCounter = 0;
     let hoveredBrowserEntryKey: string | null = null;
     let hoveredBrowserButton: HTMLButtonElement | null = null;
@@ -1404,15 +1418,214 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }, searchDebounceMs);
     };
 
+    const normalizePastedLibraryPath = (value: string): string => {
+        const trimmed = value.trim().replace(/^["']+|["']+$/g, '').trim();
+        if (!trimmed) {
+            return '';
+        }
+
+        return trimmed.replace(/\\/g, '/').replace(/\/+$/, '');
+    };
+
+    const isLikelyAbsoluteLibraryPath = (value: string): boolean => {
+        return /^[a-z]:\//i.test(value) || value.startsWith('//');
+    };
+
+    const rebuildPastedPathLookupCache = (
+        tracks: Track[] = options.getTracks(),
+        textFiles: TextLibraryFile[] = options.getTextFiles(),
+        imageFiles: ImageLibraryFile[] = options.getImageFiles(),
+    ): void => {
+        const indexedFolderPathByKey = new Map<string, string>();
+        const indexedFileFolderPathByKey = new Map<string, string>();
+        const monitoredRootByKey = new Map<string, { path: string; name: string }>();
+
+        const rememberFolderPath = (folderPath: string): void => {
+            const normalizedPath = normalizePastedLibraryPath(folderPath);
+            const key = libraryFolderPathKey(normalizedPath);
+            if (!key || indexedFolderPathByKey.has(key)) {
+                return;
+            }
+
+            indexedFolderPathByKey.set(key, normalizedPath);
+        };
+
+        const rememberFolderHierarchy = (folderPath: string): void => {
+            const normalizedFolderPath = normalizePastedLibraryPath(folderPath);
+            if (!normalizedFolderPath) {
+                return;
+            }
+
+            const segments = normalizedFolderPath.split('/').filter((segment) => segment !== '');
+            let cumulativePath = '';
+            for (const segment of segments) {
+                cumulativePath = cumulativePath ? `${cumulativePath}/${segment}` : segment;
+                rememberFolderPath(cumulativePath);
+            }
+        };
+
+        const rememberIndexedFile = (path: string, folderPath: string, rootPath: string): void => {
+            const normalizedFolderPath = normalizePastedLibraryPath(folderPath);
+            const normalizedFilePath = normalizePastedLibraryPath(path);
+            const normalizedRootPath = normalizePastedLibraryPath(rootPath);
+            const fileKey = libraryFolderPathKey(normalizedFilePath);
+            if (fileKey && !indexedFileFolderPathByKey.has(fileKey)) {
+                indexedFileFolderPathByKey.set(fileKey, normalizedFolderPath);
+            }
+
+            const rootKey = libraryFolderPathKey(normalizedRootPath);
+            if (rootKey && !monitoredRootByKey.has(rootKey)) {
+                const rootSegments = normalizedFolderPath.split('/').filter((segment) => segment !== '');
+                monitoredRootByKey.set(rootKey, {
+                    path: normalizedRootPath,
+                    name: rootSegments[0] || '',
+                });
+            }
+
+            rememberFolderHierarchy(normalizedFolderPath);
+        };
+
+        for (const track of tracks) {
+            rememberIndexedFile(track.path, track.folderPath, track.rootPath);
+        }
+
+        for (const textFile of textFiles) {
+            rememberIndexedFile(textFile.path, textFile.folderPath, textFile.rootPath);
+        }
+
+        for (const imageFile of imageFiles) {
+            rememberIndexedFile(imageFile.path, imageFile.folderPath, imageFile.rootPath);
+        }
+
+        pastedPathLookupCache = {
+            indexedFolderPathByKey,
+            indexedFileFolderPathByKey,
+            monitoredRoots: Array.from(monitoredRootByKey.values()).sort((left, right) => right.path.length - left.path.length),
+        };
+    };
+
+    const resolvePastedLibraryJumpFolder = (value: string): string | null => {
+        const normalizedPath = normalizePastedLibraryPath(value);
+        if (!normalizedPath || !isLikelyAbsoluteLibraryPath(normalizedPath)) {
+            return null;
+        }
+
+        const pathKey = libraryFolderPathKey(normalizedPath);
+        if (!pathKey) {
+            return null;
+        }
+
+        if (
+            pastedPathLookupCache.monitoredRoots.length === 0
+            && pastedPathLookupCache.indexedFolderPathByKey.size === 0
+            && pastedPathLookupCache.indexedFileFolderPathByKey.size === 0
+        ) {
+            rebuildPastedPathLookupCache();
+        }
+
+        const {
+            indexedFolderPathByKey,
+            indexedFileFolderPathByKey,
+            monitoredRoots,
+        } = pastedPathLookupCache;
+
+        const exactFileFolderPath = indexedFileFolderPathByKey.get(pathKey);
+        if (exactFileFolderPath !== undefined) {
+            return exactFileFolderPath;
+        }
+
+        const exactFolderPath = indexedFolderPathByKey.get(pathKey);
+        if (exactFolderPath !== undefined) {
+            return exactFolderPath;
+        }
+
+        for (const monitoredRoot of monitoredRoots) {
+            const rootKey = libraryFolderPathKey(monitoredRoot.path);
+            if (!rootKey) {
+                continue;
+            }
+
+            let virtualFolderPath = monitoredRoot.name;
+            if (pathKey === rootKey) {
+                virtualFolderPath = monitoredRoot.name;
+            } else if (pathKey.startsWith(`${rootKey}/`)) {
+                const relativeFolderPath = normalizedPath.slice(monitoredRoot.path.length + 1);
+                virtualFolderPath = monitoredRoot.name
+                    ? `${monitoredRoot.name}/${relativeFolderPath}`
+                    : relativeFolderPath;
+            } else {
+                continue;
+            }
+
+            const indexedFolderPath = indexedFolderPathByKey.get(libraryFolderPathKey(virtualFolderPath));
+            if (indexedFolderPath !== undefined) {
+                return indexedFolderPath;
+            }
+        }
+
+        return null;
+    };
+
+    const jumpToFolderFromPastedPath = (folderPath: string): void => {
+        const preservedValue = librarySearch.value;
+        const preservedSelectionStart = librarySearch.selectionStart;
+        const preservedSelectionEnd = librarySearch.selectionEnd;
+        const preservedSelectionDirection = librarySearch.selectionDirection;
+
+        if (isLibrarySearchActive()) {
+            cancelLibrarySearch();
+            librarySearchQuery = '';
+        }
+
+        const segmentCount = (path: string): number => path.split('/').filter((segment) => segment !== '').length;
+        const nextDepth = segmentCount(folderPath);
+        const currentDepth = segmentCount(currentFolderPath);
+        currentFolderPath = folderPath;
+        if (nextDepth < currentDepth) {
+            renderFolder('back');
+        } else if (nextDepth > currentDepth) {
+            renderFolder('forward');
+        } else {
+            renderFolder('none');
+        }
+
+        librarySearch.value = preservedValue;
+        if (preservedSelectionStart !== null && preservedSelectionEnd !== null) {
+            librarySearch.setSelectionRange(
+                preservedSelectionStart,
+                preservedSelectionEnd,
+                preservedSelectionDirection || undefined,
+            );
+        }
+    };
+
+    const tryHandlePastedLibraryPath = async (rawValue: string): Promise<boolean> => {
+        const normalizedPath = normalizePastedLibraryPath(rawValue);
+        if (!normalizedPath || !isLikelyAbsoluteLibraryPath(normalizedPath)) {
+            return false;
+        }
+
+        const folderPath = (await options.resolveLibraryFolderForAbsolutePath(normalizedPath)) || resolvePastedLibraryJumpFolder(normalizedPath);
+        if (folderPath === null || folderPath === '') {
+            suppressNextLibrarySearchPasteInput = false;
+            return false;
+        }
+
+        suppressNextLibrarySearchPasteInput = true;
+        jumpToFolderFromPastedPath(folderPath);
+        return true;
+    };
+
     const rebuildLibraryTree = (
         rootName: string,
         truncated: boolean,
-        _tracks: Track[],
-        _textFiles: TextLibraryFile[],
-        _imageFiles: ImageLibraryFile[],
+        tracks: Track[],
+        textFiles: TextLibraryFile[],
+        imageFiles: ImageLibraryFile[],
     ): Promise<void> => {
         libraryRootName = rootName || defaultLibraryRootLabel;
         libraryIndexTruncated = truncated;
+        rebuildPastedPathLookupCache(tracks, textFiles, imageFiles);
         cancelLibrarySearch();
         if (sidebarOpen) {
             renderFolder('none');
@@ -1425,6 +1638,11 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         currentFolderPath = '';
         sidebarAutoFolderPath = '';
         libraryIndexTruncated = false;
+        pastedPathLookupCache = {
+            indexedFolderPathByKey: new Map<string, string>(),
+            indexedFileFolderPathByKey: new Map<string, string>(),
+            monitoredRoots: [],
+        };
         clearLibrarySearch();
         libraryBrowser.innerHTML = '';
         setViewportLoadingIndicatorVisible(false);
@@ -1435,8 +1653,52 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         setSidebarOpen(!sidebarOpen);
     });
 
-    librarySearch.addEventListener('input', () => {
+    librarySearch.addEventListener('beforeinput', (event) => {
+        if (!(event instanceof InputEvent) || event.inputType !== 'insertFromPaste') {
+            return;
+        }
+
+        const pastedText = event.dataTransfer?.getData('text/plain') || event.data || '';
+        const normalizedPath = normalizePastedLibraryPath(pastedText);
+        if (!normalizedPath || !isLikelyAbsoluteLibraryPath(normalizedPath)) {
+            return;
+        }
+
+        suppressNextLibrarySearchPasteInput = true;
+        event.preventDefault();
+        event.stopPropagation();
+        void tryHandlePastedLibraryPath(pastedText);
+    });
+
+    librarySearch.addEventListener('input', (event) => {
+        if (suppressNextLibrarySearchPasteInput) {
+            suppressNextLibrarySearchPasteInput = false;
+            librarySearch.value = librarySearchQuery;
+            return;
+        }
+
+        if (event instanceof InputEvent && event.inputType === 'insertFromPaste') {
+            const pastedValue = librarySearch.value;
+            librarySearch.value = librarySearchQuery;
+            suppressNextLibrarySearchPasteInput = true;
+            void tryHandlePastedLibraryPath(pastedValue);
+            return;
+        }
+
         setLibrarySearchQuery(librarySearch.value);
+    });
+
+    librarySearch.addEventListener('paste', (event) => {
+        const pastedText = event.clipboardData?.getData('text') || '';
+        const normalizedPath = normalizePastedLibraryPath(pastedText);
+        if (!normalizedPath || !isLikelyAbsoluteLibraryPath(normalizedPath)) {
+            return;
+        }
+
+        suppressNextLibrarySearchPasteInput = true;
+        event.preventDefault();
+        event.stopPropagation();
+        void tryHandlePastedLibraryPath(pastedText);
     });
 
     librarySearch.addEventListener('keydown', (event) => {
