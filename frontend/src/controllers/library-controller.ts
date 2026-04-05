@@ -90,6 +90,7 @@ const searchDebounceMs = 180;
 const rowOverscanCount = 30;
 const initialRowHeightEstimatePx = 28;
 const defaultLibraryRootLabel = 'Selected folders';
+const searchTreeToggleDurationMs = 180;
 const sidebarToggleIconMarkup = '<svg class="sidebar-toggle-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M4 6.5C4 5.67 4.67 5 5.5 5H18.5C19.33 5 20 5.67 20 6.5C20 7.33 19.33 8 18.5 8H5.5C4.67 8 4 7.33 4 6.5ZM4 12C4 11.17 4.67 10.5 5.5 10.5H18.5C19.33 10.5 20 11.17 20 12C20 12.83 19.33 13.5 18.5 13.5H5.5C4.67 13.5 4 12.83 4 12ZM4 17.5C4 16.67 4.67 16 5.5 16H18.5C19.33 16 20 16.67 20 17.5C20 18.33 19.33 19 18.5 19H5.5C4.67 19 4 18.33 4 17.5Z"/></svg>';
 
 export const createLibraryController = (options: LibraryControllerOptions) => {
@@ -118,6 +119,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     let librarySearchDebounceHandle: number | undefined;
     let suppressNextLibrarySearchPasteInput = false;
     let activeSearchResult: SearchResultState | null = null;
+    let activeSearchTreeRoot: SearchTreeNode | null = null;
     let pastedPathLookupCache: PastedPathLookupCache = {
         indexedFolderPathByKey: new Map<string, string>(),
         indexedFileFolderPathByKey: new Map<string, string>(),
@@ -184,8 +186,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         const verticalInset = 8;
         const availableAbove = anchorRect.top - browserRect.top;
         const availableBelow = browserRect.bottom - anchorRect.bottom;
-        const renderBelow = availableAbove < (tooltipHeight + verticalInset)
-            && availableBelow >= (tooltipHeight + verticalInset);
+        const renderBelow = availableBelow >= (tooltipHeight + verticalInset)
+            || availableBelow >= availableAbove;
         folderEnumerationTooltip.classList.toggle('is-below', renderBelow);
 
         let top = renderBelow
@@ -671,6 +673,24 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         return root;
     };
 
+    const findSearchTreeNode = (root: SearchTreeNode, path: string): SearchTreeNode | null => {
+        if (path.trim() === '') {
+            return root;
+        }
+
+        const segments = path.split('/').filter((segment) => segment !== '');
+        let current: SearchTreeNode | null = root;
+
+        for (const segment of segments) {
+            current = current.folders.find((folder) => folder.name === segment) || null;
+            if (!current) {
+                return null;
+            }
+        }
+
+        return current;
+    };
+
     const createLibraryIconElement = (kind: 'folder' | 'track' | 'text-file' | 'image-file'): HTMLSpanElement => {
         const icon = document.createElement('span');
         icon.className = `library-entry-icon ${kind}`;
@@ -721,7 +741,68 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         return entry.name;
     };
 
-    const appendSearchTreeRows = (list: HTMLUListElement, node: SearchTreeNode): void => {
+    const prefersReducedSearchTreeMotion = (): boolean => {
+        return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    };
+
+    const getSearchTreeChildList = (folderItem: HTMLLIElement): HTMLUListElement | null => {
+        for (const child of Array.from(folderItem.children)) {
+            if (child instanceof HTMLUListElement && child.classList.contains('library-tree-list')) {
+                return child;
+            }
+        }
+
+        return null;
+    };
+
+    const clearSearchTreeListAnimation = (list: HTMLUListElement): void => {
+        const cleanupHandle = Number(list.dataset.searchTreeAnimationHandle || '');
+        if (!Number.isNaN(cleanupHandle) && cleanupHandle > 0) {
+            window.clearTimeout(cleanupHandle);
+        }
+
+        delete list.dataset.searchTreeAnimationHandle;
+        list.classList.remove('is-collapsible', 'is-animating');
+        list.style.height = '';
+        list.style.opacity = '';
+    };
+
+    const scheduleSearchTreeListCleanup = (
+        list: HTMLUListElement,
+        cleanup: () => void,
+    ): void => {
+        const cleanupHandle = Number(list.dataset.searchTreeAnimationHandle || '');
+        if (!Number.isNaN(cleanupHandle) && cleanupHandle > 0) {
+            window.clearTimeout(cleanupHandle);
+        }
+
+        const nextCleanupHandle = window.setTimeout(() => {
+            delete list.dataset.searchTreeAnimationHandle;
+            cleanup();
+        }, searchTreeToggleDurationMs);
+
+        list.dataset.searchTreeAnimationHandle = String(nextCleanupHandle);
+    };
+
+    const setSearchFolderButtonExpanded = (
+        button: HTMLButtonElement,
+        folderName: string,
+        expandable: boolean,
+        expanded: boolean,
+    ): void => {
+        setLibraryEntryButtonContent(
+            button,
+            'folder',
+            folderName,
+            expandable ? (expanded ? '▾' : '▸') : '•',
+        );
+
+        button.classList.toggle('is-leaf', !expandable);
+        button.classList.toggle('is-expanded', expandable && expanded);
+        button.setAttribute('aria-expanded', expandable ? String(expanded) : 'false');
+    };
+
+    function appendSearchTreeRows(list: HTMLUListElement, node: SearchTreeNode): void {
         const sortedFolders = [...node.folders].sort((left, right) => compareLibraryLabels(left.name, right.name));
 
         for (const folder of sortedFolders) {
@@ -743,24 +824,13 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             if (hoveredBrowserEntryKey === button.dataset.hoverKey) {
                 button.classList.add('is-hovered');
             }
-            setLibraryEntryButtonContent(
-                button,
-                'folder',
-                folder.name,
-                hasChildren ? (isExpanded ? '▾' : '▸') : '•',
-            );
 
-            if (!hasChildren) {
-                button.classList.add('is-leaf');
-            }
-
+            setSearchFolderButtonExpanded(button, folder.name, hasChildren, isExpanded);
             folderItem.append(button);
 
             if (hasChildren && isExpanded) {
-                const childList = document.createElement('ul');
-                childList.className = 'library-tree-list';
-                appendSearchTreeRows(childList, folder);
-                if (childList.childElementCount > 0) {
+                const childList = createSearchTreeChildList(folder);
+                if (childList) {
                     folderItem.append(childList);
                 }
             }
@@ -805,11 +875,82 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         appendFileRows(node.trackEntries, 'track');
         appendFileRows(node.textFileEntries, 'text-file');
         appendFileRows(node.imageFileEntries, 'image-file');
+    }
+
+    function createSearchTreeChildList(node: SearchTreeNode): HTMLUListElement | null {
+        const childList = document.createElement('ul');
+        childList.className = 'library-tree-list';
+        appendSearchTreeRows(childList, node);
+        return childList.childElementCount > 0 ? childList : null;
+    }
+
+    const expandSearchTreeFolder = (folderItem: HTMLLIElement, folder: SearchTreeNode): void => {
+        let childList = getSearchTreeChildList(folderItem);
+        if (!childList) {
+            childList = createSearchTreeChildList(folder);
+            if (!childList) {
+                return;
+            }
+
+            folderItem.append(childList);
+        }
+
+        const listToAnimate = childList;
+
+        if (prefersReducedSearchTreeMotion()) {
+            clearSearchTreeListAnimation(listToAnimate);
+            return;
+        }
+
+        const currentHeight = listToAnimate.getBoundingClientRect().height;
+        clearSearchTreeListAnimation(listToAnimate);
+        listToAnimate.classList.add('is-collapsible', 'is-animating');
+        listToAnimate.style.height = `${Math.max(currentHeight, 0)}px`;
+        listToAnimate.style.opacity = currentHeight > 0 ? '1' : '0';
+        void listToAnimate.offsetHeight;
+
+        listToAnimate.style.height = `${listToAnimate.scrollHeight}px`;
+        listToAnimate.style.opacity = '1';
+
+        scheduleSearchTreeListCleanup(listToAnimate, () => {
+            listToAnimate.classList.remove('is-collapsible', 'is-animating');
+            listToAnimate.style.height = '';
+            listToAnimate.style.opacity = '';
+        });
+    };
+
+    const collapseSearchTreeFolder = (folderItem: HTMLLIElement): void => {
+        const childList = getSearchTreeChildList(folderItem);
+        if (!childList) {
+            return;
+        }
+
+        if (prefersReducedSearchTreeMotion()) {
+            clearSearchTreeListAnimation(childList);
+            childList.remove();
+            return;
+        }
+
+        const currentHeight = childList.getBoundingClientRect().height || childList.scrollHeight;
+        clearSearchTreeListAnimation(childList);
+        childList.classList.add('is-collapsible', 'is-animating');
+        childList.style.height = `${currentHeight}px`;
+        childList.style.opacity = '1';
+        void childList.offsetHeight;
+
+        childList.style.height = '0px';
+        childList.style.opacity = '0';
+
+        scheduleSearchTreeListCleanup(childList, () => {
+            childList.remove();
+        });
     };
 
     const createSearchPane = (): HTMLUListElement => {
         const pane = document.createElement('ul');
         pane.className = 'library-list-pane library-search-pane';
+
+        activeSearchTreeRoot = null;
 
         if (!activeSearchResult) {
             pane.innerHTML = `<li class="empty${librarySearchPending ? ' is-searching' : ''}">${librarySearchPending ? 'Searching...' : 'No files match your search'}</li>`;
@@ -828,7 +969,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         const rootList = document.createElement('ul');
         rootList.className = 'library-tree-list library-tree-root';
-        appendSearchTreeRows(rootList, buildSearchTree(activeSearchResult.entries));
+        activeSearchTreeRoot = buildSearchTree(activeSearchResult.entries);
+        appendSearchTreeRows(rootList, activeSearchTreeRoot);
 
         if (rootList.childElementCount === 0) {
             pane.innerHTML = `<li class="empty${activeSearchResult.loading ? ' is-searching' : ''}">${activeSearchResult.loading ? 'Searching...' : 'No files match your search'}</li>`;
@@ -1730,13 +1872,33 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 return;
             }
 
-            if (expandedSearchFolders.has(searchFolderPath)) {
-                expandedSearchFolders.delete(searchFolderPath);
-            } else {
-                expandedSearchFolders.add(searchFolderPath);
+            const folderItem = button.closest('.library-tree-node');
+            if (!(folderItem instanceof HTMLLIElement) || !activeSearchTreeRoot) {
+                if (expandedSearchFolders.has(searchFolderPath)) {
+                    expandedSearchFolders.delete(searchFolderPath);
+                } else {
+                    expandedSearchFolders.add(searchFolderPath);
+                }
+
+                renderFolder('none');
+                return;
             }
 
-            renderFolder('none');
+            const folder = findSearchTreeNode(activeSearchTreeRoot, searchFolderPath);
+            if (!folder) {
+                renderFolder('none');
+                return;
+            }
+
+            if (expandedSearchFolders.has(searchFolderPath)) {
+                expandedSearchFolders.delete(searchFolderPath);
+                setSearchFolderButtonExpanded(button, folder.name, true, false);
+                collapseSearchTreeFolder(folderItem);
+            } else {
+                expandedSearchFolders.add(searchFolderPath);
+                setSearchFolderButtonExpanded(button, folder.name, true, true);
+                expandSearchTreeFolder(folderItem, folder);
+            }
             return;
         }
 
