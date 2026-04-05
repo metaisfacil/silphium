@@ -324,6 +324,169 @@
     opacity: 0.7;
 }
 
+.share-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 32;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    box-sizing: border-box;
+}
+
+.share-modal[hidden] {
+    display: none;
+}
+
+.share-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.62);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+
+.share-dialog {
+    position: relative;
+    width: min(680px, calc(100vw - 2.5rem));
+    max-height: calc(100dvh - 2rem);
+    display: flex;
+    flex-direction: column;
+    background: rgba(18, 18, 20, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.9rem;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.share-modal.is-visible .share-backdrop {
+    opacity: 1;
+}
+
+.share-modal.is-visible .share-dialog {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.share-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.8rem 0.95rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.share-title {
+    margin: 0;
+    font-size: 0.96rem;
+    font-weight: 700;
+}
+
+.share-close {
+    width: 1.85rem;
+    height: 1.85rem;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.share-content {
+    display: grid;
+    gap: 0.95rem;
+    padding: 1rem;
+}
+
+.share-preview-shell {
+    display: grid;
+    place-items: center;
+    padding: 0.35rem;
+    border-radius: 1rem;
+    background:
+        radial-gradient(circle at top left, rgba(104, 180, 255, 0.14), transparent 44%),
+        radial-gradient(circle at bottom right, rgba(255, 154, 115, 0.12), transparent 42%),
+        rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.share-preview {
+    display: block;
+    width: min(600px, 100%);
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: 12 / 7;
+    border-radius: 0.8rem;
+    background: #12151d;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.28);
+}
+
+.share-field {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.share-comment-input {
+    width: 100%;
+    min-height: 5.4rem;
+    resize: vertical;
+    padding: 0.8rem 0.9rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: inherit;
+    font: inherit;
+    box-sizing: border-box;
+}
+
+.share-comment-input:focus {
+    outline: none;
+    border-color: rgba(121, 190, 255, 0.62);
+    box-shadow: 0 0 0 1px rgba(121, 190, 255, 0.22);
+}
+
+.share-status {
+    margin: 0;
+    min-height: 1.2rem;
+    font-size: 0.8rem;
+    color: rgba(214, 223, 236, 0.72);
+}
+
+.share-status[data-tone="success"] {
+    color: rgba(170, 237, 188, 0.95);
+}
+
+.share-status[data-tone="error"] {
+    color: rgba(255, 170, 170, 0.96);
+}
+
+.share-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.65rem;
+}
+
+@media (max-width: 720px) {
+    .share-content {
+        padding: 0.85rem;
+    }
+
+    .share-actions {
+        justify-content: stretch;
+    }
+
+    .share-actions > button {
+        flex: 1 1 0;
+    }
+}
+
 .settings-modal {
     position: fixed;
     inset: 0;

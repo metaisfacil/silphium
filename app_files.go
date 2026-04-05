@@ -37,6 +37,30 @@ func (a *App) ReadFileBase64(path string) string {
 	return base64.StdEncoding.EncodeToString(rawBytes)
 }
 
+// SaveShareImageFile decodes a base64 PNG payload and writes it to the requested path.
+func (a *App) SaveShareImageFile(path string, imageBase64 string) bool {
+	cleanPath := strings.TrimSpace(path)
+	if cleanPath == "" {
+		return false
+	}
+
+	payload := strings.TrimSpace(imageBase64)
+	if payload == "" {
+		return false
+	}
+
+	if commaIndex := strings.Index(payload, ","); commaIndex >= 0 && strings.Contains(payload[:commaIndex], ";base64") {
+		payload = payload[commaIndex+1:]
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil || len(decoded) == 0 {
+		return false
+	}
+
+	return os.WriteFile(cleanPath, decoded, 0o644) == nil
+}
+
 // ReadImageThumbnail reads an image from the allowed library scope and returns a cheap thumbnail.
 func (a *App) ReadImageThumbnail(path string, maxEdge int) EmbeddedCoverArt {
 	if !a.isAllowedLibraryPath(path) {

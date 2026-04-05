@@ -158,6 +158,10 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
+export function SaveShareImageFile(arg1, arg2) {
+  return window['go']['main']['App']['SaveShareImageFile'](arg1, arg2);
+}
+
 export function ScanConfiguredLibraryFolders() {
   return window['go']['main']['App']['ScanConfiguredLibraryFolders']();
 }
@@ -180,6 +184,10 @@ export function SelectPlaylistFile() {
 
 export function SelectPlaylistSaveFile() {
   return window['go']['main']['App']['SelectPlaylistSaveFile']();
+}
+
+export function SelectShareImageSaveFile(arg1) {
+  return window['go']['main']['App']['SelectShareImageSaveFile'](arg1);
 }
 
 export function ShowErrorDialog(arg1, arg2) {

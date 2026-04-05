@@ -7,6 +7,7 @@ export * from './playlist-menu';
 export * from './playlist-modal';
 export * from './queue-confirm-modal';
 export * from './settings-modal';
+export * from './share-modal';
 export * from './sidebar-queue-menu';
 export * from './technical-info-modal';
 export * from './text-file-modal';

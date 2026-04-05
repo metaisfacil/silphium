@@ -20,6 +20,7 @@ import {
 } from './services/library-data-service';
 import { createPlaybackSequencingService } from './services/playback-sequencing-service';
 import { createScrobbleService } from './services/scrobble-service';
+import { canvasToPngBlob, loadShareCanvasImage, renderShareImagePreview } from './services/share-image-service';
 import { createPlaybackStateService } from './services/playback-state-service';
 import { createCoverArtService } from './services/cover-art-service';
 import { createTrackMetadataService } from './services/track-metadata-service';
@@ -33,6 +34,7 @@ import {
     getPlaylistMenuElements,
     getPlaylistModalElements,
     getQueueConfirmModalElements,
+    getShareModalElements,
     getSidebarQueueMenuElements,
     getSettingsModalElements,
     getTechnicalInfoModalElements,
@@ -46,6 +48,7 @@ import {
     renderPlaylistMenu,
     renderPlaylistModal,
     renderQueueConfirmModal,
+    renderShareModal,
     renderSidebarQueueMenu,
     renderSettingsModal,
     renderTechnicalInfoModal,
@@ -90,11 +93,13 @@ import {
     ReadTextFile,
     ReadTrackTags,
     SavePlaylistFile,
+    SaveShareImageFile,
     SaveSettings,
     SearchLibrary,
     SelectLibraryFolder,
     SelectPlaylistFile,
     SelectPlaylistSaveFile,
+    SelectShareImageSaveFile,
     SubmitListenBrainz,
     SubmitListenBrainzRecordingFeedback,
 } from '../wailsjs/go/main/App';
@@ -166,6 +171,7 @@ app.innerHTML = `
         ${renderMusicBrainzEntityModal()}
         ${renderTechnicalInfoModal()}
         ${renderSettingsModal()}
+        ${renderShareModal()}
         ${renderPlayOrderMenu()}
         ${renderTrackMetaMenu()}
         ${renderSidebarQueueMenu()}
@@ -195,6 +201,7 @@ let musicBrainzEntityModalHideTimer: number | undefined;
 let technicalInfoModalHideTimer: number | undefined;
 let aboutModalHideTimer: number | undefined;
 let errorModalHideTimer: number | undefined;
+let shareModalHideTimer: number | undefined;
 let isSeeking = false;
 let playbackMutationVersion = 0;
 let playPauseToggleInFlight = false;
@@ -230,10 +237,19 @@ let sidebarQueueFolderPath = '';
 let sidebarQueueFolderLabel = '';
 let sidebarQueueFolderTarget = false;
 let queueConfirmResolver: ((confirmed: boolean) => void) | null = null;
+let sharePreviewRequestVersion = 0;
+let sharePreviewSnapshot: {
+    title: string;
+    album: string;
+    artist: string;
+    trackPath: string;
+    coverImage?: ImageBitmap;
+} | null = null;
 const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const aboutModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const errorModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+const shareModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const sidebarQueueDescendantPromptThreshold = 200;
 const selectedLibraryRootLabel = 'Selected folders';
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
@@ -376,7 +392,7 @@ const {
     back,
     playPause,
     forward,
-    openFolderBtn,
+    shareBtn,
     volume,
 } = getMediaControlsElements(document);
 const listenBrainzController = createListenBrainzController({
@@ -440,9 +456,20 @@ const setCtrlHeldState = (held: boolean): void => {
 
 const PLAYER_CARD_LAYOUT_KEY = 'playerCardLayout';
 const LIBRARY_CLIENT_FINALIZE_MS_KEY = 'libraryClientFinalizeEstimateMs';
+const SHARE_IMAGE_COMMENT_KEY = 'shareImageComment';
+const defaultShareImageComment = 'Listening right now.';
 
 const getStoredLayout = (): PlayerCardLayout =>
     localStorage.getItem(PLAYER_CARD_LAYOUT_KEY) === 'release' ? 'release' : 'default';
+
+const getStoredShareImageComment = (): string => {
+    const stored = localStorage.getItem(SHARE_IMAGE_COMMENT_KEY);
+    return stored === null ? defaultShareImageComment : stored;
+};
+
+const persistShareImageComment = (comment: string): void => {
+    localStorage.setItem(SHARE_IMAGE_COMMENT_KEY, comment);
+};
 
 const applyPlayerCardLayout = (layout: PlayerCardLayout): void => {
     playerCard.classList.toggle('layout-release', layout === 'release');
@@ -648,6 +675,7 @@ const {
 } = getMusicBrainzEntityModalElements(document);
 const { technicalInfoModal, technicalInfoBackdrop, technicalInfoTitle, technicalInfoContent, technicalInfoClose } = getTechnicalInfoModalElements(document);
 const settingsElements = getSettingsModalElements(document);
+const { shareModal, shareBackdrop, shareDialog, shareClose, sharePreview, shareCommentInput, shareStatus, shareSave, shareCopy } = getShareModalElements(document);
 const { playOrderMenu } = getPlayOrderMenuElements(document);
 const {
     trackMetaMenu,
@@ -1773,6 +1801,247 @@ const openCurrentTrackFolderInFileBrowser = async (): Promise<void> => {
         await OpenFolderInFileBrowser(trackPath);
     } catch (error) {
         console.error(error);
+    }
+};
+
+const clearSharePreviewSnapshot = (): void => {
+    if (sharePreviewSnapshot?.coverImage) {
+        sharePreviewSnapshot.coverImage.close();
+    }
+
+    sharePreviewSnapshot = null;
+};
+
+const clearSharePreviewCanvas = (message = 'Generating preview...'): void => {
+    const context = sharePreview.getContext('2d');
+    if (!context) {
+        return;
+    }
+
+    context.clearRect(0, 0, sharePreview.width, sharePreview.height);
+    context.fillStyle = '#12151d';
+    context.fillRect(0, 0, sharePreview.width, sharePreview.height);
+    context.fillStyle = 'rgba(255, 255, 255, 0.72)';
+    context.font = '600 20px "Nunito", "Segoe UI", sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(message, sharePreview.width / 2, sharePreview.height / 2);
+};
+
+const setShareActionsDisabled = (disabled: boolean): void => {
+    shareSave.disabled = disabled;
+    shareCopy.disabled = disabled;
+};
+
+const setShareStatus = (message: string, tone: '' | 'success' | 'error' = ''): void => {
+    shareStatus.textContent = message;
+    if (tone) {
+        shareStatus.dataset.tone = tone;
+        return;
+    }
+
+    delete shareStatus.dataset.tone;
+};
+
+const buildShareImageDefaultFilename = (artist: string, album: string, title: string): string => {
+    const sanitizeSegment = (value: string): string => value
+        .replace(/[<>:"/\\|?*\u0000-\u001F]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const parts = [sanitizeSegment(artist), sanitizeSegment(album), sanitizeSegment(title)].filter((part) => part !== '');
+    const joined = parts.join(' - ');
+    const fallback = joined || 'silphium-share';
+    return `${fallback.slice(0, 120)}.png`;
+};
+
+const blobToBase64 = async (blob: Blob): Promise<string> => {
+    return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error ?? new Error('Unable to read share image data'));
+        reader.onload = () => {
+            if (typeof reader.result !== 'string') {
+                reject(new Error('Unexpected share image encoding result'));
+                return;
+            }
+
+            const commaIndex = reader.result.indexOf(',');
+            resolve(commaIndex >= 0 ? reader.result.slice(commaIndex + 1) : reader.result);
+        };
+        reader.readAsDataURL(blob);
+    });
+};
+
+const renderSharePreviewSnapshot = (): void => {
+    if (!sharePreviewSnapshot) {
+        return;
+    }
+
+    renderShareImagePreview(sharePreview, {
+        title: sharePreviewSnapshot.title,
+        album: sharePreviewSnapshot.album,
+        artist: sharePreviewSnapshot.artist,
+        comment: shareCommentInput.value,
+        coverImage: sharePreviewSnapshot.coverImage,
+    });
+};
+
+const resolveShareCoverSource = async (track: Track): Promise<string | undefined> => {
+    const currentTrack = currentTrackIndex >= 0 && currentTrackIndex < tracks.length ? tracks[currentTrackIndex] : undefined;
+    if (currentTrack && currentTrack.path === track.path && coverArt.classList.contains('is-visible') && coverArt.src) {
+        return coverArt.src;
+    }
+
+    const resolved = await resolveCoverForTrack(track);
+    return coverArtService.getCachedMediaArtwork(track)?.src || resolved;
+};
+
+const closeShareModal = (): void => {
+    sharePreviewRequestVersion += 1;
+    shareModal.classList.remove('is-visible');
+
+    if (shareModalHideTimer !== undefined) {
+        window.clearTimeout(shareModalHideTimer);
+    }
+
+    shareModalHideTimer = window.setTimeout(() => {
+        clearSharePreviewSnapshot();
+        clearSharePreviewCanvas('Share current track');
+        shareModal.hidden = true;
+        shareModalHideTimer = undefined;
+    }, shareModalTransitionMs);
+};
+
+const openShareModal = async (): Promise<void> => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return;
+    }
+
+    closePlayOrderMenu();
+    closeTrackMetaMenu();
+    closeListenBrainzFeedbackMenu();
+    closeSidebarQueueMenu();
+    playlistController.closeMenu();
+
+    if (shareModalHideTimer !== undefined) {
+        window.clearTimeout(shareModalHideTimer);
+        shareModalHideTimer = undefined;
+    }
+
+    const selectedTrack = tracks[currentTrackIndex];
+    const requestVersion = ++sharePreviewRequestVersion;
+    clearSharePreviewSnapshot();
+    shareCommentInput.value = getStoredShareImageComment();
+    clearSharePreviewCanvas();
+    setShareStatus('Generating preview...');
+    setShareActionsDisabled(true);
+    shareDialog.scrollTop = 0;
+    shareModal.hidden = false;
+    window.requestAnimationFrame(() => {
+        shareModal.classList.add('is-visible');
+        shareCommentInput.focus({ preventScroll: true });
+        shareCommentInput.setSelectionRange(shareCommentInput.value.length, shareCommentInput.value.length);
+    });
+
+    try {
+        const selectedTrackPath = selectedTrack.path;
+        try {
+            await ensureTrackTagsResolved(currentTrackIndex);
+        } catch (error) {
+            console.error(error);
+        }
+
+        const resolvedIndex = trackIndexForPath(selectedTrackPath);
+        const track = resolvedIndex >= 0 && resolvedIndex < tracks.length ? tracks[resolvedIndex] : selectedTrack;
+        const coverSource = await resolveShareCoverSource(track);
+        const coverImage = await loadShareCanvasImage(coverSource);
+        if (requestVersion !== sharePreviewRequestVersion) {
+            coverImage?.close();
+            return;
+        }
+
+        sharePreviewSnapshot = {
+            title: track.displayTitle || track.title || track.name || 'Unknown Title',
+            album: track.displayAlbum || 'Unknown Album',
+            artist: track.displayArtist || 'Unknown Artist',
+            trackPath: track.path,
+            coverImage,
+        };
+        renderSharePreviewSnapshot();
+        setShareStatus('');
+    } catch (error) {
+        console.error(error);
+        clearSharePreviewSnapshot();
+        clearSharePreviewCanvas('Unable to render preview');
+        setShareStatus('Unable to generate share preview.', 'error');
+    } finally {
+        if (requestVersion === sharePreviewRequestVersion) {
+            setShareActionsDisabled(false);
+        }
+    }
+};
+
+const saveSharePreview = async (): Promise<void> => {
+    if (!sharePreviewSnapshot) {
+        return;
+    }
+
+    setShareActionsDisabled(true);
+    setShareStatus('Saving image...');
+
+    try {
+        const blob = await canvasToPngBlob(sharePreview);
+        const targetPath = await SelectShareImageSaveFile(buildShareImageDefaultFilename(
+            sharePreviewSnapshot.artist,
+            sharePreviewSnapshot.album,
+            sharePreviewSnapshot.title,
+        ));
+        if (targetPath === '') {
+            setShareStatus('');
+            return;
+        }
+
+        const saved = await SaveShareImageFile(targetPath, await blobToBase64(blob));
+        if (!saved) {
+            setShareStatus('Unable to save the share image.', 'error');
+            return;
+        }
+
+        setShareStatus('Saved image.', 'success');
+    } catch (error) {
+        console.error(error);
+        setShareStatus('Unable to save the share image.', 'error');
+    } finally {
+        setShareActionsDisabled(false);
+    }
+};
+
+const copySharePreview = async (): Promise<void> => {
+    if (!sharePreviewSnapshot) {
+        return;
+    }
+
+    setShareActionsDisabled(true);
+    setShareStatus('Copying image...');
+
+    try {
+        const blob = await canvasToPngBlob(sharePreview);
+        const clipboard = navigator.clipboard as Clipboard & { write?: (items: unknown[]) => Promise<void> };
+        const clipboardItemCtor = (window as Window & {
+            ClipboardItem?: new (items: Record<string, Blob>) => unknown;
+        }).ClipboardItem;
+
+        if (!clipboard.write || !clipboardItemCtor) {
+            throw new Error('Clipboard image copy is not available in this environment');
+        }
+
+        await clipboard.write([new clipboardItemCtor({ 'image/png': blob })]);
+        setShareStatus('Copied image to clipboard.', 'success');
+    } catch (error) {
+        console.error(error);
+        setShareStatus('Unable to copy the share image.', 'error');
+    } finally {
+        setShareActionsDisabled(false);
     }
 };
 
@@ -3729,6 +3998,30 @@ musicBrainzEntityClose.addEventListener('click', () => {
     closeMusicBrainzEntityModal();
 });
 
+shareBackdrop.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeShareModal();
+});
+
+shareClose.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeShareModal();
+});
+
+shareCommentInput.addEventListener('input', () => {
+    persistShareImageComment(shareCommentInput.value);
+    renderSharePreviewSnapshot();
+    setShareStatus('');
+});
+
+shareSave.addEventListener('click', () => {
+    void saveSharePreview();
+});
+
+shareCopy.addEventListener('click', () => {
+    void copySharePreview();
+});
+
 technicalInfoBackdrop.addEventListener('click', () => {
     suppressTrackMetaClicks();
     closeTechnicalInfoModal();
@@ -3796,6 +4089,11 @@ document.addEventListener('keydown', (event) => {
 
     if (!musicBrainzEntityModal.hidden) {
         closeMusicBrainzEntityModal();
+        return;
+    }
+
+    if (!shareModal.hidden) {
+        closeShareModal();
         return;
     }
 
@@ -3878,8 +4176,8 @@ forward.addEventListener('click', () => {
     goToTrack(1);
 });
 
-openFolderBtn.addEventListener('click', () => {
-    void openCurrentTrackFolderInFileBrowser();
+shareBtn.addEventListener('click', () => {
+    void openShareModal();
 });
 
 seek.addEventListener('input', () => {

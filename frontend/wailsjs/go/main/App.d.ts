@@ -80,6 +80,8 @@ export function SavePlaylistFile(arg1:string,arg2:Array<string>):Promise<boolean
 
 export function SaveSettings(arg1:main.AppSettings):Promise<main.AppSettings>;
 
+export function SaveShareImageFile(arg1:string,arg2:string):Promise<boolean>;
+
 export function ScanConfiguredLibraryFolders():Promise<main.LibraryScanResult>;
 
 export function ScanLibraryFolder(arg1:string):Promise<main.LibraryScanResult>;
@@ -91,6 +93,8 @@ export function SelectLibraryFolder():Promise<string>;
 export function SelectPlaylistFile():Promise<string>;
 
 export function SelectPlaylistSaveFile():Promise<string>;
+
+export function SelectShareImageSaveFile(arg1:string):Promise<string>;
 
 export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
 

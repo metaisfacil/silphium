@@ -7,6 +7,34 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+var shareImageFilenameSanitizer = strings.NewReplacer(
+	"<", "_",
+	">", "_",
+	":", "_",
+	"\"", "_",
+	"/", "_",
+	"\\", "_",
+	"|", "_",
+	"?", "_",
+	"*", "_",
+)
+
+func sanitizeShareImageFilename(defaultFilename string) string {
+	cleanName := strings.TrimSpace(defaultFilename)
+	if cleanName == "" {
+		return "silphium-share.png"
+	}
+
+	cleanName = shareImageFilenameSanitizer.Replace(cleanName)
+	cleanName = strings.Join(strings.Fields(cleanName), " ")
+	cleanName = strings.TrimRight(cleanName, ". ")
+	if cleanName == "" {
+		return "silphium-share.png"
+	}
+
+	return cleanName
+}
+
 // SelectLibraryFolder opens a directory picker and returns the selected library path.
 func (a *App) SelectLibraryFolder() string {
 	selectedPath, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
@@ -57,6 +85,32 @@ func (a *App) SelectPlaylistSaveFile() string {
 	ext := strings.ToLower(filepath.Ext(cleanPath))
 	if ext != ".m3u" && ext != ".m3u8" {
 		cleanPath += ".m3u8"
+	}
+
+	return cleanPath
+}
+
+// SelectShareImageSaveFile opens a save dialog and returns a target PNG path for the current share image.
+func (a *App) SelectShareImageSaveFile(defaultFilename string) string {
+	selectedPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save Share Image As",
+		DefaultFilename: sanitizeShareImageFilename(defaultFilename),
+		Filters: []runtime.FileFilter{{
+			DisplayName: "PNG Images",
+			Pattern:     "*.png",
+		}},
+	})
+	if err != nil {
+		return ""
+	}
+
+	cleanPath := strings.TrimSpace(selectedPath)
+	if cleanPath == "" {
+		return ""
+	}
+
+	if strings.ToLower(filepath.Ext(cleanPath)) != ".png" {
+		cleanPath += ".png"
 	}
 
 	return cleanPath

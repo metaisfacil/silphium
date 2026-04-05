@@ -1561,6 +1561,8 @@
     transform: translate(-50%, 0);
 }
 
-.open-folder-btn {
-    font-size: clamp(0.9rem, 3.2cqw, 1.05rem);
+.share-btn .control-icon {
+    width: clamp(1.08rem, 3.75cqw, 1.34rem);
+    height: clamp(1.08rem, 3.75cqw, 1.34rem);
+    transform: translateY(-1px);
 }

@@ -40,7 +40,7 @@ export type MediaControlsElements = {
     back: HTMLButtonElement;
     playPause: HTMLButtonElement;
     forward: HTMLButtonElement;
-    openFolderBtn: HTMLButtonElement;
+    shareBtn: HTMLButtonElement;
     volume: HTMLInputElement;
 };
 
@@ -54,6 +54,12 @@ const renderPauseIcon = (): string => `
     <svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
       <path fill="currentColor" d="M8 5.5C8 4.67 8.67 4 9.5 4C10.33 4 11 4.67 11 5.5V18.5C11 19.33 10.33 20 9.5 20C8.67 20 8 19.33 8 18.5V5.5Z"/>
       <path fill="currentColor" d="M13 5.5C13 4.67 13.67 4 14.5 4C15.33 4 16 4.67 16 5.5V18.5C16 19.33 15.33 20 14.5 20C13.67 20 13 19.33 13 18.5V5.5Z"/>
+    </svg>
+`;
+
+const renderShareIcon = (): string => `
+    <svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor" d="M15 5.75C15 4.23 16.23 3 17.75 3C19.27 3 20.5 4.23 20.5 5.75C20.5 7.27 19.27 8.5 17.75 8.5C17.05 8.5 16.42 8.24 15.94 7.81L8.91 11.83C8.97 12.1 9 12.42 9 12.75C9 13.08 8.97 13.4 8.91 13.67L15.94 17.69C16.42 17.26 17.05 17 17.75 17C19.27 17 20.5 18.23 20.5 19.75C20.5 21.27 19.27 22.5 17.75 22.5C16.23 22.5 15 21.27 15 19.75C15 19.42 15.03 19.1 15.09 18.83L8.06 14.81C7.58 15.24 6.95 15.5 6.25 15.5C4.73 15.5 3.5 14.27 3.5 12.75C3.5 11.23 4.73 10 6.25 10C6.95 10 7.58 10.26 8.06 10.69L15.09 6.67C15.03 6.4 15 6.08 15 5.75Z"/>
     </svg>
 `;
 
@@ -123,7 +129,7 @@ export const renderMediaControls = (): string => `
               <input id="volume" class="slider" type="range" min="0" max="1" value="0.8" step="0.01">
             </div>
           </div>
-          <button id="open-folder-btn" class="control-btn open-folder-btn" type="button" aria-label="Open containing folder" title="Open containing folder"><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M3 6.5C3 5.12 4.12 4 5.5 4H9.09C9.75 4 10.37 4.26 10.83 4.72L12.11 6H18.5C19.88 6 21 7.12 21 8.5V17.5C21 18.88 19.88 20 18.5 20H5.5C4.12 20 3 18.88 3 17.5V6.5Z"/></svg></button>
+          <button id="share-btn" class="control-btn share-btn" type="button" aria-label="Share current track" title="Share current track">${renderShareIcon()}</button>
         </div>
         <div id="listenbrainz-feedback-menu" class="track-meta-menu listenbrainz-feedback-menu" role="menu" aria-label="ListenBrainz feedback" hidden>
           <button id="listenbrainz-feedback-love-btn" class="track-meta-menu-item" type="button" role="menuitem">Love</button>
@@ -180,6 +186,6 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     back: root.querySelector('#back') as HTMLButtonElement,
     playPause: root.querySelector('#play-pause') as HTMLButtonElement,
     forward: root.querySelector('#forward') as HTMLButtonElement,
-    openFolderBtn: root.querySelector('#open-folder-btn') as HTMLButtonElement,
+    shareBtn: root.querySelector('#share-btn') as HTMLButtonElement,
     volume: root.querySelector('#volume') as HTMLInputElement,
 });
