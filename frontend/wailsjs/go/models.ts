@@ -62,7 +62,9 @@ export namespace main {
 	    ffmpegPath?: string;
 	    listenBrainzUserToken: string;
 	    musicBrainzServerUrl?: string;
+	    musicBrainzRequestRateMs?: number;
 	    listenBrainzServerUrl?: string;
+	    listenBrainzRequestRateMs?: number;
 	    playbackOrder: string;
 	    releaseDepth?: number;
 	    favoritePlaylists?: string[];
@@ -84,7 +86,9 @@ export namespace main {
 	        this.ffmpegPath = source["ffmpegPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	        this.musicBrainzServerUrl = source["musicBrainzServerUrl"];
+	        this.musicBrainzRequestRateMs = source["musicBrainzRequestRateMs"];
 	        this.listenBrainzServerUrl = source["listenBrainzServerUrl"];
+	        this.listenBrainzRequestRateMs = source["listenBrainzRequestRateMs"];
 	        this.playbackOrder = source["playbackOrder"];
 	        this.releaseDepth = source["releaseDepth"];
 	        this.favoritePlaylists = source["favoritePlaylists"];

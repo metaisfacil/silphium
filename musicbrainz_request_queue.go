@@ -22,9 +22,9 @@ type musicBrainzFetchResult struct {
 }
 
 type musicBrainzFetchRequest struct {
-	requestURL string
-	rateLimit  bool
-	result     chan musicBrainzFetchResult
+	requestURL  string
+	rateLimitMs int
+	result      chan musicBrainzFetchResult
 }
 
 type musicBrainzRequestQueue struct {
@@ -43,16 +43,16 @@ func newMusicBrainzRequestQueue() *musicBrainzRequestQueue {
 	return queue
 }
 
-func (q *musicBrainzRequestQueue) do(requestURL string, priority musicBrainzRequestPriority, rateLimit bool) ([]byte, bool) {
+func (q *musicBrainzRequestQueue) do(requestURL string, priority musicBrainzRequestPriority, rateLimitMs int) ([]byte, bool) {
 	cleanRequestURL := strings.TrimSpace(requestURL)
 	if cleanRequestURL == "" {
 		return nil, false
 	}
 
 	request := &musicBrainzFetchRequest{
-		requestURL: cleanRequestURL,
-		rateLimit:  rateLimit,
-		result:     make(chan musicBrainzFetchResult, 1),
+		requestURL:  cleanRequestURL,
+		rateLimitMs: rateLimitMs,
+		result:      make(chan musicBrainzFetchResult, 1),
 	}
 
 	q.mu.Lock()
@@ -91,8 +91,8 @@ func (q *musicBrainzRequestQueue) run() {
 		}
 
 		responseBody, ok := fetchMusicBrainzHTTPRequest(request.requestURL)
-		if request.rateLimit {
-			nextAllowedAt = time.Now().Add(1 * time.Second)
+		if request.rateLimitMs > 0 {
+			nextAllowedAt = time.Now().Add(time.Duration(request.rateLimitMs) * time.Millisecond)
 		} else {
 			nextAllowedAt = time.Time{}
 		}
@@ -117,12 +117,12 @@ func (q *musicBrainzRequestQueue) popNextLocked() *musicBrainzFetchRequest {
 	return nil
 }
 
-func fetchMusicBrainzJSONWithPriority(requestURL string, priority musicBrainzRequestPriority, rateLimit bool) ([]byte, bool) {
-	return defaultMusicBrainzRequestQueue.do(requestURL, priority, rateLimit)
+func fetchMusicBrainzJSONWithPriority(requestURL string, priority musicBrainzRequestPriority, rateLimitMs int) ([]byte, bool) {
+	return defaultMusicBrainzRequestQueue.do(requestURL, priority, rateLimitMs)
 }
 
-func fetchMusicBrainzPayloadWithPriority(requestURL string, priority musicBrainzRequestPriority, rateLimit bool) (map[string]any, bool) {
-	responseBody, ok := fetchMusicBrainzJSONWithPriority(requestURL, priority, rateLimit)
+func fetchMusicBrainzPayloadWithPriority(requestURL string, priority musicBrainzRequestPriority, rateLimitMs int) (map[string]any, bool) {
+	responseBody, ok := fetchMusicBrainzJSONWithPriority(requestURL, priority, rateLimitMs)
 	if !ok {
 		return nil, false
 	}

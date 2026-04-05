@@ -98,7 +98,11 @@ type listenBrainzRecordingFeedbackLookupResponse struct {
 	Feedback []listenBrainzRecordingFeedbackItem `json:"feedback"`
 }
 
-func waitForListenBrainzRequestSlot() {
+func waitForListenBrainzRequestSlot(rateLimitMs int) {
+	if rateLimitMs <= 0 {
+		return
+	}
+
 	listenBrainzFetchMu.Lock()
 	defer listenBrainzFetchMu.Unlock()
 
@@ -107,7 +111,7 @@ func waitForListenBrainzRequestSlot() {
 		time.Sleep(nextListenBrainzFetchAt.Sub(now))
 	}
 
-	nextListenBrainzFetchAt = time.Now().Add(1 * time.Second)
+	nextListenBrainzFetchAt = time.Now().Add(time.Duration(rateLimitMs) * time.Millisecond)
 }
 
 func normalizedListenBrainzFeedbackScore(score int) int {
@@ -144,14 +148,13 @@ func (a *App) listenBrainzServerURL() string {
 	return u
 }
 
-func (a *App) listenBrainzRateLimit() bool {
-	return strings.EqualFold(a.listenBrainzServerURL(), listenBrainzPublicServerURL)
+func (a *App) listenBrainzRequestRateMs() int {
+	a.ensureSettingsLoaded()
+	return a.settings.ListenBrainzRequestRateMs
 }
 
 func (a *App) waitForListenBrainzRequestSlotIfNeeded() {
-	if a.listenBrainzRateLimit() {
-		waitForListenBrainzRequestSlot()
-	}
+	waitForListenBrainzRequestSlot(a.listenBrainzRequestRateMs())
 }
 
 func (a *App) listenBrainzToken() (string, error) {

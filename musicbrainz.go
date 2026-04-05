@@ -348,12 +348,12 @@ func (b *musicBrainzExplorationBuilder) sortedEdges() []MusicBrainzExplorationEd
 	return edges
 }
 
-func fetchMusicBrainzJSON(requestURL string, rateLimit bool) ([]byte, bool) {
-	return fetchMusicBrainzJSONWithPriority(requestURL, musicBrainzRequestPriorityInteractive, rateLimit)
+func fetchMusicBrainzJSON(requestURL string, rateLimitMs int) ([]byte, bool) {
+	return fetchMusicBrainzJSONWithPriority(requestURL, musicBrainzRequestPriorityInteractive, rateLimitMs)
 }
 
-func fetchMusicBrainzPayload(requestURL string, rateLimit bool) (map[string]any, bool) {
-	return fetchMusicBrainzPayloadWithPriority(requestURL, musicBrainzRequestPriorityInteractive, rateLimit)
+func fetchMusicBrainzPayload(requestURL string, rateLimitMs int) (map[string]any, bool) {
+	return fetchMusicBrainzPayloadWithPriority(requestURL, musicBrainzRequestPriorityInteractive, rateLimitMs)
 }
 
 func (a *App) musicBrainzServerURL() string {
@@ -370,8 +370,9 @@ func (a *App) musicBrainzAPIBaseURL() string {
 	return a.musicBrainzServerURL() + "/ws/2"
 }
 
-func (a *App) musicBrainzRateLimit() bool {
-	return strings.EqualFold(a.musicBrainzServerURL(), musicBrainzPublicServerURL)
+func (a *App) musicBrainzRequestRateMs() int {
+	a.ensureSettingsLoaded()
+	return a.settings.MusicBrainzRequestRateMs
 }
 
 func musicBrainzEntitySubtitle(entityType string) string {
@@ -1036,7 +1037,7 @@ func (a *App) LookupArtistByMBID(mbid string) MusicBrainzArtistInfo {
 	}
 
 	requestURL := fmt.Sprintf("%s/artist/%s?fmt=json&inc=genres+tags+url-rels", a.musicBrainzAPIBaseURL(), cleanMBID)
-	responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRateLimit())
+	responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRequestRateMs())
 	if !ok {
 		return MusicBrainzArtistInfo{Found: false}
 	}
@@ -1192,7 +1193,7 @@ func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID strin
 
 	if cleanRecordingID != "" {
 		requestURL := fmt.Sprintf("%s/recording/%s?fmt=json&inc=artists+releases", a.musicBrainzAPIBaseURL(), cleanRecordingID)
-		if responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRateLimit()); ok {
+		if responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRequestRateMs()); ok {
 			if err := json.Unmarshal(responseBody, &recordingPayload); err != nil {
 				recordingPayload = map[string]any{}
 			}
@@ -1201,7 +1202,7 @@ func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID strin
 
 	if cleanReleaseID != "" {
 		requestURL := fmt.Sprintf("%s/release/%s?fmt=json&inc=artists+labels", a.musicBrainzAPIBaseURL(), cleanReleaseID)
-		if responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRateLimit()); ok {
+		if responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRequestRateMs()); ok {
 			if err := json.Unmarshal(responseBody, &releasePayload); err != nil {
 				releasePayload = map[string]any{}
 			}
@@ -1286,7 +1287,7 @@ func (a *App) LookupMusicBrainzEntity(entityType string, mbid string) MusicBrain
 	}
 
 	requestURL := fmt.Sprintf("%s/%s/%s?fmt=json&inc=%s", a.musicBrainzAPIBaseURL(), cleanEntityType, cleanMBID, incClause)
-	responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRateLimit())
+	responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRequestRateMs())
 	if !ok {
 		return result
 	}
@@ -1488,7 +1489,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 	fetchPayload := func(requestURL string, message string) (map[string]any, bool) {
 		progress.queueStep()
 		progress.announce(message)
-		payload, ok := fetchMusicBrainzPayload(requestURL, a.musicBrainzRateLimit())
+		payload, ok := fetchMusicBrainzPayload(requestURL, a.musicBrainzRequestRateMs())
 		if ok {
 			progress.step(message)
 		} else {

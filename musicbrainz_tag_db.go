@@ -947,7 +947,7 @@ func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIn
 	return entityKeys
 }
 
-func fetchMusicBrainzTagEntityRecord(entityType string, mbid string, apiBaseURL string, rateLimit bool) (musicBrainzTagEntityRecord, bool) {
+func fetchMusicBrainzTagEntityRecord(entityType string, mbid string, apiBaseURL string, rateLimitMs int) (musicBrainzTagEntityRecord, bool) {
 	cleanEntityType, cleanMBID, ok := parseMusicBrainzTagEntityKey(musicBrainzTagEntityKey(entityType, mbid))
 	if !ok {
 		return musicBrainzTagEntityRecord{}, false
@@ -965,7 +965,7 @@ func fetchMusicBrainzTagEntityRecord(entityType string, mbid string, apiBaseURL 
 		return musicBrainzTagEntityRecord{}, false
 	}
 
-	payload, ok := fetchMusicBrainzPayloadWithPriority(requestURL, musicBrainzRequestPriorityBackground, rateLimit)
+	payload, ok := fetchMusicBrainzPayloadWithPriority(requestURL, musicBrainzRequestPriorityBackground, rateLimitMs)
 	if !ok {
 		return musicBrainzTagEntityRecord{}, false
 	}
@@ -995,7 +995,7 @@ func (a *App) processMusicBrainzTagEntityFetch(entityKey string) bool {
 	}
 	a.musicBrainzTagMu.Unlock()
 
-	record, fetched := fetchMusicBrainzTagEntityRecord(cleanEntityType, cleanMBID, a.musicBrainzAPIBaseURL(), a.musicBrainzRateLimit())
+	record, fetched := fetchMusicBrainzTagEntityRecord(cleanEntityType, cleanMBID, a.musicBrainzAPIBaseURL(), a.musicBrainzRequestRateMs())
 	now := time.Now()
 
 	a.musicBrainzTagMu.Lock()

@@ -14,7 +14,9 @@ export type SettingsFormValues = {
     ffmpegPath: string;
     listenBrainzUserToken: string;
     musicBrainzServerUrl: string;
+    musicBrainzRequestRateMs: number;
     listenBrainzServerUrl: string;
+    listenBrainzRequestRateMs: number;
     favoritePlaylists: string[];
     coverArtPriority: CoverArtPrioritySource[];
     audioOutputDevice: string;
@@ -130,7 +132,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsFFmpegPath,
         settingsListenBrainzToken,
         settingsMusicBrainzServerUrl,
+        settingsMusicBrainzRequestRateMs,
         settingsListenBrainzServerUrl,
+        settingsListenBrainzRequestRateMs,
         settingsAudioOutputDevice,
         settingsAudioOutputBufferMs,
         settingsApplyAudioNow,
@@ -189,6 +193,49 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         return Math.min(Math.floor(parsed), 128);
+    };
+
+    const normalizeRequestRateMs = (value: string): number => {
+        const parsed = Number.parseInt(value.trim(), 10);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            return 0;
+        }
+
+        return Math.floor(parsed);
+    };
+
+    const MUSICBRAINZ_PUBLIC_URL = 'https://musicbrainz.org';
+    const LISTENBRAINZ_PUBLIC_URL = 'https://api.listenbrainz.org';
+    const PUBLIC_MIN_RATE_LIMIT_MS = 1000;
+
+    const isMusicBrainzPublicServer = (url: string): boolean => {
+        const normalized = url.trim().replace(/\/+$/, '');
+        return normalized === '' || normalized.toLowerCase() === MUSICBRAINZ_PUBLIC_URL.toLowerCase();
+    };
+
+    const isListenBrainzPublicServer = (url: string): boolean => {
+        const normalized = url.trim().replace(/\/+$/, '');
+        return normalized === '' || normalized.toLowerCase() === LISTENBRAINZ_PUBLIC_URL.toLowerCase();
+    };
+
+    const refreshMusicBrainzRateControls = (): void => {
+        const isPublic = isMusicBrainzPublicServer(settingsMusicBrainzServerUrl.value);
+        settingsMusicBrainzRequestRateMs.disabled = isPublic;
+        settingsMusicBrainzRequestRateMs.min = isPublic ? String(PUBLIC_MIN_RATE_LIMIT_MS) : '0';
+        if (isPublic) {
+            const stored = normalizeRequestRateMs(settingsMusicBrainzRequestRateMs.value);
+            settingsMusicBrainzRequestRateMs.value = String(Math.max(PUBLIC_MIN_RATE_LIMIT_MS, stored || PUBLIC_MIN_RATE_LIMIT_MS));
+        }
+    };
+
+    const refreshListenBrainzRateControls = (): void => {
+        const isPublic = isListenBrainzPublicServer(settingsListenBrainzServerUrl.value);
+        settingsListenBrainzRequestRateMs.disabled = isPublic;
+        settingsListenBrainzRequestRateMs.min = isPublic ? String(PUBLIC_MIN_RATE_LIMIT_MS) : '0';
+        if (isPublic) {
+            const stored = normalizeRequestRateMs(settingsListenBrainzRequestRateMs.value);
+            settingsListenBrainzRequestRateMs.value = String(Math.max(PUBLIC_MIN_RATE_LIMIT_MS, stored || PUBLIC_MIN_RATE_LIMIT_MS));
+        }
     };
 
     const refreshMusicBrainzTagWorkerControls = (): void => {
@@ -715,7 +762,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         settingsMusicBrainzServerUrl.value = values.musicBrainzServerUrl || '';
+        settingsMusicBrainzRequestRateMs.value = values.musicBrainzRequestRateMs > 0 ? String(values.musicBrainzRequestRateMs) : '';
         settingsListenBrainzServerUrl.value = values.listenBrainzServerUrl || '';
+        settingsListenBrainzRequestRateMs.value = values.listenBrainzRequestRateMs > 0 ? String(values.listenBrainzRequestRateMs) : '';
+        refreshMusicBrainzRateControls();
+        refreshListenBrainzRateControls();
         refreshAudioOutputDevices(values.audioOutputDevices, values.audioOutputDevice || 'default');
         settingsAudioOutputBufferMs.value = values.audioOutputBufferMs > 0 ? String(values.audioOutputBufferMs) : '';
         settingsGaplessPlayback.checked = !!values.gaplessPlayback;
@@ -843,6 +894,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         refreshMusicBrainzTagWorkerControls();
     });
 
+    settingsMusicBrainzServerUrl.addEventListener('input', () => {
+        refreshMusicBrainzRateControls();
+    });
+
+    settingsListenBrainzServerUrl.addEventListener('input', () => {
+        refreshListenBrainzRateControls();
+    });
+
     settingsApplyAudioNow.addEventListener('click', async () => {
         if (settingsApplyAudioNow.disabled) {
             return;
@@ -853,7 +912,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             ffmpegPath: settingsFFmpegPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
             musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
+            musicBrainzRequestRateMs: normalizeRequestRateMs(settingsMusicBrainzRequestRateMs.value),
             listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
+            listenBrainzRequestRateMs: normalizeRequestRateMs(settingsListenBrainzRequestRateMs.value),
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
             audioOutputDevice: settingsAudioOutputDevice.value || 'default',
@@ -1098,7 +1159,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             ffmpegPath: settingsFFmpegPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
             musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
+            musicBrainzRequestRateMs: normalizeRequestRateMs(settingsMusicBrainzRequestRateMs.value),
             listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
+            listenBrainzRequestRateMs: normalizeRequestRateMs(settingsListenBrainzRequestRateMs.value),
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
             audioOutputDevice: settingsAudioOutputDevice.value || 'default',
@@ -1135,7 +1198,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             ffmpegPath: settingsFFmpegPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
             musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
+            musicBrainzRequestRateMs: normalizeRequestRateMs(settingsMusicBrainzRequestRateMs.value),
             listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
+            listenBrainzRequestRateMs: normalizeRequestRateMs(settingsListenBrainzRequestRateMs.value),
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
             audioOutputDevice: settingsAudioOutputDevice.value || 'default',
