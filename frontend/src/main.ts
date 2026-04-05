@@ -1516,6 +1516,10 @@ const playSidebarQueueSelection = async (trackIndexes: number[]): Promise<void> 
         return;
     }
 
+    if (fullLibraryScanLoadActive) {
+        suppressAutoSelectAfterFullLibraryScan = true;
+    }
+
     await loadTrack(firstTrackIndex);
     await playCurrentTrack();
 
@@ -2910,7 +2914,12 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     if (!options?.preserveFolderView) {
         resetShuffleHistory();
 
-        if (options?.autoSelectStartingTrack !== false && !suppressAutoSelectAfterFullLibraryScan) {
+        const playbackStateAfterScanSwap = playbackStateService.getPlaybackState();
+        const hasActivePlaybackAfterScanSwap = playbackStateAfterScanSwap.loaded
+            && playbackStateAfterScanSwap.playing
+            && playbackStateAfterScanSwap.sourcePath.trim() !== '';
+
+        if (options?.autoSelectStartingTrack !== false && !suppressAutoSelectAfterFullLibraryScan && !hasActivePlaybackAfterScanSwap) {
             const startingTrackIndex = libraryController.firstTrackIndexFromRandomAlbumFolder();
             void loadTrack(startingTrackIndex);
         }
