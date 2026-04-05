@@ -456,20 +456,12 @@ const setCtrlHeldState = (held: boolean): void => {
 
 const PLAYER_CARD_LAYOUT_KEY = 'playerCardLayout';
 const LIBRARY_CLIENT_FINALIZE_MS_KEY = 'libraryClientFinalizeEstimateMs';
-const SHARE_IMAGE_COMMENT_KEY = 'shareImageComment';
 const defaultShareImageComment = 'Listening right now.';
 
 const getStoredLayout = (): PlayerCardLayout =>
     localStorage.getItem(PLAYER_CARD_LAYOUT_KEY) === 'release' ? 'release' : 'default';
 
-const getStoredShareImageComment = (): string => {
-    const stored = localStorage.getItem(SHARE_IMAGE_COMMENT_KEY);
-    return stored === null ? defaultShareImageComment : stored;
-};
-
-const persistShareImageComment = (comment: string): void => {
-    localStorage.setItem(SHARE_IMAGE_COMMENT_KEY, comment);
-};
+localStorage.removeItem('shareImageComment');
 
 const applyPlayerCardLayout = (layout: PlayerCardLayout): void => {
     playerCard.classList.toggle('layout-release', layout === 'release');
@@ -1931,7 +1923,7 @@ const openShareModal = async (): Promise<void> => {
     const selectedTrack = tracks[currentTrackIndex];
     const requestVersion = ++sharePreviewRequestVersion;
     clearSharePreviewSnapshot();
-    shareCommentInput.value = getStoredShareImageComment();
+    shareCommentInput.value = defaultShareImageComment;
     clearSharePreviewCanvas();
     setShareStatus('Generating preview...');
     setShareActionsDisabled(true);
@@ -4009,7 +4001,6 @@ shareClose.addEventListener('click', () => {
 });
 
 shareCommentInput.addEventListener('input', () => {
-    persistShareImageComment(shareCommentInput.value);
     renderSharePreviewSnapshot();
     setShareStatus('');
 });
