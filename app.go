@@ -62,6 +62,8 @@ type App struct {
 	libraryScan                            LibraryScanResult
 	scanInProgress                         bool
 	scanRemainingImmediateChildrenByFolder map[string]int
+	scanLastTotalEntries                   int
+	scanPreCountMs                         float64
 	scanEntryMs                            float64
 	scanFinalizeMs                         float64
 	scanWatcherMs                          float64

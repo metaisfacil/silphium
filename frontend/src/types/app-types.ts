@@ -134,7 +134,7 @@ export type LibraryScanProgress = {
     totalEntries: number;
     elapsedMs: number;
     etaSeconds: number;
-    phase: 'scanning' | 'finalizing';
+    phase: 'counting' | 'scanning' | 'finalizing';
 };
 
 export type LibraryBrowserEntry = {
