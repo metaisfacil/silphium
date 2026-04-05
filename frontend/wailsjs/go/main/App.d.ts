@@ -101,3 +101,5 @@ export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
 export function SubmitListenBrainz(arg1:string,arg2:main.ListenBrainzTrackMetadata,arg3:number):Promise<void>;
 
 export function SubmitListenBrainzRecordingFeedback(arg1:string,arg2:number):Promise<void>;
+
+export function ValidateFFmpegPath(arg1:string):Promise<main.FFmpegPathStatus>;

@@ -231,6 +231,13 @@ export type AudioOutputDevice = {
     isDefault: boolean;
 };
 
+export type FFmpegPathStatus = {
+    available: boolean;
+    resolvedPath?: string;
+    message?: string;
+    usingPathFallback: boolean;
+};
+
 export type AppLibraryFolder = {
     path: string;
     label: string;
@@ -240,6 +247,7 @@ export type AppLibraryFolder = {
 export type AppSettings = {
     libraryFolders: AppLibraryFolder[];
     libraryPath: string;
+    ffmpegPath: string;
     listenBrainzUserToken: string;
     playbackOrder: PlaybackOrderMode;
     releaseDepth: number;

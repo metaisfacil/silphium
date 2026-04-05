@@ -38,6 +38,7 @@ type AudioSettings struct {
 type AppSettings struct {
 	LibraryFolders            []AppLibraryFolder       `json:"libraryFolders,omitempty"`
 	LibraryPath               string                   `json:"libraryPath,omitempty"`
+	FFmpegPath                string                   `json:"ffmpegPath,omitempty"`
 	ListenBrainzUserToken     string                   `json:"listenBrainzUserToken"`
 	PlaybackOrder             string                   `json:"playbackOrder"`
 	ReleaseDepth              int                      `json:"releaseDepth,omitempty"`
@@ -92,6 +93,10 @@ func normalizeAudioSettings(settings AudioSettings) AudioSettings {
 		GaplessPlayback:   settings.GaplessPlayback,
 		ReplayGainEnabled: settings.ReplayGainEnabled,
 	}
+}
+
+func normalizeFFmpegPath(value string) string {
+	return normalizeToolExecutablePath(value)
 }
 
 func normalizePlaybackOrder(value string) string {
@@ -251,6 +256,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	return AppSettings{
 		LibraryFolders:            libraryFolders,
 		LibraryPath:               legacyLibraryPath,
+		FFmpegPath:                normalizeFFmpegPath(settings.FFmpegPath),
 		ListenBrainzUserToken:     token,
 		PlaybackOrder:             playbackOrder,
 		ReleaseDepth:              legacyReleaseDepth,
@@ -341,6 +347,7 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	}
 
 	a.settings = normalized
+	a.audioBackend().SetFFmpegPath(normalized.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(normalized.Audio)
 	return normalized, nil
 }

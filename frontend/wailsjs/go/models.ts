@@ -59,6 +59,7 @@ export namespace main {
 	export class AppSettings {
 	    libraryFolders?: AppLibraryFolder[];
 	    libraryPath?: string;
+	    ffmpegPath?: string;
 	    listenBrainzUserToken: string;
 	    playbackOrder: string;
 	    releaseDepth?: number;
@@ -76,6 +77,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.libraryFolders = this.convertValues(source["libraryFolders"], AppLibraryFolder);
 	        this.libraryPath = source["libraryPath"];
+	        this.ffmpegPath = source["ffmpegPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	        this.playbackOrder = source["playbackOrder"];
 	        this.releaseDepth = source["releaseDepth"];
@@ -159,6 +161,24 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.base64 = source["base64"];
 	        this.mimeType = source["mimeType"];
+	    }
+	}
+	export class FFmpegPathStatus {
+	    available: boolean;
+	    resolvedPath?: string;
+	    message?: string;
+	    usingPathFallback: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FFmpegPathStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.available = source["available"];
+	        this.resolvedPath = source["resolvedPath"];
+	        this.message = source["message"];
+	        this.usingPathFallback = source["usingPathFallback"];
 	    }
 	}
 	

@@ -285,15 +285,6 @@ func bitDepthFromSampleFmt(sampleFmt string) int {
 	}
 }
 
-func resolveFFProbePath() string {
-	ffprobePath, err := exec.LookPath("ffprobe")
-	if err != nil {
-		return ""
-	}
-
-	return ffprobePath
-}
-
 func inferContainerFromPath(path string) string {
 	return strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
 }
@@ -751,7 +742,8 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 	results := make(chan readTrackTagsResult, len(normalizedPaths))
 	queuedJobs := 0
 	cacheHits := 0
-	ffprobePath := resolveFFProbePath()
+	a.ensureSettingsLoaded()
+	ffprobePath := resolveFFProbePath(a.settings.FFmpegPath)
 
 	for _, path := range normalizedPaths {
 		signature, ok := trackTagsFileSignatureForPath(path)
@@ -840,7 +832,8 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 // ReadTrackTagsFromBlobs reads tag and technical metadata from in-memory track blobs.
 func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 	tagByKey := make(map[string]TrackTags, len(blobs))
-	ffprobePath := resolveFFProbePath()
+	a.ensureSettingsLoaded()
+	ffprobePath := resolveFFProbePath(a.settings.FFmpegPath)
 
 	for _, blob := range blobs {
 		if strings.TrimSpace(blob.Key) == "" || strings.TrimSpace(blob.Data) == "" {

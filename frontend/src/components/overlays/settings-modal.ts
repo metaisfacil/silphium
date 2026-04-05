@@ -29,6 +29,7 @@ export type SettingsModalElements = {
     settingsLibraryDepthStatus: HTMLParagraphElement;
     settingsLibraryDepthCancel: HTMLButtonElement;
     settingsLibraryDepthConfirm: HTMLButtonElement;
+    settingsFFmpegPath: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
     settingsAudioOutputDevice: HTMLSelectElement;
     settingsAudioOutputBufferMs: HTMLInputElement;
@@ -77,6 +78,11 @@ export const renderSettingsModal = (): string => `
                         <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz User Token</label>
                         <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
                         <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-ffmpeg-path">FFmpeg Executable Path</label>
+                        <p class="settings-hint">Optional full path to ffmpeg. Leave blank to use the version available on PATH.</p>
+                        <input id="settings-ffmpeg-path" class="settings-input" type="text" spellcheck="false" placeholder="Leave blank to use PATH">
                     </div>
                     <div class="settings-field settings-toggle-field">
                         <label class="settings-checkbox-row" for="settings-prefer-musicbrainz-metadata">
@@ -232,6 +238,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsLibraryDepthStatus: root.querySelector('#settings-library-depth-status') as HTMLParagraphElement,
     settingsLibraryDepthCancel: root.querySelector('#settings-library-depth-cancel') as HTMLButtonElement,
     settingsLibraryDepthConfirm: root.querySelector('#settings-library-depth-confirm') as HTMLButtonElement,
+    settingsFFmpegPath: root.querySelector('#settings-ffmpeg-path') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsAudioOutputDevice: root.querySelector('#settings-audio-output-device') as HTMLSelectElement,
     settingsAudioOutputBufferMs: root.querySelector('#settings-audio-output-buffer-ms') as HTMLInputElement,

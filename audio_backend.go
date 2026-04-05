@@ -171,6 +171,14 @@ func (b *AudioBackend) flushPlayerBuffer(player *oto.Player) error {
 	return nil
 }
 
+// SetFFmpegPath updates the configured ffmpeg executable path used by the backend.
+func (b *AudioBackend) SetFFmpegPath(path string) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	b.ffmpegPath = normalizeFFmpegPath(path)
+}
+
 // ApplyAudioSettings updates the backend with normalized persisted audio settings.
 func (b *AudioBackend) ApplyAudioSettings(settings AudioSettings) {
 	b.mutex.Lock()
@@ -329,13 +337,11 @@ func (b *AudioBackend) Initialize() error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 
-	if b.ffmpegPath == "" {
-		ffmpegPath, err := exec.LookPath("ffmpeg")
-		if err != nil {
-			return errors.New("ffmpeg executable was not found in PATH")
-		}
-		b.ffmpegPath = ffmpegPath
+	resolvedFFmpegPath, err := resolveFFmpegPath(b.ffmpegPath)
+	if err != nil {
+		return err
 	}
+	b.ffmpegPath = resolvedFFmpegPath
 
 	if b.context != nil {
 		if b.player == nil {
@@ -1017,8 +1023,9 @@ func (b *AudioBackend) currentPlayedGlobalBytesLocked() int64 {
 		return 0
 	}
 
-	if playedBytes > b.streamReadOffset {
-		playedBytes = b.streamReadOffset
+	maxReadableGlobalBytes := b.streamDroppedBytes + b.streamReadOffset
+	if playedBytes > maxReadableGlobalBytes {
+		playedBytes = maxReadableGlobalBytes
 	}
 
 	totalGlobalBytes := b.streamDroppedBytes + b.totalTimelineBytesLocked()

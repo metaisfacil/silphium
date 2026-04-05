@@ -102,6 +102,7 @@ import {
     SelectShareImageSaveFile,
     SubmitListenBrainz,
     SubmitListenBrainzRecordingFeedback,
+    ValidateFFmpegPath,
 } from '../wailsjs/go/main/App';
 import { main as WailsModels } from '../wailsjs/go/models';
 import { BrowserOpenURL, EventsOn, OnFileDrop } from '../wailsjs/runtime/runtime';
@@ -112,6 +113,7 @@ import type {
     AudioOutputDevice,
     AudioPlaybackState,
     CoverArtPrioritySource,
+    FFmpegPathStatus,
     ImageLibraryFile,
     LibraryFolderPage,
     LibraryIndexedFilePage,
@@ -216,6 +218,7 @@ let availableAudioOutputDevices: AudioOutputDevice[] = [];
 let currentSettings: AppSettings = {
     libraryFolders: [],
     libraryPath: '',
+    ffmpegPath: '',
     listenBrainzUserToken: '',
     playbackOrder: 'ordered-library',
     releaseDepth: 0,
@@ -230,6 +233,8 @@ let currentSettings: AppSettings = {
     preferMusicBrainzMetadata: false,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
+let startupInitializationComplete = false;
+let ffmpegConfigurationRequired = false;
 let trackMetaMenuTarget: HTMLElement | null = null;
 let sidebarQueueTrackIndexes: number[] = [];
 let sidebarQueueFeedbackTrackIndex: number | null = null;
@@ -292,6 +297,7 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
     return {
         libraryFolders,
         libraryPath: libraryFolders[0]?.path || '',
+        ffmpegPath: (settings.ffmpegPath || '').trim(),
         listenBrainzUserToken: settings.listenBrainzUserToken || '',
         playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
         releaseDepth: libraryFolders[0]?.releaseDepth || 0,
@@ -306,6 +312,48 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
     };
+};
+
+const validateConfiguredFFmpegPath = async (ffmpegPath: string): Promise<FFmpegPathStatus> => await ValidateFFmpegPath(ffmpegPath) as FFmpegPathStatus;
+
+const missingFFmpegMessage = (status: FFmpegPathStatus): string => {
+    if (status.message && status.message.trim() !== '') {
+        return `${status.message.trim()}. Open Settings and save a valid ffmpeg executable path before continuing.`;
+    }
+
+    return 'FFmpeg was not found. Open Settings and save a valid ffmpeg executable path before continuing.';
+};
+
+const promptForMissingFFmpeg = (status: FFmpegPathStatus): void => {
+    ffmpegConfigurationRequired = true;
+    playbackStateService.setBackendReady(false);
+    libraryController.renderFolder('none');
+    openErrorModal('FFmpeg Required', missingFFmpegMessage(status));
+    settingsController.open('general');
+};
+
+const completeStartupIfReady = async (): Promise<void> => {
+    if (startupInitializationComplete) {
+        return;
+    }
+
+    const ffmpegStatus = await validateConfiguredFFmpegPath(currentSettings.ffmpegPath);
+    if (!ffmpegStatus.available) {
+        promptForMissingFFmpeg(ffmpegStatus);
+        return;
+    }
+
+    ffmpegConfigurationRequired = false;
+    await initializeBackendPlayback();
+
+    if (currentSettings.libraryFolders.length > 0) {
+        await scanConfiguredLibraryFolders();
+    } else {
+        libraryController.renderFolder('none');
+    }
+
+    startupInitializationComplete = true;
+    void refreshListenBrainzFeedbackForCurrentTrack(true);
 };
 
 const playbackStateService = createPlaybackStateService();
@@ -2825,13 +2873,8 @@ const initializeSettings = async (): Promise<void> => {
         const settings = await GetSettings() as AppSettings;
         currentSettings = normalizeAppSettings(settings);
         setPlaybackOrderMode(currentSettings.playbackOrder);
-        void refreshListenBrainzFeedbackForCurrentTrack(true);
-
-        if (currentSettings.libraryFolders.length > 0) {
-            await scanConfiguredLibraryFolders();
-            void refreshListenBrainzFeedbackForCurrentTrack(true);
-            return;
-        }
+        await completeStartupIfReady();
+        return;
     } catch (error) {
         console.error(error);
     }
@@ -3540,6 +3583,7 @@ settingsController = createSettingsController({
     elements: settingsElements,
     getValues: () => ({
         libraryFolders: currentSettings.libraryFolders,
+        ffmpegPath: currentSettings.ffmpegPath,
         listenBrainzUserToken: currentSettings.listenBrainzUserToken,
         favoritePlaylists: currentSettings.favoritePlaylists,
         coverArtPriority: currentSettings.coverArtPriority,
@@ -3555,6 +3599,7 @@ settingsController = createSettingsController({
     selectPlaylistFile: SelectPlaylistFile,
     save: async ({
         libraryFolders: requestedLibraryFolders,
+        ffmpegPath,
         listenBrainzUserToken,
         favoritePlaylists,
         coverArtPriority,
@@ -3565,62 +3610,65 @@ settingsController = createSettingsController({
         preferMusicBrainzMetadata,
         keyboardShortcuts,
     }): Promise<void> => {
-        try {
-            const normalizedLibraryFolders = normalizeLibraryFolders(requestedLibraryFolders);
-            const primaryLibraryFolder = normalizedLibraryFolders[0];
-            const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
-                libraryFolders: normalizedLibraryFolders,
-                libraryPath: primaryLibraryFolder?.path || '',
-                listenBrainzUserToken,
-                playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
-                releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
-                favoritePlaylists,
-                coverArtPriority,
-                audio: {
-                    outputDevice: audioOutputDevice,
-                    outputBufferMs: audioOutputBufferMs,
-                    gaplessPlayback,
-                    replayGainEnabled,
-                },
-                preferMusicBrainzMetadata,
-                keyboardShortcuts,
-            })) as AppSettings;
-
-            currentSettings = normalizeAppSettings(savedSettings);
-            setPlaybackOrderMode(currentSettings.playbackOrder);
-            if (currentTrackIndex >= 0 && currentTrackIndex < tracks.length) {
-                void applyCoverArtForTrack(currentTrackIndex);
-            }
-
-            playlistController.refreshFavorites();
-
-            resetShuffleHistory();
-
-            if (!canScrobble()) {
-                closeListenBrainzFeedbackMenu();
-            }
-
-            gaplessQueueRequestVersion += 1;
-            queuedGaplessTrackPath = '';
-            refreshNowPlayingLabel();
-            if (!currentSettings.audio.gaplessPlayback) {
-                if (playbackStateService.isBackendReady()) {
-                    void AudioQueueNextTrack('', '').catch((error: unknown) => {
-                        console.debug(error);
-                    });
-                }
-            } else {
-                void queueGaplessNextTrack();
-            }
-
-            void refreshListenBrainzFeedbackForCurrentTrack(true);
-        } catch (error) {
-            console.error(error);
-            libraryController.setLibraryPathMessage('Unable to save settings.');
+        const ffmpegStatus = await validateConfiguredFFmpegPath(ffmpegPath);
+        if (!ffmpegStatus.available) {
+            throw new Error(missingFFmpegMessage(ffmpegStatus));
         }
+
+        const normalizedLibraryFolders = normalizeLibraryFolders(requestedLibraryFolders);
+        const primaryLibraryFolder = normalizedLibraryFolders[0];
+        const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
+            libraryFolders: normalizedLibraryFolders,
+            libraryPath: primaryLibraryFolder?.path || '',
+            ffmpegPath,
+            listenBrainzUserToken,
+            playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
+            releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
+            favoritePlaylists,
+            coverArtPriority,
+            audio: {
+                outputDevice: audioOutputDevice,
+                outputBufferMs: audioOutputBufferMs,
+                gaplessPlayback,
+                replayGainEnabled,
+            },
+            preferMusicBrainzMetadata,
+            keyboardShortcuts,
+        })) as AppSettings;
+
+        currentSettings = normalizeAppSettings(savedSettings);
+        setPlaybackOrderMode(currentSettings.playbackOrder);
+        if (currentTrackIndex >= 0 && currentTrackIndex < tracks.length) {
+            void applyCoverArtForTrack(currentTrackIndex);
+        }
+
+        playlistController.refreshFavorites();
+
+        resetShuffleHistory();
+
+        if (!canScrobble()) {
+            closeListenBrainzFeedbackMenu();
+        }
+
+        gaplessQueueRequestVersion += 1;
+        queuedGaplessTrackPath = '';
+        refreshNowPlayingLabel();
+        if (!currentSettings.audio.gaplessPlayback) {
+            if (playbackStateService.isBackendReady()) {
+                void AudioQueueNextTrack('', '').catch((error: unknown) => {
+                    console.debug(error);
+                });
+            }
+        } else {
+            void queueGaplessNextTrack();
+        }
+
+        await completeStartupIfReady();
+        void refreshListenBrainzFeedbackForCurrentTrack(true);
     },
     applyAudioNow: async ({
         libraryFolders: requestedLibraryFolders,
+        ffmpegPath,
         listenBrainzUserToken,
         favoritePlaylists,
         coverArtPriority,
@@ -3631,11 +3679,17 @@ settingsController = createSettingsController({
         preferMusicBrainzMetadata,
         keyboardShortcuts,
     }): Promise<AudioOutputDevice[]> => {
+        const ffmpegStatus = await validateConfiguredFFmpegPath(ffmpegPath);
+        if (!ffmpegStatus.available) {
+            throw new Error(missingFFmpegMessage(ffmpegStatus));
+        }
+
         const normalizedLibraryFolders = normalizeLibraryFolders(requestedLibraryFolders);
         const primaryLibraryFolder = normalizedLibraryFolders[0];
         const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
             libraryFolders: normalizedLibraryFolders,
             libraryPath: primaryLibraryFolder?.path || '',
+            ffmpegPath,
             listenBrainzUserToken,
             playbackOrder: playbackSequencingService.getPlaybackOrderMode(),
             releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
@@ -3676,6 +3730,22 @@ settingsController = createSettingsController({
     },
     forceReload: async (): Promise<void> => {
         await scanConfiguredLibraryFolders();
+    },
+    beforeClose: async (): Promise<string | null> => {
+        if (!ffmpegConfigurationRequired) {
+            return null;
+        }
+
+        const ffmpegStatus = await validateConfiguredFFmpegPath(currentSettings.ffmpegPath);
+        if (ffmpegStatus.available) {
+            ffmpegConfigurationRequired = false;
+            return null;
+        }
+
+        return missingFFmpegMessage(ffmpegStatus);
+    },
+    onCloseBlocked: (message: string): void => {
+        openErrorModal('FFmpeg Required', message);
     },
     getPlayerCardLayout: getStoredLayout,
     setPlayerCardLayout: applyPlayerCardLayout,
@@ -4510,6 +4580,5 @@ libraryController.refreshSidebarToggleState();
 refreshLyricsPanel();
 resetListenBrainzFeedbackState();
 initializeMediaSessionIntegration();
-void initializeBackendPlayback();
 void initializeSettings();
 void initializeAppVersion();

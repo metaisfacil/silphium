@@ -11,6 +11,7 @@ type LibraryFolderDialogValues = {
 
 export type SettingsFormValues = {
     libraryFolders: AppLibraryFolder[];
+    ffmpegPath: string;
     listenBrainzUserToken: string;
     favoritePlaylists: string[];
     coverArtPriority: CoverArtPrioritySource[];
@@ -25,6 +26,8 @@ export type SettingsFormValues = {
 export type SettingsViewValues = SettingsFormValues & {
     audioOutputDevices: AudioOutputDevice[];
 };
+
+type SettingsTab = 'general' | 'playlists' | 'audio' | 'ui' | 'shortcuts';
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const allCoverArtPrioritySources: CoverArtPrioritySource[] = ['file', 'embedded', 'musicbrainz'];
@@ -79,6 +82,8 @@ type SettingsControllerOptions = {
     save: (values: SettingsFormValues) => Promise<void>;
     applyAudioNow: (values: SettingsFormValues) => Promise<AudioOutputDevice[]>;
     forceReload: (values: SettingsFormValues) => Promise<void>;
+    beforeClose?: () => Promise<string | null>;
+    onCloseBlocked?: (message: string) => void;
     getPlayerCardLayout: () => PlayerCardLayout;
     setPlayerCardLayout: (layout: PlayerCardLayout) => void;
 };
@@ -118,6 +123,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryDepthStatus,
         settingsLibraryDepthCancel,
         settingsLibraryDepthConfirm,
+        settingsFFmpegPath,
         settingsListenBrainzToken,
         settingsAudioOutputDevice,
         settingsAudioOutputBufferMs,
@@ -462,7 +468,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
     };
 
-    const setActiveTab = (tab: 'general' | 'playlists' | 'audio' | 'ui' | 'shortcuts'): void => {
+    const setActiveTab = (tab: SettingsTab): void => {
         const generalActive = tab === 'general';
         const playlistsActive = tab === 'playlists';
         const audioActive = tab === 'audio';
@@ -613,6 +619,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryDepthStatus.textContent = '';
     });
 
+    settingsFFmpegPath.addEventListener('input', () => {
+        settingsStatus.textContent = '';
+    });
+
     settingsLibraryDepthBackdrop.addEventListener('click', () => {
         closeLibraryDepthDialog(null, true);
     });
@@ -645,7 +655,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }, false);
     });
 
-    const close = (): void => {
+    const finalizeClose = (): void => {
         closeLibraryDepthDialog(null, false);
         settingsModal.classList.remove('is-visible');
         lastLibraryFolderClickIndex = -1;
@@ -662,7 +672,18 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }, settingsModalTransitionMs);
     };
 
-    const open = (): void => {
+    const requestClose = async (): Promise<boolean> => {
+        const blockedMessage = await options.beforeClose?.() || null;
+        if (blockedMessage) {
+            options.onCloseBlocked?.(blockedMessage);
+            return false;
+        }
+
+        finalizeClose();
+        return true;
+    };
+
+    const open = (initialTab: SettingsTab = 'general'): void => {
         if (hideTimer !== undefined) {
             window.clearTimeout(hideTimer);
             hideTimer = undefined;
@@ -670,6 +691,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         const values = options.getValues();
         libraryFolders = normalizeLibraryFolders(values.libraryFolders);
+        settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         refreshAudioOutputDevices(values.audioOutputDevices, values.audioOutputDevice || 'default');
         settingsAudioOutputBufferMs.value = values.audioOutputBufferMs > 0 ? String(values.audioOutputBufferMs) : '';
@@ -693,11 +715,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         } else {
             settingsStatus.textContent = '';
         }
-        setActiveTab('general');
+        setActiveTab(initialTab);
         settingsModal.hidden = false;
         window.requestAnimationFrame(() => {
             settingsModal.classList.add('is-visible');
         });
+        if (initialTab === 'general' && settingsFFmpegPath.value.trim() === '') {
+            settingsFFmpegPath.focus();
+            return;
+        }
         if (libraryFolders.length > 0) {
             settingsLibraryFolderList.focus();
             return;
@@ -711,11 +737,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     });
 
     settingsBackdrop.addEventListener('click', () => {
-        close();
+        void requestClose();
     });
 
     settingsClose.addEventListener('click', () => {
-        close();
+        void requestClose();
     });
 
     settingsAddLibraryFolder.addEventListener('click', async () => {
@@ -794,6 +820,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         const formValues: SettingsFormValues = {
             libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
+            ffmpegPath: settingsFFmpegPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
@@ -1034,6 +1061,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsForceReload.disabled = true;
         const formValues: SettingsFormValues = {
             libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
+            ffmpegPath: settingsFFmpegPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
@@ -1044,10 +1072,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
             keyboardShortcuts: getShortcutValues(),
         };
-        close();
 
         try {
             await options.save(formValues);
+            finalizeClose();
+        } catch (error) {
+            console.error(error);
+            settingsStatus.textContent = error instanceof Error && error.message.trim() !== ''
+                ? error.message
+                : 'Unable to save settings.';
         } finally {
             settingsSave.disabled = false;
             settingsForceReload.disabled = false;
@@ -1061,6 +1094,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         const formValues: SettingsFormValues = {
             libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
+            ffmpegPath: settingsFFmpegPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
@@ -1096,7 +1130,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     });
 
     return {
-        close,
+        close: finalizeClose,
         handleDocumentClick: (target: Node): boolean => settingsModal.contains(target),
         handleEscape: (): boolean => {
             if (settingsModal.hidden) {
@@ -1108,7 +1142,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
                 return true;
             }
 
-            close();
+            void requestClose();
             return true;
         },
         open,

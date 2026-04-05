@@ -93,6 +93,7 @@ func (a *App) logRescanEvent(message string, args ...interface{}) {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.loadStoredSettings()
+	a.audioBackend().SetFFmpegPath(a.settings.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(a.settings.Audio)
 	a.startMediaKeyWatcher()
 }

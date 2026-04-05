@@ -201,3 +201,7 @@ export function SubmitListenBrainz(arg1, arg2, arg3) {
 export function SubmitListenBrainzRecordingFeedback(arg1, arg2) {
   return window['go']['main']['App']['SubmitListenBrainzRecordingFeedback'](arg1, arg2);
 }
+
+export function ValidateFFmpegPath(arg1) {
+  return window['go']['main']['App']['ValidateFFmpegPath'](arg1);
+}
