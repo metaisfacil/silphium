@@ -77,7 +77,7 @@ type SettingsControllerOptions = {
     selectLibraryFolder: () => Promise<string>;
     selectPlaylistFile: () => Promise<string>;
     save: (values: SettingsFormValues) => Promise<void>;
-    applyAudioNow: (values: SettingsFormValues) => Promise<void>;
+    applyAudioNow: (values: SettingsFormValues) => Promise<AudioOutputDevice[]>;
     forceReload: (values: SettingsFormValues) => Promise<void>;
     getPlayerCardLayout: () => PlayerCardLayout;
     setPlayerCardLayout: (layout: PlayerCardLayout) => void;
@@ -541,6 +541,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsAudioOutputDevice.value = hasExact ? targetDevice : targetDevice;
     };
 
+    const refreshAudioOutputDevices = (devices: AudioOutputDevice[], selectedDevice: string): void => {
+        audioOutputDevices = Array.isArray(devices) ? devices.slice() : [];
+        renderAudioOutputDeviceOptions(selectedDevice);
+    };
+
     const getShortcutValues = (): FocusedKeyboardShortcuts => {
         return normalizeFocusedKeyboardShortcuts({
             playPauseToggle: settingsShortcutPlayPauseToggle.value,
@@ -666,8 +671,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const values = options.getValues();
         libraryFolders = normalizeLibraryFolders(values.libraryFolders);
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
-        audioOutputDevices = values.audioOutputDevices.slice();
-        renderAudioOutputDeviceOptions(values.audioOutputDevice || 'default');
+        refreshAudioOutputDevices(values.audioOutputDevices, values.audioOutputDevice || 'default');
         settingsAudioOutputBufferMs.value = values.audioOutputBufferMs > 0 ? String(values.audioOutputBufferMs) : '';
         settingsGaplessPlayback.checked = !!values.gaplessPlayback;
         settingsReplayGain.checked = !!values.replayGainEnabled;
@@ -802,14 +806,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         };
 
         settingsApplyAudioNow.disabled = true;
-        settingsStatus.textContent = 'Applying audio settings...';
+        settingsStatus.textContent = 'Refreshing audio settings...';
 
         try {
-            await options.applyAudioNow(formValues);
-            settingsStatus.textContent = 'Audio settings applied. Restart may be required for output-device changes.';
+            const refreshedDevices = await options.applyAudioNow(formValues);
+            refreshAudioOutputDevices(refreshedDevices, formValues.audioOutputDevice || 'default');
+            settingsStatus.textContent = 'Audio settings refreshed.';
         } catch (error) {
             console.error(error);
-            settingsStatus.textContent = 'Unable to apply audio settings right now.';
+            settingsStatus.textContent = 'Unable to refresh audio settings right now.';
         } finally {
             settingsApplyAudioNow.disabled = false;
         }

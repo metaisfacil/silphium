@@ -375,6 +375,90 @@ func (b *AudioBackend) Initialize() error {
 	return nil
 }
 
+// Close releases the active audio context and player while preserving decoded state.
+func (b *AudioBackend) Close() error {
+	b.mutex.Lock()
+	context := b.context
+	b.context = nil
+	b.player = nil
+	b.playing = false
+	b.playStarted = time.Time{}
+	b.streamCond.Broadcast()
+	summary := b.stateSummaryLocked()
+	b.mutex.Unlock()
+
+	if context != nil {
+		if err := context.Close(); err != nil {
+			return fmt.Errorf("failed to close audio output: %w", err)
+		}
+	}
+
+	logAudioEvent("CloseAudioBackend state=%s", summary)
+	return nil
+}
+
+// Reinitialize rebuilds the audio context using the current settings and restores playback state.
+func (b *AudioBackend) Reinitialize() error {
+	b.mutex.Lock()
+	b.syncPlaybackLocked()
+
+	playedGlobalBytes := b.currentPlayedGlobalBytesLocked()
+	b.trimConsumedSegmentsLocked(playedGlobalBytes)
+	playedLocalBytes := playedGlobalBytes - b.streamDroppedBytes
+	if playedLocalBytes < 0 {
+		playedLocalBytes = 0
+	}
+
+	totalTimelineBytes := b.totalTimelineBytesLocked()
+	if playedLocalBytes > totalTimelineBytes {
+		playedLocalBytes = totalTimelineBytes
+	}
+
+	wasPlaying := b.playing && totalTimelineBytes > 0 && playedLocalBytes < totalTimelineBytes
+	b.streamReadOffset = playedLocalBytes
+	b.playbackBaseBytes = b.streamDroppedBytes + playedLocalBytes
+	b.playStarted = time.Time{}
+	b.playing = false
+	b.streamCond.Broadcast()
+	beforeSummary := b.stateSummaryLocked()
+	b.mutex.Unlock()
+
+	if err := b.Close(); err != nil {
+		return err
+	}
+
+	if err := b.Initialize(); err != nil {
+		return err
+	}
+
+	b.mutex.Lock()
+	player := b.player
+	if player != nil {
+		player.SetVolume(b.volume)
+	}
+	if wasPlaying && player != nil && len(b.streamSegments) > 0 {
+		b.playing = true
+		b.playStarted = time.Now()
+		b.endEventSent = false
+	}
+	afterSummary := b.stateSummaryLocked()
+	b.mutex.Unlock()
+
+	if wasPlaying && player != nil {
+		player.Play()
+		if player.Err() != nil {
+			b.mutex.Lock()
+			b.playing = false
+			b.playStarted = time.Time{}
+			b.mutex.Unlock()
+			return fmt.Errorf("audio playback failed after reinitialize: %w", player.Err())
+		}
+	}
+
+	logAudioEvent("ReinitializeAudioBackend before=%s after=%s", beforeSummary, afterSummary)
+	return nil
+}
+
 func parseITunSMPBValue(value string) (gaplessTrimInfo, bool) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -893,6 +977,7 @@ func (b *AudioBackend) decodeTrack(path string, volumeScale float64) ([]byte, er
 	)
 
 	command := exec.Command(b.ffmpegPath, args...)
+	configureHiddenUtilityCommand(command)
 
 	output, err := command.Output()
 	if err != nil {

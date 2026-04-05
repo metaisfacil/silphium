@@ -2820,8 +2820,7 @@ const initializeSettings = async (): Promise<void> => {
     resetListenBrainzFeedbackState();
 
     try {
-        const outputDevices = await AudioListOutputDevices() as AudioOutputDevice[];
-        availableAudioOutputDevices = Array.isArray(outputDevices) ? outputDevices : [];
+        await refreshAvailableAudioOutputDevices();
 
         const settings = await GetSettings() as AppSettings;
         currentSettings = normalizeAppSettings(settings);
@@ -2839,6 +2838,12 @@ const initializeSettings = async (): Promise<void> => {
 
     libraryController.renderFolder('none');
     void refreshListenBrainzFeedbackForCurrentTrack(true);
+};
+
+const refreshAvailableAudioOutputDevices = async (): Promise<AudioOutputDevice[]> => {
+    const outputDevices = await AudioListOutputDevices() as AudioOutputDevice[];
+    availableAudioOutputDevices = Array.isArray(outputDevices) ? outputDevices : [];
+    return availableAudioOutputDevices;
 };
 
 const initializeAppVersion = async (): Promise<void> => {
@@ -3625,7 +3630,7 @@ settingsController = createSettingsController({
         replayGainEnabled,
         preferMusicBrainzMetadata,
         keyboardShortcuts,
-    }): Promise<void> => {
+    }): Promise<AudioOutputDevice[]> => {
         const normalizedLibraryFolders = normalizeLibraryFolders(requestedLibraryFolders);
         const primaryLibraryFolder = normalizedLibraryFolders[0];
         const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
@@ -3648,6 +3653,7 @@ settingsController = createSettingsController({
 
         currentSettings = normalizeAppSettings(savedSettings);
         setPlaybackOrderMode(currentSettings.playbackOrder);
+        const outputDevices = await refreshAvailableAudioOutputDevices();
 
         const nextState = await AudioReinitializeBackend() as AudioPlaybackState;
         playbackStateService.setBackendReady(true);
@@ -3664,6 +3670,9 @@ settingsController = createSettingsController({
                 });
             }
         }
+
+        void refreshListenBrainzFeedbackForCurrentTrack(true);
+        return outputDevices;
     },
     forceReload: async (): Promise<void> => {
         await scanConfiguredLibraryFolders();

@@ -355,6 +355,7 @@ func readTrackTechnicalMetadataFromFFProbe(path string, ffprobePath string) (Tra
 		"-of", "json",
 		path,
 	)
+	configureHiddenUtilityCommand(command)
 
 	rawOutput, err := command.Output()
 	if err != nil {

@@ -100,6 +100,9 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(context.Context) {
 	a.stopMediaKeyWatcher()
 	a.stopLibraryWatcher()
+	if err := a.audioBackend().Close(); err != nil {
+		log.Printf("failed to close audio backend: %v", err)
+	}
 }
 
 func (a *App) audioBackend() *AudioBackend {

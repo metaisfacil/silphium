@@ -216,6 +216,7 @@ func calculateReplayGainWithFFmpeg(path string, ffmpegPath string) (ReplayGainIn
 		"-f", "null",
 		"-",
 	)
+	configureHiddenUtilityCommand(command)
 
 	rawOutput, err := command.CombinedOutput()
 	output := string(rawOutput)
@@ -367,6 +368,7 @@ func calculateAlbumReplayGainWithFFmpeg(paths []string, ffmpegPath string) (Repl
 		"-f", "null",
 		"-",
 	)
+	configureHiddenUtilityCommand(command)
 
 	rawOutput, err := command.CombinedOutput()
 	output := string(rawOutput)
@@ -434,6 +436,7 @@ func calculateReleaseDynamicRangeWithFFmpeg(paths []string, ffmpegPath string) (
 		"-f", "null",
 		"-",
 	)
+	configureHiddenUtilityCommand(command)
 
 	rawOutput, err := command.CombinedOutput()
 	output := string(rawOutput)

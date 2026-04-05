@@ -154,15 +154,8 @@ func (a *App) AudioReinitializeBackend() (AudioPlaybackState, error) {
 	a.ensureSettingsLoaded()
 	backend := a.audioBackend()
 	backend.ApplyAudioSettings(a.settings.Audio)
-
-	backend.mutex.Lock()
-	initialized := backend.context != nil
-	backend.mutex.Unlock()
-
-	if !initialized {
-		if err := backend.Initialize(); err != nil {
-			return AudioPlaybackState{}, err
-		}
+	if err := backend.Reinitialize(); err != nil {
+		return AudioPlaybackState{}, err
 	}
 
 	return backend.State(), nil
