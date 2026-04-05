@@ -504,9 +504,23 @@ const suppressTrackMetaClicks = (): void => {
 
 const shouldSuppressTrackMetaClick = (): boolean => Date.now() < suppressTrackMetaClickUntil;
 const shouldBlockTrackMetaModalOpen = (): boolean => shouldSuppressTrackMetaClick() || app.classList.contains('sidebar-open');
+const hasActiveSelectionWithin = (target: HTMLElement): boolean => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        return false;
+    }
+
+    const range = selection.getRangeAt(0);
+    const commonAncestor = range.commonAncestorContainer;
+    return target.contains(commonAncestor);
+};
 
 trackTitle.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
+        return;
+    }
+
+    if (hasActiveSelectionWithin(trackTitle)) {
         return;
     }
 
@@ -528,6 +542,10 @@ trackAlbum.addEventListener('click', (event) => {
         return;
     }
 
+    if (hasActiveSelectionWithin(trackAlbum)) {
+        return;
+    }
+
     if (event.ctrlKey) {
         openMbOnCtrlClick(event, trackAlbum);
         return;
@@ -543,6 +561,10 @@ trackAlbum.addEventListener('contextmenu', (event) => {
 });
 trackArtist.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
+        return;
+    }
+
+    if (hasActiveSelectionWithin(trackArtist)) {
         return;
     }
 
@@ -573,6 +595,10 @@ trackTitleInline.addEventListener('click', (event) => {
         return;
     }
 
+    if (hasActiveSelectionWithin(trackTitleInline)) {
+        return;
+    }
+
     if (event.ctrlKey) {
         openMbOnCtrlClick(event, trackTitleInline);
         return;
@@ -588,6 +614,10 @@ trackTitleInline.addEventListener('contextmenu', (event) => {
 });
 trackReleaseAlbum.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
+        return;
+    }
+
+    if (hasActiveSelectionWithin(trackReleaseAlbum)) {
         return;
     }
 
@@ -609,6 +639,10 @@ trackReleaseLabel.addEventListener('click', (event) => {
         return;
     }
 
+    if (hasActiveSelectionWithin(trackReleaseLabel)) {
+        return;
+    }
+
     if (event.ctrlKey) {
         openMbOnCtrlClick(event, trackReleaseLabel);
         return;
@@ -618,6 +652,10 @@ trackReleaseLabel.addEventListener('click', (event) => {
 });
 trackArtistHeader.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
+        return;
+    }
+
+    if (hasActiveSelectionWithin(trackArtistHeader)) {
         return;
     }
 
