@@ -4,7 +4,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -95,83 +94,6 @@ func (a *App) addOrUpdatePathRecursive(root libraryRootConfig, targetPath string
 		return nil
 	})
 	a.logRescanEvent("  - processed directory: %s (%d files in %.2fms)", targetPath, fileCount, time.Since(startTime).Seconds()*1000)
-}
-
-func (a *App) rebuildCoverPathByFolderLocked() map[string]string {
-	selectedCoverPriority := make(map[string]int)
-	selectedCoverName := make(map[string]string)
-	coverPathByFolder := make(map[string]string)
-
-	for _, entry := range a.imageByPath {
-		if !isJpegPath(entry.Path) {
-			continue
-		}
-
-		folderKey := strings.ToLower(entry.FolderPath)
-		name := strings.ToLower(entry.Name)
-		priority := coverPriority(name)
-		currentPriority, hasCurrent := selectedCoverPriority[folderKey]
-		currentName := selectedCoverName[folderKey]
-
-		if !hasCurrent || priority < currentPriority || (priority == currentPriority && name < currentName) {
-			selectedCoverPriority[folderKey] = priority
-			selectedCoverName[folderKey] = name
-			coverPathByFolder[folderKey] = entry.Path
-		}
-	}
-
-	return coverPathByFolder
-}
-
-func (a *App) snapshotLibraryScanLocked(rootPath string) LibraryScanResult {
-	trackFiles := make([]LibraryIndexedFile, 0, len(a.trackByPath))
-	for _, entry := range a.trackByPath {
-		trackFiles = append(trackFiles, entry)
-	}
-
-	textFiles := make([]LibraryIndexedFile, 0, len(a.textByPath))
-	for _, entry := range a.textByPath {
-		textFiles = append(textFiles, entry)
-	}
-
-	imageFiles := make([]LibraryIndexedFile, 0, len(a.imageByPath))
-	for _, entry := range a.imageByPath {
-		imageFiles = append(imageFiles, entry)
-	}
-
-	sort.SliceStable(trackFiles, func(i int, j int) bool {
-		left := strings.ToLower(trackFiles[i].RelativePath)
-		right := strings.ToLower(trackFiles[j].RelativePath)
-		return left < right
-	})
-
-	sort.SliceStable(textFiles, func(i int, j int) bool {
-		left := strings.ToLower(textFiles[i].RelativePath)
-		right := strings.ToLower(textFiles[j].RelativePath)
-		return left < right
-	})
-
-	sort.SliceStable(imageFiles, func(i int, j int) bool {
-		left := strings.ToLower(imageFiles[i].RelativePath)
-		right := strings.ToLower(imageFiles[j].RelativePath)
-		return left < right
-	})
-
-	coverPathByFolder := a.rebuildCoverPathByFolderLocked()
-	return LibraryScanResult{
-		RootPath:          rootPath,
-		RootName:          filepath.Base(rootPath),
-		TrackFiles:        trackFiles,
-		TextFiles:         textFiles,
-		ImageFiles:        imageFiles,
-		CoverPathByFolder: coverPathByFolder,
-		TotalEntries:      len(trackFiles) + len(textFiles) + len(imageFiles),
-		TrackCount:        len(trackFiles),
-		TextFileCount:     len(textFiles),
-		ImageFileCount:    len(imageFiles),
-		Truncated:         a.libraryScan.Truncated,
-		EntryLimit:        a.libraryScan.EntryLimit,
-	}
 }
 
 // applyIncrementalLibraryChanges resolves the owning root for each changed path

@@ -7,6 +7,8 @@ import { createArtistInfoController, type ArtistInfoController } from './control
 import { createImageModalController, type ImageModalController } from './controllers/image-modal-controller';
 import { createLibraryController } from './controllers/library-controller';
 import type { LibraryController } from './controllers/library-controller';
+import { createListenBrainzController, type ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
+import { createMediaSessionController, type ExternalPlaybackAction } from './controllers/media-session-controller';
 import { createPlaylistController, type LoadedPlaylistData, type PlaylistController } from './controllers/playlist-controller';
 import { createSettingsController, type SettingsController } from './controllers/settings-controller';
 import {
@@ -19,6 +21,7 @@ import {
 import { createPlaybackSequencingService } from './services/playback-sequencing-service';
 import { createScrobbleService } from './services/scrobble-service';
 import { createPlaybackStateService } from './services/playback-state-service';
+import { createCoverArtService } from './services/cover-art-service';
 import { createTrackMetadataService } from './services/track-metadata-service';
 import { getMediaControlsElements, renderMediaControls, renderPlayPauseIcon } from './components/media-controls';
 import {
@@ -115,13 +118,10 @@ import type {
 import {
     asPlaybackOrderMode,
     asReleaseDepth,
-    base64ToObjectUrl,
     buildLibraryRootNameByPath,
     findLibraryFolderForFilePath,
-    folderKeyForPath,
     formatTime,
     libraryFolderPathKey,
-    mimeTypeForFileName,
     normalizeLibraryFolders,
     renderTechnicalInfoContent,
     taggedTrackPosition,
@@ -219,12 +219,6 @@ let sidebarQueueFeedbackTrackIndex: number | null = null;
 let sidebarQueueFolderPath = '';
 let sidebarQueueFolderLabel = '';
 let queueConfirmResolver: ((confirmed: boolean) => void) | null = null;
-const coverPathByFolder = new Map<string, string>();
-const coverUrlByFolder = new Map<string, string>();
-const coverMediaArtworkByFolder = new Map<string, { src: string; type: string }>();
-const coverUrlByTrackPath = new Map<string, string>();
-const coverMediaArtworkByTrackPath = new Map<string, { src: string; type: string }>();
-const coverSourceByTrackPath = new Map<string, CoverArtPrioritySource>();
 const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const aboutModalTransitionMs = UI_TIMINGS_MS.modalTransition;
@@ -288,87 +282,6 @@ const playbackSequencingService = createPlaybackSequencingService({
     getReleaseDepthForTrack: (track: Track) => releaseDepthForTrack(track),
     initialPlaybackOrderMode: currentSettings.playbackOrder,
 });
-const supportsMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
-const mediaSessionSeekStepSeconds = 10;
-const createSilentWavObjectUrl = (): string => {
-    const sampleRate = 8000;
-    const durationSeconds = 2;
-    const sampleCount = Math.max(1, Math.floor(sampleRate * durationSeconds));
-    const bytesPerSample = 2;
-    const dataSize = sampleCount * bytesPerSample;
-    const wavBuffer = new ArrayBuffer(44 + dataSize);
-    const view = new DataView(wavBuffer);
-    let offset = 0;
-
-    const writeAscii = (value: string): void => {
-        for (let index = 0; index < value.length; index += 1) {
-            view.setUint8(offset, value.charCodeAt(index));
-            offset += 1;
-        }
-    };
-
-    writeAscii('RIFF');
-    view.setUint32(offset, 36 + dataSize, true);
-    offset += 4;
-    writeAscii('WAVE');
-    writeAscii('fmt ');
-    view.setUint32(offset, 16, true);
-    offset += 4;
-    view.setUint16(offset, 1, true);
-    offset += 2;
-    view.setUint16(offset, 1, true);
-    offset += 2;
-    view.setUint32(offset, sampleRate, true);
-    offset += 4;
-    view.setUint32(offset, sampleRate * bytesPerSample, true);
-    offset += 4;
-    view.setUint16(offset, bytesPerSample, true);
-    offset += 2;
-    view.setUint16(offset, 16, true);
-    offset += 2;
-    writeAscii('data');
-    view.setUint32(offset, dataSize, true);
-
-    return URL.createObjectURL(new Blob([wavBuffer], { type: 'audio/wav' }));
-};
-const mediaSessionAnchorUrl = supportsMediaSession ? createSilentWavObjectUrl() : '';
-const mediaSessionAnchorAudio = supportsMediaSession
-    ? new Audio(mediaSessionAnchorUrl)
-    : null;
-let mediaSessionAnchorPlayPending = false;
-let mediaSessionAnchorUnlockPending = false;
-let mediaSessionAnchorUnlocked = false;
-
-if (mediaSessionAnchorAudio) {
-    mediaSessionAnchorAudio.loop = true;
-    mediaSessionAnchorAudio.muted = false;
-    mediaSessionAnchorAudio.volume = 1;
-    mediaSessionAnchorAudio.preload = 'auto';
-}
-
-const unlockMediaSessionAnchorFromUserGesture = (): void => {
-    if (!mediaSessionAnchorAudio || mediaSessionAnchorUnlocked || mediaSessionAnchorUnlockPending) {
-        return;
-    }
-
-    mediaSessionAnchorUnlockPending = true;
-    void mediaSessionAnchorAudio.play().then(() => {
-        mediaSessionAnchorUnlocked = true;
-        const playbackState = playbackStateService.getPlaybackState();
-        if (!playbackState.loaded || !playbackState.playing) {
-            mediaSessionAnchorAudio.pause();
-            mediaSessionAnchorAudio.currentTime = 0;
-        }
-    }).catch((error) => {
-        console.debug(error);
-    }).finally(() => {
-        mediaSessionAnchorUnlockPending = false;
-    });
-};
-type ExternalPlaybackAction = 'play' | 'pause' | 'playpause' | 'next' | 'previous' | 'stop';
-const externalPlaybackActionDedupWindowMs = 220;
-let lastExternalPlaybackActionGroup: 'playpause' | 'next' | 'previous' | 'stop' | '' = '';
-let lastExternalPlaybackActionAt = 0;
 const trackMetadataService = createTrackMetadataService({
     getTracks: () => tracks,
     setTrack: (index: number, track: Track) => {
@@ -379,6 +292,15 @@ const trackMetadataService = createTrackMetadataService({
     getPreferMusicBrainzMetadata: () => currentSettings.preferMusicBrainzMetadata,
     getCurrentTrackIndex: () => currentTrackIndex,
     getTagRequestVersion: () => tagRequestVersion,
+});
+const coverArtService = createCoverArtService({
+    getCoverArtPriority: () => currentSettings.coverArtPriority,
+    getLibraryFolderCoverPath: async (folderPath: string): Promise<string> => await GetLibraryFolderCoverPath(folderPath) as string,
+    readFileBase64: async (filePath: string): Promise<string> => await ReadFileBase64(filePath) as string,
+    readTrackEmbeddedCover: async (trackPath: string): Promise<{ base64?: string; mimeType?: string }> => await ReadTrackEmbeddedCover(trackPath) as { base64?: string; mimeType?: string },
+    registerObjectUrl: (url: string): void => {
+        objectUrls.push(url);
+    },
 });
 
 const {
@@ -437,6 +359,42 @@ const {
     openFolderBtn,
     volume,
 } = getMediaControlsElements(document);
+const listenBrainzController = createListenBrainzController({
+    elements: {
+        playerCard,
+        listenBrainzLoveBtn,
+        listenBrainzFeedbackMenu,
+        listenBrainzFeedbackLoveBtn,
+        listenBrainzFeedbackHateBtn,
+    },
+    getToken: () => currentSettings.listenBrainzUserToken,
+    getTracks: () => tracks,
+    getCurrentTrackIndex: () => currentTrackIndex,
+    ensureTrackTagsResolved: async (index: number): Promise<void> => {
+        await trackMetadataService.ensureTrackTagsResolved(index);
+    },
+    fetchRecordingFeedback: async (recordingMbid: string): Promise<number> => await GetListenBrainzRecordingFeedback(recordingMbid) as number,
+    submitRecordingFeedback: async (recordingMbid: string, score: ListenBrainzFeedbackScore): Promise<unknown> => await SubmitListenBrainzRecordingFeedback(recordingMbid, score),
+    beforeOpenMenu: () => {
+        closePlayOrderMenu();
+        closeTrackMetaMenu();
+        closeSidebarQueueMenu();
+        playlistController.closeMenu();
+    },
+});
+const canScrobble = (): boolean => listenBrainzController.canScrobble();
+const closeListenBrainzFeedbackMenu = (): void => {
+    listenBrainzController.closeMenu();
+};
+const resetListenBrainzFeedbackState = (): void => {
+    listenBrainzController.resetFeedbackState();
+};
+const refreshListenBrainzFeedbackForCurrentTrack = async (force = false): Promise<void> => {
+    await listenBrainzController.refreshFeedbackForCurrentTrack(force);
+};
+const submitListenBrainzFeedbackForTrack = async (trackIndex: number, score: ListenBrainzFeedbackScore): Promise<void> => {
+    await listenBrainzController.submitFeedbackForTrack(trackIndex, score);
+};
 const openMbOnCtrlClick = (event: MouseEvent, target: HTMLElement): void => {
     if (!event.ctrlKey) {
         return;
@@ -735,173 +693,6 @@ const scheduleLibraryIncrementalFolderRefresh = (): void => {
         logRescan('Refreshing current folder: %s', currentFolderPath || '(root)');
         libraryController.refreshCurrentFolder();
     }, libraryIncrementalRefreshDebounceMs);
-};
-
-const canScrobble = (): boolean => currentSettings.listenBrainzUserToken.trim() !== '';
-
-type ListenBrainzFeedbackScore = -1 | 0 | 1;
-
-const listenBrainzFeedbackScoreByRecordingMbid = new Map<string, ListenBrainzFeedbackScore>();
-let listenBrainzFeedbackFetchKey = '';
-let listenBrainzFeedbackFetchVersion = 0;
-let listenBrainzFeedbackFetchInFlight = false;
-let listenBrainzFeedbackSubmitInFlight = false;
-let currentListenBrainzFeedbackScore: ListenBrainzFeedbackScore = 0;
-
-const normalizeListenBrainzFeedbackScore = (value: number): ListenBrainzFeedbackScore => {
-    if (value === 1 || value === -1) {
-        return value;
-    }
-
-    return 0;
-};
-
-const currentTrackRecordingMbid = (): string => {
-    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
-        return '';
-    }
-
-    return (tracks[currentTrackIndex].mbIds.recordingId || '').trim();
-};
-
-const updateListenBrainzLoveButton = (): void => {
-    const hasToken = canScrobble();
-    const recordingMbid = currentTrackRecordingMbid();
-    const isLoading = listenBrainzFeedbackSubmitInFlight || listenBrainzFeedbackFetchInFlight;
-    const canUseButton = hasToken && recordingMbid !== '' && !isLoading;
-
-    listenBrainzLoveBtn.disabled = false;
-    listenBrainzLoveBtn.classList.toggle('is-disabled', !canUseButton);
-    listenBrainzLoveBtn.classList.toggle('is-loading', isLoading);
-    listenBrainzLoveBtn.setAttribute('aria-disabled', canUseButton ? 'false' : 'true');
-    listenBrainzLoveBtn.setAttribute('aria-busy', isLoading ? 'true' : 'false');
-    listenBrainzLoveBtn.classList.toggle('is-loved', currentListenBrainzFeedbackScore === 1);
-    listenBrainzLoveBtn.classList.toggle('is-hated', currentListenBrainzFeedbackScore === -1);
-    listenBrainzLoveBtn.setAttribute('aria-pressed', currentListenBrainzFeedbackScore === 1 ? 'true' : 'false');
-
-    if (isLoading) {
-        listenBrainzLoveBtn.title = 'Syncing ListenBrainz feedback...';
-    } else if (!hasToken) {
-        listenBrainzLoveBtn.title = 'Set a ListenBrainz token in Settings to enable this button.';
-    } else if (recordingMbid === '') {
-        listenBrainzLoveBtn.title = 'No recording MBID found for this track.';
-    } else if (currentListenBrainzFeedbackScore === 1) {
-        listenBrainzLoveBtn.title = 'Loved on ListenBrainz. Click to un-love, or right-click for Love/Hate options.';
-    } else if (currentListenBrainzFeedbackScore === -1) {
-        listenBrainzLoveBtn.title = 'Marked as hated on ListenBrainz. Left-click to submit Love. Right-click for options.';
-    } else {
-        listenBrainzLoveBtn.title = 'Submit Love on ListenBrainz. Right-click for Love/Hate options.';
-    }
-};
-
-const resetListenBrainzFeedbackState = (): void => {
-    listenBrainzFeedbackFetchVersion += 1;
-    listenBrainzFeedbackFetchKey = '';
-    listenBrainzFeedbackFetchInFlight = false;
-    listenBrainzFeedbackSubmitInFlight = false;
-    currentListenBrainzFeedbackScore = 0;
-    updateListenBrainzLoveButton();
-};
-
-const refreshListenBrainzFeedbackForCurrentTrack = async (force = false): Promise<void> => {
-    const token = currentSettings.listenBrainzUserToken.trim();
-    const recordingMbid = currentTrackRecordingMbid();
-    const normalizedRecordingMbid = recordingMbid.toLowerCase();
-    const fetchKey = `${token.toLowerCase()}|${normalizedRecordingMbid}`;
-
-    if (!token || recordingMbid === '') {
-        listenBrainzFeedbackFetchKey = fetchKey;
-        listenBrainzFeedbackFetchInFlight = false;
-        currentListenBrainzFeedbackScore = 0;
-        updateListenBrainzLoveButton();
-        return;
-    }
-
-    if (!force && fetchKey === listenBrainzFeedbackFetchKey) {
-        listenBrainzFeedbackFetchInFlight = false;
-        const cachedScore = listenBrainzFeedbackScoreByRecordingMbid.get(normalizedRecordingMbid);
-        if (cachedScore !== undefined) {
-            currentListenBrainzFeedbackScore = cachedScore;
-            updateListenBrainzLoveButton();
-        }
-        return;
-    }
-
-    listenBrainzFeedbackFetchKey = fetchKey;
-    const requestVersion = ++listenBrainzFeedbackFetchVersion;
-    const cachedScore = listenBrainzFeedbackScoreByRecordingMbid.get(normalizedRecordingMbid);
-    if (cachedScore !== undefined) {
-        currentListenBrainzFeedbackScore = cachedScore;
-    } else {
-        currentListenBrainzFeedbackScore = 0;
-    }
-
-    listenBrainzFeedbackFetchInFlight = true;
-    updateListenBrainzLoveButton();
-
-    try {
-        const score = await GetListenBrainzRecordingFeedback(recordingMbid) as number;
-        if (requestVersion !== listenBrainzFeedbackFetchVersion) {
-            return;
-        }
-
-        const normalizedScore = normalizeListenBrainzFeedbackScore(score);
-        listenBrainzFeedbackScoreByRecordingMbid.set(normalizedRecordingMbid, normalizedScore);
-        currentListenBrainzFeedbackScore = normalizedScore;
-    } catch (error) {
-        console.error(error);
-    } finally {
-        if (requestVersion === listenBrainzFeedbackFetchVersion) {
-            listenBrainzFeedbackFetchInFlight = false;
-            updateListenBrainzLoveButton();
-        }
-    }
-};
-
-const submitListenBrainzFeedbackForTrack = async (trackIndex: number, score: ListenBrainzFeedbackScore): Promise<void> => {
-    if (score !== 1 && score !== -1 && score !== 0) {
-        return;
-    }
-
-    if (!Number.isInteger(trackIndex) || trackIndex < 0 || trackIndex >= tracks.length) {
-        updateListenBrainzLoveButton();
-        return;
-    }
-
-    const token = currentSettings.listenBrainzUserToken.trim();
-    await trackMetadataService.ensureTrackTagsResolved(trackIndex);
-    const latestTrack = tracks[trackIndex];
-    const recordingMbid = latestTrack ? (latestTrack.mbIds.recordingId || '').trim() : '';
-    if (!token || recordingMbid === '' || listenBrainzFeedbackSubmitInFlight) {
-        updateListenBrainzLoveButton();
-        return;
-    }
-
-    listenBrainzFeedbackSubmitInFlight = true;
-    updateListenBrainzLoveButton();
-
-    try {
-        await SubmitListenBrainzRecordingFeedback(recordingMbid, score);
-        const normalizedRecordingMbid = recordingMbid.toLowerCase();
-        listenBrainzFeedbackScoreByRecordingMbid.set(normalizedRecordingMbid, score);
-        if (normalizedRecordingMbid === currentTrackRecordingMbid().toLowerCase()) {
-            currentListenBrainzFeedbackScore = score;
-        }
-    } catch (error) {
-        console.error(error);
-    } finally {
-        listenBrainzFeedbackSubmitInFlight = false;
-        updateListenBrainzLoveButton();
-    }
-};
-
-const submitListenBrainzFeedbackForCurrentTrack = async (score: ListenBrainzFeedbackScore): Promise<void> => {
-    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
-        updateListenBrainzLoveButton();
-        return;
-    }
-
-    await submitListenBrainzFeedbackForTrack(currentTrackIndex, score);
 };
 
 const rebuildTrackPathIndex = (): void => {
@@ -1233,103 +1024,6 @@ const updateTrackLabels = (): void => {
     }
 };
 
-const updateMediaSessionMetadata = (): void => {
-    if (!supportsMediaSession) {
-        return;
-    }
-
-    const playbackState = playbackStateService.getPlaybackState();
-    if (!playbackState.loaded || currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
-        navigator.mediaSession.metadata = null;
-        return;
-    }
-
-    const activeTrack = tracks[currentTrackIndex];
-    const metadataInit: MediaMetadataInit = {
-        title: activeTrack.displayTitle || activeTrack.title || activeTrack.name,
-        artist: activeTrack.displayArtist || 'Unknown Artist',
-        album: activeTrack.displayAlbum || 'Unknown Album',
-    };
-
-    const trackKey = activeTrack.path.trim().toLowerCase();
-    const folderKey = folderKeyForPath(activeTrack.folderPath || '');
-    const cachedArtwork = coverMediaArtworkByTrackPath.get(trackKey) || coverMediaArtworkByFolder.get(folderKey);
-    if (cachedArtwork) {
-        metadataInit.artwork = [{
-            src: cachedArtwork.src,
-            type: cachedArtwork.type,
-        }];
-    }
-
-    if (!cachedArtwork && coverArt.classList.contains('is-visible') && coverArt.src && !coverArt.src.startsWith('blob:')) {
-        metadataInit.artwork = [{ src: coverArt.src }];
-    }
-
-    navigator.mediaSession.metadata = new MediaMetadata(metadataInit);
-};
-
-const updateMediaSessionPlaybackState = (): void => {
-    if (!supportsMediaSession) {
-        return;
-    }
-
-    const playbackState = playbackStateService.getPlaybackState();
-    navigator.mediaSession.playbackState = playbackState.loaded
-        ? (playbackState.playing ? 'playing' : 'paused')
-        : 'none';
-
-    if (!mediaSessionAnchorAudio) {
-        return;
-    }
-
-    const shouldPlayAnchor = playbackState.loaded && playbackState.playing;
-    if (shouldPlayAnchor) {
-        if (mediaSessionAnchorAudio.paused && !mediaSessionAnchorPlayPending && !mediaSessionAnchorUnlockPending) {
-            mediaSessionAnchorPlayPending = true;
-            void mediaSessionAnchorAudio.play().then(() => {
-                mediaSessionAnchorUnlocked = true;
-            }).catch((error) => {
-                console.debug(error);
-            }).finally(() => {
-                mediaSessionAnchorPlayPending = false;
-            });
-        }
-        return;
-    }
-
-    if (!mediaSessionAnchorAudio.paused) {
-        mediaSessionAnchorAudio.pause();
-        mediaSessionAnchorAudio.currentTime = 0;
-    }
-};
-
-const updateMediaSessionPositionState = (): void => {
-    if (!supportsMediaSession || typeof navigator.mediaSession.setPositionState !== 'function') {
-        return;
-    }
-
-    const playbackState = playbackStateService.getPlaybackState();
-    if (!playbackState.loaded || !Number.isFinite(playbackState.duration) || playbackState.duration <= 0 || !Number.isFinite(playbackState.currentTime)) {
-        try {
-            navigator.mediaSession.setPositionState(undefined);
-        } catch (error) {
-            console.debug(error);
-        }
-        return;
-    }
-
-    const boundedPosition = Math.min(Math.max(0, playbackState.currentTime), playbackState.duration);
-    try {
-        navigator.mediaSession.setPositionState({
-            duration: playbackState.duration,
-            position: boundedPosition,
-            playbackRate: 1,
-        });
-    } catch (error) {
-        console.debug(error);
-    }
-};
-
 const formatPlaybackStateForLog = (state: AudioPlaybackState): string => {
     const currentTime = Number.isFinite(state.currentTime) ? state.currentTime.toFixed(2) : '0.00';
     const duration = Number.isFinite(state.duration) ? state.duration.toFixed(2) : '0.00';
@@ -1356,8 +1050,7 @@ const describeErrorForLog = (error: unknown): string => {
 const logPlaybackDebug = (message: string): void => {
     const formatted = `[PLAYBACK] ${message}`;
     console.debug(formatted);
-    void LogFrontendMessage(formatted).catch(() => {
-    });
+    void LogFrontendMessage(formatted).catch(() => undefined);
 };
 
 const handleAudioError = (error: unknown): void => {
@@ -1688,39 +1381,6 @@ const closeSidebarQueueMenu = (): void => {
     sidebarQueueFeedbackTrackIndex = null;
     sidebarQueueFolderPath = '';
     sidebarQueueFolderLabel = '';
-};
-
-const closeListenBrainzFeedbackMenu = (): void => {
-    listenBrainzFeedbackMenu.hidden = true;
-};
-
-const openListenBrainzFeedbackMenu = (clientX: number, clientY: number): void => {
-    closePlayOrderMenu();
-    closeTrackMetaMenu();
-    closeSidebarQueueMenu();
-    playlistController.closeMenu();
-
-    const canSubmitFeedback = canScrobble() && currentTrackRecordingMbid() !== '' && !listenBrainzFeedbackSubmitInFlight;
-    listenBrainzFeedbackLoveBtn.disabled = !canSubmitFeedback;
-    listenBrainzFeedbackHateBtn.disabled = !canSubmitFeedback;
-
-    listenBrainzFeedbackMenu.hidden = false;
-
-    const margin = 10;
-    const menuRect = listenBrainzFeedbackMenu.getBoundingClientRect();
-    const cardRect = playerCard.getBoundingClientRect();
-
-    const relativeX = clientX - cardRect.left;
-    const relativeY = clientY - cardRect.top;
-
-    const maxX = Math.max(margin, cardRect.width - menuRect.width - margin);
-    const maxY = Math.max(margin, cardRect.height - menuRect.height - margin);
-
-    const clampedX = Math.max(margin, Math.min(relativeX, maxX));
-    const clampedY = Math.max(margin, Math.min(relativeY, maxY));
-
-    listenBrainzFeedbackMenu.style.left = `${clampedX}px`;
-    listenBrainzFeedbackMenu.style.top = `${clampedY}px`;
 };
 
 const openSidebarQueueMenu = (
@@ -2093,7 +1753,7 @@ const openCoverImageModal = (): void => {
         return;
     }
 
-    const source = coverSourceByTrackPath.get(trackPathKey(activeTrack.path));
+    const source = coverArtService.getResolvedSourceForTrack(activeTrack.path);
     if (source === 'embedded') {
         imageModalController.openPreview(coverArt.src);
         return;
@@ -2105,7 +1765,7 @@ const openCoverImageModal = (): void => {
         return;
     }
 
-    const coverPath = coverPathByFolder.get(folderKeyForPath(activeTrack.folderPath || ''));
+    const coverPath = coverArtService.getFolderCoverPath(activeTrack.folderPath || '');
     const selectedIndex = indexOfImageByPath(gallery, coverPath);
     void imageModalController.openGallery(gallery, selectedIndex >= 0 ? selectedIndex : 0);
 };
@@ -2345,8 +2005,9 @@ const clearLibrarySelection = async (): Promise<void> => {
 
     objectUrls = clearLibraryRuntimeData({
         objectUrls,
-        coverPathByFolder,
-        coverUrlByFolder,
+        clearCoverArtCache: () => {
+            coverArtService.clearCache();
+        },
         clearArtistInfoCache: () => {
             artistInfoController.clearCache();
         },
@@ -2360,10 +2021,6 @@ const clearLibrarySelection = async (): Promise<void> => {
             playlistController.resetState();
         },
     });
-    coverMediaArtworkByFolder.clear();
-    coverUrlByTrackPath.clear();
-    coverMediaArtworkByTrackPath.clear();
-    coverSourceByTrackPath.clear();
 
     tracks = [];
     textFiles = [];
@@ -2527,98 +2184,7 @@ const initializeAppVersion = async (): Promise<void> => {
     }
 };
 
-const trackPathKey = (trackPath: string): string => trackPath.trim().toLowerCase();
-
-const resolveFolderCoverForTrack = async (track: Track): Promise<string | undefined> => {
-    const folderKey = folderKeyForPath(track.folderPath);
-    const cached = coverUrlByFolder.get(folderKey);
-    if (cached) {
-        return cached;
-    }
-
-    let coverPath = coverPathByFolder.get(folderKey);
-    if (!coverPath) {
-        const backendCoverPath = await GetLibraryFolderCoverPath(track.folderPath || '') as string;
-        if (backendCoverPath) {
-            coverPathByFolder.set(folderKey, backendCoverPath);
-            coverPath = backendCoverPath;
-        }
-    }
-
-    if (!coverPath) {
-        return undefined;
-    }
-
-    const base64 = await ReadFileBase64(coverPath);
-    if (!base64) {
-        return undefined;
-    }
-
-    const coverMimeType = mimeTypeForFileName(coverPath);
-    const coverUrl = base64ToObjectUrl(base64, coverMimeType);
-    coverUrlByFolder.set(folderKey, coverUrl);
-    coverMediaArtworkByFolder.set(folderKey, {
-        src: `data:${coverMimeType};base64,${base64}`,
-        type: coverMimeType,
-    });
-    objectUrls.push(coverUrl);
-    return coverUrl;
-};
-
-const resolveEmbeddedCoverForTrack = async (track: Track): Promise<string | undefined> => {
-    const trackKey = trackPathKey(track.path);
-    if (!trackKey) {
-        return undefined;
-    }
-
-    const cached = coverUrlByTrackPath.get(trackKey);
-    if (cached) {
-        return cached;
-    }
-
-    const embeddedCover = await ReadTrackEmbeddedCover(track.path) as { base64?: string; mimeType?: string };
-    const base64 = embeddedCover.base64 || '';
-    if (!base64) {
-        return undefined;
-    }
-
-    const mimeType = embeddedCover.mimeType && embeddedCover.mimeType.startsWith('image/')
-        ? embeddedCover.mimeType
-        : 'image/jpeg';
-    const coverUrl = base64ToObjectUrl(base64, mimeType);
-    coverUrlByTrackPath.set(trackKey, coverUrl);
-    coverMediaArtworkByTrackPath.set(trackKey, {
-        src: `data:${mimeType};base64,${base64}`,
-        type: mimeType,
-    });
-    objectUrls.push(coverUrl);
-    return coverUrl;
-};
-
-const resolveCoverForTrack = async (track: Track): Promise<string | undefined> => {
-    const trackKey = trackPathKey(track.path);
-    const priority = normalizeCoverArtPriority(currentSettings.coverArtPriority);
-
-    for (const source of priority) {
-        const coverUrl = source === 'embedded'
-            ? await resolveEmbeddedCoverForTrack(track)
-            : await resolveFolderCoverForTrack(track);
-
-        if (!coverUrl) {
-            continue;
-        }
-
-        if (trackKey) {
-            coverSourceByTrackPath.set(trackKey, source);
-        }
-        return coverUrl;
-    }
-
-    if (trackKey) {
-        coverSourceByTrackPath.delete(trackKey);
-    }
-    return undefined;
-};
+const resolveCoverForTrack = async (track: Track): Promise<string | undefined> => await coverArtService.resolveForTrack(track);
 
 const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promise<void> => {
     if (index < 0 || index >= tracks.length) {
@@ -2824,165 +2390,51 @@ const stopCurrentTrack = async (): Promise<void> => {
     }
 };
 
-const externalPlaybackActionGroup = (action: ExternalPlaybackAction): 'playpause' | 'next' | 'previous' | 'stop' => {
-    if (action === 'next') {
-        return 'next';
-    }
-
-    if (action === 'previous') {
-        return 'previous';
-    }
-
-    if (action === 'stop') {
-        return 'stop';
-    }
-
-    return 'playpause';
-};
-
-const shouldSuppressDuplicateExternalPlaybackAction = (action: ExternalPlaybackAction): boolean => {
-    const actionGroup = externalPlaybackActionGroup(action);
-    const now = performance.now();
-    const duplicate = lastExternalPlaybackActionGroup === actionGroup
-        && (now - lastExternalPlaybackActionAt) < externalPlaybackActionDedupWindowMs;
-
-    lastExternalPlaybackActionGroup = actionGroup;
-    lastExternalPlaybackActionAt = now;
-    return duplicate;
-};
-
-const dispatchExternalPlaybackAction = (action: ExternalPlaybackAction): void => {
-    if (shouldSuppressDuplicateExternalPlaybackAction(action)) {
-        return;
-    }
-
-    if (action === 'play') {
-        void playCurrentTrack();
-        return;
-    }
-
-    if (action === 'pause') {
-        void pauseCurrentTrack();
-        return;
-    }
-
-    if (action === 'playpause') {
-        void toggleCurrentTrack();
-        return;
-    }
-
-    if (action === 'next') {
-        goToTrack(1);
-        return;
-    }
-
-    if (action === 'previous') {
-        goToTrack(-1);
-        return;
-    }
-
-    void stopCurrentTrack();
-};
-
-const setMediaSessionActionHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null): void => {
-    if (!supportsMediaSession) {
-        return;
-    }
-
-    try {
-        navigator.mediaSession.setActionHandler(action, handler);
-    } catch (error) {
-        console.debug(error);
-    }
-};
-
-const seekToTime = async (targetSeconds: number): Promise<void> => {
-    if (!playbackStateService.isBackendReady()) {
-        return;
-    }
-
-    try {
-        const nextState = await AudioSeek(targetSeconds) as AudioPlaybackState;
-        applyPlaybackState(nextState);
-    } catch (error) {
-        handleAudioError(error);
-    }
-};
-
-const initializeMediaSessionIntegration = (): void => {
-    if (!supportsMediaSession) {
-        return;
-    }
-
-    setMediaSessionActionHandler('play', () => {
-        dispatchExternalPlaybackAction('play');
-    });
-    setMediaSessionActionHandler('pause', () => {
-        dispatchExternalPlaybackAction('pause');
-    });
-    setMediaSessionActionHandler('previoustrack', () => {
-        dispatchExternalPlaybackAction('previous');
-    });
-    setMediaSessionActionHandler('nexttrack', () => {
-        dispatchExternalPlaybackAction('next');
-    });
-    setMediaSessionActionHandler('stop', () => {
-        dispatchExternalPlaybackAction('stop');
-    });
-    setMediaSessionActionHandler('seekto', (details) => {
-        if (details.seekTime === undefined || !Number.isFinite(details.seekTime)) {
+const mediaSessionController = createMediaSessionController({
+    getPlaybackState: () => playbackStateService.getPlaybackState(),
+    getCurrentTrack: () => (currentTrackIndex >= 0 && currentTrackIndex < tracks.length ? tracks[currentTrackIndex] : undefined),
+    getCachedArtwork: (track: Track) => coverArtService.getCachedMediaArtwork(track),
+    getCoverArtPreview: () => ({
+        visible: coverArt.classList.contains('is-visible'),
+        src: coverArt.src,
+    }),
+    playCurrentTrack,
+    pauseCurrentTrack,
+    toggleCurrentTrack,
+    goToTrack,
+    stopCurrentTrack,
+    seekToTime: async (targetSeconds: number): Promise<void> => {
+        if (!playbackStateService.isBackendReady()) {
             return;
         }
 
-        void seekToTime(Math.max(0, details.seekTime));
-    });
-    setMediaSessionActionHandler('seekbackward', (details) => {
-        const currentState = playbackStateService.getPlaybackState();
-        const seekOffset = (details.seekOffset !== undefined && Number.isFinite(details.seekOffset))
-            ? details.seekOffset
-            : mediaSessionSeekStepSeconds;
-        void seekToTime(Math.max(0, currentState.currentTime - seekOffset));
-    });
-    setMediaSessionActionHandler('seekforward', (details) => {
-        const currentState = playbackStateService.getPlaybackState();
-        const seekOffset = (details.seekOffset !== undefined && Number.isFinite(details.seekOffset))
-            ? details.seekOffset
-            : mediaSessionSeekStepSeconds;
-        const maxDuration = Number.isFinite(currentState.duration) && currentState.duration > 0
-            ? currentState.duration
-            : Number.POSITIVE_INFINITY;
-        void seekToTime(Math.min(maxDuration, currentState.currentTime + seekOffset));
-    });
-
-    updateMediaSessionPlaybackState();
-    updateMediaSessionPositionState();
-    updateMediaSessionMetadata();
+        try {
+            const nextState = await AudioSeek(targetSeconds) as AudioPlaybackState;
+            applyPlaybackState(nextState);
+        } catch (error) {
+            handleAudioError(error);
+        }
+    },
+});
+const updateMediaSessionMetadata = (): void => {
+    mediaSessionController.updateMetadata();
 };
-
-const handleFocusedHardwareMediaKey = (event: KeyboardEvent): boolean => {
-    const mediaKey = event.code || event.key;
-    if (mediaKey === 'MediaPlayPause') {
-        dispatchExternalPlaybackAction('playpause');
-        return true;
-    }
-
-    if (mediaKey === 'MediaTrackNext') {
-        dispatchExternalPlaybackAction('next');
-        return true;
-    }
-
-    if (mediaKey === 'MediaTrackPrevious') {
-        dispatchExternalPlaybackAction('previous');
-        return true;
-    }
-
-    if (mediaKey === 'MediaStop') {
-        dispatchExternalPlaybackAction('stop');
-        return true;
-    }
-
-    return false;
+const updateMediaSessionPlaybackState = (): void => {
+    mediaSessionController.updatePlaybackState();
 };
+const updateMediaSessionPositionState = (): void => {
+    mediaSessionController.updatePositionState();
+};
+const dispatchExternalPlaybackAction = (action: ExternalPlaybackAction): void => {
+    mediaSessionController.dispatchExternalPlaybackAction(action);
+};
+const initializeMediaSessionIntegration = (): void => {
+    mediaSessionController.initialize();
+};
+const unlockMediaSessionAnchorFromUserGesture = (): void => {
+    mediaSessionController.unlockFromUserGesture();
+};
+const handleFocusedHardwareMediaKey = (event: KeyboardEvent): boolean => mediaSessionController.handleHardwareMediaKey(event);
 
 const nonTypingInputTypes = new Set([
     'button',
@@ -3260,8 +2712,9 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     stepTime = performance.now();
     objectUrls = clearLibraryRuntimeData({
         objectUrls,
-        coverPathByFolder,
-        coverUrlByFolder,
+        clearCoverArtCache: () => {
+            coverArtService.clearCache();
+        },
         clearArtistInfoCache: () => {
             artistInfoController.clearCache();
         },
@@ -3272,10 +2725,6 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
             playlistController.resetState();
         },
     });
-    coverMediaArtworkByFolder.clear();
-    coverUrlByTrackPath.clear();
-    coverMediaArtworkByTrackPath.clear();
-    coverSourceByTrackPath.clear();
     logRescan('  - cleared runtime data: %.2fms', performance.now() - stepTime);
 
     stepTime = performance.now();
@@ -3322,7 +2771,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
 
     stepTime = performance.now();
     for (const [folder, coverPath] of scanCollections.coverPathEntries) {
-        coverPathByFolder.set(folder, coverPath);
+        coverArtService.setFolderCoverPath(folder, coverPath);
     }
     logRescan('  - set cover paths: %.2fms', performance.now() - stepTime);
 
@@ -3972,32 +3421,6 @@ document.addEventListener('keydown', (event) => {
     }
 });
 
-listenBrainzLoveBtn.addEventListener('click', () => {
-    if (listenBrainzLoveBtn.getAttribute('aria-disabled') === 'true') {
-        return;
-    }
-
-    closeListenBrainzFeedbackMenu();
-    const nextScore: ListenBrainzFeedbackScore = currentListenBrainzFeedbackScore === 1 ? 0 : 1;
-    void submitListenBrainzFeedbackForCurrentTrack(nextScore);
-});
-
-listenBrainzLoveBtn.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    openListenBrainzFeedbackMenu(event.clientX, event.clientY);
-});
-
-listenBrainzFeedbackLoveBtn.addEventListener('click', () => {
-    closeListenBrainzFeedbackMenu();
-    void submitListenBrainzFeedbackForCurrentTrack(1);
-});
-
-listenBrainzFeedbackHateBtn.addEventListener('click', () => {
-    closeListenBrainzFeedbackMenu();
-    void submitListenBrainzFeedbackForCurrentTrack(-1);
-});
-
 playPause.addEventListener('click', () => {
     void toggleCurrentTrack();
 });
@@ -4284,15 +3707,7 @@ window.addEventListener('blur', () => {
 });
 
 window.addEventListener('beforeunload', () => {
-    if (mediaSessionAnchorAudio) {
-        mediaSessionAnchorAudio.pause();
-        mediaSessionAnchorAudio.removeAttribute('src');
-        mediaSessionAnchorAudio.load();
-    }
-
-    if (mediaSessionAnchorUrl) {
-        URL.revokeObjectURL(mediaSessionAnchorUrl);
-    }
+    mediaSessionController.dispose();
 });
 
 window.addEventListener('resize', () => {

@@ -74,7 +74,7 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 	)
 	defer a.indexMu.Unlock()
 
-	entries := []LibraryBrowserEntry{}
+	var entries []LibraryBrowserEntry
 	mode := "fallback-map"
 	if !a.scanInProgress {
 		a.maybeStartLibraryDerivedIndexRebuildLocked()
@@ -159,7 +159,7 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 		}
 	}
 
-	entries := []LibraryBrowserEntry{}
+	var entries []LibraryBrowserEntry
 	mode := "fallback-map"
 	canceled := false
 	if !a.scanInProgress {

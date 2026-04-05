@@ -9,6 +9,7 @@ import (
 
 const appSettingsFileName = "silphium.settings.json"
 
+// FocusedKeyboardShortcuts stores the persisted key bindings for focused app commands.
 type FocusedKeyboardShortcuts struct {
 	PlayPauseToggle    string `json:"playPauseToggle"`
 	NextTrack          string `json:"nextTrack"`
@@ -18,12 +19,14 @@ type FocusedKeyboardShortcuts struct {
 	OpenSettings       string `json:"openSettings"`
 }
 
+// AppLibraryFolder describes one configured library root and its optional metadata.
 type AppLibraryFolder struct {
 	Path         string `json:"path"`
 	Label        string `json:"label,omitempty"`
 	ReleaseDepth int    `json:"releaseDepth,omitempty"`
 }
 
+// AudioSettings stores persisted audio output and playback behavior preferences.
 type AudioSettings struct {
 	OutputDevice    string `json:"outputDevice,omitempty"`
 	OutputBufferMs  int    `json:"outputBufferMs,omitempty"`

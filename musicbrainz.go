@@ -960,21 +960,6 @@ func isMusicBrainzBandRelation(relationType string) bool {
 	return strings.Contains(cleanRelationType, "member") || cleanRelationType == "founder" || cleanRelationType == "subgroup"
 }
 
-func hasSharedArtistID(payload map[string]any, artistIDs map[string]struct{}) bool {
-	for _, credit := range musicBrainzArtistRefs(payload) {
-		artistID := sanitizeMusicBrainzID(credit.ArtistID)
-		if artistID == "" {
-			continue
-		}
-
-		if _, exists := artistIDs[artistID]; exists {
-			return true
-		}
-	}
-
-	return false
-}
-
 func addMusicBrainzArtistNode(builder *musicBrainzExplorationBuilder, mbid string, label string, subtitle string, kind string, emphasis int) string {
 	cleanMBID := sanitizeMusicBrainzID(mbid)
 	cleanKind := strings.TrimSpace(strings.ToLower(kind))
@@ -1350,8 +1335,6 @@ func (a *App) LookupMusicBrainzEntity(entityType string, mbid string) MusicBrain
 	case "artist":
 		incClause = "genres+tags+url-rels"
 	case "label":
-		incClause = "releases+artists+genres+tags+url-rels"
-		// Label entities do not support 'artists'; adjust cautiously below if needed.
 		incClause = "releases+genres+tags+url-rels"
 	default:
 		return result

@@ -35,6 +35,7 @@ type AudioPlaybackState struct {
 	EndEventID  uint64  `json:"endEventId"`
 }
 
+// AudioOutputDevice describes an available audio output target for playback.
 type AudioOutputDevice struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -63,7 +64,19 @@ type gaplessTrimInfo struct {
 func logAudioEvent(message string, args ...interface{}) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formattedMessage := fmt.Sprintf(message, args...)
-	log.Println(fmt.Sprintf("[%s] [AUDIO] %s", timestamp, formattedMessage))
+	log.Printf("[%s] [AUDIO] %s", timestamp, formattedMessage)
+}
+
+type audioPlayerSource struct {
+	backend *AudioBackend
+}
+
+func (s *audioPlayerSource) Read(p []byte) (int, error) {
+	return s.backend.Read(p)
+}
+
+func (s *audioPlayerSource) Seek(offset int64, whence int) (int64, error) {
+	return s.backend.seekStream(offset, whence)
 }
 
 func backendDisplayName(raw string) string {
@@ -137,6 +150,20 @@ func (b *AudioBackend) stateSummaryLocked() string {
 	)
 }
 
+func (b *AudioBackend) flushPlayerBuffer(player *oto.Player) error {
+	if player == nil {
+		return nil
+	}
+
+	player.Pause()
+	if _, err := player.Seek(0, io.SeekCurrent); err != nil {
+		return fmt.Errorf("failed to resync audio buffer: %w", err)
+	}
+
+	return nil
+}
+
+// ApplyAudioSettings updates the backend with normalized persisted audio settings.
 func (b *AudioBackend) ApplyAudioSettings(settings AudioSettings) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
@@ -159,6 +186,7 @@ func (b *AudioBackend) ApplyAudioSettings(settings AudioSettings) {
 	)
 }
 
+// ListOutputDevices returns the audio output devices available on the current platform.
 func (b *AudioBackend) ListOutputDevices() []AudioOutputDevice {
 	devices, err := oto.OutputDevices()
 	if err != nil || len(devices) == 0 {
@@ -255,6 +283,37 @@ func (b *AudioBackend) Read(p []byte) (int, error) {
 	return 0, io.EOF
 }
 
+func (b *AudioBackend) seekStream(offset int64, whence int) (int64, error) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	baseOffset := int64(0)
+	switch whence {
+	case io.SeekStart:
+		baseOffset = 0
+	case io.SeekCurrent:
+		baseOffset = b.streamReadOffset
+	case io.SeekEnd:
+		baseOffset = b.totalTimelineBytesLocked()
+	default:
+		return 0, errors.New("invalid seek whence")
+	}
+
+	nextOffset := baseOffset + offset
+	if nextOffset < 0 {
+		return 0, errors.New("negative seek position")
+	}
+
+	totalTimelineBytes := b.totalTimelineBytesLocked()
+	if nextOffset > totalTimelineBytes {
+		nextOffset = totalTimelineBytes
+	}
+
+	b.streamReadOffset = nextOffset
+	b.streamCond.Broadcast()
+	return nextOffset, nil
+}
+
 // Initialize prepares ffmpeg and the audio output context.
 func (b *AudioBackend) Initialize() error {
 	b.mutex.Lock()
@@ -270,7 +329,7 @@ func (b *AudioBackend) Initialize() error {
 
 	if b.context != nil {
 		if b.player == nil {
-			b.player = b.context.NewPlayer(b)
+			b.player = b.context.NewPlayer(&audioPlayerSource{backend: b})
 			b.player.SetVolume(b.volume)
 			logAudioEvent("Initialize attached player to existing context state=%s", b.stateSummaryLocked())
 		}
@@ -300,7 +359,7 @@ func (b *AudioBackend) Initialize() error {
 	}
 
 	b.context = context
-	b.player = context.NewPlayer(b)
+	b.player = context.NewPlayer(&audioPlayerSource{backend: b})
 	b.player.SetVolume(b.volume)
 	logAudioEvent("Initialize created context device=%q buffer=%s gapless=%t", b.outputDevice, b.outputBuffer, b.gaplessPlayback)
 	return nil
@@ -452,8 +511,8 @@ func (b *AudioBackend) LoadTrack(path string) (AudioPlaybackState, error) {
 	summary := b.stateSummaryLocked()
 	b.mutex.Unlock()
 
-	if player != nil {
-		player.Reset()
+	if err := b.flushPlayerBuffer(player); err != nil {
+		return state, err
 	}
 
 	logAudioEvent("LoadTrack path=%q bytes=%d state=%s", path, len(segment.PCMData), summary)
@@ -544,8 +603,15 @@ func (b *AudioBackend) Play() (AudioPlaybackState, error) {
 	b.streamCond.Broadcast()
 	b.mutex.Unlock()
 
-	if shouldReset && player != nil {
-		player.Reset()
+	if shouldReset {
+		if err := b.flushPlayerBuffer(player); err != nil {
+			b.mutex.Lock()
+			b.playing = false
+			b.playStarted = time.Time{}
+			state := b.snapshotLocked()
+			b.mutex.Unlock()
+			return state, err
+		}
 	}
 	player.Play()
 	if player.Err() != nil {
@@ -605,9 +671,8 @@ func (b *AudioBackend) Stop() (AudioPlaybackState, error) {
 	summary := b.stateSummaryLocked()
 	b.mutex.Unlock()
 
-	if player != nil {
-		player.Pause()
-		player.Reset()
+	if err := b.flushPlayerBuffer(player); err != nil {
+		return state, err
 	}
 
 	logAudioEvent("Stop state=%s", summary)
@@ -640,7 +705,9 @@ func (b *AudioBackend) Seek(seconds float64) (AudioPlaybackState, error) {
 	b.mutex.Unlock()
 
 	if player != nil {
-		player.Reset()
+		if err := b.flushPlayerBuffer(player); err != nil {
+			return state, err
+		}
 		if shouldResume {
 			player.Play()
 			if player.Err() != nil {

@@ -22,8 +22,7 @@ type MergePlaylistFilesResult = {
 
 type ClearLibraryRuntimeDataOptions = {
     objectUrls: string[];
-    coverPathByFolder: Map<string, string>;
-    coverUrlByFolder: Map<string, string>;
+    clearCoverArtCache?: () => void;
     clearArtistInfoCache: () => void;
     clearImageModalCache?: () => void;
     resetLibraryState: () => void;
@@ -189,8 +188,9 @@ export const clearLibraryRuntimeData = (options: ClearLibraryRuntimeDataOptions)
         URL.revokeObjectURL(url);
     }
 
-    options.coverPathByFolder.clear();
-    options.coverUrlByFolder.clear();
+    if (options.clearCoverArtCache) {
+        options.clearCoverArtCache();
+    }
     options.clearArtistInfoCache();
     if (options.clearImageModalCache) {
         options.clearImageModalCache();

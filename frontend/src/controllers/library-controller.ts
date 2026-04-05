@@ -1175,17 +1175,15 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             }
         } finally {
             const latestState = paneStateByElement.get(pane);
-            if (!latestState || latestState.version !== state.version) {
-                return;
-            }
+            if (latestState && latestState.version === state.version) {
+                if (showLoadingState && latestState.loadingPages.has(pageIndex)) {
+                    latestState.loadingPages.delete(pageIndex);
+                    shouldScheduleUpdate = true;
+                }
 
-            if (showLoadingState && latestState.loadingPages.has(pageIndex)) {
-                latestState.loadingPages.delete(pageIndex);
-                shouldScheduleUpdate = true;
-            }
-
-            if (shouldScheduleUpdate) {
-                schedulePaneUpdate(pane);
+                if (shouldScheduleUpdate) {
+                    schedulePaneUpdate(pane);
+                }
             }
         }
     };
