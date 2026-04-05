@@ -75,6 +75,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     let hydrationTotal = 0;
     let hydrationCompleted = 0;
     let hydrationHideToken = 0;
+    const queueMutationChunkSize = 512;
     const playlistModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     let playlistModalHideTimer: number | undefined;
     const playlistPrefixIcon = (state: 'active' | 'before' | 'after'): string => {
@@ -463,6 +464,24 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         return editableQueueTrackIndexes;
     };
 
+    const insertTrackIndexes = (queue: number[], insertAt: number, trackIndexes: number[]): void => {
+        let offset = 0;
+        while (offset < trackIndexes.length) {
+            const chunk = trackIndexes.slice(offset, offset + queueMutationChunkSize);
+            queue.splice(insertAt + offset, 0, ...chunk);
+            offset += chunk.length;
+        }
+    };
+
+    const appendTrackIndexes = (queue: number[], trackIndexes: number[]): void => {
+        let offset = 0;
+        while (offset < trackIndexes.length) {
+            const chunk = trackIndexes.slice(offset, offset + queueMutationChunkSize);
+            queue.push(...chunk);
+            offset += chunk.length;
+        }
+    };
+
     const enqueueTracks = (trackIndexes: number[], placement: 'next' | 'end'): void => {
         const normalizedTrackIndexes = trackIndexes.filter((trackIndex) => (
             Number.isInteger(trackIndex)
@@ -479,9 +498,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             const currentTrackIndex = options.getCurrentTrackIndex();
             const currentPosition = queue.indexOf(currentTrackIndex);
             const insertAt = currentPosition >= 0 ? currentPosition + 1 : 0;
-            queue.splice(insertAt, 0, ...normalizedTrackIndexes);
+            insertTrackIndexes(queue, insertAt, normalizedTrackIndexes);
         } else {
-            queue.push(...normalizedTrackIndexes);
+            appendTrackIndexes(queue, normalizedTrackIndexes);
         }
 
         hydrateTrackMetadataInBackground(normalizedTrackIndexes);

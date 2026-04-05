@@ -68,6 +68,22 @@ func TestParseReplayGainAnalysisOutput(t *testing.T) {
 	}
 }
 
+func TestParseReplayGainDynamicRangeOutput(t *testing.T) {
+	output := `  Loudness range:
+    LRA:         10.7 LU
+    Threshold:  -32.1 LUFS
+    LRA low:    -24.8 LUFS
+    LRA high:   -14.1 LUFS`
+
+	dynamicRange, ok := parseReplayGainDynamicRangeOutput(output)
+	if !ok {
+		t.Fatal("expected ffmpeg ebur128 output to parse")
+	}
+	if dynamicRange != 11 {
+		t.Fatalf("expected rounded dynamic range 11, got %d", dynamicRange)
+	}
+}
+
 func TestReplayGainScalePreventsClippingWhenPeakIsKnown(t *testing.T) {
 	info := ReplayGainInfo{
 		GainDB: 6,

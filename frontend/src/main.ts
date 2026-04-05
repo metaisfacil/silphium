@@ -59,6 +59,7 @@ import {
     AudioListOutputDevices,
     AudioReinitializeBackend,
     AudioGetState,
+    AudioGetReplayGainReleaseDynamicRange,
     AudioLoadTrack,
     AudioLoadTrackWithReplayGainContext,
     AudioPause,
@@ -200,6 +201,10 @@ let playPauseToggleInFlight = false;
 let trackNavigationChain: Promise<void> = Promise.resolve();
 let gaplessQueueRequestVersion = 0;
 let queuedGaplessTrackPath = '';
+let activeReplayGainReleaseTrackPaths: string[] = [];
+const replayGainReleaseDynamicRangeLabelByKey = new Map<string, string>();
+const replayGainReleaseDynamicRangePendingByKey = new Map<string, Promise<string>>();
+let replayGainReleaseDynamicRangeRequestVersion = 0;
 let availableAudioOutputDevices: AudioOutputDevice[] = [];
 let currentSettings: AppSettings = {
     libraryFolders: [],
@@ -223,6 +228,7 @@ let sidebarQueueTrackIndexes: number[] = [];
 let sidebarQueueFeedbackTrackIndex: number | null = null;
 let sidebarQueueFolderPath = '';
 let sidebarQueueFolderLabel = '';
+let sidebarQueueFolderTarget = false;
 let queueConfirmResolver: ((confirmed: boolean) => void) | null = null;
 const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
@@ -762,6 +768,32 @@ const trackIndexForPath = (path: string): number => {
     return foundIndex;
 };
 
+const trackPathKey = (path: string): string => path.trim().toLowerCase();
+
+const normalizeReplayGainReleaseTrackPathsForState = (paths: string[]): string[] => {
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+
+    for (const path of paths) {
+        const cleanPath = path.trim();
+        const normalizedPathKey = trackPathKey(cleanPath);
+        if (!normalizedPathKey || seen.has(normalizedPathKey)) {
+            continue;
+        }
+
+        seen.add(normalizedPathKey);
+        normalized.push(cleanPath);
+    }
+
+    return normalized;
+};
+
+const setActiveReplayGainReleaseTrackPaths = (releasePaths?: string[]): void => {
+    activeReplayGainReleaseTrackPaths = Array.isArray(releasePaths)
+        ? normalizeReplayGainReleaseTrackPathsForState(releasePaths)
+        : [];
+};
+
 const createPlaceholderTrackForPath = (trackPath: string): Track => {
     const normalizedPath = trackPath.trim();
     const normalizedPathForSplit = normalizedPath.replace(/\\/g, '/');
@@ -997,7 +1029,11 @@ const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState, sequenc
     queuedGaplessTrackPath = nextPath;
     logPlaybackDebug(`GaplessQueue next="${nextPath}" after="${activeTrack.path}"`);
     try {
-        const replayGainReleaseTrackPaths = collectReplayGainReleaseTrackPathsForIndex(nextIndex as number, sequenceOverrideIndexes);
+        const currentReleaseTrackPaths = currentReplayGainReleaseTrackPaths(sequenceOverrideIndexes);
+        const replayGainReleaseTrackPaths = currentReleaseTrackPaths.length > 1
+            && currentReleaseTrackPaths.some((path) => trackPathKey(path) === trackPathKey(nextPath))
+            ? currentReleaseTrackPaths
+            : collectReplayGainReleaseTrackPathsForIndex(nextIndex as number, sequenceOverrideIndexes);
         if (replayGainReleaseTrackPaths.length > 1) {
             await AudioQueueNextTrackWithReplayGainContext(activeTrack.path, nextPath, replayGainReleaseTrackPaths);
         } else {
@@ -1110,6 +1146,7 @@ const applyPlaybackState = (nextState: AudioPlaybackState): void => {
     if (!nextState.loaded) {
         gaplessQueueRequestVersion += 1;
         queuedGaplessTrackPath = '';
+        setActiveReplayGainReleaseTrackPaths();
     }
 
     syncCurrentTrackFromPlaybackState(nextState);
@@ -1121,6 +1158,7 @@ const applyPlaybackState = (nextState: AudioPlaybackState): void => {
     updateMediaSessionPlaybackState();
     updateMediaSessionPositionState();
     void queueGaplessNextTrack(nextState);
+    void refreshReplayGainReleaseDynamicRangeIndicator();
 
     if (transition.trackEnded) {
         goToTrack(1);
@@ -1217,6 +1255,21 @@ const refreshLyricsPanel = (): void => {
 
 const technicalLabelSeparator = ' • ';
 
+const splitTechnicalLabel = (label: string): string[] => label
+    .split(technicalLabelSeparator)
+    .map((part) => part.trim())
+    .filter((part) => part !== '');
+
+const composeTechnicalLabel = (baseLabel: string, suffixLabel = ''): string => {
+    const parts = splitTechnicalLabel(baseLabel);
+    const cleanedSuffix = suffixLabel.trim();
+    if (cleanedSuffix) {
+        parts.push(cleanedSuffix);
+    }
+
+    return parts.join(technicalLabelSeparator);
+};
+
 const setTechnicalLabel = (button: HTMLButtonElement, label: string): void => {
     button.textContent = '';
     button.classList.remove('has-technical-separator');
@@ -1226,34 +1279,60 @@ const setTechnicalLabel = (button: HTMLButtonElement, label: string): void => {
         return;
     }
 
-    const separatorIndex = cleaned.indexOf(technicalLabelSeparator);
-    if (separatorIndex < 0) {
+    const parts = splitTechnicalLabel(cleaned);
+    if (parts.length <= 1) {
         button.textContent = cleaned;
         return;
     }
 
-    const left = cleaned.slice(0, separatorIndex).trim();
-    const right = cleaned.slice(separatorIndex + technicalLabelSeparator.length).trim();
-    if (!left || !right) {
-        button.textContent = cleaned;
-        return;
-    }
+    parts.forEach((part, index) => {
+        if (index > 0) {
+            const separatorSpan = document.createElement('span');
+            separatorSpan.className = 'track-technical-separator';
+            separatorSpan.setAttribute('aria-hidden', 'true');
+            separatorSpan.textContent = '•';
+            button.append(separatorSpan);
+        }
 
-    const leftSpan = document.createElement('span');
-    leftSpan.className = 'track-technical-value';
-    leftSpan.textContent = left;
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'track-technical-value';
+        valueSpan.textContent = part;
+        button.append(valueSpan);
+    });
 
-    const separatorSpan = document.createElement('span');
-    separatorSpan.className = 'track-technical-separator';
-    separatorSpan.setAttribute('aria-hidden', 'true');
-    separatorSpan.textContent = '•';
-
-    const rightSpan = document.createElement('span');
-    rightSpan.className = 'track-technical-value';
-    rightSpan.textContent = right;
-
-    button.append(leftSpan, separatorSpan, rightSpan);
     button.classList.add('has-technical-separator');
+};
+
+const clearReplayGainReleaseDynamicRangeCache = (): void => {
+    replayGainReleaseDynamicRangeLabelByKey.clear();
+    replayGainReleaseDynamicRangePendingByKey.clear();
+    replayGainReleaseDynamicRangeRequestVersion += 1;
+};
+
+const cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack = (): string => {
+    if (!currentSettings.audio.replayGainEnabled || currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return '';
+    }
+
+    const releasePaths = currentReplayGainReleaseTrackPaths();
+    if (releasePaths.length <= 1) {
+        return '';
+    }
+
+    return replayGainReleaseDynamicRangeLabelByKey.get(replayGainReleaseDynamicRangeCacheKey(releasePaths)) || '';
+};
+
+const updateNowPlayingTechnicalLabels = (): void => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return;
+    }
+
+    const activeTrack = tracks[currentTrackIndex];
+    const label = composeTechnicalLabel(activeTrack.displayTechnical, cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack()) || 'Details';
+    setTechnicalLabel(trackTechnical, label);
+    trackTechnical.disabled = false;
+    setTechnicalLabel(trackTechnicalAlt, label);
+    trackTechnicalAlt.disabled = false;
 };
 
 const refreshNowPlayingLabel = (): void => {
@@ -1266,10 +1345,7 @@ const refreshNowPlayingLabel = (): void => {
     trackAlbum.textContent = activeTrack.displayAlbum;
     trackPosition.textContent = taggedTrackPosition(activeTrack);
     trackArtist.textContent = activeTrack.displayArtist;
-    setTechnicalLabel(trackTechnical, activeTrack.displayTechnical || 'Details');
-    trackTechnical.disabled = false;
-    setTechnicalLabel(trackTechnicalAlt, activeTrack.displayTechnical || 'Details');
-    trackTechnicalAlt.disabled = false;
+    updateNowPlayingTechnicalLabels();
     trackReleaseAlbum.textContent = activeTrack.displayAlbum;
     trackTitleInline.textContent = activeTrack.displayTitle;
     const num = activeTrack.displayTrackNumber.trim();
@@ -1305,6 +1381,7 @@ const refreshNowPlayingLabel = (): void => {
     void refreshListenBrainzFeedbackForCurrentTrack();
 
     playlistController.scheduleRender();
+    void refreshReplayGainReleaseDynamicRangeIndicator();
 };
 
 const ensureTrackTagsResolved = async (index: number): Promise<void> => {
@@ -1394,12 +1471,37 @@ const closeTrackMetaMenu = (): void => {
     trackMetaMenuTarget = null;
 };
 
+type SidebarQueueSelectionContext = {
+    trackIndexes: number[];
+    folderPath: string;
+    folderLabel: string;
+    folderTarget: boolean;
+};
+
+const captureSidebarQueueSelectionContext = (): SidebarQueueSelectionContext | null => {
+    const trackIndexes = sidebarQueueTrackIndexes.filter((trackIndex) => (
+        Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < tracks.length
+    ));
+
+    if (trackIndexes.length === 0 && !sidebarQueueFolderTarget) {
+        return null;
+    }
+
+    return {
+        trackIndexes,
+        folderPath: sidebarQueueFolderPath,
+        folderLabel: sidebarQueueFolderLabel,
+        folderTarget: sidebarQueueFolderTarget,
+    };
+};
+
 const closeSidebarQueueMenu = (): void => {
     sidebarQueueMenu.hidden = true;
     sidebarQueueTrackIndexes = [];
     sidebarQueueFeedbackTrackIndex = null;
     sidebarQueueFolderPath = '';
     sidebarQueueFolderLabel = '';
+    sidebarQueueFolderTarget = false;
 };
 
 const openSidebarQueueMenu = (
@@ -1425,6 +1527,7 @@ const openSidebarQueueMenu = (
     sidebarQueueFolderPath = normalizedFolderPath;
     sidebarQueueFolderLabel = (folderLabel || '').trim() || normalizedFolderPath;
     const isFolderTarget = folderTarget || normalizedFolderPath !== '';
+    sidebarQueueFolderTarget = isFolderTarget;
     const canShowFeedbackActions = !isFolderTarget
         && Number.isInteger(feedbackTrackIndex)
         && (feedbackTrackIndex as number) >= 0
@@ -1486,21 +1589,22 @@ const openQueueConfirmModal = (title: string, message: string): Promise<boolean>
     });
 };
 
-const resolveSidebarQueueTrackIndexesForAction = async (actionLabel: string): Promise<number[]> => {
-    if (sidebarQueueFolderPath === '') {
-        return sidebarQueueTrackIndexes.filter((trackIndex) => (
-            Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < tracks.length
-        ));
+const resolveSidebarQueueTrackIndexesForAction = async (
+    actionLabel: string,
+    selection: SidebarQueueSelectionContext,
+): Promise<number[]> => {
+    if (!selection.folderTarget) {
+        return selection.trackIndexes;
     }
 
-    const descendantCount = await GetLibraryFolderTrackCount(sidebarQueueFolderPath) as number;
+    const descendantCount = await GetLibraryFolderTrackCount(selection.folderPath) as number;
     if (!Number.isFinite(descendantCount) || descendantCount <= 0) {
         return [];
     }
 
     if (descendantCount > sidebarQueueDescendantPromptThreshold) {
         const formattedDescendantCount = descendantCount.toLocaleString('en-US');
-        const folderLabel = sidebarQueueFolderLabel || sidebarQueueFolderPath;
+        const folderLabel = selection.folderLabel || selection.folderPath;
         const shouldProceed = await openQueueConfirmModal(
             `Queue ${formattedDescendantCount} tracks?`,
             `${actionLabel} for "${folderLabel}" requires scanning ${formattedDescendantCount} descendant files and may significantly reduce performance. Continue?`,
@@ -1510,7 +1614,7 @@ const resolveSidebarQueueTrackIndexesForAction = async (actionLabel: string): Pr
         }
     }
 
-    const trackPaths = await GetLibraryFolderTrackPaths(sidebarQueueFolderPath) as string[];
+    const trackPaths = await GetLibraryFolderTrackPaths(selection.folderPath) as string[];
     return trackPaths
         .map((trackPath) => ensureTrackIndexForPath(trackPath))
         .filter((trackIndex) => trackIndex >= 0);
@@ -1779,6 +1883,14 @@ const replayGainReleaseKeyForTrack = (track: Track): string => {
     return `${libraryFolderPathKey(track.rootPath || '')}::${releaseRootPath}`;
 };
 
+const replayGainReleaseTrackPaths = (releaseKey: string): string[] => tracks
+    .filter((candidate) => replayGainReleaseKeyForTrack(candidate) === releaseKey)
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath, undefined, {
+        sensitivity: 'base',
+        numeric: true,
+    }))
+    .map((candidate) => candidate.path);
+
 const normalizeReplayGainSequenceIndexes = (indexes: number[]): number[] => {
     const normalized: number[] = [];
     const seen = new Set<number>();
@@ -1848,13 +1960,91 @@ const collectReplayGainReleaseTrackPathsForIndex = (trackIndex: number, sequence
         return [];
     }
 
-    return tracks
-        .filter((candidate) => replayGainReleaseKeyForTrack(candidate) === releaseKey)
-        .sort((left, right) => left.relativePath.localeCompare(right.relativePath, undefined, {
-            sensitivity: 'base',
-            numeric: true,
-        }))
-        .map((candidate) => candidate.path);
+    const releasePaths = replayGainReleaseTrackPaths(releaseKey);
+    if (releasePaths.length <= 1) {
+        return [];
+    }
+
+    const queuedReleaseTrackCount = rangeEnd - rangeStart + 1;
+    if (queuedReleaseTrackCount !== releasePaths.length) {
+        return [];
+    }
+
+    return releasePaths;
+};
+
+const currentReplayGainReleaseTrackPaths = (sequenceOverrideIndexes?: number[]): string[] => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return [];
+    }
+
+    const activeTrackPath = trackPathKey(tracks[currentTrackIndex]?.path || '');
+    if (
+        activeReplayGainReleaseTrackPaths.length > 1
+        && activeTrackPath !== ''
+        && activeReplayGainReleaseTrackPaths.some((path) => trackPathKey(path) === activeTrackPath)
+    ) {
+        return activeReplayGainReleaseTrackPaths;
+    }
+
+    return collectReplayGainReleaseTrackPathsForIndex(currentTrackIndex, sequenceOverrideIndexes);
+};
+
+const replayGainReleaseDynamicRangeCacheKey = (releasePaths: string[]): string => releasePaths
+    .map((path) => path.trim().toLowerCase())
+    .filter((path) => path !== '')
+    .join('\n');
+
+const refreshReplayGainReleaseDynamicRangeIndicator = async (): Promise<void> => {
+    const requestVersion = ++replayGainReleaseDynamicRangeRequestVersion;
+    if (!currentSettings.audio.replayGainEnabled || currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        updateNowPlayingTechnicalLabels();
+        return;
+    }
+
+    const releasePaths = currentReplayGainReleaseTrackPaths();
+    if (releasePaths.length <= 1) {
+        updateNowPlayingTechnicalLabels();
+        return;
+    }
+
+    const cacheKey = replayGainReleaseDynamicRangeCacheKey(releasePaths);
+    if (replayGainReleaseDynamicRangeLabelByKey.has(cacheKey)) {
+        updateNowPlayingTechnicalLabels();
+        return;
+    }
+
+    let pendingLookup = replayGainReleaseDynamicRangePendingByKey.get(cacheKey);
+    if (!pendingLookup) {
+        pendingLookup = AudioGetReplayGainReleaseDynamicRange(releasePaths)
+            .then((dynamicRange) => {
+                const label = Number.isInteger(dynamicRange) && dynamicRange > 0 ? `DR${dynamicRange}` : '';
+                replayGainReleaseDynamicRangeLabelByKey.set(cacheKey, label);
+                replayGainReleaseDynamicRangePendingByKey.delete(cacheKey);
+                return label;
+            })
+            .catch((error: unknown) => {
+                console.debug(error);
+                replayGainReleaseDynamicRangeLabelByKey.set(cacheKey, '');
+                replayGainReleaseDynamicRangePendingByKey.delete(cacheKey);
+                return '';
+            });
+        replayGainReleaseDynamicRangePendingByKey.set(cacheKey, pendingLookup);
+    }
+
+    await pendingLookup;
+    if (requestVersion !== replayGainReleaseDynamicRangeRequestVersion) {
+        return;
+    }
+
+    const latestReleasePaths = currentSettings.audio.replayGainEnabled && currentTrackIndex >= 0 && currentTrackIndex < tracks.length
+        ? currentReplayGainReleaseTrackPaths()
+        : [];
+    if (replayGainReleaseDynamicRangeCacheKey(latestReleasePaths) !== cacheKey) {
+        return;
+    }
+
+    updateNowPlayingTechnicalLabels();
 };
 
 const collectReleaseImageFiles = (track: Track): ImageLibraryFile[] => {
@@ -2166,6 +2356,7 @@ const clearLibrarySelection = async (): Promise<void> => {
     closeListenBrainzFeedbackMenu();
     closeMusicBrainzEntityModal();
     closeTechnicalInfoModal();
+    clearReplayGainReleaseDynamicRangeCache();
 
     try {
         const nextState = await AudioStop() as AudioPlaybackState;
@@ -2385,6 +2576,7 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true, replay
         const nextState = replayGainReleaseTrackPaths.length > 1
             ? await AudioLoadTrackWithReplayGainContext(track.path, replayGainReleaseTrackPaths) as AudioPlaybackState
             : await AudioLoadTrack(track.path) as AudioPlaybackState;
+        setActiveReplayGainReleaseTrackPaths(replayGainReleaseTrackPaths);
         logPlaybackDebug(`LoadTrack success ${formatPlaybackStateForLog(nextState)}`);
         applyPlaybackState(nextState);
     } catch (error) {
@@ -2844,6 +3036,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     closeSidebarQueueMenu();
     closeMusicBrainzEntityModal();
     closeTechnicalInfoModal();
+    clearReplayGainReleaseDynamicRangeCache();
     logRescan('  - closed modals: %.2fms', performance.now() - stepTime);
 
     const playbackStateBeforeScanSwap = playbackStateService.getPlaybackState();
@@ -3099,6 +3292,7 @@ settingsController = createSettingsController({
 
             gaplessQueueRequestVersion += 1;
             queuedGaplessTrackPath = '';
+            refreshNowPlayingLabel();
             if (!currentSettings.audio.gaplessPlayback) {
                 if (playbackStateService.isBackendReady()) {
                     void AudioQueueNextTrack('', '').catch((error: unknown) => {
@@ -3157,6 +3351,7 @@ settingsController = createSettingsController({
 
         gaplessQueueRequestVersion += 1;
         queuedGaplessTrackPath = '';
+        refreshNowPlayingLabel();
         if (!currentSettings.audio.gaplessPlayback) {
             if (playbackStateService.isBackendReady()) {
                 void AudioQueueNextTrack('', '').catch((error: unknown) => {
@@ -3414,36 +3609,38 @@ libraryAbout.addEventListener('click', () => {
 });
 
 sidebarQueueAddNext.addEventListener('click', () => {
-    if (sidebarQueueTrackIndexes.length === 0 && sidebarQueueFolderPath === '') {
+    const selection = captureSidebarQueueSelectionContext();
+    if (selection === null) {
         return;
     }
 
     const actionLabel = 'Add next';
+    closeSidebarQueueMenu();
     void (async () => {
-        const trackIndexes = await resolveSidebarQueueTrackIndexesForAction(actionLabel);
+        const trackIndexes = await resolveSidebarQueueTrackIndexesForAction(actionLabel, selection);
         if (trackIndexes.length === 0) {
             return;
         }
 
         playlistController.addToQueueNext(trackIndexes);
     })();
-    closeSidebarQueueMenu();
 });
 
 sidebarQueuePlay.addEventListener('click', () => {
-    if (sidebarQueueTrackIndexes.length === 0 && sidebarQueueFolderPath === '') {
+    const selection = captureSidebarQueueSelectionContext();
+    if (selection === null) {
         return;
     }
 
+    closeSidebarQueueMenu();
     void (async () => {
-        const trackIndexes = await resolveSidebarQueueTrackIndexesForAction('Play');
+        const trackIndexes = await resolveSidebarQueueTrackIndexesForAction('Play', selection);
         if (trackIndexes.length === 0) {
             return;
         }
 
         await playSidebarQueueSelection(trackIndexes);
     })();
-    closeSidebarQueueMenu();
 });
 
 sidebarQueueLove.addEventListener('click', () => {
@@ -3459,20 +3656,21 @@ sidebarQueueHate.addEventListener('click', () => {
 });
 
 sidebarQueueEnd.addEventListener('click', () => {
-    if (sidebarQueueTrackIndexes.length === 0 && sidebarQueueFolderPath === '') {
+    const selection = captureSidebarQueueSelectionContext();
+    if (selection === null) {
         return;
     }
 
     const actionLabel = 'Queue';
+    closeSidebarQueueMenu();
     void (async () => {
-        const trackIndexes = await resolveSidebarQueueTrackIndexesForAction(actionLabel);
+        const trackIndexes = await resolveSidebarQueueTrackIndexesForAction(actionLabel, selection);
         if (trackIndexes.length === 0) {
             return;
         }
 
         playlistController.addToQueueEnd(trackIndexes);
     })();
-    closeSidebarQueueMenu();
 });
 
 errorBackdrop.addEventListener('click', () => {

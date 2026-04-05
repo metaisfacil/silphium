@@ -620,6 +620,19 @@ func (b *AudioBackend) QueueNextTrackWithReplayGainContext(afterPath string, nex
 	return b.snapshotLocked(), nil
 }
 
+// ReplayGainReleaseDynamicRange resolves the album dynamic range for a release-scoped ReplayGain context.
+func (b *AudioBackend) ReplayGainReleaseDynamicRange(replayGainReleasePaths []string) (int, error) {
+	if err := b.Initialize(); err != nil {
+		return 0, err
+	}
+
+	if dynamicRange, ok := b.resolveReplayGainReleaseDynamicRange(replayGainReleasePaths); ok {
+		return dynamicRange, nil
+	}
+
+	return 0, nil
+}
+
 // Play starts playback of the currently loaded track.
 func (b *AudioBackend) Play() (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {

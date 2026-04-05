@@ -37,14 +37,17 @@ type replayGainCacheEntry struct {
 }
 
 type replayGainReleaseCacheEntry struct {
-	Info     ReplayGainInfo
-	HasValue bool
+	Info            ReplayGainInfo
+	HasValue        bool
+	DynamicRange    int
+	HasDynamicRange bool
 }
 
 var replayGainDBPattern = regexp.MustCompile(`(?i)[+\-]?(?:\d+(?:\.\d+)?|\.\d+)`)
 var replayGainPeakPattern = regexp.MustCompile(`(?i)[+\-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+\-]?\d+)?`)
 var replayGainTrackLinePattern = regexp.MustCompile(`(?im)track_gain\s*=\s*([+\-]?(?:\d+(?:\.\d+)?|\.\d+))\s*dB`)
 var replayGainPeakLinePattern = regexp.MustCompile(`(?im)track_peak\s*=\s*([+\-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+\-]?\d+)?)`)
+var replayGainDynamicRangeLinePattern = regexp.MustCompile(`(?im)^\s*LRA:\s*([+\-]?(?:\d+(?:\.\d+)?|\.\d+))(?:\s*(?:LU|LUFS))?\b`)
 
 func isFiniteFloat64(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0)
@@ -293,6 +296,25 @@ func parseAlbumReplayGainAnalysisOutput(output string) (ReplayGainInfo, bool) {
 	return sanitizeReplayGainInfo(info), true
 }
 
+func parseReplayGainDynamicRangeOutput(output string) (int, bool) {
+	match := replayGainDynamicRangeLinePattern.FindStringSubmatch(output)
+	if len(match) < 2 {
+		return 0, false
+	}
+
+	parsed, err := strconv.ParseFloat(match[1], 64)
+	if err != nil || !isFiniteFloat64(parsed) || parsed <= 0 {
+		return 0, false
+	}
+
+	rounded := int(math.Round(parsed))
+	if rounded <= 0 {
+		rounded = 1
+	}
+
+	return rounded, true
+}
+
 func calculateAlbumReplayGainWithFFmpeg(paths []string, ffmpegPath string) (ReplayGainInfo, error) {
 	normalized := normalizeReplayGainReleasePaths(paths)
 	if len(normalized) <= 1 {
@@ -358,6 +380,73 @@ func calculateAlbumReplayGainWithFFmpeg(paths []string, ffmpegPath string) (Repl
 	}
 
 	return ReplayGainInfo{}, fmt.Errorf("ffmpeg album replaygain scan returned no gain data")
+}
+
+func calculateReleaseDynamicRangeWithFFmpeg(paths []string, ffmpegPath string) (int, error) {
+	normalized := normalizeReplayGainReleasePaths(paths)
+	if len(normalized) <= 1 {
+		return 0, fmt.Errorf("album dynamic range requires multiple tracks")
+	}
+	trimmedFFmpegPath := strings.TrimSpace(ffmpegPath)
+	if trimmedFFmpegPath == "" {
+		return 0, fmt.Errorf("ffmpeg executable was not found")
+	}
+
+	concatFile, err := os.CreateTemp("", "silphium-dynamic-range-*.ffconcat")
+	if err != nil {
+		return 0, err
+	}
+	concatPath := concatFile.Name()
+	defer func() {
+		_ = concatFile.Close()
+		_ = os.Remove(concatPath)
+	}()
+
+	builder := strings.Builder{}
+	builder.WriteString("ffconcat version 1.0\n")
+	for _, path := range normalized {
+		builder.WriteString("file '")
+		builder.WriteString(escapeFFConcatPath(path))
+		builder.WriteString("'\n")
+	}
+
+	if _, err := concatFile.WriteString(builder.String()); err != nil {
+		return 0, err
+	}
+	if err := concatFile.Close(); err != nil {
+		return 0, err
+	}
+
+	command := exec.Command(
+		trimmedFFmpegPath,
+		"-nostdin",
+		"-hide_banner",
+		"-nostats",
+		"-loglevel", "info",
+		"-safe", "0",
+		"-f", "concat",
+		"-i", concatPath,
+		"-map", "0:a:0",
+		"-filter:a", "ebur128",
+		"-f", "null",
+		"-",
+	)
+
+	rawOutput, err := command.CombinedOutput()
+	output := string(rawOutput)
+	if dynamicRange, ok := parseReplayGainDynamicRangeOutput(output); ok {
+		return dynamicRange, nil
+	}
+
+	if err != nil {
+		trimmedOutput := strings.TrimSpace(output)
+		if trimmedOutput != "" {
+			return 0, fmt.Errorf("ffmpeg album dynamic range scan failed: %s", trimmedOutput)
+		}
+		return 0, fmt.Errorf("ffmpeg album dynamic range scan failed: %w", err)
+	}
+
+	return 0, fmt.Errorf("ffmpeg album dynamic range scan returned no range data")
 }
 
 func (b *AudioBackend) removeReplayGainCacheOrderEntryLocked(path string) {
@@ -437,10 +526,52 @@ func (b *AudioBackend) putReplayGainReleaseCache(key string, info ReplayGainInfo
 		b.replayGainReleaseCacheByKey = make(map[string]replayGainReleaseCacheEntry, replayGainCacheLimit)
 	}
 
-	b.replayGainReleaseCacheByKey[key] = replayGainReleaseCacheEntry{
-		Info:     sanitizeReplayGainInfo(info),
-		HasValue: hasValue,
+	entry := b.replayGainReleaseCacheByKey[key]
+	entry.Info = sanitizeReplayGainInfo(info)
+	entry.HasValue = hasValue
+	b.replayGainReleaseCacheByKey[key] = entry
+
+	for index, cachedKey := range b.replayGainReleaseCacheOrder {
+		if cachedKey != key {
+			continue
+		}
+
+		b.replayGainReleaseCacheOrder = append(b.replayGainReleaseCacheOrder[:index], b.replayGainReleaseCacheOrder[index+1:]...)
+		break
 	}
+	b.replayGainReleaseCacheOrder = append(b.replayGainReleaseCacheOrder, key)
+
+	for len(b.replayGainReleaseCacheOrder) > replayGainCacheLimit {
+		evictedKey := b.replayGainReleaseCacheOrder[0]
+		b.replayGainReleaseCacheOrder = b.replayGainReleaseCacheOrder[1:]
+		delete(b.replayGainReleaseCacheByKey, evictedKey)
+	}
+}
+
+func (b *AudioBackend) getReplayGainReleaseDynamicRangeCache(key string) (int, bool, bool) {
+	b.replayGainReleaseCacheMu.Lock()
+	defer b.replayGainReleaseCacheMu.Unlock()
+
+	entry, exists := b.replayGainReleaseCacheByKey[key]
+	if !exists {
+		return 0, false, false
+	}
+
+	return entry.DynamicRange, entry.HasDynamicRange, true
+}
+
+func (b *AudioBackend) putReplayGainReleaseDynamicRangeCache(key string, dynamicRange int, hasValue bool) {
+	b.replayGainReleaseCacheMu.Lock()
+	defer b.replayGainReleaseCacheMu.Unlock()
+
+	if b.replayGainReleaseCacheByKey == nil {
+		b.replayGainReleaseCacheByKey = make(map[string]replayGainReleaseCacheEntry, replayGainCacheLimit)
+	}
+
+	entry := b.replayGainReleaseCacheByKey[key]
+	entry.DynamicRange = dynamicRange
+	entry.HasDynamicRange = hasValue
+	b.replayGainReleaseCacheByKey[key] = entry
 
 	for index, cachedKey := range b.replayGainReleaseCacheOrder {
 		if cachedKey != key {
@@ -510,6 +641,38 @@ func (b *AudioBackend) resolveAlbumReplayGainInfo(preloadedTags map[string][]str
 	}
 
 	return ReplayGainInfo{}, false
+}
+
+func (b *AudioBackend) resolveReplayGainReleaseDynamicRange(releasePaths []string) (int, bool) {
+	normalizedReleasePaths := normalizeReplayGainReleasePaths(releasePaths)
+	if len(normalizedReleasePaths) <= 1 {
+		return 0, false
+	}
+
+	cacheKey, hasCacheKey := buildReplayGainReleaseCacheKey(normalizedReleasePaths)
+	if hasCacheKey {
+		if cachedDynamicRange, cachedHasValue, cacheHit := b.getReplayGainReleaseDynamicRangeCache(cacheKey); cacheHit {
+			if cachedHasValue {
+				return cachedDynamicRange, true
+			}
+			return 0, false
+		}
+	}
+
+	dynamicRange, err := calculateReleaseDynamicRangeWithFFmpeg(normalizedReleasePaths, b.ffmpegPath)
+	if err == nil {
+		if hasCacheKey {
+			b.putReplayGainReleaseDynamicRangeCache(cacheKey, dynamicRange, true)
+		}
+		return dynamicRange, true
+	}
+
+	logAudioEvent("Album dynamic range scan failed releaseSize=%d error=%v", len(normalizedReleasePaths), err)
+	if hasCacheKey {
+		b.putReplayGainReleaseDynamicRangeCache(cacheKey, 0, false)
+	}
+
+	return 0, false
 }
 
 func (b *AudioBackend) resolveReplayGainInfo(path string, preloadedTags map[string][]string, releasePaths []string) ReplayGainInfo {
