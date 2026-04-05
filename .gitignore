@@ -22,6 +22,11 @@ build/darwin/iconfile.icns
 /frontend/npm-debug.log*
 /frontend/package.json.md5
 
+# ---- Development ----
+/.vscode/
+/.idea/
+*.instructions.md
+
 # ---- Logs ----
 *.log
 npm-debug.log*
