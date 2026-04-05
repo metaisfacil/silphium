@@ -1,10 +1,12 @@
 export type ImageFileModalElements = {
     imageFileModal: HTMLDivElement;
     imageFileBackdrop: HTMLDivElement;
+    imageFileDialog: HTMLElement;
     imageFileTools: HTMLDivElement;
     imageFileRotateLeft: HTMLButtonElement;
     imageFileRotateRight: HTMLButtonElement;
     imageFileContent: HTMLDivElement;
+    imageFileLoading: HTMLDivElement;
     imageFilePreview: HTMLImageElement;
     imageFileThumbs: HTMLDivElement;
     imageFileThumbsPrev: HTMLButtonElement;
@@ -22,6 +24,9 @@ export const renderImageFileModal = (): string => `
                 <button id="image-file-rotate-right" class="image-file-tool-btn" type="button" aria-label="Rotate right" title="Rotate right"><svg class="overlay-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12.5 4C15.94 4 18.8 6.25 19.73 9.36L21.07 8.02C21.46 7.63 22.09 7.63 22.48 8.02C22.87 8.41 22.87 9.04 22.48 9.43L19.35 12.56C18.96 12.95 18.33 12.95 17.94 12.56L14.81 9.43C14.42 9.04 14.42 8.41 14.81 8.02C15.2 7.63 15.83 7.63 16.22 8.02L17.57 9.37C16.83 7.3 14.85 5.83 12.5 5.83C9.52 5.83 7.1 8.25 7.1 11.23C7.1 14.21 9.52 16.63 12.5 16.63C13.49 16.63 14.42 16.37 15.21 15.9C15.65 15.64 16.22 15.76 16.51 16.18C16.82 16.64 16.69 17.26 16.21 17.53C15.13 18.15 13.86 18.5 12.5 18.5C8.48 18.5 5.23 15.25 5.23 11.23C5.23 7.21 8.48 4 12.5 4Z"/></svg></button>
             </div>
             <div id="image-file-content" class="image-file-content">
+                <div id="image-file-loading" class="image-file-loading" hidden aria-hidden="true">
+                    <span class="image-file-loading-spinner"></span>
+                </div>
                 <img id="image-file-preview" class="image-file-preview" alt="Image preview">
             </div>
             <div id="image-file-thumbs" class="image-file-thumbs" aria-label="Related images">
@@ -38,10 +43,12 @@ export const renderImageFileModal = (): string => `
 export const getImageFileModalElements = (root: ParentNode): ImageFileModalElements => ({
     imageFileModal: root.querySelector('#image-file-modal') as HTMLDivElement,
     imageFileBackdrop: root.querySelector('#image-file-backdrop') as HTMLDivElement,
+    imageFileDialog: root.querySelector('.image-file-dialog') as HTMLElement,
     imageFileTools: root.querySelector('#image-file-tools') as HTMLDivElement,
     imageFileRotateLeft: root.querySelector('#image-file-rotate-left') as HTMLButtonElement,
     imageFileRotateRight: root.querySelector('#image-file-rotate-right') as HTMLButtonElement,
     imageFileContent: root.querySelector('#image-file-content') as HTMLDivElement,
+    imageFileLoading: root.querySelector('#image-file-loading') as HTMLDivElement,
     imageFilePreview: root.querySelector('#image-file-preview') as HTMLImageElement,
     imageFileThumbs: root.querySelector('#image-file-thumbs') as HTMLDivElement,
     imageFileThumbsPrev: root.querySelector('#image-file-thumbs-prev') as HTMLButtonElement,

@@ -9,6 +9,7 @@ require (
 	github.com/metaisfacil/oto/v3 v3.0.0-20260404214418-895e4bade184
 	github.com/wailsapp/wails/v2 v2.11.0
 	go.senan.xyz/taglib v0.11.1
+	golang.org/x/image v0.12.0
 )
 
 require (

@@ -58,6 +58,8 @@ export function OpenFolderInFileBrowser(arg1:string):Promise<boolean>;
 
 export function ReadFileBase64(arg1:string):Promise<string>;
 
+export function ReadImageThumbnail(arg1:string,arg2:number):Promise<main.EmbeddedCoverArt>;
+
 export function ReadTextFile(arg1:string):Promise<string>;
 
 export function ReadTrackEmbeddedCover(arg1:string):Promise<main.EmbeddedCoverArt>;

@@ -118,7 +118,11 @@
     overflow: hidden;
     opacity: 0;
     transform: translateY(8px) scale(0.985);
-    transition: opacity 220ms ease, transform 220ms ease;
+    transition: opacity 220ms ease, transform 220ms ease, width 220ms ease, height 220ms ease;
+}
+
+.image-file-dialog.is-resizing .image-file-content {
+    overflow: hidden;
 }
 
 .image-file-modal.is-visible .image-file-backdrop {
@@ -160,9 +164,13 @@
 
 .image-file-content {
     width: fit-content;
+    align-self: center;
     max-width: calc(100vw - 3.6rem);
     max-height: calc(100vh - 10.6rem);
+    min-width: min(18rem, calc(100vw - 3.6rem));
+    min-height: min(18rem, calc(100vh - 10.6rem));
     padding: 0.8rem;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -172,6 +180,45 @@
 
 .image-file-content.is-panning .image-file-preview {
     cursor: grabbing;
+}
+
+.image-file-content.is-loading .image-file-preview {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.image-file-loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: inherit;
+    background: rgba(18, 18, 20, 0.18);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.image-file-loading[hidden] {
+    display: none;
+}
+
+.image-file-loading-spinner {
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 999px;
+    border: 0.2rem solid rgba(255, 255, 255, 0.16);
+    border-top-color: rgba(255, 255, 255, 0.9);
+    animation: image-file-loading-spin 720ms linear infinite;
+}
+
+@keyframes image-file-loading-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .image-file-preview {
@@ -187,6 +234,9 @@
     transform-origin: center center;
     user-select: none;
     -webkit-user-drag: none;
+    transition: opacity 140ms ease;
+    position: relative;
+    z-index: 0;
 }
 
 .image-file-thumbs {

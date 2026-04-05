@@ -6,6 +6,7 @@ import { mimeTypeForFileName } from '../utils/main-helpers';
 type ImageModalControllerOptions = {
     elements: ImageFileModalElements;
     readFileBase64: (path: string) => Promise<string>;
+    readImageThumbnail: (path: string, maxEdge: number) => Promise<{ base64?: string; mimeType?: string }>;
 };
 
 export type ImageModalController = ReturnType<typeof createImageModalController>;
@@ -14,10 +15,12 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     const {
         imageFileModal,
         imageFileBackdrop,
+        imageFileDialog,
         imageFileTools,
         imageFileRotateLeft,
         imageFileRotateRight,
         imageFileContent,
+        imageFileLoading,
         imageFilePreview,
         imageFileThumbs,
         imageFileThumbsPrev,
@@ -28,8 +31,10 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
     const imageModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     const imageModalThumbPageSize = 7;
+    const imageModalThumbnailMaxEdge = 96;
 
     const imageFileDataUrlByPath = new Map<string, string>();
+    const imageFileThumbnailDataUrlByPath = new Map<string, string>();
 
     let imageModalHideTimer: number | undefined;
     let imageModalLoadToken = 0;
@@ -47,6 +52,158 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     let imageModalPanStartClientY = 0;
     let imageModalPanStartX = 0;
     let imageModalPanStartY = 0;
+    let imageModalResizeCleanupTimer: number | undefined;
+    let imageModalResizeTransitionEndHandler: ((event: TransitionEvent) => void) | undefined;
+
+    const clearImageModalDialogResize = (): void => {
+        if (imageModalResizeCleanupTimer !== undefined) {
+            window.clearTimeout(imageModalResizeCleanupTimer);
+            imageModalResizeCleanupTimer = undefined;
+        }
+
+        if (imageModalResizeTransitionEndHandler) {
+            imageFileDialog.removeEventListener('transitionend', imageModalResizeTransitionEndHandler);
+            imageModalResizeTransitionEndHandler = undefined;
+        }
+
+        imageFileDialog.classList.remove('is-resizing');
+        imageFileDialog.style.width = '';
+        imageFileDialog.style.height = '';
+        imageFileContent.style.width = '';
+    };
+
+    const animateImageModalDialogResize = (): void => {
+        const modalVisible = !imageFileModal.hidden && imageFileModal.classList.contains('is-visible');
+        if (!modalVisible) {
+            clearImageModalDialogResize();
+            return;
+        }
+
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const startRect = imageFileDialog.getBoundingClientRect();
+        const startWidth = Math.ceil(startRect.width);
+        const startHeight = Math.ceil(startRect.height);
+
+        imageFileDialog.style.width = '';
+        imageFileDialog.style.height = '';
+        imageFileContent.style.width = '';
+
+        const targetRect = imageFileDialog.getBoundingClientRect();
+        const targetWidth = Math.ceil(targetRect.width);
+        const targetHeight = Math.ceil(targetRect.height);
+        if (
+            prefersReducedMotion
+            || startWidth <= 0
+            || startHeight <= 0
+            || targetWidth <= 0
+            || targetHeight <= 0
+            || (Math.abs(targetWidth - startWidth) < 2 && Math.abs(targetHeight - startHeight) < 2)
+        ) {
+            clearImageModalDialogResize();
+            return;
+        }
+
+        const targetContentWidth = Math.ceil(imageFileContent.getBoundingClientRect().width);
+        clearImageModalDialogResize();
+        imageFileDialog.classList.add('is-resizing');
+        imageFileContent.style.width = `${targetContentWidth}px`;
+        imageFileDialog.style.width = `${startWidth}px`;
+        imageFileDialog.style.height = `${startHeight}px`;
+        void imageFileDialog.offsetWidth;
+        imageFileDialog.style.width = `${targetWidth}px`;
+        imageFileDialog.style.height = `${targetHeight}px`;
+
+        imageModalResizeTransitionEndHandler = (event: TransitionEvent): void => {
+            if (event.target !== imageFileDialog) {
+                return;
+            }
+
+            if (event.propertyName !== 'width' && event.propertyName !== 'height') {
+                return;
+            }
+
+            clearImageModalDialogResize();
+        };
+
+        imageFileDialog.addEventListener('transitionend', imageModalResizeTransitionEndHandler);
+        imageModalResizeCleanupTimer = window.setTimeout(() => {
+            clearImageModalDialogResize();
+        }, imageModalTransitionMs + 120);
+    };
+
+    const setImageModalLoadingState = (isLoading: boolean): void => {
+        imageFileContent.classList.toggle('is-loading', isLoading);
+        imageFileLoading.hidden = !isLoading;
+        imageFilePreview.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+    };
+
+    const waitForImageSource = async (source: string): Promise<void> => {
+        const loader = new Image();
+        loader.decoding = 'async';
+        loader.src = source;
+
+        if (loader.complete) {
+            if (typeof loader.decode === 'function') {
+                try {
+                    await loader.decode();
+                } catch {
+                    // Ignore decode failures and fall back to the loaded image.
+                }
+            }
+            return;
+        }
+
+        await new Promise<void>((resolve, reject) => {
+            loader.addEventListener('load', () => {
+                resolve();
+            }, { once: true });
+            loader.addEventListener('error', () => {
+                reject(new Error('Failed to load image preview source.'));
+            }, { once: true });
+        });
+
+        if (typeof loader.decode === 'function') {
+            try {
+                await loader.decode();
+            } catch {
+                // Ignore decode failures and fall back to the loaded image.
+            }
+        }
+    };
+
+    const showImageModalPreviewSource = async (loadToken: number, source: string | undefined, title?: string): Promise<void> => {
+        imageFilePreview.removeAttribute('src');
+        imageFilePreview.title = title || '';
+        imageFilePreview.setAttribute('aria-label', title || 'Image preview');
+
+        if (!source) {
+            setImageModalLoadingState(false);
+            return;
+        }
+
+        setImageModalLoadingState(true);
+
+        try {
+            await waitForImageSource(source);
+            if (loadToken !== imageModalLoadToken) {
+                return;
+            }
+
+            imageFilePreview.src = source;
+            applyImageModalTransform();
+            animateImageModalDialogResize();
+        } catch (error) {
+            if (loadToken === imageModalLoadToken) {
+                imageFilePreview.removeAttribute('src');
+                clearImageModalDialogResize();
+            }
+            console.error(error);
+        } finally {
+            if (loadToken === imageModalLoadToken) {
+                setImageModalLoadingState(false);
+            }
+        }
+    };
 
     const resolveImageFileDataUrl = async (imageFile: ImageLibraryFile): Promise<string | undefined> => {
         const cacheKey = imageFile.path.toLowerCase();
@@ -62,6 +219,27 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
         const source = `data:${mimeTypeForFileName(imageFile.name)};base64,${base64}`;
         imageFileDataUrlByPath.set(cacheKey, source);
+        return source;
+    };
+
+    const resolveImageFileThumbnailDataUrl = async (imageFile: ImageLibraryFile): Promise<string | undefined> => {
+        const cacheKey = imageFile.path.toLowerCase();
+        const cached = imageFileThumbnailDataUrlByPath.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const thumbnail = await options.readImageThumbnail(imageFile.path, imageModalThumbnailMaxEdge);
+        const base64 = thumbnail.base64 || '';
+        if (!base64) {
+            return undefined;
+        }
+
+        const mimeType = thumbnail.mimeType && thumbnail.mimeType.startsWith('image/')
+            ? thumbnail.mimeType
+            : mimeTypeForFileName(imageFile.name);
+        const source = `data:${mimeType};base64,${base64}`;
+        imageFileThumbnailDataUrlByPath.set(cacheKey, source);
         return source;
     };
 
@@ -213,7 +391,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
             fallback.textContent = '...';
             button.append(fallback);
 
-            void resolveImageFileDataUrl(imageFile).then((source) => {
+            void resolveImageFileThumbnailDataUrl(imageFile).then((source) => {
                 if (loadToken !== imageModalLoadToken || !source || !button.isConnected) {
                     return;
                 }
@@ -242,17 +420,18 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         const loadToken = ++imageModalLoadToken;
         renderImageModalThumbs(loadToken);
 
+        const title = imageModalGallery[index].relativePath || imageModalGallery[index].path || imageModalGallery[index].name;
+        setImageModalLoadingState(true);
+        imageFilePreview.removeAttribute('src');
+        imageFilePreview.title = title;
+        imageFilePreview.setAttribute('aria-label', title);
+
         const source = await resolveImageFileDataUrl(imageModalGallery[index]);
         if (loadToken !== imageModalLoadToken) {
             return;
         }
 
-        if (source) {
-            imageFilePreview.src = source;
-            return;
-        }
-
-        imageFilePreview.removeAttribute('src');
+        await showImageModalPreviewSource(loadToken, source, title);
     };
 
     const close = (): void => {
@@ -262,6 +441,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         setImageModalRotation(0);
         resetImageModalZoom();
         imageModalLoadToken += 1;
+        clearImageModalDialogResize();
         imageFileModal.classList.remove('is-visible');
 
         if (imageModalHideTimer !== undefined) {
@@ -270,6 +450,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
         imageModalHideTimer = window.setTimeout(() => {
             imageFileModal.hidden = true;
+            setImageModalLoadingState(false);
             imageFilePreview.removeAttribute('src');
             imageFileThumbsRow.innerHTML = '';
             imageFileThumbs.hidden = true;
@@ -292,7 +473,10 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         setImageModalRotation(0);
         resetImageModalZoom();
         imageModalLoadToken += 1;
+        clearImageModalDialogResize();
 
+        imageFileThumbs.hidden = false;
+        imageFileThumbsViewport.hidden = false;
         imageFilePreview.removeAttribute('src');
         imageFileModal.hidden = false;
         window.requestAnimationFrame(() => {
@@ -315,13 +499,13 @@ export const createImageModalController = (options: ImageModalControllerOptions)
                 return;
             }
 
-            openPreview(source, imageFile.relativePath || imageFile.path || imageFile.name);
+            await openPreview(source, imageFile.relativePath || imageFile.path || imageFile.name);
         } catch (error) {
             console.error(error);
         }
     };
 
-    const openPreview = (source: string, title?: string): void => {
+    const openPreview = async (source: string, title?: string): Promise<void> => {
         if (imageModalHideTimer !== undefined) {
             window.clearTimeout(imageModalHideTimer);
             imageModalHideTimer = undefined;
@@ -333,19 +517,24 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         setImageModalRotation(0);
         resetImageModalZoom();
         imageModalLoadToken += 1;
+        clearImageModalDialogResize();
         imageFileThumbsRow.innerHTML = '';
         imageFileThumbs.hidden = true;
         imageFileThumbsViewport.hidden = true;
         imageFileThumbsPrev.hidden = true;
         imageFileThumbsNext.hidden = true;
-
-        imageFilePreview.src = source;
+        const loadToken = ++imageModalLoadToken;
+        setImageModalLoadingState(true);
+        imageFilePreview.removeAttribute('src');
         imageFilePreview.title = title || '';
         imageFilePreview.setAttribute('aria-label', title || 'Image preview');
+
         imageFileModal.hidden = false;
         window.requestAnimationFrame(() => {
             imageFileModal.classList.add('is-visible');
         });
+
+        await showImageModalPreviewSource(loadToken, source, title);
     };
 
     const stopImageModalPan = (event: PointerEvent): void => {
@@ -474,6 +663,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     return {
         clearCachedDataUrls: (): void => {
             imageFileDataUrlByPath.clear();
+            imageFileThumbnailDataUrlByPath.clear();
         },
         close,
         contains: (target: Node): boolean => imageFileModal.contains(target),

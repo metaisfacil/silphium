@@ -4,10 +4,24 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"image"
+	"image/png"
+	"net/http"
 	"os"
+	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/webp"
 )
+
+const defaultImageThumbnailMaxEdge = 96
+const maxImageThumbnailMaxEdge = 512
 
 // ReadFileBase64 reads a file from the allowed library scope and returns its base64 content.
 func (a *App) ReadFileBase64(path string) string {
@@ -21,6 +35,94 @@ func (a *App) ReadFileBase64(path string) string {
 	}
 
 	return base64.StdEncoding.EncodeToString(rawBytes)
+}
+
+// ReadImageThumbnail reads an image from the allowed library scope and returns a cheap thumbnail.
+func (a *App) ReadImageThumbnail(path string, maxEdge int) EmbeddedCoverArt {
+	if !a.isAllowedLibraryPath(path) {
+		return EmbeddedCoverArt{}
+	}
+
+	rawBytes, err := os.ReadFile(path)
+	if err != nil || len(rawBytes) == 0 {
+		return EmbeddedCoverArt{}
+	}
+
+	if maxEdge <= 0 {
+		maxEdge = defaultImageThumbnailMaxEdge
+	}
+	if maxEdge > maxImageThumbnailMaxEdge {
+		maxEdge = maxImageThumbnailMaxEdge
+	}
+
+	decoded, _, err := image.Decode(bytes.NewReader(rawBytes))
+	if err != nil {
+		return EmbeddedCoverArt{}
+	}
+
+	bounds := decoded.Bounds()
+	if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
+		return EmbeddedCoverArt{}
+	}
+
+	mimeType := strings.TrimSpace(http.DetectContentType(rawBytes))
+	if bounds.Dx() <= maxEdge && bounds.Dy() <= maxEdge && strings.HasPrefix(mimeType, "image/") {
+		return EmbeddedCoverArt{
+			Base64:   base64.StdEncoding.EncodeToString(rawBytes),
+			MimeType: mimeType,
+		}
+	}
+
+	thumbnail := resizeImageNearest(decoded, maxEdge)
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, thumbnail); err != nil {
+		return EmbeddedCoverArt{}
+	}
+
+	return EmbeddedCoverArt{
+		Base64:   base64.StdEncoding.EncodeToString(encoded.Bytes()),
+		MimeType: "image/png",
+	}
+}
+
+func resizeImageNearest(source image.Image, maxEdge int) *image.RGBA {
+	bounds := source.Bounds()
+	sourceWidth := bounds.Dx()
+	sourceHeight := bounds.Dy()
+	if sourceWidth <= 0 || sourceHeight <= 0 {
+		return image.NewRGBA(image.Rect(0, 0, 1, 1))
+	}
+
+	targetWidth := sourceWidth
+	targetHeight := sourceHeight
+	if sourceWidth >= sourceHeight && sourceWidth > maxEdge {
+		targetWidth = maxEdge
+		targetHeight = max(1, (sourceHeight*maxEdge+sourceWidth/2)/sourceWidth)
+	} else if sourceHeight > sourceWidth && sourceHeight > maxEdge {
+		targetHeight = maxEdge
+		targetWidth = max(1, (sourceWidth*maxEdge+sourceHeight/2)/sourceHeight)
+	}
+
+	if targetWidth == sourceWidth && targetHeight == sourceHeight {
+		clone := image.NewRGBA(image.Rect(0, 0, sourceWidth, sourceHeight))
+		for y := 0; y < sourceHeight; y++ {
+			for x := 0; x < sourceWidth; x++ {
+				clone.Set(x, y, source.At(bounds.Min.X+x, bounds.Min.Y+y))
+			}
+		}
+		return clone
+	}
+
+	resized := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+	for y := 0; y < targetHeight; y++ {
+		sourceY := bounds.Min.Y + (y * sourceHeight / targetHeight)
+		for x := 0; x < targetWidth; x++ {
+			sourceX := bounds.Min.X + (x * sourceWidth / targetWidth)
+			resized.Set(x, y, source.At(sourceX, sourceY))
+		}
+	}
+
+	return resized
 }
 
 // ReadTextFile reads and decodes a text file from the allowed library scope.

@@ -82,6 +82,7 @@ import {
     OpenFolderInFileBrowser,
     ReadTrackEmbeddedCover,
     ReadFileBase64,
+    ReadImageThumbnail,
     ReadTextFile,
     ReadTrackTags,
     SavePlaylistFile,
@@ -3049,6 +3050,7 @@ OnFileDrop((_, __, paths: string[]) => {
 imageModalController = createImageModalController({
     elements: imageModalElements,
     readFileBase64: ReadFileBase64,
+    readImageThumbnail: ReadImageThumbnail,
 });
 
 artistInfoController = createArtistInfoController({

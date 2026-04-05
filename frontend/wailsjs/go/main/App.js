@@ -114,6 +114,10 @@ export function ReadFileBase64(arg1) {
   return window['go']['main']['App']['ReadFileBase64'](arg1);
 }
 
+export function ReadImageThumbnail(arg1, arg2) {
+  return window['go']['main']['App']['ReadImageThumbnail'](arg1, arg2);
+}
+
 export function ReadTextFile(arg1) {
   return window['go']['main']['App']['ReadTextFile'](arg1);
 }
