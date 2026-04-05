@@ -67,6 +67,8 @@ export namespace main {
 	    coverArtPriority?: string[];
 	    audio?: AudioSettings;
 	    preferMusicBrainzMetadata: boolean;
+	    musicBrainzTagDatabaseEnabled?: boolean;
+	    musicBrainzTagWorkerCores?: number;
 	    keyboardShortcuts: FocusedKeyboardShortcuts;
 	
 	    static createFrom(source: any = {}) {
@@ -85,6 +87,8 @@ export namespace main {
 	        this.coverArtPriority = source["coverArtPriority"];
 	        this.audio = this.convertValues(source["audio"], AudioSettings);
 	        this.preferMusicBrainzMetadata = source["preferMusicBrainzMetadata"];
+	        this.musicBrainzTagDatabaseEnabled = source["musicBrainzTagDatabaseEnabled"];
+	        this.musicBrainzTagWorkerCores = source["musicBrainzTagWorkerCores"];
 	        this.keyboardShortcuts = this.convertValues(source["keyboardShortcuts"], FocusedKeyboardShortcuts);
 	    }
 	

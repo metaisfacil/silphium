@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -36,17 +37,19 @@ type AudioSettings struct {
 
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
-	LibraryFolders            []AppLibraryFolder       `json:"libraryFolders,omitempty"`
-	LibraryPath               string                   `json:"libraryPath,omitempty"`
-	FFmpegPath                string                   `json:"ffmpegPath,omitempty"`
-	ListenBrainzUserToken     string                   `json:"listenBrainzUserToken"`
-	PlaybackOrder             string                   `json:"playbackOrder"`
-	ReleaseDepth              int                      `json:"releaseDepth,omitempty"`
-	FavoritePlaylists         []string                 `json:"favoritePlaylists,omitempty"`
-	CoverArtPriority          []string                 `json:"coverArtPriority,omitempty"`
-	Audio                     AudioSettings            `json:"audio,omitempty"`
-	PreferMusicBrainzMetadata bool                     `json:"preferMusicBrainzMetadata"`
-	KeyboardShortcuts         FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
+	LibraryFolders                []AppLibraryFolder       `json:"libraryFolders,omitempty"`
+	LibraryPath                   string                   `json:"libraryPath,omitempty"`
+	FFmpegPath                    string                   `json:"ffmpegPath,omitempty"`
+	ListenBrainzUserToken         string                   `json:"listenBrainzUserToken"`
+	PlaybackOrder                 string                   `json:"playbackOrder"`
+	ReleaseDepth                  int                      `json:"releaseDepth,omitempty"`
+	FavoritePlaylists             []string                 `json:"favoritePlaylists,omitempty"`
+	CoverArtPriority              []string                 `json:"coverArtPriority,omitempty"`
+	Audio                         AudioSettings            `json:"audio,omitempty"`
+	PreferMusicBrainzMetadata     bool                     `json:"preferMusicBrainzMetadata"`
+	MusicBrainzTagDatabaseEnabled bool                     `json:"musicBrainzTagDatabaseEnabled,omitempty"`
+	MusicBrainzTagWorkerCores     int                      `json:"musicBrainzTagWorkerCores,omitempty"`
+	KeyboardShortcuts             FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
 
 const defaultPlaybackOrder = "ordered-library"
@@ -106,6 +109,36 @@ func normalizePlaybackOrder(value string) string {
 	default:
 		return defaultPlaybackOrder
 	}
+}
+
+func maxMusicBrainzTagWorkerCores() int {
+	workerCores := runtime.NumCPU()
+	if workerCores < 1 {
+		return 1
+	}
+
+	return workerCores
+}
+
+func defaultMusicBrainzTagWorkerCores() int {
+	workerCores := maxMusicBrainzTagWorkerCores() / 2
+	if workerCores < 1 {
+		return 1
+	}
+
+	return workerCores
+}
+
+func normalizeMusicBrainzTagWorkerCores(value int) int {
+	if value <= 0 {
+		return defaultMusicBrainzTagWorkerCores()
+	}
+
+	if value > maxMusicBrainzTagWorkerCores() {
+		return maxMusicBrainzTagWorkerCores()
+	}
+
+	return value
 }
 
 func normalizeKeyboardShortcutBinding(value, fallback string) string {
@@ -254,17 +287,19 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	}
 
 	return AppSettings{
-		LibraryFolders:            libraryFolders,
-		LibraryPath:               legacyLibraryPath,
-		FFmpegPath:                normalizeFFmpegPath(settings.FFmpegPath),
-		ListenBrainzUserToken:     token,
-		PlaybackOrder:             playbackOrder,
-		ReleaseDepth:              legacyReleaseDepth,
-		FavoritePlaylists:         favoritePlaylists,
-		CoverArtPriority:          coverArtPriority,
-		Audio:                     audio,
-		PreferMusicBrainzMetadata: preferMusicBrainzMetadata,
-		KeyboardShortcuts:         keyboardShortcuts,
+		LibraryFolders:                libraryFolders,
+		LibraryPath:                   legacyLibraryPath,
+		FFmpegPath:                    normalizeFFmpegPath(settings.FFmpegPath),
+		ListenBrainzUserToken:         token,
+		PlaybackOrder:                 playbackOrder,
+		ReleaseDepth:                  legacyReleaseDepth,
+		FavoritePlaylists:             favoritePlaylists,
+		CoverArtPriority:              coverArtPriority,
+		Audio:                         audio,
+		PreferMusicBrainzMetadata:     preferMusicBrainzMetadata,
+		MusicBrainzTagDatabaseEnabled: settings.MusicBrainzTagDatabaseEnabled,
+		MusicBrainzTagWorkerCores:     normalizeMusicBrainzTagWorkerCores(settings.MusicBrainzTagWorkerCores),
+		KeyboardShortcuts:             keyboardShortcuts,
 	}
 }
 
@@ -349,5 +384,6 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	a.settings = normalized
 	a.audioBackend().SetFFmpegPath(normalized.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(normalized.Audio)
+	a.notifyMusicBrainzTagWorker()
 	return normalized, nil
 }

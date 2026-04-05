@@ -37,6 +37,8 @@ export type SettingsModalElements = {
     settingsGaplessPlayback: HTMLInputElement;
     settingsReplayGain: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
+    settingsMusicBrainzTagDatabaseEnabled: HTMLInputElement;
+    settingsMusicBrainzTagWorkerCores: HTMLInputElement;
     settingsPlayerCardLayout: HTMLSelectElement;
     settingsCoverArtPriorityList: HTMLUListElement;
     settingsShortcutPlayPauseToggle: HTMLInputElement;
@@ -90,6 +92,18 @@ export const renderSettingsModal = (): string => `
                             <span class="settings-label">Prefer MusicBrainz metadata when MBIDs are present</span>
                         </label>
                         <p class="settings-hint">Track labels are replaced on-the-fly by MusicBrainz lookup.</p>
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-musicbrainz-tag-database-enabled">
+                            <input id="settings-musicbrainz-tag-database-enabled" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Enable MusicBrainz tag database</span>
+                        </label>
+                        <p class="settings-hint">Builds a background MusicBrainz tag index for <code>mbtag:</code> library searches. Direct user lookups still take priority over the background worker.</p>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz Tag Worker Cores</label>
+                        <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests still remain limited to one request per second.</p>
+                        <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
@@ -246,6 +260,8 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsGaplessPlayback: root.querySelector('#settings-gapless-playback') as HTMLInputElement,
     settingsReplayGain: root.querySelector('#settings-replaygain') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
+    settingsMusicBrainzTagDatabaseEnabled: root.querySelector('#settings-musicbrainz-tag-database-enabled') as HTMLInputElement,
+    settingsMusicBrainzTagWorkerCores: root.querySelector('#settings-musicbrainz-tag-worker-cores') as HTMLInputElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,
     settingsShortcutPlayPauseToggle: root.querySelector('#settings-shortcut-play-pause') as HTMLInputElement,

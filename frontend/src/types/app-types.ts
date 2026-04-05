@@ -255,6 +255,8 @@ export type AppSettings = {
     coverArtPriority: CoverArtPrioritySource[];
     audio: AudioSettings;
     preferMusicBrainzMetadata: boolean;
+    musicBrainzTagDatabaseEnabled: boolean;
+    musicBrainzTagWorkerCores: number;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
 
