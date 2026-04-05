@@ -224,7 +224,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzRequestRateMs.min = isPublic ? String(PUBLIC_MIN_RATE_LIMIT_MS) : '0';
         if (isPublic) {
             const stored = normalizeRequestRateMs(settingsMusicBrainzRequestRateMs.value);
-            settingsMusicBrainzRequestRateMs.value = String(Math.max(PUBLIC_MIN_RATE_LIMIT_MS, stored || PUBLIC_MIN_RATE_LIMIT_MS));
+            settingsMusicBrainzRequestRateMs.value = String(Math.max(PUBLIC_MIN_RATE_LIMIT_MS, stored));
         }
     };
 
@@ -234,7 +234,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsListenBrainzRequestRateMs.min = isPublic ? String(PUBLIC_MIN_RATE_LIMIT_MS) : '0';
         if (isPublic) {
             const stored = normalizeRequestRateMs(settingsListenBrainzRequestRateMs.value);
-            settingsListenBrainzRequestRateMs.value = String(Math.max(PUBLIC_MIN_RATE_LIMIT_MS, stored || PUBLIC_MIN_RATE_LIMIT_MS));
+            settingsListenBrainzRequestRateMs.value = String(Math.max(PUBLIC_MIN_RATE_LIMIT_MS, stored));
         }
     };
 
