@@ -57,6 +57,7 @@ const defaultShortcutFocusLibraryFilter = "Ctrl+F"
 const defaultShortcutOpenSettings = "Ctrl+P"
 const coverArtPriorityFile = "file"
 const coverArtPriorityEmbedded = "embedded"
+const coverArtPriorityMusicBrainz = "musicbrainz"
 const defaultAudioOutputDevice = "default"
 const maxAudioOutputBufferMs = 1000
 
@@ -121,16 +122,20 @@ func normalizeFocusedKeyboardShortcuts(shortcuts FocusedKeyboardShortcuts) Focus
 }
 
 func normalizeCoverArtPriority(priority []string) []string {
-	if len(priority) == 0 {
+	if priority == nil {
 		return append([]string{}, defaultCoverArtPriority...)
 	}
 
-	ordered := make([]string, 0, len(defaultCoverArtPriority))
-	seen := make(map[string]struct{}, len(defaultCoverArtPriority))
+	if len(priority) == 0 {
+		return []string{}
+	}
+
+	ordered := make([]string, 0, 3)
+	seen := make(map[string]struct{}, 3)
 	for _, item := range priority {
 		normalized := strings.ToLower(strings.TrimSpace(item))
 		switch normalized {
-		case coverArtPriorityFile, coverArtPriorityEmbedded:
+		case coverArtPriorityFile, coverArtPriorityEmbedded, coverArtPriorityMusicBrainz:
 			if _, exists := seen[normalized]; exists {
 				continue
 			}
@@ -138,14 +143,6 @@ func normalizeCoverArtPriority(priority []string) []string {
 			seen[normalized] = struct{}{}
 			ordered = append(ordered, normalized)
 		}
-	}
-
-	for _, fallback := range defaultCoverArtPriority {
-		if _, exists := seen[fallback]; exists {
-			continue
-		}
-
-		ordered = append(ordered, fallback)
 	}
 
 	if len(ordered) == 0 {

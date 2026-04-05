@@ -129,7 +129,7 @@ export const renderSettingsModal = (): string => `
                     </div>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-cover-art-priority-list">Cover Art Source Priority</label>
-                        <p class="settings-hint">Drag to reorder. Top entry is tried first. Separate cover files are preferred by default.</p>
+                        <p class="settings-hint">Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.</p>
                         <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
                     </div>
                 </div>

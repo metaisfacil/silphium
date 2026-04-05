@@ -760,10 +760,13 @@
 .settings-priority-item {
     margin: 0;
     padding: 0;
+    min-width: 0;
 }
 
 .settings-priority-item-btn {
     width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     display: grid;
     grid-template-columns: auto 1fr;
     align-items: center;
@@ -779,8 +782,21 @@
     cursor: grab;
 }
 
+.settings-priority-item-btn.is-disabled {
+    opacity: 0.58;
+}
+
 .settings-priority-item-btn:hover {
     background: rgba(255, 255, 255, 0.14);
+}
+
+.settings-priority-checkbox-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.52rem;
+    min-width: 0;
+    width: 100%;
+    cursor: pointer;
 }
 
 .settings-priority-handle {
@@ -790,6 +806,7 @@
 }
 
 .settings-priority-label {
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

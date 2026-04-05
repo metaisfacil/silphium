@@ -227,11 +227,21 @@ const sidebarQueueDescendantPromptThreshold = 200;
 const selectedLibraryRootLabel = 'Selected folders';
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] | undefined): CoverArtPrioritySource[] => {
+    if (sources === undefined) {
+        return [...defaultCoverArtPriority];
+    }
+
     const ordered: CoverArtPrioritySource[] = [];
     const seen = new Set<CoverArtPrioritySource>();
 
     for (const rawSource of sources || []) {
-        const source = rawSource === 'embedded' ? 'embedded' : rawSource === 'file' ? 'file' : undefined;
+        const source = rawSource === 'embedded'
+            ? 'embedded'
+            : rawSource === 'file'
+                ? 'file'
+                : rawSource === 'musicbrainz'
+                    ? 'musicbrainz'
+                    : undefined;
         if (!source || seen.has(source)) {
             continue;
         }
@@ -240,10 +250,8 @@ const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] 
         ordered.push(source);
     }
 
-    for (const fallback of defaultCoverArtPriority) {
-        if (!seen.has(fallback)) {
-            ordered.push(fallback);
-        }
+    if (ordered.length === 0 && sources.length > 0) {
+        return [...defaultCoverArtPriority];
     }
 
     return ordered;
@@ -1658,6 +1666,7 @@ const hydrateCurrentTrackTag = async (index: number, version: number): Promise<v
     if (result.updatedTags || result.updatedMusicBrainz) {
         refreshNowPlayingLabel();
         libraryController.renderFolder('none');
+        await applyCoverArtForTrack(index);
     }
 
     if (result.updatedTags) {
@@ -1749,19 +1758,27 @@ const openCoverImageModal = (): void => {
 
     const activeTrack = tracks[currentTrackIndex];
     if (!activeTrack) {
-        imageModalController.openPreview(coverArt.src);
+        imageModalController.openPreview(coverArt.src, coverArt.src);
         return;
     }
 
     const source = coverArtService.getResolvedSourceForTrack(activeTrack.path);
+    if (source === 'musicbrainz') {
+        imageModalController.openPreview(
+            coverArt.src,
+            coverArtService.getMusicBrainzCoverUrlForTrack(activeTrack) || coverArt.src,
+        );
+        return;
+    }
+
     if (source === 'embedded') {
-        imageModalController.openPreview(coverArt.src);
+        imageModalController.openPreview(coverArt.src, activeTrack.path || coverArt.src);
         return;
     }
 
     const gallery = collectReleaseImageFiles(activeTrack);
     if (gallery.length === 0) {
-        imageModalController.openPreview(coverArt.src);
+        imageModalController.openPreview(coverArt.src, coverArt.src);
         return;
     }
 
@@ -2903,6 +2920,9 @@ settingsController = createSettingsController({
 
             currentSettings = normalizeAppSettings(savedSettings);
             setPlaybackOrderMode(currentSettings.playbackOrder);
+            if (currentTrackIndex >= 0 && currentTrackIndex < tracks.length) {
+                void applyCoverArtForTrack(currentTrackIndex);
+            }
 
             playlistController.refreshFavorites();
 

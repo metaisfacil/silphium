@@ -315,13 +315,13 @@ export const createImageModalController = (options: ImageModalControllerOptions)
                 return;
             }
 
-            openPreview(source);
+            openPreview(source, imageFile.relativePath || imageFile.path || imageFile.name);
         } catch (error) {
             console.error(error);
         }
     };
 
-    const openPreview = (source: string): void => {
+    const openPreview = (source: string, title?: string): void => {
         if (imageModalHideTimer !== undefined) {
             window.clearTimeout(imageModalHideTimer);
             imageModalHideTimer = undefined;
@@ -340,6 +340,8 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageFileThumbsNext.hidden = true;
 
         imageFilePreview.src = source;
+        imageFilePreview.title = title || '';
+        imageFilePreview.setAttribute('aria-label', title || 'Image preview');
         imageFileModal.hidden = false;
         window.requestAnimationFrame(() => {
             imageFileModal.classList.add('is-visible');

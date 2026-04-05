@@ -204,7 +204,7 @@ export type AudioPlaybackState = {
 
 export type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
 
-export type CoverArtPrioritySource = 'file' | 'embedded';
+export type CoverArtPrioritySource = 'file' | 'embedded' | 'musicbrainz';
 
 export type PlayerCardLayout = 'default' | 'release';
 

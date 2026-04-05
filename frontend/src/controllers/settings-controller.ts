@@ -26,13 +26,18 @@ export type SettingsViewValues = SettingsFormValues & {
 };
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
+const allCoverArtPrioritySources: CoverArtPrioritySource[] = ['file', 'embedded', 'musicbrainz'];
 
-const normalizeCoverArtPriority = (items: string[]): CoverArtPrioritySource[] => {
+const normalizeCoverArtPriority = (items: string[] | undefined): CoverArtPrioritySource[] => {
+    if (items === undefined) {
+        return [...defaultCoverArtPriority];
+    }
+
     const ordered: CoverArtPrioritySource[] = [];
     const seen = new Set<CoverArtPrioritySource>();
     for (const item of items) {
         const normalized = item.trim().toLowerCase();
-        if (normalized !== 'file' && normalized !== 'embedded') {
+        if (normalized !== 'file' && normalized !== 'embedded' && normalized !== 'musicbrainz') {
             continue;
         }
 
@@ -45,7 +50,17 @@ const normalizeCoverArtPriority = (items: string[]): CoverArtPrioritySource[] =>
         ordered.push(source);
     }
 
-    for (const fallback of defaultCoverArtPriority) {
+    if (ordered.length === 0 && items.length > 0) {
+        return [...defaultCoverArtPriority];
+    }
+
+    return ordered;
+};
+
+const normalizeCoverArtPriorityOrder = (items: string[] | undefined): CoverArtPrioritySource[] => {
+    const ordered = normalizeCoverArtPriority(items);
+    const seen = new Set<CoverArtPrioritySource>(ordered);
+    for (const fallback of allCoverArtPrioritySources) {
         if (!seen.has(fallback)) {
             ordered.push(fallback);
         }
@@ -134,6 +149,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let forceReloadEtaSeconds: number | null = null;
     let audioOutputDevices: AudioOutputDevice[] = [];
     let coverArtPriority: CoverArtPrioritySource[] = [...defaultCoverArtPriority];
+    let coverArtPriorityOrder: CoverArtPrioritySource[] = [...allCoverArtPrioritySources];
     let draggedCoverPriorityIndex = -1;
     const libraryFolderRepeatClickWindowMs = 400;
 
@@ -356,6 +372,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     };
 
     const labelForCoverArtPriority = (source: CoverArtPrioritySource): string => {
+        if (source === 'musicbrainz') {
+            return 'Load cover from MusicBrainz';
+        }
+
         if (source === 'embedded') {
             return 'Embedded track artwork';
         }
@@ -364,7 +384,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     };
 
     const moveCoverArtPriority = (fromIndex: number, toIndex: number): void => {
-        if (fromIndex < 0 || toIndex < 0 || fromIndex >= coverArtPriority.length || toIndex >= coverArtPriority.length) {
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= coverArtPriorityOrder.length || toIndex >= coverArtPriorityOrder.length) {
             return;
         }
 
@@ -372,10 +392,23 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
 
-        const next = coverArtPriority.slice();
+        const next = coverArtPriorityOrder.slice();
         const [moved] = next.splice(fromIndex, 1);
         next.splice(toIndex, 0, moved);
-        coverArtPriority = normalizeCoverArtPriority(next);
+        coverArtPriorityOrder = normalizeCoverArtPriorityOrder(next);
+        const enabled = new Set<CoverArtPrioritySource>(coverArtPriority);
+        coverArtPriority = coverArtPriorityOrder.filter((source) => enabled.has(source));
+    };
+
+    const setCoverArtPrioritySourceEnabled = (source: CoverArtPrioritySource, enabled: boolean): void => {
+        const nextEnabled = new Set<CoverArtPrioritySource>(coverArtPriority);
+        if (enabled) {
+            nextEnabled.add(source);
+        } else {
+            nextEnabled.delete(source);
+        }
+
+        coverArtPriority = coverArtPriorityOrder.filter((candidate) => nextEnabled.has(candidate));
     };
 
     const clearCoverArtDragState = (): void => {
@@ -389,19 +422,40 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const renderCoverArtPriorityList = (): void => {
         settingsCoverArtPriorityList.innerHTML = '';
 
-        coverArtPriority.forEach((source, index) => {
+        const enabled = new Set<CoverArtPrioritySource>(coverArtPriority);
+
+        coverArtPriorityOrder.forEach((source, index) => {
             const item = document.createElement('li');
             item.className = 'settings-priority-item';
 
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'settings-priority-item-btn';
-            button.dataset.coverArtPriorityIndex = String(index);
-            button.draggable = true;
-            button.title = 'Drag to change priority';
-            button.innerHTML = `<span class="settings-priority-handle" aria-hidden="true">=</span><span class="settings-priority-label">${labelForCoverArtPriority(source)}</span>`;
+            const row = document.createElement('div');
+            row.className = `settings-priority-item-btn${enabled.has(source) ? '' : ' is-disabled'}`;
+            row.dataset.coverArtPriorityIndex = String(index);
+            row.draggable = true;
+            row.title = 'Drag to change priority';
 
-            item.append(button);
+            const handle = document.createElement('span');
+            handle.className = 'settings-priority-handle';
+            handle.setAttribute('aria-hidden', 'true');
+            handle.textContent = '=';
+
+            const label = document.createElement('label');
+            label.className = 'settings-priority-checkbox-row';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'settings-checkbox';
+            checkbox.dataset.coverArtPrioritySource = source;
+            checkbox.checked = enabled.has(source);
+
+            const text = document.createElement('span');
+            text.className = 'settings-priority-label';
+            text.textContent = labelForCoverArtPriority(source);
+
+            label.append(checkbox, text);
+            row.append(handle, label);
+
+            item.append(row);
             settingsCoverArtPriorityList.append(item);
         });
     };
@@ -619,6 +673,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
         favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
         coverArtPriority = normalizeCoverArtPriority(values.coverArtPriority);
+        coverArtPriorityOrder = normalizeCoverArtPriorityOrder(values.coverArtPriority);
         selectedLibraryFolderIndex = libraryFolders.length > 0 ? 0 : -1;
         selectedFavoritePlaylistIndex = -1;
         lastLibraryFolderClickIndex = -1;
@@ -849,7 +904,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         const index = Number(item.dataset.coverArtPriorityIndex);
-        if (!Number.isInteger(index) || index < 0 || index >= coverArtPriority.length) {
+        if (!Number.isInteger(index) || index < 0 || index >= coverArtPriorityOrder.length) {
             return;
         }
 
@@ -916,6 +971,21 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     settingsCoverArtPriorityList.addEventListener('dragend', () => {
         clearCoverArtDragState();
+    });
+
+    settingsCoverArtPriorityList.addEventListener('change', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.type !== 'checkbox') {
+            return;
+        }
+
+        const source = target.dataset.coverArtPrioritySource;
+        if (source !== 'file' && source !== 'embedded' && source !== 'musicbrainz') {
+            return;
+        }
+
+        setCoverArtPrioritySourceEnabled(source, target.checked);
+        renderCoverArtPriorityList();
     });
 
     settingsAddFavoritePlaylist.addEventListener('click', async () => {
