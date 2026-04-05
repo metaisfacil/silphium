@@ -25,9 +25,9 @@ type AppLibraryFolder struct {
 }
 
 type AudioSettings struct {
-	OutputDevice     string `json:"outputDevice,omitempty"`
-	OutputBufferMs   int    `json:"outputBufferMs,omitempty"`
-	GaplessPlayback  bool   `json:"gaplessPlayback,omitempty"`
+	OutputDevice    string `json:"outputDevice,omitempty"`
+	OutputBufferMs  int    `json:"outputBufferMs,omitempty"`
+	GaplessPlayback bool   `json:"gaplessPlayback,omitempty"`
 }
 
 // AppSettings stores persisted user configuration shared between frontend and backend.

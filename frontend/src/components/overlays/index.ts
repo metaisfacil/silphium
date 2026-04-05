@@ -5,6 +5,7 @@ export * from './musicbrainz-entity-modal';
 export * from './play-order-menu';
 export * from './playlist-menu';
 export * from './playlist-modal';
+export * from './queue-confirm-modal';
 export * from './settings-modal';
 export * from './sidebar-queue-menu';
 export * from './technical-info-modal';

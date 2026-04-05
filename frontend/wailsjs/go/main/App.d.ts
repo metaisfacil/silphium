@@ -28,6 +28,8 @@ export function GetLibraryFolderCoverPath(arg1:string):Promise<string>;
 
 export function GetLibraryFolderPage(arg1:string,arg2:number,arg3:number):Promise<main.LibraryFolderPage>;
 
+export function GetLibraryFolderTrackCount(arg1:string):Promise<number>;
+
 export function GetLibraryFolderTrackPaths(arg1:string):Promise<Array<string>>;
 
 export function GetLibraryIndexedFilePage(arg1:string,arg2:number,arg3:number):Promise<main.LibraryIndexedFilePage>;

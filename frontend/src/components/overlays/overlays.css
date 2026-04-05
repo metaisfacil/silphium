@@ -1439,6 +1439,10 @@
     cursor: pointer;
 }
 
+.playlist-menu-item[hidden] {
+    display: none;
+}
+
 .playlist-menu-item:hover {
     background: rgba(255, 255, 255, 0.12);
 }
@@ -1453,9 +1457,14 @@
 }
 
 .playlist-menu-divider {
-    height: 1px;
-    margin: 0.3rem 0.4rem;
-    background: rgba(255, 255, 255, 0.16);
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.38);
+    height: 0;
+    margin: 0.42rem 0.42rem 0.38rem;
+}
+
+.playlist-menu-divider[hidden] {
+    display: none;
 }
 
 .track-meta-menu {
@@ -1586,6 +1595,7 @@
 .error-actions {
     display: flex;
     justify-content: flex-end;
+    gap: 0.5rem;
     margin-top: 0.95rem;
 }
 

@@ -569,6 +569,22 @@ func (a *App) getFolderTrackPathsFromMapsLocked(normalizedFolderPath string) []s
 	return paths
 }
 
+func (a *App) getFolderTrackCountFromMapsLocked(normalizedFolderPath string) int {
+	prefix := ""
+	if normalizedFolderPath != "" {
+		prefix = normalizedFolderPath + "/"
+	}
+
+	count := 0
+	for _, indexed := range a.trackByPath {
+		if normalizedFolderPath == "" || indexed.FolderPath == normalizedFolderPath || strings.HasPrefix(indexed.FolderPath, prefix) {
+			count++
+		}
+	}
+
+	return count
+}
+
 func (a *App) getFolderTrackPathsFromDerivedIndexLocked(normalizedFolderPath string) []string {
 	if a.trackFilesByFolder == nil || a.folderChildPathsByFolder == nil {
 		return []string{}
@@ -611,4 +627,37 @@ func (a *App) getFolderTrackPathsFromDerivedIndexLocked(normalizedFolderPath str
 	}
 
 	return paths
+}
+
+func (a *App) getFolderTrackCountFromDerivedIndexLocked(normalizedFolderPath string) int {
+	if a.trackFilesByFolder == nil || a.folderChildPathsByFolder == nil {
+		return 0
+	}
+
+	if normalizedFolderPath != "" {
+		_, hasFolderEntries := a.folderEntriesByFolder[normalizedFolderPath]
+		_, hasDirectTracks := a.trackFilesByFolder[normalizedFolderPath]
+		_, hasChildFolders := a.folderChildPathsByFolder[normalizedFolderPath]
+		if !hasFolderEntries && !hasDirectTracks && !hasChildFolders {
+			return 0
+		}
+	}
+
+	pendingFolders := []string{normalizedFolderPath}
+	count := 0
+	for len(pendingFolders) > 0 {
+		currentFolder := pendingFolders[len(pendingFolders)-1]
+		pendingFolders = pendingFolders[:len(pendingFolders)-1]
+
+		if directTrackFiles := a.trackFilesByFolder[currentFolder]; len(directTrackFiles) > 0 {
+			count += len(directTrackFiles)
+		}
+
+		childFolders := a.folderChildPathsByFolder[currentFolder]
+		for index := len(childFolders) - 1; index >= 0; index-- {
+			pendingFolders = append(pendingFolders, childFolders[index])
+		}
+	}
+
+	return count
 }

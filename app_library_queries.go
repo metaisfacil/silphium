@@ -300,3 +300,43 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	)
 	return paths
 }
+
+// GetLibraryFolderTrackCount returns the number of audio tracks under a folder subtree.
+func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
+	queryStartTime := time.Now()
+	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
+	if !ok {
+		return 0
+	}
+
+	a.indexMu.Lock()
+	defer a.indexMu.Unlock()
+
+	mode := "fallback-map"
+	if !a.scanInProgress {
+		a.maybeStartLibraryDerivedIndexRebuildLocked()
+	}
+
+	if a.isLibraryDerivedIndexReadyLocked() {
+		mode = "derived-index"
+		count := a.getFolderTrackCountFromDerivedIndexLocked(normalizedFolderPath)
+		a.logRescanEvent(
+			"GetLibraryFolderTrackCount END: folder=%s mode=%s tracks=%d took %.2fms",
+			folderPathForLog(normalizedFolderPath),
+			mode,
+			count,
+			time.Since(queryStartTime).Seconds()*1000,
+		)
+		return count
+	}
+
+	count := a.getFolderTrackCountFromMapsLocked(normalizedFolderPath)
+	a.logRescanEvent(
+		"GetLibraryFolderTrackCount END: folder=%s mode=%s tracks=%d took %.2fms",
+		folderPathForLog(normalizedFolderPath),
+		mode,
+		count,
+		time.Since(queryStartTime).Seconds()*1000,
+	)
+	return count
+}

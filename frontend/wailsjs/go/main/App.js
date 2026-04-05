@@ -54,6 +54,10 @@ export function GetLibraryFolderPage(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetLibraryFolderPage'](arg1, arg2, arg3);
 }
 
+export function GetLibraryFolderTrackCount(arg1) {
+  return window['go']['main']['App']['GetLibraryFolderTrackCount'](arg1);
+}
+
 export function GetLibraryFolderTrackPaths(arg1) {
   return window['go']['main']['App']['GetLibraryFolderTrackPaths'](arg1);
 }

@@ -59,12 +59,12 @@ type LibraryControllerOptions = {
     resolveTrackIndex: (path: string) => number;
     resolveTextFileIndex: (path: string) => number;
     resolveImageFileIndex: (path: string) => number;
-    getFolderTrackIndexes: (folderPath: string) => Promise<number[]>;
     onTrackChosen: (index: number) => void;
     onTrackPathChosen?: (path: string) => void;
     onTextFileChosen: (index: number) => void;
     onImageFileChosen: (index: number) => void;
     onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number) => void;
+    onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string) => void;
     onSidebarClosed: () => void;
 };
 
@@ -333,11 +333,6 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             kind: 'folder',
             folderPath: currentFolderPath,
         };
-    };
-
-    const queueIndexesForFolder = async (folderPath: string): Promise<number[]> => {
-        const trackIndexes = await options.getFolderTrackIndexes(folderPath);
-        return trackIndexes.filter((trackIndex) => Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < getTracks().length);
     };
 
     const firstTrackIndexFromRandomAlbumFolder = (): number => {
@@ -1516,6 +1511,21 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             return;
         }
 
+        const isFolderButton = button.classList.contains('library-tree-folder')
+            || button.classList.contains('folder');
+        if (isFolderButton) {
+            const folderPath = button.dataset.searchFolderPath ?? button.dataset.folderPath ?? '';
+            event.preventDefault();
+            event.stopPropagation();
+            options.onFolderQueueRequested(
+                event.clientX,
+                event.clientY,
+                folderPath,
+                button.textContent?.trim() || folderPath,
+            );
+            return;
+        }
+
         const trackPath = button.dataset.trackPath;
         if (trackPath !== undefined) {
             const trackIndex = options.resolveTrackIndex(trackPath);
@@ -1533,15 +1543,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         if (searchFolderPath !== undefined) {
             event.preventDefault();
             event.stopPropagation();
-            void queueIndexesForFolder(searchFolderPath).then((trackIndexes) => {
-                if (trackIndexes.length === 0) {
-                    return;
-                }
-
-                options.onQueueRequested(event.clientX, event.clientY, trackIndexes);
-            }).catch((error) => {
-                console.error(error);
-            });
+            options.onFolderQueueRequested(
+                event.clientX,
+                event.clientY,
+                searchFolderPath,
+                button.textContent?.trim() || searchFolderPath,
+            );
             return;
         }
 
@@ -1552,15 +1559,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         event.preventDefault();
         event.stopPropagation();
-        void queueIndexesForFolder(folderPath).then((trackIndexes) => {
-            if (trackIndexes.length === 0) {
-                return;
-            }
-
-            options.onQueueRequested(event.clientX, event.clientY, trackIndexes);
-        }).catch((error) => {
-            console.error(error);
-        });
+        options.onFolderQueueRequested(
+            event.clientX,
+            event.clientY,
+            folderPath,
+            button.textContent?.trim() || folderPath,
+        );
     });
 
     libraryBack.addEventListener('click', () => {

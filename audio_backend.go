@@ -91,23 +91,23 @@ func backendDisplayName(raw string) string {
 
 // AudioBackend manages decoded PCM playback and transport controls.
 type AudioBackend struct {
-	mutex        sync.Mutex
-	streamCond   *sync.Cond
-	ffmpegPath   string
-	context      *oto.Context
-	player       *oto.Player
-	streamSegments       []audioTrackSegment
-	streamReadOffset     int64
-	streamDroppedBytes   int64
-	playStarted          time.Time
-	playbackBaseBytes    int64
-	playing      bool
-	volume       float64
-	endEventID   uint64
-	endEventSent bool
-	outputDevice string
-	outputBuffer time.Duration
-	gaplessPlayback bool
+	mutex              sync.Mutex
+	streamCond         *sync.Cond
+	ffmpegPath         string
+	context            *oto.Context
+	player             *oto.Player
+	streamSegments     []audioTrackSegment
+	streamReadOffset   int64
+	streamDroppedBytes int64
+	playStarted        time.Time
+	playbackBaseBytes  int64
+	playing            bool
+	volume             float64
+	endEventID         uint64
+	endEventSent       bool
+	outputDevice       string
+	outputBuffer       time.Duration
+	gaplessPlayback    bool
 }
 
 // NewAudioBackend creates an audio backend with default playback volume.

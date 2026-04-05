@@ -29,6 +29,7 @@ import {
     getPlayOrderMenuElements,
     getPlaylistMenuElements,
     getPlaylistModalElements,
+    getQueueConfirmModalElements,
     getSidebarQueueMenuElements,
     getSettingsModalElements,
     getTechnicalInfoModalElements,
@@ -41,6 +42,7 @@ import {
     renderPlayOrderMenu,
     renderPlaylistMenu,
     renderPlaylistModal,
+    renderQueueConfirmModal,
     renderSidebarQueueMenu,
     renderSettingsModal,
     renderTechnicalInfoModal,
@@ -64,6 +66,7 @@ import {
     GetAppVersion,
     GetLibraryFolderCoverPath,
     GetLibraryFolderPage,
+    GetLibraryFolderTrackCount,
     GetLibraryFolderTrackPaths,
     GetLibraryIndexedFilePage,
     GetListenBrainzRecordingFeedback,
@@ -152,6 +155,7 @@ app.innerHTML = `
         ${renderMediaControls()}
         ${renderAboutModal()}
         ${renderErrorModal()}
+        ${renderQueueConfirmModal()}
         ${renderTextFileModal()}
         ${renderImageFileModal()}
         ${renderMusicBrainzEntityModal()}
@@ -212,6 +216,9 @@ let currentSettings: AppSettings = {
 let trackMetaMenuTarget: HTMLElement | null = null;
 let sidebarQueueTrackIndexes: number[] = [];
 let sidebarQueueFeedbackTrackIndex: number | null = null;
+let sidebarQueueFolderPath = '';
+let sidebarQueueFolderLabel = '';
+let queueConfirmResolver: ((confirmed: boolean) => void) | null = null;
 const coverPathByFolder = new Map<string, string>();
 const coverUrlByFolder = new Map<string, string>();
 const coverMediaArtworkByFolder = new Map<string, { src: string; type: string }>();
@@ -222,6 +229,7 @@ const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const aboutModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const errorModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+const sidebarQueueDescendantPromptThreshold = 200;
 const selectedLibraryRootLabel = 'Selected folders';
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] | undefined): CoverArtPrioritySource[] => {
@@ -642,6 +650,14 @@ const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
 const { aboutModal, aboutBackdrop, aboutClose, aboutVersion, aboutRepoLink } = getAboutModalElements(document);
 const { errorModal, errorBackdrop, errorTitle, errorMessage: errorModalMessage, errorClose, errorOk } = getErrorModalElements(document);
+const {
+    queueConfirmModal,
+    queueConfirmBackdrop,
+    queueConfirmTitle,
+    queueConfirmMessage,
+    queueConfirmCancel,
+    queueConfirmProceed,
+} = getQueueConfirmModalElements(document);
 const { textFileModal, textFileBackdrop, textFileTitle, textFileCode, textFileClose } = getTextFileModalElements(document);
 const imageModalElements = getImageFileModalElements(document);
 const {
@@ -1670,6 +1686,8 @@ const closeSidebarQueueMenu = (): void => {
     sidebarQueueMenu.hidden = true;
     sidebarQueueTrackIndexes = [];
     sidebarQueueFeedbackTrackIndex = null;
+    sidebarQueueFolderPath = '';
+    sidebarQueueFolderLabel = '';
 };
 
 const closeListenBrainzFeedbackMenu = (): void => {
@@ -1710,8 +1728,12 @@ const openSidebarQueueMenu = (
     clientY: number,
     trackIndexes: number[],
     feedbackTrackIndex?: number,
+    folderPath?: string,
+    folderLabel?: string,
+    folderTarget = false,
 ): void => {
-    if (trackIndexes.length === 0) {
+    const normalizedFolderPath = (folderPath || '').trim();
+    if (trackIndexes.length === 0 && normalizedFolderPath === '' && !folderTarget) {
         return;
     }
 
@@ -1721,7 +1743,11 @@ const openSidebarQueueMenu = (
     playlistController.closeMenu();
 
     sidebarQueueTrackIndexes = trackIndexes;
-    const canShowFeedbackActions = Number.isInteger(feedbackTrackIndex)
+    sidebarQueueFolderPath = normalizedFolderPath;
+    sidebarQueueFolderLabel = (folderLabel || '').trim() || normalizedFolderPath;
+    const isFolderTarget = folderTarget || normalizedFolderPath !== '';
+    const canShowFeedbackActions = !isFolderTarget
+        && Number.isInteger(feedbackTrackIndex)
         && (feedbackTrackIndex as number) >= 0
         && (feedbackTrackIndex as number) < tracks.length;
     const hasListenBrainzToken = canScrobble();
@@ -1750,6 +1776,65 @@ const openSidebarQueueMenu = (
 
     sidebarQueueMenu.style.left = `${Math.max(margin, clampedX)}px`;
     sidebarQueueMenu.style.top = `${Math.max(margin, clampedY)}px`;
+};
+
+const closeQueueConfirmModal = (confirmed: boolean): void => {
+    queueConfirmModal.classList.remove('is-visible');
+    queueConfirmModal.hidden = true;
+
+    if (queueConfirmResolver) {
+        const resolver = queueConfirmResolver;
+        queueConfirmResolver = null;
+        resolver(confirmed);
+    }
+};
+
+const openQueueConfirmModal = (title: string, message: string): Promise<boolean> => {
+    if (queueConfirmResolver) {
+        queueConfirmResolver(false);
+        queueConfirmResolver = null;
+    }
+
+    queueConfirmTitle.textContent = title;
+    queueConfirmMessage.textContent = message;
+    queueConfirmModal.hidden = false;
+    window.requestAnimationFrame(() => {
+        queueConfirmModal.classList.add('is-visible');
+    });
+
+    return new Promise<boolean>((resolve) => {
+        queueConfirmResolver = resolve;
+    });
+};
+
+const resolveSidebarQueueTrackIndexesForAction = async (actionLabel: string): Promise<number[]> => {
+    if (sidebarQueueFolderPath === '') {
+        return sidebarQueueTrackIndexes.filter((trackIndex) => (
+            Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < tracks.length
+        ));
+    }
+
+    const descendantCount = await GetLibraryFolderTrackCount(sidebarQueueFolderPath) as number;
+    if (!Number.isFinite(descendantCount) || descendantCount <= 0) {
+        return [];
+    }
+
+    if (descendantCount > sidebarQueueDescendantPromptThreshold) {
+        const formattedDescendantCount = descendantCount.toLocaleString('en-US');
+        const folderLabel = sidebarQueueFolderLabel || sidebarQueueFolderPath;
+        const shouldProceed = await openQueueConfirmModal(
+            `Queue ${formattedDescendantCount} tracks?`,
+            `${actionLabel} for "${folderLabel}" requires scanning ${formattedDescendantCount} descendant files and may significantly reduce performance. Continue?`,
+        );
+        if (!shouldProceed) {
+            return [];
+        }
+    }
+
+    const trackPaths = await GetLibraryFolderTrackPaths(sidebarQueueFolderPath) as string[];
+    return trackPaths
+        .map((trackPath) => ensureTrackIndexForPath(trackPath))
+        .filter((trackIndex) => trackIndex >= 0);
 };
 
 const playSidebarQueueSelection = async (trackIndexes: number[]): Promise<void> => {
@@ -3526,15 +3611,9 @@ libraryController = createLibraryController({
     searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => {
         return await SearchLibrary(query, offset, limit) as LibrarySearchPage;
     },
-    resolveTrackIndex: trackIndexForPath,
+    resolveTrackIndex: ensureTrackIndexForPath,
     resolveTextFileIndex: textFileIndexForPath,
     resolveImageFileIndex: imageFileIndexForPath,
-    getFolderTrackIndexes: async (folderPath: string): Promise<number[]> => {
-        const trackPaths = await GetLibraryFolderTrackPaths(folderPath) as string[];
-        return trackPaths
-            .map((trackPath) => trackIndexForPath(trackPath))
-            .filter((trackIndex) => trackIndex >= 0);
-    },
     onTrackChosen: (index: number) => {
         if (fullLibraryScanLoadActive) {
             suppressAutoSelectAfterFullLibraryScan = true;
@@ -3572,6 +3651,9 @@ libraryController = createLibraryController({
     },
     onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number) => {
         openSidebarQueueMenu(clientX, clientY, trackIndexes, feedbackTrackIndex);
+    },
+    onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string) => {
+        openSidebarQueueMenu(clientX, clientY, [], undefined, folderPath, folderLabel, true);
     },
     onSidebarClosed: () => {
         closeSidebarQueueMenu();
@@ -3672,22 +3754,36 @@ libraryAbout.addEventListener('click', () => {
 });
 
 sidebarQueueAddNext.addEventListener('click', () => {
-    if (sidebarQueueTrackIndexes.length === 0) {
+    if (sidebarQueueTrackIndexes.length === 0 && sidebarQueueFolderPath === '') {
         return;
     }
 
-    playlistController.addToQueueNext(sidebarQueueTrackIndexes);
+    const actionLabel = 'Add next';
+    void (async () => {
+        const trackIndexes = await resolveSidebarQueueTrackIndexesForAction(actionLabel);
+        if (trackIndexes.length === 0) {
+            return;
+        }
+
+        playlistController.addToQueueNext(trackIndexes);
+    })();
     closeSidebarQueueMenu();
 });
 
 sidebarQueuePlay.addEventListener('click', () => {
-    if (sidebarQueueTrackIndexes.length === 0) {
+    if (sidebarQueueTrackIndexes.length === 0 && sidebarQueueFolderPath === '') {
         return;
     }
 
-    const trackIndexes = sidebarQueueTrackIndexes.slice();
+    void (async () => {
+        const trackIndexes = await resolveSidebarQueueTrackIndexesForAction('Play');
+        if (trackIndexes.length === 0) {
+            return;
+        }
+
+        await playSidebarQueueSelection(trackIndexes);
+    })();
     closeSidebarQueueMenu();
-    void playSidebarQueueSelection(trackIndexes);
 });
 
 sidebarQueueLove.addEventListener('click', () => {
@@ -3703,11 +3799,19 @@ sidebarQueueHate.addEventListener('click', () => {
 });
 
 sidebarQueueEnd.addEventListener('click', () => {
-    if (sidebarQueueTrackIndexes.length === 0) {
+    if (sidebarQueueTrackIndexes.length === 0 && sidebarQueueFolderPath === '') {
         return;
     }
 
-    playlistController.addToQueueEnd(sidebarQueueTrackIndexes);
+    const actionLabel = 'Queue';
+    void (async () => {
+        const trackIndexes = await resolveSidebarQueueTrackIndexesForAction(actionLabel);
+        if (trackIndexes.length === 0) {
+            return;
+        }
+
+        playlistController.addToQueueEnd(trackIndexes);
+    })();
     closeSidebarQueueMenu();
 });
 
@@ -3724,6 +3828,21 @@ errorClose.addEventListener('click', () => {
 errorOk.addEventListener('click', () => {
     suppressTrackMetaClicks();
     closeErrorModal();
+});
+
+queueConfirmBackdrop.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeQueueConfirmModal(false);
+});
+
+queueConfirmCancel.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeQueueConfirmModal(false);
+});
+
+queueConfirmProceed.addEventListener('click', () => {
+    suppressTrackMetaClicks();
+    closeQueueConfirmModal(true);
 });
 
 textFileBackdrop.addEventListener('click', () => {
@@ -3798,6 +3917,11 @@ document.addEventListener('keydown', (event) => {
 
     if (!sidebarQueueMenu.hidden) {
         closeSidebarQueueMenu();
+        return;
+    }
+
+    if (!queueConfirmModal.hidden) {
+        closeQueueConfirmModal(false);
         return;
     }
 
@@ -3970,6 +4094,10 @@ document.addEventListener('click', (e) => {
         closeSidebarQueueMenu();
     }
 
+    if (!queueConfirmModal.hidden && !queueConfirmModal.contains(target)) {
+        closeQueueConfirmModal(false);
+    }
+
     if (!listenBrainzFeedbackMenu.hidden && !listenBrainzFeedbackMenu.contains(target) && !listenBrainzLoveBtn.contains(target)) {
         closeListenBrainzFeedbackMenu();
     }
@@ -3995,6 +4123,10 @@ document.addEventListener('click', (e) => {
     }
 
     if (sidebarQueueMenu.contains(target)) {
+        return;
+    }
+
+    if (queueConfirmModal.contains(target)) {
         return;
     }
 
