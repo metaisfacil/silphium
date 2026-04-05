@@ -947,7 +947,7 @@ func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIn
 	return entityKeys
 }
 
-func fetchMusicBrainzTagEntityRecord(entityType string, mbid string) (musicBrainzTagEntityRecord, bool) {
+func fetchMusicBrainzTagEntityRecord(entityType string, mbid string, apiBaseURL string, rateLimit bool) (musicBrainzTagEntityRecord, bool) {
 	cleanEntityType, cleanMBID, ok := parseMusicBrainzTagEntityKey(musicBrainzTagEntityKey(entityType, mbid))
 	if !ok {
 		return musicBrainzTagEntityRecord{}, false
@@ -957,15 +957,15 @@ func fetchMusicBrainzTagEntityRecord(entityType string, mbid string) (musicBrain
 	requestURL := ""
 	titleField := "title"
 	if cleanEntityType == "artist" {
-		requestURL = "https://musicbrainz.org/ws/2/artist/" + cleanMBID + "?fmt=json&inc=" + incClause
+		requestURL = apiBaseURL + "/artist/" + cleanMBID + "?fmt=json&inc=" + incClause
 		titleField = "name"
 	} else if cleanEntityType == "release" {
-		requestURL = "https://musicbrainz.org/ws/2/release/" + cleanMBID + "?fmt=json&inc=" + incClause
+		requestURL = apiBaseURL + "/release/" + cleanMBID + "?fmt=json&inc=" + incClause
 	} else {
 		return musicBrainzTagEntityRecord{}, false
 	}
 
-	payload, ok := fetchMusicBrainzPayloadWithPriority(requestURL, musicBrainzRequestPriorityBackground)
+	payload, ok := fetchMusicBrainzPayloadWithPriority(requestURL, musicBrainzRequestPriorityBackground, rateLimit)
 	if !ok {
 		return musicBrainzTagEntityRecord{}, false
 	}
@@ -995,7 +995,7 @@ func (a *App) processMusicBrainzTagEntityFetch(entityKey string) bool {
 	}
 	a.musicBrainzTagMu.Unlock()
 
-	record, fetched := fetchMusicBrainzTagEntityRecord(cleanEntityType, cleanMBID)
+	record, fetched := fetchMusicBrainzTagEntityRecord(cleanEntityType, cleanMBID, a.musicBrainzAPIBaseURL(), a.musicBrainzRateLimit())
 	now := time.Now()
 
 	a.musicBrainzTagMu.Lock()

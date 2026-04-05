@@ -249,6 +249,8 @@ export type AppSettings = {
     libraryPath: string;
     ffmpegPath: string;
     listenBrainzUserToken: string;
+    musicBrainzServerUrl: string;
+    listenBrainzServerUrl: string;
     playbackOrder: PlaybackOrderMode;
     releaseDepth: number;
     favoritePlaylists: string[];

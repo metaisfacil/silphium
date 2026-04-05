@@ -13,9 +13,10 @@ import (
 	"time"
 )
 
-const listenBrainzSubmitURL = "https://api.listenbrainz.org/1/submit-listens"
-const listenBrainzRecordingFeedbackURL = "https://api.listenbrainz.org/1/feedback/recording-feedback"
-const listenBrainzValidateTokenURL = "https://api.listenbrainz.org/1/validate-token"
+const listenBrainzPublicServerURL = "https://api.listenbrainz.org"
+const listenBrainzSubmitPath = "/1/submit-listens"
+const listenBrainzRecordingFeedbackPath = "/1/feedback/recording-feedback"
+const listenBrainzValidateTokenPath = "/1/validate-token"
 const listenBrainzGetFeedbackForRecordingsPath = "/1/feedback/user/%s/get-feedback-for-recordings"
 
 var listenBrainzFetchMu sync.Mutex
@@ -133,6 +134,26 @@ func parseListenBrainzError(statusCode int, responseBody []byte, fallback string
 	return fmt.Errorf("%s with status %d", fallback, statusCode)
 }
 
+func (a *App) listenBrainzServerURL() string {
+	a.ensureSettingsLoaded()
+	u := strings.TrimRight(strings.TrimSpace(a.settings.ListenBrainzServerURL), "/")
+	if u == "" {
+		return listenBrainzPublicServerURL
+	}
+
+	return u
+}
+
+func (a *App) listenBrainzRateLimit() bool {
+	return strings.EqualFold(a.listenBrainzServerURL(), listenBrainzPublicServerURL)
+}
+
+func (a *App) waitForListenBrainzRequestSlotIfNeeded() {
+	if a.listenBrainzRateLimit() {
+		waitForListenBrainzRequestSlot()
+	}
+}
+
 func (a *App) listenBrainzToken() (string, error) {
 	a.ensureSettingsLoaded()
 
@@ -152,9 +173,9 @@ func (a *App) listenBrainzUserName(token string) (string, error) {
 		return cachedUserName, nil
 	}
 
-	waitForListenBrainzRequestSlot()
+	a.waitForListenBrainzRequestSlotIfNeeded()
 
-	request, err := http.NewRequest(http.MethodGet, listenBrainzValidateTokenURL, nil)
+	request, err := http.NewRequest(http.MethodGet, a.listenBrainzServerURL()+listenBrainzValidateTokenPath, nil)
 	if err != nil {
 		return "", err
 	}
@@ -249,9 +270,9 @@ func (a *App) SubmitListenBrainz(listenType string, metadata ListenBrainzTrackMe
 		return err
 	}
 
-	waitForListenBrainzRequestSlot()
+	a.waitForListenBrainzRequestSlotIfNeeded()
 
-	httpRequest, err := http.NewRequest(http.MethodPost, listenBrainzSubmitURL, bytes.NewReader(rawRequest))
+	httpRequest, err := http.NewRequest(http.MethodPost, a.listenBrainzServerURL()+listenBrainzSubmitPath, bytes.NewReader(rawRequest))
 	if err != nil {
 		return err
 	}
@@ -307,9 +328,9 @@ func (a *App) SubmitListenBrainzRecordingFeedback(recordingMBID string, score in
 		return err
 	}
 
-	waitForListenBrainzRequestSlot()
+	a.waitForListenBrainzRequestSlotIfNeeded()
 
-	httpRequest, err := http.NewRequest(http.MethodPost, listenBrainzRecordingFeedbackURL, bytes.NewReader(rawRequest))
+	httpRequest, err := http.NewRequest(http.MethodPost, a.listenBrainzServerURL()+listenBrainzRecordingFeedbackPath, bytes.NewReader(rawRequest))
 	if err != nil {
 		return err
 	}
@@ -366,11 +387,11 @@ func (a *App) GetListenBrainzRecordingFeedback(recordingMBID string) (int, error
 	}
 
 	requestURL := fmt.Sprintf(
-		"https://api.listenbrainz.org"+listenBrainzGetFeedbackForRecordingsPath,
+		a.listenBrainzServerURL()+listenBrainzGetFeedbackForRecordingsPath,
 		url.PathEscape(userName),
 	)
 
-	waitForListenBrainzRequestSlot()
+	a.waitForListenBrainzRequestSlotIfNeeded()
 
 	httpRequest, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(rawRequest))
 	if err != nil {

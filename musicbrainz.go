@@ -125,6 +125,7 @@ type musicBrainzExplorationProgressTracker struct {
 }
 
 const musicBrainzUserAgent = "Silphium/1.0 (metaisfacil@users.noreply.github.com)"
+const musicBrainzPublicServerURL = "https://musicbrainz.org"
 const musicBrainzVariousArtistsID = "89ad4ac3-39f7-470e-963a-56509c546377"
 const musicBrainzNoLabelName = "[no label]"
 const musicBrainzExplorationProgressEvent = "silphium:musicbrainz:exploration-progress"
@@ -347,12 +348,30 @@ func (b *musicBrainzExplorationBuilder) sortedEdges() []MusicBrainzExplorationEd
 	return edges
 }
 
-func fetchMusicBrainzJSON(requestURL string) ([]byte, bool) {
-	return fetchMusicBrainzJSONWithPriority(requestURL, musicBrainzRequestPriorityInteractive)
+func fetchMusicBrainzJSON(requestURL string, rateLimit bool) ([]byte, bool) {
+	return fetchMusicBrainzJSONWithPriority(requestURL, musicBrainzRequestPriorityInteractive, rateLimit)
 }
 
-func fetchMusicBrainzPayload(requestURL string) (map[string]any, bool) {
-	return fetchMusicBrainzPayloadWithPriority(requestURL, musicBrainzRequestPriorityInteractive)
+func fetchMusicBrainzPayload(requestURL string, rateLimit bool) (map[string]any, bool) {
+	return fetchMusicBrainzPayloadWithPriority(requestURL, musicBrainzRequestPriorityInteractive, rateLimit)
+}
+
+func (a *App) musicBrainzServerURL() string {
+	a.ensureSettingsLoaded()
+	u := strings.TrimRight(strings.TrimSpace(a.settings.MusicBrainzServerURL), "/")
+	if u == "" {
+		return musicBrainzPublicServerURL
+	}
+
+	return u
+}
+
+func (a *App) musicBrainzAPIBaseURL() string {
+	return a.musicBrainzServerURL() + "/ws/2"
+}
+
+func (a *App) musicBrainzRateLimit() bool {
+	return strings.EqualFold(a.musicBrainzServerURL(), musicBrainzPublicServerURL)
 }
 
 func musicBrainzEntitySubtitle(entityType string) string {
@@ -991,7 +1010,7 @@ func addMusicBrainzLabelNode(builder *musicBrainzExplorationBuilder, labelID str
 	})
 }
 
-func musicBrainzBrowseURL(resource string, values url.Values, incClause string) string {
+func musicBrainzBrowseURL(apiBaseURL string, resource string, values url.Values, incClause string) string {
 	query := values.Encode()
 	if incClause != "" {
 		if query != "" {
@@ -1006,7 +1025,7 @@ func musicBrainzBrowseURL(resource string, values url.Values, incClause string) 
 		query = "?fmt=json"
 	}
 
-	return fmt.Sprintf("https://musicbrainz.org/ws/2/%s%s", resource, query)
+	return fmt.Sprintf("%s/%s%s", apiBaseURL, resource, query)
 }
 
 // LookupArtistByMBID fetches artist metadata from MusicBrainz for the provided MBID.
@@ -1016,8 +1035,8 @@ func (a *App) LookupArtistByMBID(mbid string) MusicBrainzArtistInfo {
 		return MusicBrainzArtistInfo{Found: false}
 	}
 
-	requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/artist/%s?fmt=json&inc=genres+tags+url-rels", cleanMBID)
-	responseBody, ok := fetchMusicBrainzJSON(requestURL)
+	requestURL := fmt.Sprintf("%s/artist/%s?fmt=json&inc=genres+tags+url-rels", a.musicBrainzAPIBaseURL(), cleanMBID)
+	responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRateLimit())
 	if !ok {
 		return MusicBrainzArtistInfo{Found: false}
 	}
@@ -1172,8 +1191,8 @@ func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID strin
 	releasePayload := map[string]any{}
 
 	if cleanRecordingID != "" {
-		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/recording/%s?fmt=json&inc=artists+releases", cleanRecordingID)
-		if responseBody, ok := fetchMusicBrainzJSON(requestURL); ok {
+		requestURL := fmt.Sprintf("%s/recording/%s?fmt=json&inc=artists+releases", a.musicBrainzAPIBaseURL(), cleanRecordingID)
+		if responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRateLimit()); ok {
 			if err := json.Unmarshal(responseBody, &recordingPayload); err != nil {
 				recordingPayload = map[string]any{}
 			}
@@ -1181,8 +1200,8 @@ func (a *App) LookupTrackMusicBrainzMetadata(recordingID string, releaseID strin
 	}
 
 	if cleanReleaseID != "" {
-		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=artists+labels", cleanReleaseID)
-		if responseBody, ok := fetchMusicBrainzJSON(requestURL); ok {
+		requestURL := fmt.Sprintf("%s/release/%s?fmt=json&inc=artists+labels", a.musicBrainzAPIBaseURL(), cleanReleaseID)
+		if responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRateLimit()); ok {
 			if err := json.Unmarshal(responseBody, &releasePayload); err != nil {
 				releasePayload = map[string]any{}
 			}
@@ -1266,8 +1285,8 @@ func (a *App) LookupMusicBrainzEntity(entityType string, mbid string) MusicBrain
 		return result
 	}
 
-	requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/%s/%s?fmt=json&inc=%s", cleanEntityType, cleanMBID, incClause)
-	responseBody, ok := fetchMusicBrainzJSON(requestURL)
+	requestURL := fmt.Sprintf("%s/%s/%s?fmt=json&inc=%s", a.musicBrainzAPIBaseURL(), cleanEntityType, cleanMBID, incClause)
+	responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRateLimit())
 	if !ok {
 		return result
 	}
@@ -1469,7 +1488,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 	fetchPayload := func(requestURL string, message string) (map[string]any, bool) {
 		progress.queueStep()
 		progress.announce(message)
-		payload, ok := fetchMusicBrainzPayload(requestURL)
+		payload, ok := fetchMusicBrainzPayload(requestURL, a.musicBrainzRateLimit())
 		if ok {
 			progress.step(message)
 		} else {
@@ -1530,7 +1549,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 	}
 
 	if cleanRecordingID != "" {
-		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/recording/%s?fmt=json&inc=artists+releases", cleanRecordingID)
+		requestURL := fmt.Sprintf("%s/recording/%s?fmt=json&inc=artists+releases", a.musicBrainzAPIBaseURL(), cleanRecordingID)
 		if payload, ok := fetchPayload(requestURL, "Loading recording details..."); ok {
 			recordingPayload = payload
 		} else {
@@ -1539,7 +1558,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 	}
 
 	if cleanReleaseID != "" {
-		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=artists+labels+release-groups", cleanReleaseID)
+		requestURL := fmt.Sprintf("%s/release/%s?fmt=json&inc=artists+labels+release-groups", a.musicBrainzAPIBaseURL(), cleanReleaseID)
 		if payload, ok := fetchPayload(requestURL, "Loading current release details..."); ok {
 			releasePayload = payload
 		} else {
@@ -1608,7 +1627,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 		cleanLabelID = resolvedLabelID
 	}
 	if cleanLabelID != "" && resolvedLabelName == "" {
-		labelRequestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/label/%s?fmt=json", cleanLabelID)
+		labelRequestURL := fmt.Sprintf("%s/label/%s?fmt=json", a.musicBrainzAPIBaseURL(), cleanLabelID)
 		if labelPayload, ok := fetchPayload(labelRequestURL, "Loading label details..."); ok {
 			resolvedLabelName = objectString(labelPayload, "name")
 		}
@@ -1655,7 +1674,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 			return releasePayload
 		}
 
-		requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=recordings+artist-credits+labels+release-groups", cleanReleaseID)
+		requestURL := fmt.Sprintf("%s/release/%s?fmt=json&inc=recordings+artist-credits+labels+release-groups", a.musicBrainzAPIBaseURL(), cleanReleaseID)
 		if payload, ok := fetchPayload(requestURL, message); ok {
 			return payload
 		}
@@ -1708,7 +1727,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 		relatedRecordingReleaseLookups++
 		relatedRelease := relatedReleaseSummary
 		if !isVariousArtistsCompilationRelease(relatedRelease) || len(asArray(relatedRelease["artist-credit"])) == 0 || len(asObject(relatedRelease["release-group"])) == 0 {
-			requestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/release/%s?fmt=json&inc=artists+labels+release-groups", relatedReleaseID)
+			requestURL := fmt.Sprintf("%s/release/%s?fmt=json&inc=artists+labels+release-groups", a.musicBrainzAPIBaseURL(), relatedReleaseID)
 			payload, ok := fetchPayload(requestURL, "Checking alternate Various Artists compilations...")
 			if !ok {
 				continue
@@ -1735,7 +1754,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 		browseValues := url.Values{}
 		browseValues.Set("label", cleanLabelID)
 		browseValues.Set("limit", musicBrainzExplorationLabelBrowseLimit)
-		browseURL := musicBrainzBrowseURL("release", browseValues, "artist-credits+release-groups+labels")
+		browseURL := musicBrainzBrowseURL(a.musicBrainzAPIBaseURL(), "release", browseValues, "artist-credits+release-groups+labels")
 		if browsePayload, ok := fetchPayload(browseURL, "Browsing label releases..."); ok {
 			addedLabelReleaseCount := 0
 			for _, releaseValue := range asArray(browsePayload["releases"]) {
@@ -1817,7 +1836,7 @@ func (a *App) LookupMusicBrainzExploration(recordingID string, releaseID string,
 			continue
 		}
 
-		artistRequestURL := fmt.Sprintf("https://musicbrainz.org/ws/2/artist/%s?fmt=json&inc=artist-rels", source.artistID)
+		artistRequestURL := fmt.Sprintf("%s/artist/%s?fmt=json&inc=artist-rels", a.musicBrainzAPIBaseURL(), source.artistID)
 		artistPayload, ok := fetchPayload(artistRequestURL, "Expanding artist relationships...")
 		if !ok {
 			continue

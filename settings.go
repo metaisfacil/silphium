@@ -41,6 +41,8 @@ type AppSettings struct {
 	LibraryPath                   string                   `json:"libraryPath,omitempty"`
 	FFmpegPath                    string                   `json:"ffmpegPath,omitempty"`
 	ListenBrainzUserToken         string                   `json:"listenBrainzUserToken"`
+	MusicBrainzServerURL          string                   `json:"musicBrainzServerUrl,omitempty"`
+	ListenBrainzServerURL         string                   `json:"listenBrainzServerUrl,omitempty"`
 	PlaybackOrder                 string                   `json:"playbackOrder"`
 	ReleaseDepth                  int                      `json:"releaseDepth,omitempty"`
 	FavoritePlaylists             []string                 `json:"favoritePlaylists,omitempty"`
@@ -192,6 +194,10 @@ func normalizeCoverArtPriority(priority []string) []string {
 	return ordered
 }
 
+func normalizeBrainzServerURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
+}
+
 func normalizeReleaseDepth(value int) int {
 	if value < 0 {
 		return 0
@@ -291,6 +297,8 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		LibraryPath:                   legacyLibraryPath,
 		FFmpegPath:                    normalizeFFmpegPath(settings.FFmpegPath),
 		ListenBrainzUserToken:         token,
+		MusicBrainzServerURL:          normalizeBrainzServerURL(settings.MusicBrainzServerURL),
+		ListenBrainzServerURL:         normalizeBrainzServerURL(settings.ListenBrainzServerURL),
 		PlaybackOrder:                 playbackOrder,
 		ReleaseDepth:                  legacyReleaseDepth,
 		FavoritePlaylists:             favoritePlaylists,

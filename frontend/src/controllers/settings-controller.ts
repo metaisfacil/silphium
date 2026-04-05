@@ -13,6 +13,8 @@ export type SettingsFormValues = {
     libraryFolders: AppLibraryFolder[];
     ffmpegPath: string;
     listenBrainzUserToken: string;
+    musicBrainzServerUrl: string;
+    listenBrainzServerUrl: string;
     favoritePlaylists: string[];
     coverArtPriority: CoverArtPrioritySource[];
     audioOutputDevice: string;
@@ -127,6 +129,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryDepthConfirm,
         settingsFFmpegPath,
         settingsListenBrainzToken,
+        settingsMusicBrainzServerUrl,
+        settingsListenBrainzServerUrl,
         settingsAudioOutputDevice,
         settingsAudioOutputBufferMs,
         settingsApplyAudioNow,
@@ -710,6 +714,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         libraryFolders = normalizeLibraryFolders(values.libraryFolders);
         settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
+        settingsMusicBrainzServerUrl.value = values.musicBrainzServerUrl || '';
+        settingsListenBrainzServerUrl.value = values.listenBrainzServerUrl || '';
         refreshAudioOutputDevices(values.audioOutputDevices, values.audioOutputDevice || 'default');
         settingsAudioOutputBufferMs.value = values.audioOutputBufferMs > 0 ? String(values.audioOutputBufferMs) : '';
         settingsGaplessPlayback.checked = !!values.gaplessPlayback;
@@ -846,6 +852,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
             ffmpegPath: settingsFFmpegPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
+            musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
+            listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
             audioOutputDevice: settingsAudioOutputDevice.value || 'default',
@@ -1089,6 +1097,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
             ffmpegPath: settingsFFmpegPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
+            musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
+            listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
             audioOutputDevice: settingsAudioOutputDevice.value || 'default',
@@ -1124,6 +1134,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
             ffmpegPath: settingsFFmpegPath.value,
             listenBrainzUserToken: settingsListenBrainzToken.value,
+            musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
+            listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
             favoritePlaylists: favoritePlaylists.slice(),
             coverArtPriority: coverArtPriority.slice(),
             audioOutputDevice: settingsAudioOutputDevice.value || 'default',
