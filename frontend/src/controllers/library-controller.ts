@@ -1620,6 +1620,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     return {
         clearLibrarySearch,
         firstTrackIndexFromRandomAlbumFolder,
+        getLibrarySearchQuery: () => librarySearchQuery,
         getLibraryRootName: () => libraryRootName,
         getSidebarAutoFolderPath: () => sidebarAutoFolderPath,
         getCurrentFolderPath: () => currentFolderPath,
@@ -1640,6 +1641,11 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         setLibraryPathMessage: (message: string) => {
             libraryPath.innerHTML = '';
             libraryPath.textContent = message;
+        },
+        restoreLibrarySearchQuery: (query: string) => {
+            const nextQuery = query || '';
+            librarySearch.value = nextQuery;
+            setLibrarySearchQuery(nextQuery);
         },
         setLibraryRootName: (rootName: string) => {
             libraryRootName = rootName;

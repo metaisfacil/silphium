@@ -3251,6 +3251,9 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     const folderPathBeforeSwap = canPreserveExistingFolderView
         ? libraryController.getCurrentFolderPath()
         : '';
+    const searchQueryBeforeSwap = canPreserveExistingFolderView
+        ? libraryController.getLibrarySearchQuery()
+        : '';
 
     // Keep previous library UI usable while pages are being loaded, then swap in one step.
     stepTime = performance.now();
@@ -3364,7 +3367,11 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
         resetArtistInfoPanel();
         updateExplorationButton(document, undefined);
         resetListenBrainzFeedbackState();
-        libraryController.renderFolder('none');
+        if (searchQueryBeforeSwap.trim() !== '') {
+            libraryController.restoreLibrarySearchQuery(searchQueryBeforeSwap);
+        } else {
+            libraryController.renderFolder('none');
+        }
         playlistController.refreshOpenModal();
         logRescan('loadLibraryScan END: total time %.2fms (no tracks)', performance.now() - startTime);
         return;
@@ -3376,6 +3383,10 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
     } else {
         libraryController.setCurrentFolderPath('');
         libraryController.renderFolder('none');
+    }
+
+    if (searchQueryBeforeSwap.trim() !== '') {
+        libraryController.restoreLibrarySearchQuery(searchQueryBeforeSwap);
     }
 
     if (!options?.preserveFolderView) {
