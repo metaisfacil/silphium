@@ -649,7 +649,12 @@ const {
 const { technicalInfoModal, technicalInfoBackdrop, technicalInfoTitle, technicalInfoContent, technicalInfoClose } = getTechnicalInfoModalElements(document);
 const settingsElements = getSettingsModalElements(document);
 const { playOrderMenu } = getPlayOrderMenuElements(document);
-const { trackMetaMenu, trackMetaOpenMbBtn, trackMetaParentFolderBtn } = getTrackMetaMenuElements(document);
+const {
+    trackMetaMenu,
+    trackMetaOpenMbBtn,
+    trackMetaParentFolderBtn,
+    trackMetaBrowserFolderBtn,
+} = getTrackMetaMenuElements(document);
 const {
     sidebarQueueMenu,
     sidebarQueuePlay,
@@ -1722,6 +1727,7 @@ const openTrackMetaMenu = (clientX: number, clientY: number, includeFolderAction
     closePlayOrderMenu();
     closeListenBrainzFeedbackMenu();
     trackMetaParentFolderBtn.hidden = !includeFolderAction;
+    trackMetaBrowserFolderBtn.hidden = !includeFolderAction;
     trackMetaMenu.hidden = false;
 
     const margin = 10;
@@ -3847,6 +3853,11 @@ playOrderMenu.addEventListener('click', (event) => {
 trackMetaParentFolderBtn.addEventListener('click', () => {
     closeTrackMetaMenu();
     openCurrentTrackFolderInSidebar();
+});
+
+trackMetaBrowserFolderBtn.addEventListener('click', () => {
+    closeTrackMetaMenu();
+    void openCurrentTrackFolderInFileBrowser();
 });
 
 trackMetaOpenMbBtn.addEventListener('click', () => {
