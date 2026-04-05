@@ -42,6 +42,7 @@ export namespace main {
 	    outputDevice?: string;
 	    outputBufferMs?: number;
 	    gaplessPlayback?: boolean;
+	    replayGainEnabled?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AudioSettings(source);
@@ -52,6 +53,7 @@ export namespace main {
 	        this.outputDevice = source["outputDevice"];
 	        this.outputBufferMs = source["outputBufferMs"];
 	        this.gaplessPlayback = source["gaplessPlayback"];
+	        this.replayGainEnabled = source["replayGainEnabled"];
 	    }
 	}
 	export class AppSettings {

@@ -28,9 +28,10 @@ type AppLibraryFolder struct {
 
 // AudioSettings stores persisted audio output and playback behavior preferences.
 type AudioSettings struct {
-	OutputDevice    string `json:"outputDevice,omitempty"`
-	OutputBufferMs  int    `json:"outputBufferMs,omitempty"`
-	GaplessPlayback bool   `json:"gaplessPlayback,omitempty"`
+	OutputDevice      string `json:"outputDevice,omitempty"`
+	OutputBufferMs    int    `json:"outputBufferMs,omitempty"`
+	GaplessPlayback   bool   `json:"gaplessPlayback,omitempty"`
+	ReplayGainEnabled bool   `json:"replayGainEnabled,omitempty"`
 }
 
 // AppSettings stores persisted user configuration shared between frontend and backend.
@@ -86,9 +87,10 @@ func normalizeAudioOutputBufferMs(value int) int {
 
 func normalizeAudioSettings(settings AudioSettings) AudioSettings {
 	return AudioSettings{
-		OutputDevice:    normalizeAudioOutputDevice(settings.OutputDevice),
-		OutputBufferMs:  normalizeAudioOutputBufferMs(settings.OutputBufferMs),
-		GaplessPlayback: settings.GaplessPlayback,
+		OutputDevice:      normalizeAudioOutputDevice(settings.OutputDevice),
+		OutputBufferMs:    normalizeAudioOutputBufferMs(settings.OutputBufferMs),
+		GaplessPlayback:   settings.GaplessPlayback,
+		ReplayGainEnabled: settings.ReplayGainEnabled,
 	}
 }
 

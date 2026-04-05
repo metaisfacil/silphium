@@ -60,9 +60,11 @@ import {
     AudioReinitializeBackend,
     AudioGetState,
     AudioLoadTrack,
+    AudioLoadTrackWithReplayGainContext,
     AudioPause,
     AudioPlay,
     AudioQueueNextTrack,
+    AudioQueueNextTrackWithReplayGainContext,
     AudioSeek,
     AudioSetVolume,
     AudioStop,
@@ -211,6 +213,7 @@ let currentSettings: AppSettings = {
         outputDevice: 'default',
         outputBufferMs: 0,
         gaplessPlayback: false,
+        replayGainEnabled: false,
     },
     preferMusicBrainzMetadata: false,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
@@ -260,7 +263,7 @@ const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] 
 };
 const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
     const libraryFolders = normalizeLibraryFolders(settings.libraryFolders, settings.libraryPath, settings.releaseDepth);
-    const rawAudio = settings.audio || { outputDevice: 'default', outputBufferMs: 0, gaplessPlayback: false };
+    const rawAudio = settings.audio || { outputDevice: 'default', outputBufferMs: 0, gaplessPlayback: false, replayGainEnabled: false };
     const normalizedAudioBufferMs = Number.isFinite(rawAudio.outputBufferMs)
         ? Math.max(0, Math.min(1000, Math.round(rawAudio.outputBufferMs)))
         : 0;
@@ -276,6 +279,7 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
             outputDevice: (rawAudio.outputDevice || 'default').trim() || 'default',
             outputBufferMs: normalizedAudioBufferMs,
             gaplessPlayback: !!rawAudio.gaplessPlayback,
+            replayGainEnabled: !!rawAudio.replayGainEnabled,
         },
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
@@ -952,7 +956,7 @@ const syncCurrentTrackFromPlaybackState = (state: AudioPlaybackState): void => {
     void refreshListenBrainzFeedbackForCurrentTrack(true);
 };
 
-const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState): Promise<void> => {
+const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState, sequenceOverrideIndexes?: number[]): Promise<void> => {
     if (!currentSettings.audio.gaplessPlayback || !playbackStateService.isBackendReady()) {
         return;
     }
@@ -993,7 +997,12 @@ const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState): Promis
     queuedGaplessTrackPath = nextPath;
     logPlaybackDebug(`GaplessQueue next="${nextPath}" after="${activeTrack.path}"`);
     try {
-        await AudioQueueNextTrack(activeTrack.path, nextPath);
+        const replayGainReleaseTrackPaths = collectReplayGainReleaseTrackPathsForIndex(nextIndex as number, sequenceOverrideIndexes);
+        if (replayGainReleaseTrackPaths.length > 1) {
+            await AudioQueueNextTrackWithReplayGainContext(activeTrack.path, nextPath, replayGainReleaseTrackPaths);
+        } else {
+            await AudioQueueNextTrack(activeTrack.path, nextPath);
+        }
         if (requestVersion !== gaplessQueueRequestVersion) {
             return;
         }
@@ -1520,12 +1529,15 @@ const playSidebarQueueSelection = async (trackIndexes: number[]): Promise<void> 
         suppressAutoSelectAfterFullLibraryScan = true;
     }
 
-    await loadTrack(firstTrackIndex);
-    await playCurrentTrack();
-
     if (remainingTrackIndexes.length > 0) {
         playlistController.addToQueueNext(remainingTrackIndexes);
     }
+
+    await loadTrack(firstTrackIndex, true, trackIndexes);
+    if (remainingTrackIndexes.length > 0) {
+        await queueGaplessNextTrack(undefined, trackIndexes);
+    }
+    await playCurrentTrack();
 };
 
 const isDropWithinSidebarBrowser = (clientX: number, clientY: number): boolean => {
@@ -1756,6 +1768,93 @@ const releaseRootPathForTrack = (track: Track): string => {
         : relativeSegments.slice(0, releaseDepth);
 
     return scopedSegments.join('/');
+};
+
+const replayGainReleaseKeyForTrack = (track: Track): string => {
+    const releaseRootPath = releaseRootPathForTrack(track).trim().toLowerCase();
+    if (!releaseRootPath) {
+        return '';
+    }
+
+    return `${libraryFolderPathKey(track.rootPath || '')}::${releaseRootPath}`;
+};
+
+const normalizeReplayGainSequenceIndexes = (indexes: number[]): number[] => {
+    const normalized: number[] = [];
+    const seen = new Set<number>();
+    for (const index of indexes) {
+        if (!Number.isInteger(index) || index < 0 || index >= tracks.length || seen.has(index)) {
+            continue;
+        }
+
+        seen.add(index);
+        normalized.push(index);
+    }
+
+    return normalized;
+};
+
+const playbackSequenceIndexesForReplayGain = (sequenceOverrideIndexes?: number[]): number[] => {
+    if (Array.isArray(sequenceOverrideIndexes) && sequenceOverrideIndexes.length > 0) {
+        return normalizeReplayGainSequenceIndexes(sequenceOverrideIndexes);
+    }
+
+    const sequenceOverride = playlistController?.getSequenceOverride();
+    if (sequenceOverride && sequenceOverride.indexes.length > 0) {
+        return normalizeReplayGainSequenceIndexes(sequenceOverride.indexes);
+    }
+
+    return normalizeReplayGainSequenceIndexes(baseSequenceIndexes().indexes);
+};
+
+const collectReplayGainReleaseTrackPathsForIndex = (trackIndex: number, sequenceOverrideIndexes?: number[]): string[] => {
+    const track = tracks[trackIndex];
+    if (!track) {
+        return [];
+    }
+
+    const releaseKey = replayGainReleaseKeyForTrack(track);
+    if (!releaseKey) {
+        return [];
+    }
+
+    const sequenceIndexes = playbackSequenceIndexesForReplayGain(sequenceOverrideIndexes);
+    const sequencePosition = sequenceIndexes.indexOf(trackIndex);
+    if (sequencePosition < 0) {
+        return [];
+    }
+
+    let rangeStart = sequencePosition;
+    while (rangeStart > 0) {
+        const previousTrack = tracks[sequenceIndexes[rangeStart - 1]];
+        if (!previousTrack || replayGainReleaseKeyForTrack(previousTrack) !== releaseKey) {
+            break;
+        }
+
+        rangeStart -= 1;
+    }
+
+    let rangeEnd = sequencePosition;
+    while (rangeEnd < sequenceIndexes.length - 1) {
+        const nextTrack = tracks[sequenceIndexes[rangeEnd + 1]];
+        if (!nextTrack || replayGainReleaseKeyForTrack(nextTrack) !== releaseKey) {
+            break;
+        }
+
+        rangeEnd += 1;
+    }
+
+    if (rangeStart === rangeEnd) {
+        return [];
+    }
+
+    return tracks
+        .filter((candidate) => replayGainReleaseKeyForTrack(candidate) === releaseKey)
+        .sort((left, right) => left.relativePath.localeCompare(right.relativePath, undefined, {
+            sensitivity: 'base',
+            numeric: true,
+        }))
+        .map((candidate) => candidate.path);
 };
 
 const collectReleaseImageFiles = (track: Track): ImageLibraryFile[] => {
@@ -2258,7 +2357,7 @@ const initializeAppVersion = async (): Promise<void> => {
 
 const resolveCoverForTrack = async (track: Track): Promise<string | undefined> => await coverArtService.resolveForTrack(track);
 
-const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promise<void> => {
+const loadTrack = async (index: number, allowMissingTrackRecovery = true, replayGainSequenceOverrideIndexes?: number[]): Promise<void> => {
     if (index < 0 || index >= tracks.length) {
         return;
     }
@@ -2282,7 +2381,10 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
     logPlaybackDebug(`LoadTrack request index=${index} path="${track.path}" recovery=${allowMissingTrackRecovery}`);
 
     try {
-        const nextState = await AudioLoadTrack(track.path) as AudioPlaybackState;
+        const replayGainReleaseTrackPaths = collectReplayGainReleaseTrackPathsForIndex(index, replayGainSequenceOverrideIndexes);
+        const nextState = replayGainReleaseTrackPaths.length > 1
+            ? await AudioLoadTrackWithReplayGainContext(track.path, replayGainReleaseTrackPaths) as AudioPlaybackState
+            : await AudioLoadTrack(track.path) as AudioPlaybackState;
         logPlaybackDebug(`LoadTrack success ${formatPlaybackStateForLog(nextState)}`);
         applyPlaybackState(nextState);
     } catch (error) {
@@ -2314,7 +2416,7 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true): Promi
                 }
 
                 if (recoveredIndex >= 0) {
-                    await loadTrack(recoveredIndex, false);
+                    await loadTrack(recoveredIndex, false, replayGainSequenceOverrideIndexes);
                     return;
                 }
             } catch (rescanError) {
@@ -2941,6 +3043,7 @@ settingsController = createSettingsController({
         audioOutputDevice: currentSettings.audio.outputDevice,
         audioOutputBufferMs: currentSettings.audio.outputBufferMs,
         gaplessPlayback: currentSettings.audio.gaplessPlayback,
+        replayGainEnabled: currentSettings.audio.replayGainEnabled,
         audioOutputDevices: availableAudioOutputDevices,
         preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
@@ -2955,6 +3058,7 @@ settingsController = createSettingsController({
         audioOutputDevice,
         audioOutputBufferMs,
         gaplessPlayback,
+        replayGainEnabled,
         preferMusicBrainzMetadata,
         keyboardShortcuts,
     }): Promise<void> => {
@@ -2973,6 +3077,7 @@ settingsController = createSettingsController({
                     outputDevice: audioOutputDevice,
                     outputBufferMs: audioOutputBufferMs,
                     gaplessPlayback,
+                    replayGainEnabled,
                 },
                 preferMusicBrainzMetadata,
                 keyboardShortcuts,
@@ -2992,9 +3097,9 @@ settingsController = createSettingsController({
                 closeListenBrainzFeedbackMenu();
             }
 
+            gaplessQueueRequestVersion += 1;
+            queuedGaplessTrackPath = '';
             if (!currentSettings.audio.gaplessPlayback) {
-                gaplessQueueRequestVersion += 1;
-                queuedGaplessTrackPath = '';
                 if (playbackStateService.isBackendReady()) {
                     void AudioQueueNextTrack('', '').catch((error: unknown) => {
                         console.debug(error);
@@ -3018,6 +3123,7 @@ settingsController = createSettingsController({
         audioOutputDevice,
         audioOutputBufferMs,
         gaplessPlayback,
+        replayGainEnabled,
         preferMusicBrainzMetadata,
         keyboardShortcuts,
     }): Promise<void> => {
@@ -3035,6 +3141,7 @@ settingsController = createSettingsController({
                 outputDevice: audioOutputDevice,
                 outputBufferMs: audioOutputBufferMs,
                 gaplessPlayback,
+                replayGainEnabled,
             },
             preferMusicBrainzMetadata,
             keyboardShortcuts,
@@ -3048,9 +3155,9 @@ settingsController = createSettingsController({
         applyPlaybackState(nextState);
         updatePlayButton();
 
+        gaplessQueueRequestVersion += 1;
+        queuedGaplessTrackPath = '';
         if (!currentSettings.audio.gaplessPlayback) {
-            gaplessQueueRequestVersion += 1;
-            queuedGaplessTrackPath = '';
             if (playbackStateService.isBackendReady()) {
                 void AudioQueueNextTrack('', '').catch((error: unknown) => {
                     console.debug(error);

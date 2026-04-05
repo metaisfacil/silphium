@@ -5,6 +5,45 @@ import (
 	"strings"
 )
 
+func (a *App) normalizeReplayGainContextPaths(paths []string, requiredPath string) ([]string, error) {
+	trimmedRequiredPath := strings.TrimSpace(requiredPath)
+	normalized := make([]string, 0, len(paths)+1)
+	seen := make(map[string]struct{}, len(paths)+1)
+
+	appendPath := func(rawPath string) error {
+		cleanPath := normalizePath(rawPath)
+		if cleanPath == "" {
+			return nil
+		}
+		if !a.isAllowedLibraryPath(cleanPath) {
+			return errors.New("replaygain context path is outside the selected library")
+		}
+
+		normalizedKey := strings.ToLower(cleanPath)
+		if _, exists := seen[normalizedKey]; exists {
+			return nil
+		}
+
+		seen[normalizedKey] = struct{}{}
+		normalized = append(normalized, cleanPath)
+		return nil
+	}
+
+	if trimmedRequiredPath != "" {
+		if err := appendPath(trimmedRequiredPath); err != nil {
+			return nil, err
+		}
+	}
+
+	for _, path := range paths {
+		if err := appendPath(path); err != nil {
+			return nil, err
+		}
+	}
+
+	return normalized, nil
+}
+
 // InitializeAudioBackend initializes the audio backend and returns its current state.
 func (a *App) InitializeAudioBackend() (AudioPlaybackState, error) {
 	backend := a.audioBackend()
@@ -17,6 +56,11 @@ func (a *App) InitializeAudioBackend() (AudioPlaybackState, error) {
 
 // AudioLoadTrack loads a track path into the audio backend.
 func (a *App) AudioLoadTrack(path string) (AudioPlaybackState, error) {
+	return a.AudioLoadTrackWithReplayGainContext(path, nil)
+}
+
+// AudioLoadTrackWithReplayGainContext loads a track path into the audio backend with optional release-aware ReplayGain context.
+func (a *App) AudioLoadTrackWithReplayGainContext(path string, replayGainReleasePaths []string) (AudioPlaybackState, error) {
 	cleanPath := normalizePath(path)
 	if cleanPath == "" {
 		return AudioPlaybackState{}, errors.New("track path is required")
@@ -26,11 +70,21 @@ func (a *App) AudioLoadTrack(path string) (AudioPlaybackState, error) {
 		return AudioPlaybackState{}, errors.New("track path is outside the selected library")
 	}
 
-	return a.audioBackend().LoadTrack(cleanPath)
+	normalizedReplayGainReleasePaths, err := a.normalizeReplayGainContextPaths(replayGainReleasePaths, cleanPath)
+	if err != nil {
+		return AudioPlaybackState{}, err
+	}
+
+	return a.audioBackend().LoadTrackWithReplayGainContext(cleanPath, normalizedReplayGainReleasePaths)
 }
 
 // AudioQueueNextTrack prepares or clears the next track used for seamless playback.
 func (a *App) AudioQueueNextTrack(currentPath string, nextPath string) (AudioPlaybackState, error) {
+	return a.AudioQueueNextTrackWithReplayGainContext(currentPath, nextPath, nil)
+}
+
+// AudioQueueNextTrackWithReplayGainContext prepares or clears the next track using optional release-aware ReplayGain context.
+func (a *App) AudioQueueNextTrackWithReplayGainContext(currentPath string, nextPath string, replayGainReleasePaths []string) (AudioPlaybackState, error) {
 	trimmedCurrentPath := strings.TrimSpace(currentPath)
 	trimmedNextPath := strings.TrimSpace(nextPath)
 
@@ -52,7 +106,12 @@ func (a *App) AudioQueueNextTrack(currentPath string, nextPath string) (AudioPla
 		return AudioPlaybackState{}, errors.New("next track path is outside the selected library")
 	}
 
-	return a.audioBackend().QueueNextTrack(cleanCurrentPath, cleanNextPath)
+	normalizedReplayGainReleasePaths, err := a.normalizeReplayGainContextPaths(replayGainReleasePaths, cleanNextPath)
+	if err != nil {
+		return AudioPlaybackState{}, err
+	}
+
+	return a.audioBackend().QueueNextTrackWithReplayGainContext(cleanCurrentPath, cleanNextPath, normalizedReplayGainReleasePaths)
 }
 
 // AudioPlay starts playback of the currently loaded track.

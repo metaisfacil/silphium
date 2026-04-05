@@ -8,11 +8,15 @@ export function AudioListOutputDevices():Promise<Array<main.AudioOutputDevice>>;
 
 export function AudioLoadTrack(arg1:string):Promise<main.AudioPlaybackState>;
 
+export function AudioLoadTrackWithReplayGainContext(arg1:string,arg2:Array<string>):Promise<main.AudioPlaybackState>;
+
 export function AudioPause():Promise<main.AudioPlaybackState>;
 
 export function AudioPlay():Promise<main.AudioPlaybackState>;
 
 export function AudioQueueNextTrack(arg1:string,arg2:string):Promise<main.AudioPlaybackState>;
+
+export function AudioQueueNextTrackWithReplayGainContext(arg1:string,arg2:string,arg3:Array<string>):Promise<main.AudioPlaybackState>;
 
 export function AudioReinitializeBackend():Promise<main.AudioPlaybackState>;
 

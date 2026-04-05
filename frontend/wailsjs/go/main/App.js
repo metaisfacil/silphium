@@ -14,6 +14,10 @@ export function AudioLoadTrack(arg1) {
   return window['go']['main']['App']['AudioLoadTrack'](arg1);
 }
 
+export function AudioLoadTrackWithReplayGainContext(arg1, arg2) {
+  return window['go']['main']['App']['AudioLoadTrackWithReplayGainContext'](arg1, arg2);
+}
+
 export function AudioPause() {
   return window['go']['main']['App']['AudioPause']();
 }
@@ -24,6 +28,10 @@ export function AudioPlay() {
 
 export function AudioQueueNextTrack(arg1, arg2) {
   return window['go']['main']['App']['AudioQueueNextTrack'](arg1, arg2);
+}
+
+export function AudioQueueNextTrackWithReplayGainContext(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AudioQueueNextTrackWithReplayGainContext'](arg1, arg2, arg3);
 }
 
 export function AudioReinitializeBackend() {

@@ -34,6 +34,7 @@ export type SettingsModalElements = {
     settingsAudioOutputBufferMs: HTMLInputElement;
     settingsApplyAudioNow: HTMLButtonElement;
     settingsGaplessPlayback: HTMLInputElement;
+    settingsReplayGain: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsPlayerCardLayout: HTMLSelectElement;
     settingsCoverArtPriorityList: HTMLUListElement;
@@ -116,6 +117,13 @@ export const renderSettingsModal = (): string => `
                             <span class="settings-label">Enable gapless playback</span>
                         </label>
                         <p class="settings-hint">When supported, trims encoder delay/padding and prequeues the next track for seamless transitions.</p>
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-replaygain">
+                            <input id="settings-replaygain" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Enable ReplayGain</span>
+                        </label>
+                        <p class="settings-hint">Reads ReplayGain tags when present and scans tracks without them before playback. The gain is applied before the volume slider and never written back to files.</p>
                     </div>
                 </div>
                 <div id="settings-panel-ui" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-ui" hidden>
@@ -229,6 +237,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsAudioOutputBufferMs: root.querySelector('#settings-audio-output-buffer-ms') as HTMLInputElement,
     settingsApplyAudioNow: root.querySelector('#settings-apply-audio-now') as HTMLButtonElement,
     settingsGaplessPlayback: root.querySelector('#settings-gapless-playback') as HTMLInputElement,
+    settingsReplayGain: root.querySelector('#settings-replaygain') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,

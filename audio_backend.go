@@ -104,23 +104,30 @@ func backendDisplayName(raw string) string {
 
 // AudioBackend manages decoded PCM playback and transport controls.
 type AudioBackend struct {
-	mutex              sync.Mutex
-	streamCond         *sync.Cond
-	ffmpegPath         string
-	context            *oto.Context
-	player             *oto.Player
-	streamSegments     []audioTrackSegment
-	streamReadOffset   int64
-	streamDroppedBytes int64
-	playStarted        time.Time
-	playbackBaseBytes  int64
-	playing            bool
-	volume             float64
-	endEventID         uint64
-	endEventSent       bool
-	outputDevice       string
-	outputBuffer       time.Duration
-	gaplessPlayback    bool
+	mutex                       sync.Mutex
+	streamCond                  *sync.Cond
+	ffmpegPath                  string
+	context                     *oto.Context
+	player                      *oto.Player
+	streamSegments              []audioTrackSegment
+	streamReadOffset            int64
+	streamDroppedBytes          int64
+	playStarted                 time.Time
+	playbackBaseBytes           int64
+	playing                     bool
+	volume                      float64
+	endEventID                  uint64
+	endEventSent                bool
+	outputDevice                string
+	outputBuffer                time.Duration
+	gaplessPlayback             bool
+	replayGainEnabled           bool
+	replayGainCacheMu           sync.Mutex
+	replayGainCacheByPath       map[string]replayGainCacheEntry
+	replayGainCacheOrder        []string
+	replayGainReleaseCacheMu    sync.Mutex
+	replayGainReleaseCacheByKey map[string]replayGainReleaseCacheEntry
+	replayGainReleaseCacheOrder []string
 }
 
 // NewAudioBackend creates an audio backend with default playback volume.
@@ -136,7 +143,7 @@ func NewAudioBackend() *AudioBackend {
 func (b *AudioBackend) stateSummaryLocked() string {
 	state := b.snapshotLocked()
 	return fmt.Sprintf(
-		"loaded=%t playing=%t source=%q time=%.2f/%.2f queue=%d read=%d base=%d dropped=%d gapless=%t",
+		"loaded=%t playing=%t source=%q time=%.2f/%.2f queue=%d read=%d base=%d dropped=%d gapless=%t replayGain=%t",
 		state.Loaded,
 		state.Playing,
 		state.SourcePath,
@@ -147,6 +154,7 @@ func (b *AudioBackend) stateSummaryLocked() string {
 		b.playbackBaseBytes,
 		b.streamDroppedBytes,
 		b.gaplessPlayback,
+		b.replayGainEnabled,
 	)
 }
 
@@ -172,16 +180,18 @@ func (b *AudioBackend) ApplyAudioSettings(settings AudioSettings) {
 	b.outputDevice = normalized.OutputDevice
 	b.outputBuffer = time.Duration(normalized.OutputBufferMs) * time.Millisecond
 	b.gaplessPlayback = normalized.GaplessPlayback
+	b.replayGainEnabled = normalized.ReplayGainEnabled
 	if !b.gaplessPlayback {
 		b.trimConsumedSegmentsLocked(b.currentPlayedGlobalBytesLocked())
 		b.clearFutureQueueLocked()
 	}
 
 	logAudioEvent(
-		"ApplyAudioSettings device=%q buffer=%s gapless=%t state=%s",
+		"ApplyAudioSettings device=%q buffer=%s gapless=%t replayGain=%t state=%s",
 		b.outputDevice,
 		b.outputBuffer,
 		b.gaplessPlayback,
+		b.replayGainEnabled,
 		b.stateSummaryLocked(),
 	)
 }
@@ -396,9 +406,8 @@ func parseITunSMPBValue(value string) (gaplessTrimInfo, bool) {
 	}, true
 }
 
-func readGaplessTrimInfo(path string) gaplessTrimInfo {
-	tags, err := taglib.ReadTags(path)
-	if err != nil {
+func readGaplessTrimInfoFromTags(tags map[string][]string) gaplessTrimInfo {
+	if len(tags) == 0 {
 		return gaplessTrimInfo{}
 	}
 
@@ -458,22 +467,47 @@ func trimPCMForGapless(decodedPCM []byte, trim gaplessTrimInfo) []byte {
 	return trimmed
 }
 
-func (b *AudioBackend) prepareTrackSegment(path string) (audioTrackSegment, error) {
+func (b *AudioBackend) prepareTrackSegment(path string, replayGainReleasePaths []string) (audioTrackSegment, error) {
 	b.mutex.Lock()
 	gaplessPlayback := b.gaplessPlayback
+	replayGainEnabled := b.replayGainEnabled
 	b.mutex.Unlock()
 
-	decodedPCM, err := b.decodeTrack(path)
+	var tags map[string][]string
+	if gaplessPlayback {
+		loadedTags, err := taglib.ReadTags(path)
+		if err == nil {
+			tags = loadedTags
+		}
+	}
+
+	replayGainInfo := ReplayGainInfo{}
+	if replayGainEnabled {
+		replayGainInfo = b.resolveReplayGainInfo(path, tags, replayGainReleasePaths)
+	}
+
+	decodedPCM, err := b.decodeTrack(path, replayGainInfo.Scale())
 	if err != nil {
 		return audioTrackSegment{}, err
 	}
 
 	if gaplessPlayback {
-		trimInfo := readGaplessTrimInfo(path)
+		trimInfo := readGaplessTrimInfoFromTags(tags)
 		decodedPCM = trimPCMForGapless(decodedPCM, trimInfo)
 		if trimInfo.LeadSamples > 0 || trimInfo.TailSamples > 0 {
 			logAudioEvent("prepareTrackSegment path=%q leadSamples=%d tailSamples=%d trimmedBytes=%d", path, trimInfo.LeadSamples, trimInfo.TailSamples, len(decodedPCM))
 		}
+	}
+
+	if replayGainEnabled && replayGainInfo.Source != "" {
+		logAudioEvent(
+			"prepareTrackSegment replaygain path=%q source=%s gain=%.2fdB peak=%.6f scale=%.6f",
+			path,
+			replayGainInfo.Source,
+			replayGainInfo.GainDB,
+			replayGainInfo.Peak,
+			replayGainInfo.Scale(),
+		)
 	}
 
 	return audioTrackSegment{
@@ -484,11 +518,16 @@ func (b *AudioBackend) prepareTrackSegment(path string) (audioTrackSegment, erro
 
 // LoadTrack decodes and loads a track into the playback backend.
 func (b *AudioBackend) LoadTrack(path string) (AudioPlaybackState, error) {
+	return b.LoadTrackWithReplayGainContext(path, nil)
+}
+
+// LoadTrackWithReplayGainContext decodes and loads a track using release-aware ReplayGain when provided.
+func (b *AudioBackend) LoadTrackWithReplayGainContext(path string, replayGainReleasePaths []string) (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
 	}
 
-	segment, err := b.prepareTrackSegment(path)
+	segment, err := b.prepareTrackSegment(path, replayGainReleasePaths)
 	if err != nil {
 		return AudioPlaybackState{}, err
 	}
@@ -522,6 +561,11 @@ func (b *AudioBackend) LoadTrack(path string) (AudioPlaybackState, error) {
 
 // QueueNextTrack prepares the immediate next track for seamless playback.
 func (b *AudioBackend) QueueNextTrack(afterPath string, nextPath string) (AudioPlaybackState, error) {
+	return b.QueueNextTrackWithReplayGainContext(afterPath, nextPath, nil)
+}
+
+// QueueNextTrackWithReplayGainContext prepares the immediate next track using release-aware ReplayGain when provided.
+func (b *AudioBackend) QueueNextTrackWithReplayGainContext(afterPath string, nextPath string, replayGainReleasePaths []string) (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
 	}
@@ -532,7 +576,7 @@ func (b *AudioBackend) QueueNextTrack(afterPath string, nextPath string) (AudioP
 	var nextSegment audioTrackSegment
 	var err error
 	if trimmedNextPath != "" {
-		nextSegment, err = b.prepareTrackSegment(trimmedNextPath)
+		nextSegment, err = b.prepareTrackSegment(trimmedNextPath, replayGainReleasePaths)
 		if err != nil {
 			return AudioPlaybackState{}, err
 		}
@@ -813,19 +857,29 @@ func (b *AudioBackend) seekLocked(seconds float64) error {
 	return nil
 }
 
-func (b *AudioBackend) decodeTrack(path string) ([]byte, error) {
-	command := exec.Command(
-		b.ffmpegPath,
+func (b *AudioBackend) decodeTrack(path string, volumeScale float64) ([]byte, error) {
+	if !isFiniteFloat64(volumeScale) || volumeScale <= 0 {
+		volumeScale = 1
+	}
+
+	args := []string{
 		"-nostdin",
 		"-hide_banner",
 		"-loglevel", "error",
 		"-i", path,
+	}
+	if math.Abs(volumeScale-1) > 0.000001 {
+		args = append(args, "-filter:a", fmt.Sprintf("volume=%.10f", volumeScale))
+	}
+	args = append(args,
 		"-f", "s16le",
 		"-acodec", "pcm_s16le",
 		"-ac", "2",
 		"-ar", "44100",
 		"pipe:1",
 	)
+
+	command := exec.Command(b.ffmpegPath, args...)
 
 	output, err := command.Output()
 	if err != nil {

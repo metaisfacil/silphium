@@ -221,6 +221,7 @@ export type AudioSettings = {
     outputDevice: string;
     outputBufferMs: number;
     gaplessPlayback: boolean;
+    replayGainEnabled: boolean;
 };
 
 export type AudioOutputDevice = {
