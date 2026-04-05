@@ -1524,6 +1524,55 @@ const playSidebarQueueSelection = async (trackIndexes: number[]): Promise<void> 
     }
 };
 
+const isDropWithinSidebarBrowser = (clientX: number, clientY: number): boolean => {
+    const dropTarget = document.elementFromPoint(clientX, clientY);
+    return dropTarget !== null && libraryBrowser.contains(dropTarget);
+};
+
+const resolveDroppedLibraryFolderPath = async (path: string): Promise<string> => {
+    const normalizedPath = path.trim();
+    if (normalizedPath === '') {
+        return '';
+    }
+
+    return (await ResolveLibraryFolderForPath(normalizedPath) as string).trim();
+};
+
+const playDroppedLibraryFolder = async (folderPath: string): Promise<boolean> => {
+    const normalizedFolderPath = folderPath.trim();
+    if (normalizedFolderPath === '') {
+        return false;
+    }
+
+    const trackPaths = await GetLibraryFolderTrackPaths(normalizedFolderPath) as string[];
+    const trackIndexes = trackPaths
+        .map((trackPath) => ensureTrackIndexForPath(trackPath))
+        .filter((trackIndex) => trackIndex >= 0);
+
+    if (trackIndexes.length === 0) {
+        return false;
+    }
+
+    libraryController.setSidebarAutoFolderPath(normalizedFolderPath);
+    await playSidebarQueueSelection(trackIndexes);
+    return true;
+};
+
+const handleDroppedFolderPath = async (clientX: number, clientY: number, droppedPath: string): Promise<boolean> => {
+    const resolvedFolderPath = await resolveDroppedLibraryFolderPath(droppedPath);
+    if (resolvedFolderPath === '') {
+        return false;
+    }
+
+    if (isDropWithinSidebarBrowser(clientX, clientY)) {
+        libraryController.setSidebarAutoFolderPath(resolvedFolderPath);
+        navigateSidebarToFolder(resolvedFolderPath);
+        return true;
+    }
+
+    return await playDroppedLibraryFolder(resolvedFolderPath);
+};
+
 const submitSidebarQueueFeedback = async (trackIndex: number | null, score: ListenBrainzFeedbackScore): Promise<void> => {
     if (trackIndex === null) {
         return;
@@ -3032,18 +3081,26 @@ playlistController = createPlaylistController({
     },
 });
 
-OnFileDrop((_, __, paths: string[]) => {
+OnFileDrop((x: number, y: number, paths: string[]) => {
     const droppedPaths = (paths || []).map((path) => path.trim()).filter((path) => path !== '');
     if (droppedPaths.length === 0) {
         return;
     }
 
     const droppedPlaylistPath = droppedPaths.find((path) => /\.(m3u8?|M3U8?)$/.test(path));
-    if (!droppedPlaylistPath) {
+    if (droppedPlaylistPath) {
+        void playlistController.loadPlaylistByPath(droppedPlaylistPath).catch((error: unknown) => {
+            console.error(error);
+        });
         return;
     }
 
-    void playlistController.loadPlaylistByPath(droppedPlaylistPath).catch((error: unknown) => {
+    const droppedFolderPath = droppedPaths.find((path) => !/\.(m3u8?|M3U8?)$/.test(path));
+    if (!droppedFolderPath) {
+        return;
+    }
+
+    void handleDroppedFolderPath(x, y, droppedFolderPath).catch((error: unknown) => {
         console.error(error);
     });
 }, false);
