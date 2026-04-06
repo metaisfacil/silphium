@@ -866,6 +866,19 @@ func musicBrainzTagStaggeredRefreshCount(totalEntityCount int, staleDays int) in
 	return refreshCount
 }
 
+func musicBrainzTagSameDay(left time.Time, right time.Time) bool {
+	if left.IsZero() || right.IsZero() {
+		return false
+	}
+
+	leftLocal := left.In(time.Local)
+	rightLocal := right.In(time.Local)
+	leftYear, leftMonth, leftDay := leftLocal.Date()
+	rightYear, rightMonth, rightDay := rightLocal.Date()
+
+	return leftYear == rightYear && leftMonth == rightMonth && leftDay == rightDay
+}
+
 func (a *App) musicBrainzTagDatabaseEnabled() bool {
 	a.ensureSettingsLoaded()
 	return a.settings.MusicBrainzTagDatabaseEnabled
@@ -1030,6 +1043,7 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 	pendingEntityKeys := make(map[string]struct{})
 	pendingEntityOrder := make([]string, 0)
 	refreshCandidates := make([]musicBrainzTagEntityRefreshCandidate, 0)
+	usedStaggeredRefreshCount := 0
 	queuePendingEntityKey := func(entityKey string) {
 		cleanEntityKey := strings.TrimSpace(entityKey)
 		if cleanEntityKey == "" {
@@ -1070,6 +1084,11 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 				continue
 			}
 
+			if staggeringEnabled && musicBrainzTagSameDay(storedRecord.LastFetchedAt, now) {
+				usedStaggeredRefreshCount++
+				continue
+			}
+
 			if storedRecord.LastError != "" && now.Sub(storedRecord.LastAttemptAt) >= musicBrainzTagEntityRetryInterval {
 				queuePendingEntityKey(cleanEntityKey)
 				continue
@@ -1101,7 +1120,10 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 			return leftCandidate.lastFetchedAt.Before(rightCandidate.lastFetchedAt)
 		})
 
-		refreshCount := musicBrainzTagStaggeredRefreshCount(len(referencedEntityKeys), staleDays)
+		refreshCount := musicBrainzTagStaggeredRefreshCount(len(referencedEntityKeys), staleDays) - usedStaggeredRefreshCount
+		if refreshCount < 0 {
+			refreshCount = 0
+		}
 		if refreshCount > len(refreshCandidates) {
 			refreshCount = len(refreshCandidates)
 		}

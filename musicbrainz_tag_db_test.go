@@ -114,7 +114,7 @@ func TestMusicBrainzTagEntityNeedsFetchLockedUsesConfiguredStaleDays(t *testing.
 	app.musicBrainzTagStore.Entities[entityKey] = musicBrainzTagEntityRecord{
 		EntityType:    "artist",
 		MBID:          artistMBID,
-		LastFetchedAt: now.Add(-8 * 24 * time.Hour),
+		LastFetchedAt: now.Add(-10 * 24 * time.Hour),
 	}
 	if !app.musicBrainzTagEntityNeedsFetchLocked(entityKey, now) {
 		t.Fatal("expected entity to refresh after 10 days when stale window is configured")
@@ -478,6 +478,74 @@ func TestBuildMusicBrainzTagWorkerStateStaggersSuccessfulRefetches(t *testing.T)
 	}
 	if state.completedEntityLookups != 2 {
 		t.Fatalf("completedEntityLookups = %d, want 2", state.completedEntityLookups)
+	}
+}
+
+func TestBuildMusicBrainzTagWorkerStateDoesNotQueueAnotherStaggeredBatchSameDay(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	secondAlbumFolder := filepath.Join(fixture.rootOne, "Artist Two", "Album Two")
+	thirdAlbumFolder := filepath.Join(fixture.rootOne, "Artist Three", "Album Three")
+	if err := os.MkdirAll(secondAlbumFolder, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", secondAlbumFolder, err)
+	}
+	if err := os.MkdirAll(thirdAlbumFolder, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", thirdAlbumFolder, err)
+	}
+
+	secondTrack := filepath.Join(secondAlbumFolder, "01 Second.flac")
+	thirdTrack := filepath.Join(thirdAlbumFolder, "01 Third.flac")
+	writeTestFile(t, secondTrack, "second")
+	writeTestFile(t, thirdTrack, "third")
+
+	indexedTracks := []LibraryIndexedFile{
+		indexedTrackForTest(fixture.rootOne, fixture.trackOne),
+		indexedTrackForTest(fixture.rootOne, secondTrack),
+		indexedTrackForTest(fixture.rootOne, thirdTrack),
+	}
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne, indexedTracks...)
+	app.settings.MusicBrainzTagStaleDays = intPointer(30)
+	app.settings.MusicBrainzTagRequestStaggeringEnabled = true
+
+	releaseIDs := []string{
+		"11111111-1111-4111-8111-111111111111",
+		"22222222-2222-4222-8222-222222222222",
+		"33333333-3333-4333-8333-333333333333",
+	}
+	currentTime := time.Now()
+	lastFetchedAt := []time.Time{
+		currentTime,
+		time.Date(2026, time.April, 2, 8, 0, 0, 0, time.UTC),
+		time.Date(2026, time.April, 3, 8, 0, 0, 0, time.UTC),
+	}
+
+	for index, indexed := range indexedTracks {
+		signature, ok := trackTagsFileSignatureForPath(indexed.Path)
+		if !ok {
+			t.Fatalf("trackTagsFileSignatureForPath(%q) failed", indexed.Path)
+		}
+
+		app.musicBrainzTagStore.Tracks[indexed.Path] = musicBrainzTagTrackRecord{
+			Signature:         signature,
+			ReleaseID:         releaseIDs[index],
+			ReleaseFolderPath: releaseFolderPathForIndexedTrack(indexed, 2),
+			LastScannedAt:     currentTime.Add(-time.Hour),
+		}
+		app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("release", releaseIDs[index])] = musicBrainzTagEntityRecord{
+			EntityType:    "release",
+			MBID:          releaseIDs[index],
+			Tags:          []string{"rock"},
+			LastFetchedAt: lastFetchedAt[index],
+			LastAttemptAt: lastFetchedAt[index],
+		}
+	}
+	app.rebuildMusicBrainzTagIndexesLocked()
+
+	state := app.buildMusicBrainzTagWorkerState(1)
+	if len(state.pendingEntityKeys) != 0 {
+		t.Fatalf("pendingEntityKeys = %#v, want none because today's staggered budget is already used", state.pendingEntityKeys)
+	}
+	if state.completedEntityLookups != 3 {
+		t.Fatalf("completedEntityLookups = %d, want 3", state.completedEntityLookups)
 	}
 }
 
