@@ -1393,10 +1393,32 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 			didWork = true
 		}
 
-		if entityKey, ok := state.popNextEntityKey(); ok {
-			a.processMusicBrainzTagEntityFetch(entityKey)
-			state.completedEntityLookups += 1
-			didWork = true
+		if len(state.pendingEntityKeys) > 0 {
+			entityBatchSize := a.musicBrainzTagWorkerCount(len(state.pendingEntityKeys))
+			entityKeys := make([]string, 0, entityBatchSize)
+			for len(entityKeys) < entityBatchSize {
+				entityKey, ok := state.popNextEntityKey()
+				if !ok {
+					break
+				}
+
+				entityKeys = append(entityKeys, entityKey)
+			}
+
+			if len(entityKeys) > 0 {
+				var fetchGroup sync.WaitGroup
+				fetchGroup.Add(len(entityKeys))
+				for _, entityKey := range entityKeys {
+					go func(activeEntityKey string) {
+						defer fetchGroup.Done()
+						a.processMusicBrainzTagEntityFetch(activeEntityKey)
+					}(entityKey)
+				}
+
+				fetchGroup.Wait()
+				state.completedEntityLookups += len(entityKeys)
+				didWork = true
+			}
 		}
 
 		a.persistMusicBrainzTagDatabase(false)
