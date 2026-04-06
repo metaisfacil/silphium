@@ -31,6 +31,10 @@ export type SettingsModalElements = {
     settingsLibraryDepthConfirm: HTMLButtonElement;
     settingsFFmpegPath: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
+    settingsMusicBrainzServerUrl: HTMLInputElement;
+    settingsMusicBrainzRequestRateMs: HTMLInputElement;
+    settingsListenBrainzServerUrl: HTMLInputElement;
+    settingsListenBrainzRequestRateMs: HTMLInputElement;
     settingsAudioOutputDevice: HTMLSelectElement;
     settingsAudioOutputBufferMs: HTMLInputElement;
     settingsApplyAudioNow: HTMLButtonElement;
@@ -82,6 +86,28 @@ export const renderSettingsModal = (): string => `
                         <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
                     </div>
                     <div class="settings-field">
+                        <label class="settings-label" for="settings-musicbrainz-server-url">MusicBrainz Server URL</label>
+                        <p class="settings-hint">Override the MusicBrainz server used for lookups. Leave blank to use the public server. For any non-public server the rate limit field (ms) to the right is editable; the public server enforces a minimum of 1000&nbsp;ms and the field is locked.</p>
+                        <div class="settings-server-url-row">
+                            <input id="settings-musicbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://musicbrainz.org">
+                            <div class="settings-server-rate-group">
+                                <input id="settings-musicbrainz-request-rate-ms" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" aria-label="MusicBrainz request rate limit in milliseconds" placeholder="0">
+                                <span class="settings-server-rate-unit">ms</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-listenbrainz-server-url">ListenBrainz Server URL</label>
+                        <p class="settings-hint">Override the ListenBrainz server used for scrobbling. Leave blank to use the public server. For any non-public server the rate limit field (ms) to the right is editable; the public server enforces a minimum of 1000&nbsp;ms and the field is locked.</p>
+                        <div class="settings-server-url-row">
+                            <input id="settings-listenbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://api.listenbrainz.org">
+                            <div class="settings-server-rate-group">
+                                <input id="settings-listenbrainz-request-rate-ms" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" aria-label="ListenBrainz request rate limit in milliseconds" placeholder="0">
+                                <span class="settings-server-rate-unit">ms</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-field">
                         <label class="settings-label" for="settings-ffmpeg-path">FFmpeg Executable Path</label>
                         <p class="settings-hint">Optional full path to ffmpeg. Leave blank to use the version available on PATH.</p>
                         <input id="settings-ffmpeg-path" class="settings-input" type="text" spellcheck="false" placeholder="Leave blank to use PATH">
@@ -102,7 +128,7 @@ export const renderSettingsModal = (): string => `
                     </div>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz Tag Worker Cores</label>
-                        <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests still remain limited to one request per second.</p>
+                        <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.</p>
                         <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
                     </div>
                 </div>
@@ -254,6 +280,10 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsLibraryDepthConfirm: root.querySelector('#settings-library-depth-confirm') as HTMLButtonElement,
     settingsFFmpegPath: root.querySelector('#settings-ffmpeg-path') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
+    settingsMusicBrainzServerUrl: root.querySelector('#settings-musicbrainz-server-url') as HTMLInputElement,
+    settingsMusicBrainzRequestRateMs: root.querySelector('#settings-musicbrainz-request-rate-ms') as HTMLInputElement,
+    settingsListenBrainzServerUrl: root.querySelector('#settings-listenbrainz-server-url') as HTMLInputElement,
+    settingsListenBrainzRequestRateMs: root.querySelector('#settings-listenbrainz-request-rate-ms') as HTMLInputElement,
     settingsAudioOutputDevice: root.querySelector('#settings-audio-output-device') as HTMLSelectElement,
     settingsAudioOutputBufferMs: root.querySelector('#settings-audio-output-buffer-ms') as HTMLInputElement,
     settingsApplyAudioNow: root.querySelector('#settings-apply-audio-now') as HTMLButtonElement,

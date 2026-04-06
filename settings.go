@@ -41,6 +41,10 @@ type AppSettings struct {
 	LibraryPath                   string                   `json:"libraryPath,omitempty"`
 	FFmpegPath                    string                   `json:"ffmpegPath,omitempty"`
 	ListenBrainzUserToken         string                   `json:"listenBrainzUserToken"`
+	MusicBrainzServerURL          string                   `json:"musicBrainzServerUrl,omitempty"`
+	MusicBrainzRequestRateMs      int                      `json:"musicBrainzRequestRateMs,omitempty"`
+	ListenBrainzServerURL         string                   `json:"listenBrainzServerUrl,omitempty"`
+	ListenBrainzRequestRateMs     int                      `json:"listenBrainzRequestRateMs,omitempty"`
 	PlaybackOrder                 string                   `json:"playbackOrder"`
 	ReleaseDepth                  int                      `json:"releaseDepth,omitempty"`
 	FavoritePlaylists             []string                 `json:"favoritePlaylists,omitempty"`
@@ -192,6 +196,46 @@ func normalizeCoverArtPriority(priority []string) []string {
 	return ordered
 }
 
+func normalizeBrainzServerURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
+}
+
+const publicBrainzMinRateLimitMs = 1000
+
+func normalizeMusicBrainzRequestRateMs(rateMs int, normalizedServerURL string) int {
+	isPublic := normalizedServerURL == "" || strings.EqualFold(normalizedServerURL, musicBrainzPublicServerURL)
+	if isPublic {
+		if rateMs < publicBrainzMinRateLimitMs {
+			return publicBrainzMinRateLimitMs
+		}
+
+		return rateMs
+	}
+
+	if rateMs < 0 {
+		return 0
+	}
+
+	return rateMs
+}
+
+func normalizeListenBrainzRequestRateMs(rateMs int, normalizedServerURL string) int {
+	isPublic := normalizedServerURL == "" || strings.EqualFold(normalizedServerURL, listenBrainzPublicServerURL)
+	if isPublic {
+		if rateMs < publicBrainzMinRateLimitMs {
+			return publicBrainzMinRateLimitMs
+		}
+
+		return rateMs
+	}
+
+	if rateMs < 0 {
+		return 0
+	}
+
+	return rateMs
+}
+
 func normalizeReleaseDepth(value int) int {
 	if value < 0 {
 		return 0
@@ -285,12 +329,18 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		legacyLibraryPath = libraryFolders[0].Path
 		legacyReleaseDepth = libraryFolders[0].ReleaseDepth
 	}
+	musicBrainzServerURL := normalizeBrainzServerURL(settings.MusicBrainzServerURL)
+	listenBrainzServerURL := normalizeBrainzServerURL(settings.ListenBrainzServerURL)
 
 	return AppSettings{
 		LibraryFolders:                libraryFolders,
 		LibraryPath:                   legacyLibraryPath,
 		FFmpegPath:                    normalizeFFmpegPath(settings.FFmpegPath),
 		ListenBrainzUserToken:         token,
+		MusicBrainzServerURL:          musicBrainzServerURL,
+		MusicBrainzRequestRateMs:      normalizeMusicBrainzRequestRateMs(settings.MusicBrainzRequestRateMs, musicBrainzServerURL),
+		ListenBrainzServerURL:         listenBrainzServerURL,
+		ListenBrainzRequestRateMs:     normalizeListenBrainzRequestRateMs(settings.ListenBrainzRequestRateMs, listenBrainzServerURL),
 		PlaybackOrder:                 playbackOrder,
 		ReleaseDepth:                  legacyReleaseDepth,
 		FavoritePlaylists:             favoritePlaylists,

@@ -945,6 +945,30 @@
     gap: 0.45rem;
 }
 
+.settings-server-url-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.settings-server-rate-group {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.settings-server-rate-input {
+    width: 5.5rem;
+}
+
+.settings-server-rate-unit {
+    font-size: 0.8rem;
+    color: var(--text-muted, currentColor);
+    opacity: 0.65;
+    white-space: nowrap;
+}
+
 .settings-audio-apply-btn {
     width: 2.2rem;
     height: 2.2rem;
