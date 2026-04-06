@@ -272,6 +272,8 @@ export type AppSettings = {
     audio: AudioSettings;
     preferMusicBrainzMetadata: boolean;
     musicBrainzTagDatabaseEnabled: boolean;
+    musicBrainzTagStaleDays: number;
+    musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };

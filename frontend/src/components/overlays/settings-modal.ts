@@ -46,6 +46,8 @@ export type SettingsModalElements = {
     settingsReplayGain: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsMusicBrainzTagDatabaseEnabled: HTMLInputElement;
+    settingsMusicBrainzTagStaleDays: HTMLInputElement;
+    settingsMusicBrainzTagRequestStaggeringEnabled: HTMLInputElement;
     settingsMusicBrainzTagWorkerCores: HTMLInputElement;
     settingsMusicBrainzTagWorkerProgressBar: HTMLDivElement;
     settingsMusicBrainzTagWorkerProgressFill: HTMLSpanElement;
@@ -139,6 +141,21 @@ export const renderSettingsModal = (): string => `
                             <span class="settings-label">Enable MusicBrainz tag database</span>
                         </label>
                         <p class="settings-hint">Builds a background MusicBrainz tag index for <code>mbtag:</code> library searches. Direct user lookups still take priority over the background worker.</p>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-musicbrainz-tag-stale-days">Metadata stale after</label>
+                        <p class="settings-hint">Default is 30 days. Set 0 to never automatically refetch cached MusicBrainz metadata.</p>
+                        <div class="settings-server-rate-group">
+                            <input id="settings-musicbrainz-tag-stale-days" class="settings-input settings-server-rate-input" type="number" min="0" max="36500" step="1" inputmode="numeric" aria-label="MusicBrainz metadata stale days" placeholder="30">
+                            <span class="settings-server-rate-unit">days</span>
+                        </div>
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-musicbrainz-tag-request-staggering-enabled">
+                            <input id="settings-musicbrainz-tag-request-staggering-enabled" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Stagger background refetches</span>
+                        </label>
+                        <p class="settings-hint">Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.</p>
                     </div>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz Tag Worker Cores</label>
@@ -323,6 +340,8 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsReplayGain: root.querySelector('#settings-replaygain') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsMusicBrainzTagDatabaseEnabled: root.querySelector('#settings-musicbrainz-tag-database-enabled') as HTMLInputElement,
+    settingsMusicBrainzTagStaleDays: root.querySelector('#settings-musicbrainz-tag-stale-days') as HTMLInputElement,
+    settingsMusicBrainzTagRequestStaggeringEnabled: root.querySelector('#settings-musicbrainz-tag-request-staggering-enabled') as HTMLInputElement,
     settingsMusicBrainzTagWorkerCores: root.querySelector('#settings-musicbrainz-tag-worker-cores') as HTMLInputElement,
     settingsMusicBrainzTagWorkerProgressBar: root.querySelector('#settings-musicbrainz-tag-worker-progress-bar') as HTMLDivElement,
     settingsMusicBrainzTagWorkerProgressFill: root.querySelector('#settings-musicbrainz-tag-worker-progress-fill') as HTMLSpanElement,

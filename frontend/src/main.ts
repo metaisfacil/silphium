@@ -229,6 +229,8 @@ const defaultMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress = {
     totalEntityLookups: 0,
     completedEntityLookups: 0,
 };
+const defaultMusicBrainzTagStaleDays = 30;
+const maxMusicBrainzTagStaleDays = 36500;
 let currentMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress = { ...defaultMusicBrainzTagWorkerProgress };
 let currentSettings: AppSettings = {
     libraryFolders: [],
@@ -251,6 +253,8 @@ let currentSettings: AppSettings = {
     },
     preferMusicBrainzMetadata: false,
     musicBrainzTagDatabaseEnabled: false,
+    musicBrainzTagStaleDays: defaultMusicBrainzTagStaleDays,
+    musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 1,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
@@ -365,6 +369,10 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         },
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
         musicBrainzTagDatabaseEnabled: !!settings.musicBrainzTagDatabaseEnabled,
+        musicBrainzTagStaleDays: Number.isFinite(settings.musicBrainzTagStaleDays) && (settings.musicBrainzTagStaleDays ?? 0) >= 0
+            ? Math.min(maxMusicBrainzTagStaleDays, Math.floor(settings.musicBrainzTagStaleDays ?? defaultMusicBrainzTagStaleDays))
+            : defaultMusicBrainzTagStaleDays,
+        musicBrainzTagRequestStaggeringEnabled: !!settings.musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores: Number.isFinite(settings.musicBrainzTagWorkerCores)
             ? Math.max(1, Math.min(128, Math.floor(settings.musicBrainzTagWorkerCores || 1)))
             : 1,
@@ -3371,6 +3379,8 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             audio: currentSettings.audio,
             preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
             musicBrainzTagDatabaseEnabled: currentSettings.musicBrainzTagDatabaseEnabled,
+            musicBrainzTagStaleDays: currentSettings.musicBrainzTagStaleDays,
+            musicBrainzTagRequestStaggeringEnabled: currentSettings.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
             keyboardShortcuts: currentSettings.keyboardShortcuts,
         })) as AppSettings;
@@ -3686,6 +3696,8 @@ settingsController = createSettingsController({
         audioOutputDevices: availableAudioOutputDevices,
         preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
         musicBrainzTagDatabaseEnabled: currentSettings.musicBrainzTagDatabaseEnabled,
+        musicBrainzTagStaleDays: currentSettings.musicBrainzTagStaleDays,
+        musicBrainzTagRequestStaggeringEnabled: currentSettings.musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
         musicBrainzTagWorkerProgress: currentMusicBrainzTagWorkerProgress,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
@@ -3708,6 +3720,8 @@ settingsController = createSettingsController({
         replayGainEnabled,
         preferMusicBrainzMetadata,
         musicBrainzTagDatabaseEnabled,
+        musicBrainzTagStaleDays,
+        musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores,
         keyboardShortcuts,
     }): Promise<void> => {
@@ -3739,6 +3753,8 @@ settingsController = createSettingsController({
             },
             preferMusicBrainzMetadata,
             musicBrainzTagDatabaseEnabled,
+            musicBrainzTagStaleDays,
+            musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores,
             keyboardShortcuts,
         })) as AppSettings;
@@ -3789,6 +3805,8 @@ settingsController = createSettingsController({
         replayGainEnabled,
         preferMusicBrainzMetadata,
         musicBrainzTagDatabaseEnabled,
+        musicBrainzTagStaleDays,
+        musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores,
         keyboardShortcuts,
     }): Promise<AudioOutputDevice[]> => {
@@ -3820,6 +3838,8 @@ settingsController = createSettingsController({
             },
             preferMusicBrainzMetadata,
             musicBrainzTagDatabaseEnabled,
+            musicBrainzTagStaleDays,
+            musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores,
             keyboardShortcuts,
         })) as AppSettings;

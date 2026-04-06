@@ -25,6 +25,8 @@ export type SettingsFormValues = {
     replayGainEnabled: boolean;
     preferMusicBrainzMetadata: boolean;
     musicBrainzTagDatabaseEnabled: boolean;
+    musicBrainzTagStaleDays: number;
+    musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
@@ -39,6 +41,8 @@ type SettingsTab = SettingsPrimaryTab | 'shortcuts';
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const allCoverArtPrioritySources: CoverArtPrioritySource[] = ['file', 'embedded', 'musicbrainz'];
+const DEFAULT_MUSIC_BRAINZ_TAG_STALE_DAYS = 30;
+const MAX_MUSIC_BRAINZ_TAG_STALE_DAYS = 36500;
 
 const normalizeCoverArtPriority = (items: string[] | undefined): CoverArtPrioritySource[] => {
     if (items === undefined) {
@@ -148,6 +152,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsReplayGain,
         settingsPreferMusicBrainzMetadata,
         settingsMusicBrainzTagDatabaseEnabled,
+        settingsMusicBrainzTagStaleDays,
+        settingsMusicBrainzTagRequestStaggeringEnabled,
         settingsMusicBrainzTagWorkerCores,
         settingsMusicBrainzTagWorkerProgressBar,
         settingsMusicBrainzTagWorkerProgressFill,
@@ -264,6 +270,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         return Math.min(Math.floor(parsed), 128);
+    };
+
+    const normalizeMusicBrainzTagStaleDays = (value: string): number => {
+        const parsed = Number.parseInt(value.trim(), 10);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            return DEFAULT_MUSIC_BRAINZ_TAG_STALE_DAYS;
+        }
+
+        return Math.min(Math.floor(parsed), MAX_MUSIC_BRAINZ_TAG_STALE_DAYS);
     };
 
     const normalizeMusicBrainzTagWorkerProgress = (value?: Partial<MusicBrainzTagWorkerProgress> | null): MusicBrainzTagWorkerProgress => {
@@ -466,12 +481,17 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         replayGainEnabled: settingsReplayGain.checked,
         preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
         musicBrainzTagDatabaseEnabled: settingsMusicBrainzTagDatabaseEnabled.checked,
+        musicBrainzTagStaleDays: normalizeMusicBrainzTagStaleDays(settingsMusicBrainzTagStaleDays.value),
+        musicBrainzTagRequestStaggeringEnabled: settingsMusicBrainzTagRequestStaggeringEnabled.checked,
         musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
         keyboardShortcuts: getShortcutValues(),
     });
 
     const refreshMusicBrainzTagWorkerControls = (): void => {
-        settingsMusicBrainzTagWorkerCores.disabled = !settingsMusicBrainzTagDatabaseEnabled.checked;
+        const disabled = !settingsMusicBrainzTagDatabaseEnabled.checked;
+        settingsMusicBrainzTagStaleDays.disabled = disabled;
+        settingsMusicBrainzTagRequestStaggeringEnabled.disabled = disabled;
+        settingsMusicBrainzTagWorkerCores.disabled = disabled;
     };
 
     const renderFavoritePlaylistList = (): void => {
@@ -1087,6 +1107,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsReplayGain.checked = !!values.replayGainEnabled;
         settingsPreferMusicBrainzMetadata.checked = !!values.preferMusicBrainzMetadata;
         settingsMusicBrainzTagDatabaseEnabled.checked = !!values.musicBrainzTagDatabaseEnabled;
+        settingsMusicBrainzTagStaleDays.value = String(values.musicBrainzTagStaleDays);
+        settingsMusicBrainzTagRequestStaggeringEnabled.checked = !!values.musicBrainzTagRequestStaggeringEnabled;
         settingsMusicBrainzTagWorkerCores.value = values.musicBrainzTagWorkerCores > 0 ? String(values.musicBrainzTagWorkerCores) : '';
         refreshMusicBrainzTagWorkerControls();
         renderMusicBrainzTagWorkerProgress(values.musicBrainzTagWorkerProgress);

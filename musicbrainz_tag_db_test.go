@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -97,11 +98,15 @@ func TestUpsertMusicBrainzTagEntityRecordLockedSkipsMissingMBID(t *testing.T) {
 	}
 }
 
-func TestMusicBrainzTagEntityNeedsFetchLockedUsesEmptyTagInterval(t *testing.T) {
+func TestMusicBrainzTagEntityNeedsFetchLockedUsesConfiguredStaleDays(t *testing.T) {
 	now := time.Date(2026, time.April, 5, 12, 0, 0, 0, time.UTC)
 	artistMBID := "11111111-1111-4111-8111-111111111111"
 	entityKey := musicBrainzTagEntityKey("artist", artistMBID)
 	app := &App{
+		settings: AppSettings{
+			MusicBrainzTagStaleDays: intPointer(10),
+		},
+		settingsLoaded:            true,
 		musicBrainzTagStore:       newMusicBrainzTagDatabaseStore(),
 		musicBrainzTagStoreLoaded: true,
 	}
@@ -112,27 +117,38 @@ func TestMusicBrainzTagEntityNeedsFetchLockedUsesEmptyTagInterval(t *testing.T) 
 		LastFetchedAt: now.Add(-8 * 24 * time.Hour),
 	}
 	if !app.musicBrainzTagEntityNeedsFetchLocked(entityKey, now) {
-		t.Fatal("expected empty-tag entity to refresh after 7 days")
+		t.Fatal("expected entity to refresh after 10 days when stale window is configured")
 	}
 
 	app.musicBrainzTagStore.Entities[entityKey] = musicBrainzTagEntityRecord{
 		EntityType:    "artist",
 		MBID:          artistMBID,
 		Tags:          []string{"rock"},
-		LastFetchedAt: now.Add(-8 * 24 * time.Hour),
+		LastFetchedAt: now.Add(-9 * 24 * time.Hour),
 	}
 	if app.musicBrainzTagEntityNeedsFetchLocked(entityKey, now) {
-		t.Fatal("did not expect tagged entity to refresh after only 8 days")
+		t.Fatal("did not expect entity to refresh before the configured stale window")
 	}
 
 	app.musicBrainzTagStore.Entities[entityKey] = musicBrainzTagEntityRecord{
 		EntityType:    "artist",
 		MBID:          artistMBID,
 		Tags:          []string{"rock"},
-		LastFetchedAt: now.Add(-31 * 24 * time.Hour),
+		LastFetchedAt: now.Add(-10 * 24 * time.Hour),
 	}
 	if !app.musicBrainzTagEntityNeedsFetchLocked(entityKey, now) {
-		t.Fatal("expected tagged entity to refresh after 30 days")
+		t.Fatal("expected entity to refresh once the configured stale window elapses")
+	}
+
+	app.settings.MusicBrainzTagStaleDays = intPointer(0)
+	app.musicBrainzTagStore.Entities[entityKey] = musicBrainzTagEntityRecord{
+		EntityType:    "artist",
+		MBID:          artistMBID,
+		Tags:          []string{"rock"},
+		LastFetchedAt: now.Add(-365 * 24 * time.Hour),
+	}
+	if app.musicBrainzTagEntityNeedsFetchLocked(entityKey, now) {
+		t.Fatal("did not expect entity to refresh when stale days is set to never")
 	}
 }
 
@@ -381,6 +397,87 @@ func TestBuildMusicBrainzTagWorkerStateCountsAlreadySatisfiedWork(t *testing.T) 
 	progress := state.progressSnapshot(true)
 	if progress.Progress != (2.0 / 3.0) {
 		t.Fatalf("progress = %.6f, want %.6f", progress.Progress, 2.0/3.0)
+	}
+}
+
+func TestBuildMusicBrainzTagWorkerStateStaggersSuccessfulRefetches(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	secondAlbumFolder := filepath.Join(fixture.rootOne, "Artist Two", "Album Two")
+	thirdAlbumFolder := filepath.Join(fixture.rootOne, "Artist Three", "Album Three")
+	if err := os.MkdirAll(secondAlbumFolder, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", secondAlbumFolder, err)
+	}
+	if err := os.MkdirAll(thirdAlbumFolder, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", thirdAlbumFolder, err)
+	}
+
+	secondTrack := filepath.Join(secondAlbumFolder, "01 Second.flac")
+	thirdTrack := filepath.Join(thirdAlbumFolder, "01 Third.flac")
+	writeTestFile(t, secondTrack, "second")
+	writeTestFile(t, thirdTrack, "third")
+
+	indexedTracks := []LibraryIndexedFile{
+		indexedTrackForTest(fixture.rootOne, fixture.trackOne),
+		indexedTrackForTest(fixture.rootOne, secondTrack),
+		indexedTrackForTest(fixture.rootOne, thirdTrack),
+	}
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne, indexedTracks...)
+	app.settings.MusicBrainzTagStaleDays = intPointer(30)
+	app.settings.MusicBrainzTagRequestStaggeringEnabled = true
+
+	releaseIDs := []string{
+		"11111111-1111-4111-8111-111111111111",
+		"22222222-2222-4222-8222-222222222222",
+		"33333333-3333-4333-8333-333333333333",
+	}
+	lastFetchedAt := []time.Time{
+		time.Date(2026, time.April, 1, 8, 0, 0, 0, time.UTC),
+		time.Date(2026, time.April, 2, 8, 0, 0, 0, time.UTC),
+		time.Date(2026, time.April, 3, 8, 0, 0, 0, time.UTC),
+	}
+
+	for index, indexed := range indexedTracks {
+		signature, ok := trackTagsFileSignatureForPath(indexed.Path)
+		if !ok {
+			t.Fatalf("trackTagsFileSignatureForPath(%q) failed", indexed.Path)
+		}
+
+		app.musicBrainzTagStore.Tracks[indexed.Path] = musicBrainzTagTrackRecord{
+			Signature:         signature,
+			ReleaseID:         releaseIDs[index],
+			ReleaseFolderPath: releaseFolderPathForIndexedTrack(indexed, 2),
+			LastScannedAt:     time.Now().Add(-time.Hour),
+		}
+		app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("release", releaseIDs[index])] = musicBrainzTagEntityRecord{
+			EntityType:    "release",
+			MBID:          releaseIDs[index],
+			Tags:          []string{"rock"},
+			LastFetchedAt: lastFetchedAt[index],
+			LastAttemptAt: lastFetchedAt[index],
+		}
+	}
+	app.rebuildMusicBrainzTagIndexesLocked()
+
+	state := app.buildMusicBrainzTagWorkerState(1)
+	if len(state.pendingTrackPaths) != 0 {
+		t.Fatalf("pendingTrackPaths = %#v, want none", state.pendingTrackPaths)
+	}
+	if state.totalEntityLookups != 3 {
+		t.Fatalf("totalEntityLookups = %d, want 3", state.totalEntityLookups)
+	}
+	if len(state.pendingEntityKeys) != 1 {
+		t.Fatalf("pendingEntityKeys = %#v, want one staggered refresh", state.pendingEntityKeys)
+	}
+
+	oldestEntityKey := musicBrainzTagEntityKey("release", releaseIDs[0])
+	if _, exists := state.pendingEntityKeys[oldestEntityKey]; !exists {
+		t.Fatalf("pendingEntityKeys = %#v, want %q", state.pendingEntityKeys, oldestEntityKey)
+	}
+	if len(state.pendingEntityOrder) != 1 || state.pendingEntityOrder[0] != oldestEntityKey {
+		t.Fatalf("pendingEntityOrder = %#v, want [%q]", state.pendingEntityOrder, oldestEntityKey)
+	}
+	if state.completedEntityLookups != 2 {
+		t.Fatalf("completedEntityLookups = %d, want 2", state.completedEntityLookups)
 	}
 }
 

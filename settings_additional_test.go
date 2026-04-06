@@ -131,23 +131,47 @@ func TestNormalizeAppSettingsAudioCoverArtAndShortcuts(t *testing.T) {
 	}
 }
 
+func TestNormalizeAppSettingsMusicBrainzRefreshDefaults(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{})
+	if settings.MusicBrainzTagStaleDays == nil || *settings.MusicBrainzTagStaleDays != defaultMusicBrainzTagStaleDays {
+		t.Fatalf("MusicBrainzTagStaleDays = %#v, want %d", settings.MusicBrainzTagStaleDays, defaultMusicBrainzTagStaleDays)
+	}
+
+	settings = normalizeAppSettings(AppSettings{MusicBrainzTagStaleDays: intPointer(-10)})
+	if settings.MusicBrainzTagStaleDays == nil || *settings.MusicBrainzTagStaleDays != defaultMusicBrainzTagStaleDays {
+		t.Fatalf("negative MusicBrainzTagStaleDays = %#v, want %d", settings.MusicBrainzTagStaleDays, defaultMusicBrainzTagStaleDays)
+	}
+
+	settings = normalizeAppSettings(AppSettings{MusicBrainzTagStaleDays: intPointer(0)})
+	if settings.MusicBrainzTagStaleDays == nil || *settings.MusicBrainzTagStaleDays != 0 {
+		t.Fatalf("zero MusicBrainzTagStaleDays = %#v, want 0", settings.MusicBrainzTagStaleDays)
+	}
+
+	settings = normalizeAppSettings(AppSettings{MusicBrainzTagStaleDays: intPointer(maxMusicBrainzTagStaleDays + 5)})
+	if settings.MusicBrainzTagStaleDays == nil || *settings.MusicBrainzTagStaleDays != maxMusicBrainzTagStaleDays {
+		t.Fatalf("clamped MusicBrainzTagStaleDays = %#v, want %d", settings.MusicBrainzTagStaleDays, maxMusicBrainzTagStaleDays)
+	}
+}
+
 func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 	tempDir := t.TempDir()
 	settingsPath := filepath.Join(tempDir, appSettingsFileName)
 	configuredFFmpegPath := filepath.Join(tempDir, "bin", "ffmpeg.exe")
 	rawSettings := AppSettings{
-		LibraryPath:                   filepath.Join(tempDir, "Library"),
-		ReleaseDepth:                  3,
-		FFmpegPath:                    "\"" + configuredFFmpegPath + "\"",
-		MusicBrainzServerURL:          " https://musicbrainz.org/ ",
-		MusicBrainzRequestRateMs:      0,
-		ListenBrainzServerURL:         " http://localhost:6000/ ",
-		ListenBrainzRequestRateMs:     -1,
-		CoverArtPriority:              []string{"musicbrainz", "file"},
-		MusicBrainzTagWorkerCores:     0,
-		KeyboardShortcuts:             FocusedKeyboardShortcuts{NextTrack: "J"},
-		PreferMusicBrainzMetadata:     true,
-		MusicBrainzTagDatabaseEnabled: true,
+		LibraryPath:                            filepath.Join(tempDir, "Library"),
+		ReleaseDepth:                           3,
+		FFmpegPath:                             "\"" + configuredFFmpegPath + "\"",
+		MusicBrainzServerURL:                   " https://musicbrainz.org/ ",
+		MusicBrainzRequestRateMs:               0,
+		ListenBrainzServerURL:                  " http://localhost:6000/ ",
+		ListenBrainzRequestRateMs:              -1,
+		CoverArtPriority:                       []string{"musicbrainz", "file"},
+		MusicBrainzTagStaleDays:                intPointer(0),
+		MusicBrainzTagRequestStaggeringEnabled: true,
+		MusicBrainzTagWorkerCores:              0,
+		KeyboardShortcuts:                      FocusedKeyboardShortcuts{NextTrack: "J"},
+		PreferMusicBrainzMetadata:              true,
+		MusicBrainzTagDatabaseEnabled:          true,
 	}
 
 	if err := writeAppSettings(settingsPath, rawSettings); err != nil {
@@ -182,6 +206,12 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(settings.CoverArtPriority, []string{"musicbrainz", "file"}) {
 		t.Fatalf("CoverArtPriority = %#v, want %#v", settings.CoverArtPriority, []string{"musicbrainz", "file"})
+	}
+	if settings.MusicBrainzTagStaleDays == nil || *settings.MusicBrainzTagStaleDays != 0 {
+		t.Fatalf("MusicBrainzTagStaleDays = %#v, want 0", settings.MusicBrainzTagStaleDays)
+	}
+	if !settings.MusicBrainzTagRequestStaggeringEnabled {
+		t.Fatal("expected MusicBrainzTagRequestStaggeringEnabled to remain enabled")
 	}
 	if settings.MusicBrainzTagWorkerCores < 1 || settings.MusicBrainzTagWorkerCores > maxMusicBrainzTagWorkerCores() {
 		t.Fatalf("MusicBrainzTagWorkerCores = %d, want value in [1, %d]", settings.MusicBrainzTagWorkerCores, maxMusicBrainzTagWorkerCores())

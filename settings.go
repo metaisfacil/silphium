@@ -39,27 +39,31 @@ type AudioSettings struct {
 
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
-	LibraryFolders                []AppLibraryFolder       `json:"libraryFolders,omitempty"`
-	LibraryPath                   string                   `json:"libraryPath,omitempty"`
-	FFmpegPath                    string                   `json:"ffmpegPath,omitempty"`
-	ListenBrainzUserToken         string                   `json:"listenBrainzUserToken"`
-	MusicBrainzServerURL          string                   `json:"musicBrainzServerUrl,omitempty"`
-	MusicBrainzRequestRateMs      int                      `json:"musicBrainzRequestRateMs,omitempty"`
-	ListenBrainzServerURL         string                   `json:"listenBrainzServerUrl,omitempty"`
-	ListenBrainzRequestRateMs     int                      `json:"listenBrainzRequestRateMs,omitempty"`
-	PlaybackOrder                 string                   `json:"playbackOrder"`
-	ReleaseDepth                  int                      `json:"releaseDepth,omitempty"`
-	FavoritePlaylists             []string                 `json:"favoritePlaylists,omitempty"`
-	CoverArtPriority              []string                 `json:"coverArtPriority,omitempty"`
-	Audio                         AudioSettings            `json:"audio,omitempty"`
-	PreferMusicBrainzMetadata     bool                     `json:"preferMusicBrainzMetadata"`
-	MusicBrainzTagDatabaseEnabled bool                     `json:"musicBrainzTagDatabaseEnabled,omitempty"`
-	MusicBrainzTagWorkerCores     int                      `json:"musicBrainzTagWorkerCores,omitempty"`
-	KeyboardShortcuts             FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
+	LibraryFolders                         []AppLibraryFolder       `json:"libraryFolders,omitempty"`
+	LibraryPath                            string                   `json:"libraryPath,omitempty"`
+	FFmpegPath                             string                   `json:"ffmpegPath,omitempty"`
+	ListenBrainzUserToken                  string                   `json:"listenBrainzUserToken"`
+	MusicBrainzServerURL                   string                   `json:"musicBrainzServerUrl,omitempty"`
+	MusicBrainzRequestRateMs               int                      `json:"musicBrainzRequestRateMs,omitempty"`
+	ListenBrainzServerURL                  string                   `json:"listenBrainzServerUrl,omitempty"`
+	ListenBrainzRequestRateMs              int                      `json:"listenBrainzRequestRateMs,omitempty"`
+	PlaybackOrder                          string                   `json:"playbackOrder"`
+	ReleaseDepth                           int                      `json:"releaseDepth,omitempty"`
+	FavoritePlaylists                      []string                 `json:"favoritePlaylists,omitempty"`
+	CoverArtPriority                       []string                 `json:"coverArtPriority,omitempty"`
+	Audio                                  AudioSettings            `json:"audio,omitempty"`
+	PreferMusicBrainzMetadata              bool                     `json:"preferMusicBrainzMetadata"`
+	MusicBrainzTagDatabaseEnabled          bool                     `json:"musicBrainzTagDatabaseEnabled,omitempty"`
+	MusicBrainzTagStaleDays                *int                     `json:"musicBrainzTagStaleDays,omitempty"`
+	MusicBrainzTagRequestStaggeringEnabled bool                     `json:"musicBrainzTagRequestStaggeringEnabled,omitempty"`
+	MusicBrainzTagWorkerCores              int                      `json:"musicBrainzTagWorkerCores,omitempty"`
+	KeyboardShortcuts                      FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
 
 const defaultPlaybackOrder = "ordered-library"
 const maxReleaseDepth = 64
+const defaultMusicBrainzTagStaleDays = 30
+const maxMusicBrainzTagStaleDays = 36500
 const defaultShortcutPlayPauseToggle = "Space"
 const defaultShortcutNextTrack = "N"
 const defaultShortcutPreviousTrack = "P"
@@ -73,6 +77,11 @@ const defaultAudioOutputDevice = "default"
 const maxAudioOutputBufferMs = 1000
 
 var defaultCoverArtPriority = []string{coverArtPriorityFile, coverArtPriorityEmbedded}
+
+func intPointer(value int) *int {
+	pointer := value
+	return &pointer
+}
 
 func normalizeAudioOutputDevice(value string) string {
 	trimmed := strings.TrimSpace(value)
@@ -145,6 +154,23 @@ func normalizeMusicBrainzTagWorkerCores(value int) int {
 	}
 
 	return value
+}
+
+func normalizeMusicBrainzTagStaleDays(value *int) int {
+	if value == nil {
+		return defaultMusicBrainzTagStaleDays
+	}
+
+	normalized := *value
+	if normalized < 0 {
+		return defaultMusicBrainzTagStaleDays
+	}
+
+	if normalized > maxMusicBrainzTagStaleDays {
+		return maxMusicBrainzTagStaleDays
+	}
+
+	return normalized
 }
 
 func normalizeKeyboardShortcutBinding(value, fallback string) string {
@@ -347,6 +373,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	libraryFolders := normalizeLibraryFolders(settings.LibraryFolders, settings.LibraryPath, settings.ReleaseDepth)
 	coverArtPriority := normalizeCoverArtPriority(settings.CoverArtPriority)
 	preferMusicBrainzMetadata := settings.PreferMusicBrainzMetadata
+	musicBrainzTagStaleDays := normalizeMusicBrainzTagStaleDays(settings.MusicBrainzTagStaleDays)
 	audio := normalizeAudioSettings(settings.Audio)
 	keyboardShortcuts := normalizeFocusedKeyboardShortcuts(settings.KeyboardShortcuts)
 	favoritePlaylists := make([]string, 0, len(settings.FavoritePlaylists))
@@ -379,23 +406,25 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	listenBrainzServerURL := normalizeBrainzServerURL(settings.ListenBrainzServerURL)
 
 	return AppSettings{
-		LibraryFolders:                libraryFolders,
-		LibraryPath:                   legacyLibraryPath,
-		FFmpegPath:                    normalizeFFmpegPath(settings.FFmpegPath),
-		ListenBrainzUserToken:         token,
-		MusicBrainzServerURL:          musicBrainzServerURL,
-		MusicBrainzRequestRateMs:      normalizeMusicBrainzRequestRateMs(settings.MusicBrainzRequestRateMs, musicBrainzServerURL),
-		ListenBrainzServerURL:         listenBrainzServerURL,
-		ListenBrainzRequestRateMs:     normalizeListenBrainzRequestRateMs(settings.ListenBrainzRequestRateMs, listenBrainzServerURL),
-		PlaybackOrder:                 playbackOrder,
-		ReleaseDepth:                  legacyReleaseDepth,
-		FavoritePlaylists:             favoritePlaylists,
-		CoverArtPriority:              coverArtPriority,
-		Audio:                         audio,
-		PreferMusicBrainzMetadata:     preferMusicBrainzMetadata,
-		MusicBrainzTagDatabaseEnabled: settings.MusicBrainzTagDatabaseEnabled,
-		MusicBrainzTagWorkerCores:     normalizeMusicBrainzTagWorkerCores(settings.MusicBrainzTagWorkerCores),
-		KeyboardShortcuts:             keyboardShortcuts,
+		LibraryFolders:                         libraryFolders,
+		LibraryPath:                            legacyLibraryPath,
+		FFmpegPath:                             normalizeFFmpegPath(settings.FFmpegPath),
+		ListenBrainzUserToken:                  token,
+		MusicBrainzServerURL:                   musicBrainzServerURL,
+		MusicBrainzRequestRateMs:               normalizeMusicBrainzRequestRateMs(settings.MusicBrainzRequestRateMs, musicBrainzServerURL),
+		ListenBrainzServerURL:                  listenBrainzServerURL,
+		ListenBrainzRequestRateMs:              normalizeListenBrainzRequestRateMs(settings.ListenBrainzRequestRateMs, listenBrainzServerURL),
+		PlaybackOrder:                          playbackOrder,
+		ReleaseDepth:                           legacyReleaseDepth,
+		FavoritePlaylists:                      favoritePlaylists,
+		CoverArtPriority:                       coverArtPriority,
+		Audio:                                  audio,
+		PreferMusicBrainzMetadata:              preferMusicBrainzMetadata,
+		MusicBrainzTagDatabaseEnabled:          settings.MusicBrainzTagDatabaseEnabled,
+		MusicBrainzTagStaleDays:                intPointer(musicBrainzTagStaleDays),
+		MusicBrainzTagRequestStaggeringEnabled: settings.MusicBrainzTagRequestStaggeringEnabled,
+		MusicBrainzTagWorkerCores:              normalizeMusicBrainzTagWorkerCores(settings.MusicBrainzTagWorkerCores),
+		KeyboardShortcuts:                      keyboardShortcuts,
 	}
 }
 

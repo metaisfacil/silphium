@@ -72,6 +72,8 @@ export namespace main {
 	    audio?: AudioSettings;
 	    preferMusicBrainzMetadata: boolean;
 	    musicBrainzTagDatabaseEnabled?: boolean;
+	    musicBrainzTagStaleDays?: number;
+	    musicBrainzTagRequestStaggeringEnabled?: boolean;
 	    musicBrainzTagWorkerCores?: number;
 	    keyboardShortcuts: FocusedKeyboardShortcuts;
 	
@@ -96,6 +98,8 @@ export namespace main {
 	        this.audio = this.convertValues(source["audio"], AudioSettings);
 	        this.preferMusicBrainzMetadata = source["preferMusicBrainzMetadata"];
 	        this.musicBrainzTagDatabaseEnabled = source["musicBrainzTagDatabaseEnabled"];
+	        this.musicBrainzTagStaleDays = source["musicBrainzTagStaleDays"];
+	        this.musicBrainzTagRequestStaggeringEnabled = source["musicBrainzTagRequestStaggeringEnabled"];
 	        this.musicBrainzTagWorkerCores = source["musicBrainzTagWorkerCores"];
 	        this.keyboardShortcuts = this.convertValues(source["keyboardShortcuts"], FocusedKeyboardShortcuts);
 	    }

@@ -50,6 +50,8 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     replayGainEnabled: false,
     preferMusicBrainzMetadata: true,
     musicBrainzTagDatabaseEnabled: true,
+    musicBrainzTagStaleDays: 30,
+    musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 4,
     musicBrainzTagWorkerProgress: createMusicBrainzTagWorkerProgress(),
     keyboardShortcuts: createKeyboardShortcuts(),
@@ -157,9 +159,28 @@ describe('createSettingsController', () => {
             coverArtPriority: ['embedded', 'file'],
             audioOutputDevice: 'device-1',
             audioOutputBufferMs: 1000,
+            musicBrainzTagStaleDays: 30,
+            musicBrainzTagRequestStaggeringEnabled: false,
             keyboardShortcuts: expect.objectContaining({ nextTrack: 'K' }),
         }));
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(false);
+    });
+
+    it('saves MusicBrainz stale days and staggering from the database tab', async () => {
+        const { controller, elements, save } = mountSettingsController();
+
+        controller.open('database');
+
+        elements.settingsMusicBrainzTagStaleDays.value = '0';
+        elements.settingsMusicBrainzTagRequestStaggeringEnabled.checked = true;
+        elements.settingsSave.click();
+
+        await flushPromises();
+
+        expect(save).toHaveBeenCalledWith(expect.objectContaining({
+            musicBrainzTagStaleDays: 0,
+            musicBrainzTagRequestStaggeringEnabled: true,
+        }));
     });
 
     it('maps shortcut-tab opens to the UI tab with the shortcuts accordion expanded', () => {

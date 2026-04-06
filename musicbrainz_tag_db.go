@@ -13,8 +13,6 @@ import (
 const musicBrainzTagDatabaseFileName = "silphium.musicbrainz.tags.sqlite3"
 const legacyMusicBrainzTagDatabaseFileName = "silphium.musicbrainz.tags.json"
 const musicBrainzTagDatabaseVersion = 1
-const musicBrainzTagEntityRescanInterval = 30 * 24 * time.Hour
-const musicBrainzTagEmptyEntityRescanInterval = 7 * 24 * time.Hour
 const musicBrainzTagEntityRetryInterval = 6 * time.Hour
 const musicBrainzTagDatabaseFlushInterval = 5 * time.Second
 
@@ -79,6 +77,12 @@ type musicBrainzTagStoredTrackRecord struct {
 	record musicBrainzTagTrackRecord
 }
 
+type musicBrainzTagEntityRefreshCandidate struct {
+	entityKey     string
+	lastFetchedAt time.Time
+}
+
+// MusicBrainzTagWorkerProgress reports background MusicBrainz tag worker status.
 type MusicBrainzTagWorkerProgress struct {
 	Enabled                bool    `json:"enabled"`
 	Active                 bool    `json:"active"`
@@ -160,8 +164,8 @@ func (state *musicBrainzTagWorkerState) noteCompletedEntityKey(entityKey string)
 	}
 
 	state.referencedEntityKeys[cleanEntityKey] = struct{}{}
-	state.totalEntityLookups += 1
-	state.completedEntityLookups += 1
+	state.totalEntityLookups++
+	state.completedEntityLookups++
 }
 
 func (state *musicBrainzTagWorkerState) notePendingEntityKey(entityKey string) {
@@ -176,7 +180,7 @@ func (state *musicBrainzTagWorkerState) notePendingEntityKey(entityKey string) {
 
 	if _, exists := state.referencedEntityKeys[cleanEntityKey]; !exists {
 		state.referencedEntityKeys[cleanEntityKey] = struct{}{}
-		state.totalEntityLookups += 1
+		state.totalEntityLookups++
 	}
 
 	state.queueEntityKey(cleanEntityKey)
@@ -838,17 +842,43 @@ func (a *App) persistMusicBrainzTagDatabase(force bool) {
 	a.musicBrainzTagMu.Unlock()
 }
 
-func musicBrainzTagEntityRefreshInterval(record musicBrainzTagEntityRecord) time.Duration {
-	if len(record.Tags) == 0 {
-		return musicBrainzTagEmptyEntityRescanInterval
+func musicBrainzTagEntityRefreshInterval(staleDays int) time.Duration {
+	if staleDays <= 0 {
+		return 0
 	}
 
-	return musicBrainzTagEntityRescanInterval
+	return time.Duration(staleDays) * 24 * time.Hour
+}
+
+func musicBrainzTagStaggeredRefreshCount(totalEntityCount int, staleDays int) int {
+	if totalEntityCount <= 0 || staleDays <= 0 {
+		return 0
+	}
+
+	refreshCount := totalEntityCount / staleDays
+	if totalEntityCount%staleDays != 0 {
+		refreshCount++
+	}
+	if refreshCount < 1 {
+		return 1
+	}
+
+	return refreshCount
 }
 
 func (a *App) musicBrainzTagDatabaseEnabled() bool {
 	a.ensureSettingsLoaded()
 	return a.settings.MusicBrainzTagDatabaseEnabled
+}
+
+func (a *App) musicBrainzTagStaleDays() int {
+	a.ensureSettingsLoaded()
+	return normalizeMusicBrainzTagStaleDays(a.settings.MusicBrainzTagStaleDays)
+}
+
+func (a *App) musicBrainzTagRequestStaggeringEnabled() bool {
+	a.ensureSettingsLoaded()
+	return a.settings.MusicBrainzTagRequestStaggeringEnabled && a.musicBrainzTagStaleDays() > 0
 }
 
 func (a *App) musicBrainzTagReleaseDepthByRootPath() map[string]int {
@@ -961,7 +991,7 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 				a.upsertMusicBrainzTagTrackRecordLocked(representative.path, existingAtPath)
 				tracksChanged = true
 			}
-			state.completedTrackPaths += 1
+			state.completedTrackPaths++
 			continue
 		}
 
@@ -973,7 +1003,7 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 			migratedRecord.ArtistFolderPaths = representative.artistFolderPaths
 			a.upsertMusicBrainzTagTrackRecordLocked(representative.path, migratedRecord)
 			tracksChanged = true
-			state.completedTrackPaths += 1
+			state.completedTrackPaths++
 			continue
 		}
 
@@ -994,16 +1024,98 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 	}
 	state.totalTrackPaths = len(representatives)
 
-	for _, record := range a.musicBrainzTagStore.Tracks {
+	staggeringEnabled := a.musicBrainzTagRequestStaggeringEnabled()
+	staleDays := a.musicBrainzTagStaleDays()
+	referencedEntityKeys := make(map[string]struct{})
+	pendingEntityKeys := make(map[string]struct{})
+	pendingEntityOrder := make([]string, 0)
+	refreshCandidates := make([]musicBrainzTagEntityRefreshCandidate, 0)
+	queuePendingEntityKey := func(entityKey string) {
+		cleanEntityKey := strings.TrimSpace(entityKey)
+		if cleanEntityKey == "" {
+			return
+		}
+
+		if _, exists := pendingEntityKeys[cleanEntityKey]; exists {
+			return
+		}
+
+		pendingEntityKeys[cleanEntityKey] = struct{}{}
+		pendingEntityOrder = append(pendingEntityOrder, cleanEntityKey)
+	}
+
+	for _, path := range sortedMusicBrainzTagTrackPaths(a.musicBrainzTagStore) {
+		record := a.musicBrainzTagStore.Tracks[path]
 		for _, entityKey := range musicBrainzTagEntityKeysForTrackRecord(record) {
-			if a.musicBrainzTagEntityNeedsFetchLocked(entityKey, now) {
-				state.notePendingEntityKey(entityKey)
+			cleanEntityKey := strings.TrimSpace(entityKey)
+			if cleanEntityKey == "" {
 				continue
 			}
 
-			state.noteCompletedEntityKey(entityKey)
+			if _, exists := referencedEntityKeys[cleanEntityKey]; exists {
+				continue
+			}
+
+			referencedEntityKeys[cleanEntityKey] = struct{}{}
+			storedRecord, exists := a.musicBrainzTagStore.Entities[cleanEntityKey]
+			if !exists {
+				queuePendingEntityKey(cleanEntityKey)
+				continue
+			}
+
+			if storedRecord.LastFetchedAt.IsZero() {
+				if storedRecord.LastAttemptAt.IsZero() || now.Sub(storedRecord.LastAttemptAt) >= musicBrainzTagEntityRetryInterval {
+					queuePendingEntityKey(cleanEntityKey)
+				}
+				continue
+			}
+
+			if storedRecord.LastError != "" && now.Sub(storedRecord.LastAttemptAt) >= musicBrainzTagEntityRetryInterval {
+				queuePendingEntityKey(cleanEntityKey)
+				continue
+			}
+
+			if staggeringEnabled {
+				refreshCandidates = append(refreshCandidates, musicBrainzTagEntityRefreshCandidate{
+					entityKey:     cleanEntityKey,
+					lastFetchedAt: storedRecord.LastFetchedAt,
+				})
+				continue
+			}
+
+			refreshInterval := musicBrainzTagEntityRefreshInterval(staleDays)
+			if refreshInterval > 0 && now.Sub(storedRecord.LastFetchedAt) >= refreshInterval {
+				queuePendingEntityKey(cleanEntityKey)
+			}
 		}
 	}
+
+	if staggeringEnabled && len(refreshCandidates) > 0 {
+		sort.Slice(refreshCandidates, func(leftIndex int, rightIndex int) bool {
+			leftCandidate := refreshCandidates[leftIndex]
+			rightCandidate := refreshCandidates[rightIndex]
+			if leftCandidate.lastFetchedAt.Equal(rightCandidate.lastFetchedAt) {
+				return leftCandidate.entityKey < rightCandidate.entityKey
+			}
+
+			return leftCandidate.lastFetchedAt.Before(rightCandidate.lastFetchedAt)
+		})
+
+		refreshCount := musicBrainzTagStaggeredRefreshCount(len(referencedEntityKeys), staleDays)
+		if refreshCount > len(refreshCandidates) {
+			refreshCount = len(refreshCandidates)
+		}
+
+		for _, candidate := range refreshCandidates[:refreshCount] {
+			queuePendingEntityKey(candidate.entityKey)
+		}
+	}
+
+	state.referencedEntityKeys = referencedEntityKeys
+	state.pendingEntityKeys = pendingEntityKeys
+	state.pendingEntityOrder = pendingEntityOrder
+	state.totalEntityLookups = len(referencedEntityKeys)
+	state.completedEntityLookups = state.totalEntityLookups - len(pendingEntityKeys)
 
 	for entityKey := range a.musicBrainzTagStore.Entities {
 		if _, exists := state.referencedEntityKeys[entityKey]; exists {
@@ -1029,6 +1141,7 @@ func (a *App) setMusicBrainzTagWorkerProgress(progress MusicBrainzTagWorkerProgr
 	}
 }
 
+// GetMusicBrainzTagWorkerProgress returns the current MusicBrainz tag worker snapshot.
 func (a *App) GetMusicBrainzTagWorkerProgress() MusicBrainzTagWorkerProgress {
 	a.musicBrainzTagProgressMu.Lock()
 	progress := a.musicBrainzTagProgress
@@ -1054,10 +1167,6 @@ func (a *App) musicBrainzTagEntityNeedsFetchLocked(entityKey string, now time.Ti
 		return true
 	}
 
-	if !record.LastFetchedAt.IsZero() && now.Sub(record.LastFetchedAt) >= musicBrainzTagEntityRefreshInterval(record) {
-		return true
-	}
-
 	if record.LastFetchedAt.IsZero() {
 		return record.LastAttemptAt.IsZero() || now.Sub(record.LastAttemptAt) >= musicBrainzTagEntityRetryInterval
 	}
@@ -1066,7 +1175,16 @@ func (a *App) musicBrainzTagEntityNeedsFetchLocked(entityKey string, now time.Ti
 		return true
 	}
 
-	return false
+	if a.musicBrainzTagRequestStaggeringEnabled() {
+		return false
+	}
+
+	refreshInterval := musicBrainzTagEntityRefreshInterval(a.musicBrainzTagStaleDays())
+	if refreshInterval <= 0 {
+		return false
+	}
+
+	return now.Sub(record.LastFetchedAt) >= refreshInterval
 }
 
 func (a *App) musicBrainzTagWorkerCount(jobCount int) int {
@@ -1276,10 +1394,6 @@ func (a *App) processMusicBrainzTagEntityFetch(entityKey string) bool {
 
 	a.musicBrainzTagMu.Lock()
 	a.ensureMusicBrainzTagDatabaseLoadedLocked()
-	if !a.musicBrainzTagEntityNeedsFetchLocked(entityKey, time.Now()) {
-		a.musicBrainzTagMu.Unlock()
-		return false
-	}
 	a.musicBrainzTagMu.Unlock()
 
 	record, fetched := fetchMusicBrainzTagEntityRecord(cleanEntityType, cleanMBID, a.musicBrainzAPIBaseURL(), a.musicBrainzRequestRateMs())
@@ -1401,7 +1515,7 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 				completionCh := make(chan struct{}, workerCount)
 
 				launchFetch := func(entityKey string) {
-					activeWorkers += 1
+					activeWorkers++
 					go func(activeEntityKey string) {
 						a.processMusicBrainzTagEntityFetch(activeEntityKey)
 						completionCh <- struct{}{}
@@ -1419,9 +1533,9 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 
 				for activeWorkers > 0 {
 					<-completionCh
-					activeWorkers -= 1
-					completedEntityFetches += 1
-					state.completedEntityLookups += 1
+					activeWorkers--
+					completedEntityFetches++
+					state.completedEntityLookups++
 
 					if completedEntityFetches%workerCount == 0 {
 						a.setMusicBrainzTagWorkerProgress(state.progressSnapshot(true))
