@@ -49,7 +49,17 @@ const createSearchPage = (query: string, entries: LibraryBrowserEntry[]): Librar
     entries,
 });
 
-const mountLibraryController = () => {
+const createSearchPageSlice = (query: string, entries: LibraryBrowserEntry[], offset: number, totalEntries: number): LibrarySearchPage => ({
+    query,
+    offset,
+    limit: 100,
+    totalEntries,
+    entries,
+});
+
+const mountLibraryController = (overrides?: {
+    searchLibrary?: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
+}) => {
     document.body.innerHTML = `
         <div id="app">
             <button id="sidebar-toggle" type="button"></button>
@@ -128,7 +138,7 @@ const mountLibraryController = () => {
 
         return createFolderPage(folderPath, []);
     });
-    const searchLibrary = vi.fn(async (query: string) => {
+    const searchLibrary = overrides?.searchLibrary || vi.fn(async (query: string) => {
         const normalizedQuery = query.trim().toLowerCase();
         if (normalizedQuery === 'intro') {
             return createSearchPage(query, [searchTrackEntry]);
@@ -320,5 +330,53 @@ describe('createLibraryController', () => {
             expect.stringContaining('Artist One'),
             [0],
         );
+    });
+
+    it('preserves tree scroll position while search pages stream in', async () => {
+        let resolveSecondPage: ((page: LibrarySearchPage) => void) | null = null;
+        const createPagedEntry = (index: number): LibraryBrowserEntry => ({
+            kind: 'track',
+            name: `Track ${index}.flac`,
+            path: `/music/search/track-${index}.flac`,
+            folderPath: `Library/Artist ${Math.floor(index / 10)}/Album ${Math.floor(index / 10)}`,
+            relativePath: `Library/Artist ${Math.floor(index / 10)}/Album ${Math.floor(index / 10)}/Track ${index}.flac`,
+        });
+        const firstPageEntries = Array.from({ length: 100 }, (_, index) => createPagedEntry(index));
+        const secondPageEntries = Array.from({ length: 50 }, (_, index) => createPagedEntry(index + 100));
+        const searchLibrary = vi.fn(async (query: string, offset: number) => {
+            if (offset === 0) {
+                return createSearchPageSlice(query, firstPageEntries, 0, 150);
+            }
+
+            if (offset === 100) {
+                return await new Promise<LibrarySearchPage>((resolve) => {
+                    resolveSecondPage = resolve;
+                });
+            }
+
+            return createSearchPageSlice(query, [], offset, 150);
+        });
+        const { controller, librarySearch: librarySearchInput, libraryBrowser } = mountLibraryController({ searchLibrary });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        librarySearchInput.value = 'paged';
+        librarySearchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(180);
+        await flushPromises();
+
+        const firstPane = libraryBrowser.querySelector('.library-search-pane') as HTMLUListElement | null;
+        expect(firstPane).not.toBeNull();
+        firstPane!.scrollTop = 240;
+
+        resolveSecondPage?.(createSearchPageSlice('paged', secondPageEntries, 100, 150));
+        await flushPromises();
+
+        const updatedPane = libraryBrowser.querySelector('.library-search-pane') as HTMLUListElement | null;
+        expect(updatedPane).not.toBeNull();
+        expect(updatedPane).toBe(firstPane);
+        expect(updatedPane!.scrollTop).toBe(240);
     });
 });

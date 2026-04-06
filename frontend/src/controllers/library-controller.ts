@@ -972,48 +972,81 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         });
     };
 
-    const createSearchPane = (): HTMLUListElement => {
-        const pane = document.createElement('ul');
-        pane.className = 'library-list-pane library-search-pane';
+    const createSearchMessageRow = (message: string, className = 'empty'): HTMLLIElement => {
+        const row = document.createElement('li');
+        row.className = className;
+        row.textContent = message;
+        return row;
+    };
 
+    const renderSearchPaneContents = (pane: HTMLUListElement): void => {
+        const previousScrollTop = pane.scrollTop;
+        const previousScrollLeft = pane.scrollLeft;
+
+        pane.dataset.searchQuery = normalizedLibrarySearchQuery();
         activeSearchTreeRoot = null;
 
         if (!activeSearchResult) {
-            pane.innerHTML = `<li class="empty${librarySearchPending ? ' is-searching' : ''}">${librarySearchPending ? 'Searching...' : 'No files match your search'}</li>`;
-            return pane;
+            pane.replaceChildren(createSearchMessageRow(
+                librarySearchPending ? 'Searching...' : 'No files match your search',
+                `empty${librarySearchPending ? ' is-searching' : ''}`,
+            ));
+            pane.scrollTop = previousScrollTop;
+            pane.scrollLeft = previousScrollLeft;
+            return;
         }
 
         if (activeSearchResult.errorMessage && activeSearchResult.entries.length === 0) {
-            pane.innerHTML = `<li class="empty">${activeSearchResult.errorMessage}</li>`;
-            return pane;
+            pane.replaceChildren(createSearchMessageRow(activeSearchResult.errorMessage));
+            pane.scrollTop = previousScrollTop;
+            pane.scrollLeft = previousScrollLeft;
+            return;
         }
 
         if (activeSearchResult.entries.length === 0 && !activeSearchResult.loading) {
-            pane.innerHTML = '<li class="empty">No files match your search</li>';
-            return pane;
+            pane.replaceChildren(createSearchMessageRow('No files match your search'));
+            pane.scrollTop = previousScrollTop;
+            pane.scrollLeft = previousScrollLeft;
+            return;
         }
 
+        const fragment = document.createDocumentFragment();
         const rootList = document.createElement('ul');
         rootList.className = 'library-tree-list library-tree-root';
         activeSearchTreeRoot = buildSearchTree(activeSearchResult.entries);
         appendSearchTreeRows(rootList, activeSearchTreeRoot);
 
         if (rootList.childElementCount === 0) {
-            pane.innerHTML = `<li class="empty${activeSearchResult.loading ? ' is-searching' : ''}">${activeSearchResult.loading ? 'Searching...' : 'No files match your search'}</li>`;
-            return pane;
+            fragment.append(createSearchMessageRow(
+                activeSearchResult.loading ? 'Searching...' : 'No files match your search',
+                `empty${activeSearchResult.loading ? ' is-searching' : ''}`,
+            ));
+            pane.replaceChildren(fragment);
+            pane.scrollTop = previousScrollTop;
+            pane.scrollLeft = previousScrollLeft;
+            return;
         }
 
         if (activeSearchResult.loading || activeSearchResult.errorMessage) {
-            const statusRow = document.createElement('li');
-            statusRow.className = activeSearchResult.loading ? 'empty is-searching' : 'empty';
-            statusRow.textContent = activeSearchResult.loading
-                ? 'Searching...'
-                : activeSearchResult.errorMessage as string;
-            pane.append(statusRow);
+            fragment.append(createSearchMessageRow(
+                activeSearchResult.loading
+                    ? 'Searching...'
+                    : activeSearchResult.errorMessage as string,
+                activeSearchResult.loading ? 'empty is-searching' : 'empty',
+            ));
         }
 
-        pane.append(rootList);
+        fragment.append(rootList);
+        pane.replaceChildren(fragment);
+        pane.scrollTop = previousScrollTop;
+        pane.scrollLeft = previousScrollLeft;
+        syncHoveredBrowserButton();
+    };
 
+    const createSearchPane = (): HTMLUListElement => {
+        const pane = document.createElement('ul');
+        pane.className = 'library-list-pane library-search-pane';
+        renderSearchPaneContents(pane);
         return pane;
     };
 
@@ -1490,6 +1523,18 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         if (source.kind === 'search') {
+            const existingPane = currentPane();
+            if (
+                direction === 'none'
+                && existingPane
+                && existingPane.classList.contains('library-search-pane')
+                && existingPane.dataset.searchQuery === source.query
+            ) {
+                renderSearchPaneContents(existingPane);
+                setViewportLoadingIndicatorVisible(false);
+                return;
+            }
+
             const nextPane = createSearchPane();
             mountPane(nextPane, 'none');
             setViewportLoadingIndicatorVisible(false);
