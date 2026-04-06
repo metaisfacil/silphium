@@ -46,4 +46,30 @@ describe('createPlaybackStateService', () => {
         expect(service.isBackendReady()).toBe(true);
         expect(service.getPlaybackState()).toEqual(nextState);
     });
+
+    it('ignores end events after source path already advanced', () => {
+        const service = createPlaybackStateService();
+
+        const firstTrackState = {
+            ...createInitialPlaybackState(),
+            loaded: true,
+            playing: true,
+            sourcePath: '/music/track-1.flac',
+            endEventId: 0,
+        };
+        expect(service.applyPlaybackState(firstTrackState, true)).toEqual({ trackEnded: false });
+
+        const gaplessAdvancedState = {
+            ...firstTrackState,
+            sourcePath: '/music/track-2.flac',
+            endEventId: 1,
+        };
+        expect(service.applyPlaybackState(gaplessAdvancedState, true)).toEqual({ trackEnded: false });
+
+        const actualEndState = {
+            ...gaplessAdvancedState,
+            endEventId: 2,
+        };
+        expect(service.applyPlaybackState(actualEndState, true)).toEqual({ trackEnded: true });
+    });
 });

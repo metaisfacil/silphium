@@ -17,11 +17,19 @@ export const createPlaybackStateService = (initialState: AudioPlaybackState = cr
     let backendReady = false;
     let lastHandledEndEventId = 0;
 
+    const normalizePathKey = (path: string): string => path.trim().toLowerCase();
+
     return {
         applyPlaybackState: (nextState: AudioPlaybackState, hasTracks: boolean): { trackEnded: boolean } => {
+            const previousSourcePathKey = normalizePathKey(playbackState.sourcePath || '');
+            const nextSourcePathKey = normalizePathKey(nextState.sourcePath || '');
+            const sourcePathChanged = previousSourcePathKey !== ''
+                && nextSourcePathKey !== ''
+                && previousSourcePathKey !== nextSourcePathKey;
+
             playbackState = nextState;
 
-            if (!hasTracks || nextState.endEventId <= lastHandledEndEventId) {
+            if (!hasTracks || nextState.endEventId <= lastHandledEndEventId || sourcePathChanged) {
                 return { trackEnded: false };
             }
 
