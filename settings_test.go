@@ -317,3 +317,70 @@ func TestNormalizeAppSettingsRateMs(t *testing.T) {
 		}
 	})
 }
+
+func TestNormalizeScrobbleFilterMode(t *testing.T) {
+	testCases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "whitelist is preserved",
+			input: "whitelist",
+			want:  "whitelist",
+		},
+		{
+			name:  "blacklist is preserved",
+			input: "blacklist",
+			want:  "blacklist",
+		},
+		{
+			name:  "invalid falls back to blacklist",
+			input: "allowlist",
+			want:  "blacklist",
+		},
+		{
+			name:  "empty falls back to blacklist",
+			input: "",
+			want:  "blacklist",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := normalizeScrobbleFilterMode(testCase.input); got != testCase.want {
+				t.Fatalf("normalizeScrobbleFilterMode(%q) = %q, want %q", testCase.input, got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeAppSettingsScrobbleRules(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{
+		ScrobbleFilterMode: "whitelist",
+		ScrobbleFolders: []string{
+			"  C:/Music/Main  ",
+			"c:/music/main",
+			"",
+			"/music/archive",
+			"/music/archive/",
+		},
+	})
+
+	if settings.ScrobbleFilterMode != "whitelist" {
+		t.Fatalf("ScrobbleFilterMode = %q, want %q", settings.ScrobbleFilterMode, "whitelist")
+	}
+
+	if len(settings.ScrobbleFolders) != 2 {
+		t.Fatalf("ScrobbleFolders length = %d, want 2", len(settings.ScrobbleFolders))
+	}
+
+	if settings.ScrobbleFolders[0] == settings.ScrobbleFolders[1] {
+		t.Fatalf("ScrobbleFolders were not deduplicated: %#v", settings.ScrobbleFolders)
+	}
+
+	fallback := normalizeAppSettings(AppSettings{ScrobbleFilterMode: ""})
+	if fallback.ScrobbleFilterMode != "blacklist" {
+		t.Fatalf("default ScrobbleFilterMode = %q, want %q", fallback.ScrobbleFilterMode, "blacklist")
+	}
+}

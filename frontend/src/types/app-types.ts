@@ -215,6 +215,7 @@ export type AudioPlaybackState = {
 };
 
 export type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
+export type ScrobbleFilterMode = 'blacklist' | 'whitelist';
 
 export type CoverArtPrioritySource = 'file' | 'embedded' | 'musicbrainz';
 
@@ -261,6 +262,8 @@ export type AppSettings = {
     libraryPath: string;
     ffmpegPath: string;
     listenBrainzUserToken: string;
+    scrobbleFilterMode: ScrobbleFilterMode;
+    scrobbleFolders: string[];
     musicBrainzServerUrl: string;
     musicBrainzRequestRateMs: number;
     listenBrainzServerUrl: string;

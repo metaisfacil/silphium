@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import type { Track } from '../types/app-types';
 import {
+    asScrobbleFilterMode,
     buildDisplayMetadata,
     buildLibraryRootNameByPath,
     findLibraryFolderForFilePath,
     formatTechnicalMetadata,
+    isTrackPathScrobbleAllowed,
     libraryFolderPathKey,
     normalizeLibraryFolders,
+    normalizeScrobbleFolders,
 } from './main-helpers';
 
 const createTrack = (overrides: Partial<Track> = {}): Track => ({
@@ -83,5 +86,54 @@ describe('main helpers', () => {
             album: 'Album Name (Deluxe Edition)',
             artist: 'Unknown Artist',
         });
+    });
+
+    it('normalizes scrobble filter mode and folder rules', () => {
+        expect(asScrobbleFilterMode('whitelist')).toBe('whitelist');
+        expect(asScrobbleFilterMode('')).toBe('blacklist');
+
+        expect(normalizeScrobbleFolders([
+            ' C:\\Music\\Main ',
+            'c:/music/main',
+            '',
+            '   ',
+            '/music/archive',
+            '/music/archive/',
+        ])).toEqual([
+            'C:\\Music\\Main',
+            '/music/archive',
+        ]);
+    });
+
+    it('applies scrobble blacklist and whitelist path matching', () => {
+        expect(isTrackPathScrobbleAllowed(
+            'C:/Music/Main/Artist/Album/track.flac',
+            'blacklist',
+            ['C:/Music/Main'],
+        )).toBe(false);
+
+        expect(isTrackPathScrobbleAllowed(
+            'C:/Music/Other/Artist/Album/track.flac',
+            'blacklist',
+            ['C:/Music/Main'],
+        )).toBe(true);
+
+        expect(isTrackPathScrobbleAllowed(
+            'C:/Music/Main/Artist/Album/track.flac',
+            'whitelist',
+            ['C:/Music/Main'],
+        )).toBe(true);
+
+        expect(isTrackPathScrobbleAllowed(
+            'C:/Music/Other/Artist/Album/track.flac',
+            'whitelist',
+            ['C:/Music/Main'],
+        )).toBe(false);
+
+        expect(isTrackPathScrobbleAllowed(
+            'C:/Music/Main/track.flac',
+            'whitelist',
+            [],
+        )).toBe(false);
     });
 });

@@ -908,6 +908,18 @@
     overflow: auto;
 }
 
+.settings-folder-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.55rem;
+    background: rgba(0, 0, 0, 0.22);
+    min-height: 9.4rem;
+    max-height: 13rem;
+    overflow: auto;
+}
+
 .settings-favorite-empty {
     font-size: 0.78rem;
     opacity: 0.62;
@@ -915,6 +927,12 @@
 }
 
 .settings-library-folder-empty {
+    font-size: 0.78rem;
+    opacity: 0.62;
+    padding: 0.25rem 0.3rem;
+}
+
+.settings-folder-empty {
     font-size: 0.78rem;
     opacity: 0.62;
     padding: 0.25rem 0.3rem;
@@ -930,11 +948,20 @@
     padding: 0;
 }
 
+.settings-folder-item {
+    margin: 0;
+    padding: 0;
+}
+
 .settings-favorite-item + .settings-favorite-item {
     margin-top: 0.25rem;
 }
 
 .settings-library-folder-item + .settings-library-folder-item {
+    margin-top: 0.25rem;
+}
+
+.settings-folder-item + .settings-folder-item {
     margin-top: 0.25rem;
 }
 
@@ -971,11 +998,31 @@
     cursor: pointer;
 }
 
+.settings-folder-item-btn {
+    width: 100%;
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 0.42rem;
+    background: rgba(255, 255, 255, 0.04);
+    color: inherit;
+    font: inherit;
+    font-size: 0.76rem;
+    padding: 0.28rem 0.42rem;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .settings-favorite-item-btn:hover {
     background: rgba(255, 255, 255, 0.12);
 }
 
 .settings-library-folder-item-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-folder-item-btn:hover {
     background: rgba(255, 255, 255, 0.12);
 }
 
@@ -985,6 +1032,11 @@
 }
 
 .settings-library-folder-item-btn.is-selected {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.34);
+}
+
+.settings-folder-item-btn.is-selected {
     background: rgba(255, 255, 255, 0.2);
     border-color: rgba(255, 255, 255, 0.34);
 }

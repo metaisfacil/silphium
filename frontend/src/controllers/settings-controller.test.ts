@@ -38,6 +38,8 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
     ffmpegPath: '',
     listenBrainzUserToken: '',
+    scrobbleFilterMode: 'blacklist',
+    scrobbleFolders: ['/music/private'],
     musicBrainzServerUrl: 'https://musicbrainz.org',
     musicBrainzRequestRateMs: 0,
     listenBrainzServerUrl: '',
@@ -131,6 +133,8 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-listenbrainz-server-url"]')?.textContent).toBe('ListenBrainz server URL');
         expect(document.querySelector('label[for="settings-musicbrainz-tag-worker-cores"]')?.textContent).toBe('MusicBrainz tag worker cores');
         expect(document.querySelector('label[for="settings-favourite-playlist-list"]')?.textContent).toBe('Favourite playlists');
+        expect(document.querySelector('label[for="settings-scrobble-filter-mode"]')?.textContent).toBe('Scrobble mode');
+        expect(document.querySelector('label[for="settings-scrobble-folder-list"]')?.textContent).toBe('Scrobble folders');
         expect(document.querySelector('label[for="settings-audio-output-device"]')?.textContent).toBe('Audio output device');
         expect(document.querySelector('label[for="settings-audio-output-buffer-ms"]')?.textContent).toBe('Audio output buffer (ms)');
         expect(document.querySelector('label[for="settings-player-card-layout"]')?.textContent).toBe('Player card layout');
@@ -178,6 +182,8 @@ describe('createSettingsController', () => {
         expect(save).toHaveBeenCalledWith(expect.objectContaining({
             libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
             ffmpegPath: 'D:/tools/ffmpeg.exe',
+            scrobbleFilterMode: 'blacklist',
+            scrobbleFolders: ['/music/private'],
             favoritePlaylists: ['/playlists/favorites.m3u8'],
             coverArtPriority: ['embedded', 'file'],
             audioOutputDevice: 'device-1',

@@ -135,12 +135,15 @@ import type {
 } from './types/app-types';
 import {
     asPlaybackOrderMode,
+    asScrobbleFilterMode,
     asReleaseDepth,
     buildLibraryRootNameByPath,
     findLibraryFolderForFilePath,
     formatTime,
+    isTrackPathScrobbleAllowed,
     libraryFolderPathKey,
     normalizeLibraryFolders,
+    normalizeScrobbleFolders,
     renderTechnicalInfoContent,
     taggedTrackPosition,
 } from './utils/main-helpers';
@@ -242,6 +245,8 @@ let currentSettings: AppSettings = {
     libraryPath: '',
     ffmpegPath: '',
     listenBrainzUserToken: '',
+    scrobbleFilterMode: 'blacklist',
+    scrobbleFolders: [],
     musicBrainzServerUrl: '',
     musicBrainzRequestRateMs: 1000,
     listenBrainzServerUrl: '',
@@ -355,6 +360,8 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         libraryPath: libraryFolders[0]?.path || '',
         ffmpegPath: (settings.ffmpegPath || '').trim(),
         listenBrainzUserToken: settings.listenBrainzUserToken || '',
+        scrobbleFilterMode: asScrobbleFilterMode(settings.scrobbleFilterMode || ''),
+        scrobbleFolders: normalizeScrobbleFolders(settings.scrobbleFolders),
         musicBrainzServerUrl: (settings.musicBrainzServerUrl || '').trim(),
         musicBrainzRequestRateMs: Number.isFinite(settings.musicBrainzRequestRateMs) && (settings.musicBrainzRequestRateMs || 0) >= 0
             ? Math.floor(settings.musicBrainzRequestRateMs || 0)
@@ -1257,7 +1264,9 @@ const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState, sequenc
 };
 
 const maybeSubmitListenBrainz = (state: AudioPlaybackState): void => {
-    scrobbleService.maybeSubmit(state, currentTrackForPlaybackState(state), canScrobble());
+    const track = currentTrackForPlaybackState(state);
+    const allowTrack = !!track && isTrackPathScrobbleAllowed(track.path, currentSettings.scrobbleFilterMode, currentSettings.scrobbleFolders);
+    scrobbleService.maybeSubmit(state, track, canScrobble() && allowTrack);
 };
 
 const updatePlayButton = (): void => {
@@ -3747,6 +3756,8 @@ settingsController = createSettingsController({
         libraryFolders: currentSettings.libraryFolders,
         ffmpegPath: currentSettings.ffmpegPath,
         listenBrainzUserToken: currentSettings.listenBrainzUserToken,
+        scrobbleFilterMode: currentSettings.scrobbleFilterMode,
+        scrobbleFolders: currentSettings.scrobbleFolders,
         musicBrainzServerUrl: currentSettings.musicBrainzServerUrl,
         musicBrainzRequestRateMs: currentSettings.musicBrainzRequestRateMs,
         listenBrainzServerUrl: currentSettings.listenBrainzServerUrl,
@@ -3772,6 +3783,8 @@ settingsController = createSettingsController({
         libraryFolders: requestedLibraryFolders,
         ffmpegPath,
         listenBrainzUserToken,
+        scrobbleFilterMode,
+        scrobbleFolders,
         musicBrainzServerUrl,
         musicBrainzRequestRateMs,
         listenBrainzServerUrl,
@@ -3801,6 +3814,8 @@ settingsController = createSettingsController({
             libraryPath: primaryLibraryFolder?.path || '',
             ffmpegPath,
             listenBrainzUserToken,
+            scrobbleFilterMode,
+            scrobbleFolders,
             musicBrainzServerUrl,
             musicBrainzRequestRateMs,
             listenBrainzServerUrl,
@@ -3857,6 +3872,8 @@ settingsController = createSettingsController({
         libraryFolders: requestedLibraryFolders,
         ffmpegPath,
         listenBrainzUserToken,
+        scrobbleFilterMode,
+        scrobbleFolders,
         musicBrainzServerUrl,
         musicBrainzRequestRateMs,
         listenBrainzServerUrl,
@@ -3886,6 +3903,8 @@ settingsController = createSettingsController({
             libraryPath: primaryLibraryFolder?.path || '',
             ffmpegPath,
             listenBrainzUserToken,
+            scrobbleFilterMode,
+            scrobbleFolders,
             musicBrainzServerUrl,
             musicBrainzRequestRateMs,
             listenBrainzServerUrl,

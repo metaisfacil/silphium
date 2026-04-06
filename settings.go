@@ -43,6 +43,8 @@ type AppSettings struct {
 	LibraryPath                            string                   `json:"libraryPath,omitempty"`
 	FFmpegPath                             string                   `json:"ffmpegPath,omitempty"`
 	ListenBrainzUserToken                  string                   `json:"listenBrainzUserToken"`
+	ScrobbleFilterMode                     string                   `json:"scrobbleFilterMode,omitempty"`
+	ScrobbleFolders                        []string                 `json:"scrobbleFolders,omitempty"`
 	MusicBrainzServerURL                   string                   `json:"musicBrainzServerUrl,omitempty"`
 	MusicBrainzRequestRateMs               int                      `json:"musicBrainzRequestRateMs,omitempty"`
 	ListenBrainzServerURL                  string                   `json:"listenBrainzServerUrl,omitempty"`
@@ -61,6 +63,7 @@ type AppSettings struct {
 }
 
 const defaultPlaybackOrder = "ordered-library"
+const defaultScrobbleFilterMode = "blacklist"
 const maxReleaseDepth = 64
 const defaultMusicBrainzTagStaleDays = 30
 const maxMusicBrainzTagStaleDays = 36500
@@ -124,6 +127,42 @@ func normalizePlaybackOrder(value string) string {
 	default:
 		return defaultPlaybackOrder
 	}
+}
+
+func normalizeScrobbleFilterMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "whitelist":
+		return "whitelist"
+	case "blacklist":
+		return "blacklist"
+	default:
+		return defaultScrobbleFilterMode
+	}
+}
+
+func normalizeScrobbleFolders(folders []string) []string {
+	normalizedFolders := make([]string, 0, len(folders))
+	seenFolders := make(map[string]struct{}, len(folders))
+	for _, candidate := range folders {
+		normalized := normalizePath(candidate)
+		if normalized == "" {
+			continue
+		}
+
+		if absolutePath, err := filepath.Abs(normalized); err == nil {
+			normalized = filepath.Clean(absolutePath)
+		}
+
+		lookupKey := strings.ToLower(normalized)
+		if _, exists := seenFolders[lookupKey]; exists {
+			continue
+		}
+
+		seenFolders[lookupKey] = struct{}{}
+		normalizedFolders = append(normalizedFolders, normalized)
+	}
+
+	return normalizedFolders
 }
 
 func maxMusicBrainzTagWorkerCores() int {
@@ -404,12 +443,16 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	}
 	musicBrainzServerURL := normalizeBrainzServerURL(settings.MusicBrainzServerURL)
 	listenBrainzServerURL := normalizeBrainzServerURL(settings.ListenBrainzServerURL)
+	scrobbleFilterMode := normalizeScrobbleFilterMode(settings.ScrobbleFilterMode)
+	scrobbleFolders := normalizeScrobbleFolders(settings.ScrobbleFolders)
 
 	return AppSettings{
 		LibraryFolders:                         libraryFolders,
 		LibraryPath:                            legacyLibraryPath,
 		FFmpegPath:                             normalizeFFmpegPath(settings.FFmpegPath),
 		ListenBrainzUserToken:                  token,
+		ScrobbleFilterMode:                     scrobbleFilterMode,
+		ScrobbleFolders:                        scrobbleFolders,
 		MusicBrainzServerURL:                   musicBrainzServerURL,
 		MusicBrainzRequestRateMs:               normalizeMusicBrainzRequestRateMs(settings.MusicBrainzRequestRateMs, musicBrainzServerURL),
 		ListenBrainzServerURL:                  listenBrainzServerURL,

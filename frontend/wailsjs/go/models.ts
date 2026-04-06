@@ -61,6 +61,8 @@ export namespace main {
 	    libraryPath?: string;
 	    ffmpegPath?: string;
 	    listenBrainzUserToken: string;
+	    scrobbleFilterMode?: string;
+	    scrobbleFolders?: string[];
 	    musicBrainzServerUrl?: string;
 	    musicBrainzRequestRateMs?: number;
 	    listenBrainzServerUrl?: string;
@@ -87,6 +89,8 @@ export namespace main {
 	        this.libraryPath = source["libraryPath"];
 	        this.ffmpegPath = source["ffmpegPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
+	        this.scrobbleFilterMode = source["scrobbleFilterMode"];
+	        this.scrobbleFolders = source["scrobbleFolders"];
 	        this.musicBrainzServerUrl = source["musicBrainzServerUrl"];
 	        this.musicBrainzRequestRateMs = source["musicBrainzRequestRateMs"];
 	        this.listenBrainzServerUrl = source["listenBrainzServerUrl"];

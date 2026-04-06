@@ -1,6 +1,6 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout } from '../types/app-types';
+import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout, ScrobbleFilterMode } from '../types/app-types';
 import { asReleaseDepth, libraryFolderPathKey, normalizeLibraryFolderLabel, normalizeLibraryFolders } from '../utils/main-helpers';
 import { formatShortcutBindingFromKeyboardEvent, normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 
@@ -13,6 +13,8 @@ export type SettingsFormValues = {
     libraryFolders: AppLibraryFolder[];
     ffmpegPath: string;
     listenBrainzUserToken: string;
+    scrobbleFilterMode: ScrobbleFilterMode;
+    scrobbleFolders: string[];
     musicBrainzServerUrl: string;
     musicBrainzRequestRateMs: number;
     listenBrainzServerUrl: string;
@@ -36,7 +38,7 @@ export type SettingsViewValues = SettingsFormValues & {
     musicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
 };
 
-type SettingsPrimaryTab = 'general' | 'network' | 'database' | 'playlists' | 'audio' | 'ui';
+type SettingsPrimaryTab = 'general' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui';
 type SettingsTab = SettingsPrimaryTab | 'shortcuts';
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
@@ -112,12 +114,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabNetwork,
         settingsTabDatabase,
         settingsTabPlaylists,
+        settingsTabScrobbling,
         settingsTabAudio,
         settingsTabUi,
         settingsPanelGeneral,
         settingsPanelNetwork,
         settingsPanelDatabase,
         settingsPanelPlaylists,
+        settingsPanelScrobbling,
         settingsPanelAudio,
         settingsPanelUi,
         settingsShortcutAccordionToggle,
@@ -128,6 +132,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsFavoritePlaylistList,
         settingsAddFavoritePlaylist,
         settingsRemoveFavoritePlaylist,
+        settingsScrobbleFilterMode,
+        settingsScrobbleFolderList,
+        settingsAddScrobbleFolder,
+        settingsRemoveScrobbleFolder,
         settingsForceReload,
         settingsSave,
         settingsLibraryDepthModal,
@@ -182,6 +190,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     let favoritePlaylists: string[] = [];
     let selectedFavoritePlaylistIndex = -1;
+    let scrobbleFolders: string[] = [];
+    let selectedScrobbleFolderIndex = -1;
     let libraryFolders: AppLibraryFolder[] = [];
     let selectedLibraryFolderIndex = -1;
     let lastLibraryFolderClickIndex = -1;
@@ -211,6 +221,19 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const libraryFolderRepeatClickWindowMs = 400;
 
     const normalizeFavoritePlaylists = (items: string[]): string[] => {
+        const deduped = new Set<string>();
+        const lines = items
+            .map((line) => line.trim())
+            .filter((line) => line !== '');
+
+        lines.forEach((line) => {
+            deduped.add(line);
+        });
+
+        return Array.from(deduped);
+    };
+
+    const normalizeScrobbleFolders = (items: string[]): string[] => {
         const deduped = new Set<string>();
         const lines = items
             .map((line) => line.trim())
@@ -469,6 +492,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
         ffmpegPath: settingsFFmpegPath.value,
         listenBrainzUserToken: settingsListenBrainzToken.value,
+        scrobbleFilterMode: settingsScrobbleFilterMode.value === 'whitelist' ? 'whitelist' : 'blacklist',
+        scrobbleFolders: scrobbleFolders.slice(),
         musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
         musicBrainzRequestRateMs: normalizedMusicBrainzRequestRateMs(),
         listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
@@ -519,6 +544,33 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         settingsRemoveFavoritePlaylist.disabled = selectedFavoritePlaylistIndex < 0;
+    };
+
+    const renderScrobbleFolderList = (): void => {
+        settingsScrobbleFolderList.innerHTML = '';
+
+        if (scrobbleFolders.length === 0) {
+            settingsScrobbleFolderList.innerHTML = '<li class="settings-folder-empty">No scrobble folders configured.</li>';
+            settingsRemoveScrobbleFolder.disabled = true;
+            return;
+        }
+
+        scrobbleFolders.forEach((folderPath, index) => {
+            const item = document.createElement('li');
+            item.className = 'settings-folder-item';
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `settings-folder-item-btn${index === selectedScrobbleFolderIndex ? ' is-selected' : ''}`;
+            button.dataset.scrobbleFolderIndex = String(index);
+            button.title = folderPath;
+            button.textContent = folderPath;
+
+            item.append(button);
+            settingsScrobbleFolderList.append(item);
+        });
+
+        settingsRemoveScrobbleFolder.disabled = selectedScrobbleFolderIndex < 0;
     };
 
     const renderLibraryFolderList = (): void => {
@@ -868,24 +920,28 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const networkActive = primaryTab === 'network';
         const databaseActive = primaryTab === 'database';
         const playlistsActive = primaryTab === 'playlists';
+        const scrobblingActive = primaryTab === 'scrobbling';
         const audioActive = primaryTab === 'audio';
         const uiActive = primaryTab === 'ui';
         settingsTabGeneral.classList.toggle('is-active', generalActive);
         settingsTabNetwork.classList.toggle('is-active', networkActive);
         settingsTabDatabase.classList.toggle('is-active', databaseActive);
         settingsTabPlaylists.classList.toggle('is-active', playlistsActive);
+        settingsTabScrobbling.classList.toggle('is-active', scrobblingActive);
         settingsTabAudio.classList.toggle('is-active', audioActive);
         settingsTabUi.classList.toggle('is-active', uiActive);
         settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
         settingsTabNetwork.setAttribute('aria-selected', networkActive ? 'true' : 'false');
         settingsTabDatabase.setAttribute('aria-selected', databaseActive ? 'true' : 'false');
         settingsTabPlaylists.setAttribute('aria-selected', playlistsActive ? 'true' : 'false');
+        settingsTabScrobbling.setAttribute('aria-selected', scrobblingActive ? 'true' : 'false');
         settingsTabAudio.setAttribute('aria-selected', audioActive ? 'true' : 'false');
         settingsTabUi.setAttribute('aria-selected', uiActive ? 'true' : 'false');
         settingsPanelGeneral.hidden = !generalActive;
         settingsPanelNetwork.hidden = !networkActive;
         settingsPanelDatabase.hidden = !databaseActive;
         settingsPanelPlaylists.hidden = !playlistsActive;
+        settingsPanelScrobbling.hidden = !scrobblingActive;
         settingsPanelAudio.hidden = !audioActive;
         settingsPanelUi.hidden = !uiActive;
     };
@@ -1095,6 +1151,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         libraryFolders = normalizeLibraryFolders(values.libraryFolders);
         settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
+        settingsScrobbleFilterMode.value = values.scrobbleFilterMode === 'whitelist' ? 'whitelist' : 'blacklist';
+        scrobbleFolders = normalizeScrobbleFolders(values.scrobbleFolders);
         settingsMusicBrainzServerUrl.value = values.musicBrainzServerUrl || '';
         settingsMusicBrainzRequestRateMs.value = values.musicBrainzRequestRateMs > 0 ? String(values.musicBrainzRequestRateMs) : '';
         settingsListenBrainzServerUrl.value = values.listenBrainzServerUrl || '';
@@ -1119,10 +1177,12 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         coverArtPriorityOrder = normalizeCoverArtPriorityOrder(values.coverArtPriority);
         selectedLibraryFolderIndex = libraryFolders.length > 0 ? 0 : -1;
         selectedFavoritePlaylistIndex = -1;
+        selectedScrobbleFolderIndex = -1;
         lastLibraryFolderClickIndex = -1;
         lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
         renderLibraryFolderList();
         renderFavoritePlaylistList();
+        renderScrobbleFolderList();
         renderCoverArtPriorityList();
         if (forceReloadInProgress) {
             refreshForceReloadStatus();
@@ -1163,6 +1223,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
         if (primaryTab === 'playlists') {
             settingsFavoritePlaylistList.focus();
+            return;
+        }
+        if (primaryTab === 'scrobbling') {
+            settingsScrobbleFilterMode.focus();
             return;
         }
         if (primaryTab === 'audio') {
@@ -1268,6 +1332,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsAudioOutputDevice.focus();
     });
 
+    settingsTabScrobbling.addEventListener('click', () => {
+        setActiveTab('scrobbling');
+        settingsScrobbleFilterMode.focus();
+    });
+
     settingsMusicBrainzTagDatabaseEnabled.addEventListener('change', () => {
         refreshMusicBrainzTagWorkerControls();
     });
@@ -1340,6 +1409,26 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         selectedFavoritePlaylistIndex = nextIndex;
         renderFavoritePlaylistList();
+    });
+
+    settingsScrobbleFolderList.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const button = target.closest('[data-scrobble-folder-index]');
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const nextIndex = Number(button.dataset.scrobbleFolderIndex);
+        if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= scrobbleFolders.length) {
+            return;
+        }
+
+        selectedScrobbleFolderIndex = nextIndex;
+        renderScrobbleFolderList();
     });
 
     settingsLibraryFolderList.addEventListener('click', (event) => {
@@ -1503,6 +1592,29 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
     });
 
+    settingsAddScrobbleFolder.addEventListener('click', async () => {
+        setSettingsStatusMessage('');
+
+        try {
+            const selectedFolder = await options.selectLibraryFolder();
+            if (!selectedFolder) {
+                return;
+            }
+
+            const normalizedSelectedFolder = selectedFolder.trim();
+            if (normalizedSelectedFolder === '') {
+                return;
+            }
+
+            scrobbleFolders = normalizeScrobbleFolders([...scrobbleFolders, normalizedSelectedFolder]);
+            selectedScrobbleFolderIndex = scrobbleFolders.findIndex((folderPath) => folderPath === normalizedSelectedFolder);
+            renderScrobbleFolderList();
+        } catch (error) {
+            console.error(error);
+            setSettingsStatusMessage('Unable to open folder picker.');
+        }
+    });
+
     settingsRemoveFavoritePlaylist.addEventListener('click', () => {
         if (selectedFavoritePlaylistIndex < 0 || selectedFavoritePlaylistIndex >= favoritePlaylists.length) {
             return;
@@ -1511,6 +1623,16 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         favoritePlaylists.splice(selectedFavoritePlaylistIndex, 1);
         selectedFavoritePlaylistIndex = -1;
         renderFavoritePlaylistList();
+    });
+
+    settingsRemoveScrobbleFolder.addEventListener('click', () => {
+        if (selectedScrobbleFolderIndex < 0 || selectedScrobbleFolderIndex >= scrobbleFolders.length) {
+            return;
+        }
+
+        scrobbleFolders.splice(selectedScrobbleFolderIndex, 1);
+        selectedScrobbleFolderIndex = -1;
+        renderScrobbleFolderList();
     });
 
     settingsSave.addEventListener('click', async () => {

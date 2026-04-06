@@ -6,12 +6,14 @@ export type SettingsModalElements = {
     settingsTabNetwork: HTMLButtonElement;
     settingsTabDatabase: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
+    settingsTabScrobbling: HTMLButtonElement;
     settingsTabAudio: HTMLButtonElement;
     settingsTabUi: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelNetwork: HTMLDivElement;
     settingsPanelDatabase: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
+    settingsPanelScrobbling: HTMLDivElement;
     settingsPanelAudio: HTMLDivElement;
     settingsPanelUi: HTMLDivElement;
     settingsShortcutAccordionToggle: HTMLButtonElement;
@@ -22,6 +24,10 @@ export type SettingsModalElements = {
     settingsFavoritePlaylistList: HTMLUListElement;
     settingsAddFavoritePlaylist: HTMLButtonElement;
     settingsRemoveFavoritePlaylist: HTMLButtonElement;
+    settingsScrobbleFilterMode: HTMLSelectElement;
+    settingsScrobbleFolderList: HTMLUListElement;
+    settingsAddScrobbleFolder: HTMLButtonElement;
+    settingsRemoveScrobbleFolder: HTMLButtonElement;
     settingsForceReload: HTMLButtonElement;
     settingsSave: HTMLButtonElement;
     settingsLibraryDepthModal: HTMLDivElement;
@@ -79,6 +85,7 @@ export const renderSettingsModal = (): string => `
                     <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
                     <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
                     <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
+                    <button id="settings-tab-scrobbling" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-scrobbling" aria-selected="false">Scrobbling</button>
                     <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Database</button>
                     <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
                 </div>
@@ -182,6 +189,25 @@ export const renderSettingsModal = (): string => `
                         <div class="settings-list-actions">
                             <button id="settings-add-favorite-playlist" class="settings-list-btn" type="button" title="Add favourite playlist" aria-label="Add favourite playlist">+</button>
                             <button id="settings-remove-favorite-playlist" class="settings-list-btn" type="button" title="Remove selected favourite playlist" aria-label="Remove selected favourite playlist" disabled>-</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="settings-panel-scrobbling" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-scrobbling" hidden>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-scrobble-filter-mode">Scrobble mode</label>
+                        <p class="settings-hint">Choose whether listed folders are blocked from scrobbling or explicitly allowed.</p>
+                        <select id="settings-scrobble-filter-mode" class="settings-input settings-select">
+                            <option value="blacklist">Blacklist: scrobble everything except listed folders</option>
+                            <option value="whitelist">Whitelist: scrobble only listed folders</option>
+                        </select>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-scrobble-folder-list">Scrobble folders</label>
+                        <p class="settings-hint">Add folders to include or exclude based on the selected mode. Subfolders are matched automatically.</p>
+                        <ul id="settings-scrobble-folder-list" class="settings-folder-list" role="listbox" aria-label="Scrobble folders"></ul>
+                        <div class="settings-list-actions">
+                            <button id="settings-add-scrobble-folder" class="settings-list-btn" type="button" title="Add scrobble folder" aria-label="Add scrobble folder">+</button>
+                            <button id="settings-remove-scrobble-folder" class="settings-list-btn" type="button" title="Remove selected scrobble folder" aria-label="Remove selected scrobble folder" disabled>-</button>
                         </div>
                     </div>
                 </div>
@@ -300,12 +326,14 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsTabNetwork: root.querySelector('#settings-tab-network') as HTMLButtonElement,
     settingsTabDatabase: root.querySelector('#settings-tab-database') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
+    settingsTabScrobbling: root.querySelector('#settings-tab-scrobbling') as HTMLButtonElement,
     settingsTabAudio: root.querySelector('#settings-tab-audio') as HTMLButtonElement,
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelNetwork: root.querySelector('#settings-panel-network') as HTMLDivElement,
     settingsPanelDatabase: root.querySelector('#settings-panel-database') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
+    settingsPanelScrobbling: root.querySelector('#settings-panel-scrobbling') as HTMLDivElement,
     settingsPanelAudio: root.querySelector('#settings-panel-audio') as HTMLDivElement,
     settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,
     settingsShortcutAccordionToggle: root.querySelector('#settings-shortcut-accordion-toggle') as HTMLButtonElement,
@@ -316,6 +344,10 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsFavoritePlaylistList: root.querySelector('#settings-favourite-playlist-list') as HTMLUListElement,
     settingsAddFavoritePlaylist: root.querySelector('#settings-add-favorite-playlist') as HTMLButtonElement,
     settingsRemoveFavoritePlaylist: root.querySelector('#settings-remove-favorite-playlist') as HTMLButtonElement,
+    settingsScrobbleFilterMode: root.querySelector('#settings-scrobble-filter-mode') as HTMLSelectElement,
+    settingsScrobbleFolderList: root.querySelector('#settings-scrobble-folder-list') as HTMLUListElement,
+    settingsAddScrobbleFolder: root.querySelector('#settings-add-scrobble-folder') as HTMLButtonElement,
+    settingsRemoveScrobbleFolder: root.querySelector('#settings-remove-scrobble-folder') as HTMLButtonElement,
     settingsForceReload: root.querySelector('#settings-force-reload') as HTMLButtonElement,
     settingsSave: root.querySelector('#settings-save') as HTMLButtonElement,
     settingsLibraryDepthModal: root.querySelector('#settings-library-depth-modal') as HTMLDivElement,

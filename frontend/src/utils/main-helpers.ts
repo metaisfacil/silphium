@@ -1,6 +1,7 @@
 import type {
     AppLibraryFolder,
     PlaybackOrderMode,
+    ScrobbleFilterMode,
     Track,
     TrackTags,
     TrackTechnicalDetails,
@@ -12,6 +13,10 @@ export const asPlaybackOrderMode = (value: string): PlaybackOrderMode => {
     }
 
     return 'ordered-library';
+};
+
+export const asScrobbleFilterMode = (value: string): ScrobbleFilterMode => {
+    return value === 'whitelist' ? 'whitelist' : 'blacklist';
 };
 
 export const asReleaseDepth = (value: unknown): number => {
@@ -27,6 +32,48 @@ export const asReleaseDepth = (value: unknown): number => {
 };
 
 export const libraryFolderPathKey = (path: string): string => path.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+export const normalizeScrobbleFolders = (folders: string[] | undefined): string[] => {
+    if (!Array.isArray(folders)) {
+        return [];
+    }
+
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+    for (const folder of folders) {
+        const cleaned = String(folder || '').trim();
+        if (cleaned === '') {
+            continue;
+        }
+
+        const key = libraryFolderPathKey(cleaned);
+        if (!key || seen.has(key)) {
+            continue;
+        }
+
+        seen.add(key);
+        normalized.push(cleaned);
+    }
+
+    return normalized;
+};
+
+export const isTrackPathScrobbleAllowed = (
+    trackPath: string,
+    mode: ScrobbleFilterMode,
+    scrobbleFolders: string[],
+): boolean => {
+    const pathKey = libraryFolderPathKey(trackPath);
+    if (!pathKey) {
+        return false;
+    }
+
+    const hasMatch = scrobbleFolders.some((folderPath) => {
+        const folderKey = libraryFolderPathKey(folderPath);
+        return folderKey !== '' && (pathKey === folderKey || pathKey.startsWith(`${folderKey}/`));
+    });
+
+    return mode === 'whitelist' ? hasMatch : !hasMatch;
+};
 export const normalizeLibraryFolderLabel = (value: unknown): string => String(value || '')
     .replace(/[\\/]+/g, ' ')
     .replace(/\s+/g, ' ')
