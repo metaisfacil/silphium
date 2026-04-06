@@ -8,14 +8,14 @@ export type SettingsModalElements = {
     settingsTabPlaylists: HTMLButtonElement;
     settingsTabAudio: HTMLButtonElement;
     settingsTabUi: HTMLButtonElement;
-    settingsTabShortcuts: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelNetwork: HTMLDivElement;
     settingsPanelDatabase: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
     settingsPanelAudio: HTMLDivElement;
     settingsPanelUi: HTMLDivElement;
-    settingsPanelShortcuts: HTMLDivElement;
+    settingsShortcutAccordionToggle: HTMLButtonElement;
+    settingsShortcutAccordionPanel: HTMLDivElement;
     settingsLibraryFolderList: HTMLUListElement;
     settingsAddLibraryFolder: HTMLButtonElement;
     settingsRemoveLibraryFolder: HTMLButtonElement;
@@ -72,7 +72,6 @@ export const renderSettingsModal = (): string => `
                     <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
                     <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
                     <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
-                    <button id="settings-tab-shortcuts" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-shortcuts" aria-selected="false">Shortcuts</button>
                     <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Database</button>
                     <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
                 </div>
@@ -196,33 +195,36 @@ export const renderSettingsModal = (): string => `
                         <p class="settings-hint">Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.</p>
                         <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
                     </div>
-                </div>
-                <div id="settings-panel-shortcuts" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-shortcuts" hidden>
-                    <p class="settings-hint">Click a field and press a key combination. Use Delete to clear.</p>
-                    <div class="settings-shortcuts-grid">
-                        <div class="settings-field">
-                            <label class="settings-label" for="settings-shortcut-play-pause">Play/Pause toggle</label>
-                            <input id="settings-shortcut-play-pause" class="settings-input" type="text" readonly spellcheck="false" placeholder="Space">
-                        </div>
-                        <div class="settings-field">
-                            <label class="settings-label" for="settings-shortcut-next-track">Next track</label>
-                            <input id="settings-shortcut-next-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="N">
-                        </div>
-                        <div class="settings-field">
-                            <label class="settings-label" for="settings-shortcut-previous-track">Previous track</label>
-                            <input id="settings-shortcut-previous-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="P">
-                        </div>
-                        <div class="settings-field">
-                            <label class="settings-label" for="settings-shortcut-stop-playback">Stop playback</label>
-                            <input id="settings-shortcut-stop-playback" class="settings-input" type="text" readonly spellcheck="false" placeholder="Z">
-                        </div>
-                        <div class="settings-field">
-                            <label class="settings-label" for="settings-shortcut-focus-library-filter">Focus library filter</label>
-                            <input id="settings-shortcut-focus-library-filter" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+F">
-                        </div>
-                        <div class="settings-field">
-                            <label class="settings-label" for="settings-shortcut-open-settings">Open settings modal</label>
-                            <input id="settings-shortcut-open-settings" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+P">
+                    <div class="settings-accordion">
+                        <button id="settings-shortcut-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-shortcut-accordion-panel">Keyboard Shortcuts</button>
+                        <div id="settings-shortcut-accordion-panel" class="settings-accordion-panel" hidden>
+                            <p class="settings-hint">Click a field and press a key combination. Use Delete to clear.</p>
+                            <div class="settings-shortcuts-grid">
+                                <div class="settings-field">
+                                    <label class="settings-label" for="settings-shortcut-play-pause">Play/Pause toggle</label>
+                                    <input id="settings-shortcut-play-pause" class="settings-input" type="text" readonly spellcheck="false" placeholder="Space">
+                                </div>
+                                <div class="settings-field">
+                                    <label class="settings-label" for="settings-shortcut-next-track">Next track</label>
+                                    <input id="settings-shortcut-next-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="N">
+                                </div>
+                                <div class="settings-field">
+                                    <label class="settings-label" for="settings-shortcut-previous-track">Previous track</label>
+                                    <input id="settings-shortcut-previous-track" class="settings-input" type="text" readonly spellcheck="false" placeholder="P">
+                                </div>
+                                <div class="settings-field">
+                                    <label class="settings-label" for="settings-shortcut-stop-playback">Stop playback</label>
+                                    <input id="settings-shortcut-stop-playback" class="settings-input" type="text" readonly spellcheck="false" placeholder="Z">
+                                </div>
+                                <div class="settings-field">
+                                    <label class="settings-label" for="settings-shortcut-focus-library-filter">Focus library filter</label>
+                                    <input id="settings-shortcut-focus-library-filter" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+F">
+                                </div>
+                                <div class="settings-field">
+                                    <label class="settings-label" for="settings-shortcut-open-settings">Open settings modal</label>
+                                    <input id="settings-shortcut-open-settings" class="settings-input" type="text" readonly spellcheck="false" placeholder="Ctrl+P">
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -267,14 +269,14 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
     settingsTabAudio: root.querySelector('#settings-tab-audio') as HTMLButtonElement,
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
-    settingsTabShortcuts: root.querySelector('#settings-tab-shortcuts') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelNetwork: root.querySelector('#settings-panel-network') as HTMLDivElement,
     settingsPanelDatabase: root.querySelector('#settings-panel-database') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
     settingsPanelAudio: root.querySelector('#settings-panel-audio') as HTMLDivElement,
     settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,
-    settingsPanelShortcuts: root.querySelector('#settings-panel-shortcuts') as HTMLDivElement,
+    settingsShortcutAccordionToggle: root.querySelector('#settings-shortcut-accordion-toggle') as HTMLButtonElement,
+    settingsShortcutAccordionPanel: root.querySelector('#settings-shortcut-accordion-panel') as HTMLDivElement,
     settingsLibraryFolderList: root.querySelector('#settings-library-folder-list') as HTMLUListElement,
     settingsAddLibraryFolder: root.querySelector('#settings-add-library-folder') as HTMLButtonElement,
     settingsRemoveLibraryFolder: root.querySelector('#settings-remove-library-folder') as HTMLButtonElement,

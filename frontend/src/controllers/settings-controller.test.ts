@@ -80,6 +80,8 @@ const mountSettingsController = (options: {
 };
 
 describe('createSettingsController', () => {
+    let scrollIntoViewMock: ReturnType<typeof vi.fn>;
+
     beforeEach(() => {
         vi.useFakeTimers();
         vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback): number => {
@@ -87,6 +89,12 @@ describe('createSettingsController', () => {
             return 0;
         }) as typeof requestAnimationFrame);
         vi.stubGlobal('cancelAnimationFrame', vi.fn());
+        scrollIntoViewMock = vi.fn();
+        Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+            configurable: true,
+            value: scrollIntoViewMock,
+            writable: true,
+        });
     });
 
     afterEach(() => {
@@ -106,9 +114,23 @@ describe('createSettingsController', () => {
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(true);
         expect(elements.settingsLibraryFolderList.querySelectorAll('[data-library-folder-index]')).toHaveLength(1);
         expect(elements.settingsFavoritePlaylistList.querySelectorAll('[data-favorite-playlist-index]')).toHaveLength(1);
+        expect(document.querySelector('#settings-tab-shortcuts')).toBeNull();
 
         elements.settingsFFmpegPath.value = 'D:/tools/ffmpeg.exe';
         elements.settingsAudioOutputBufferMs.value = '2500';
+        elements.settingsTabUi.click();
+        expect(document.activeElement).toBe(elements.settingsPlayerCardLayout);
+        expect(elements.settingsShortcutAccordionPanel.hidden).toBe(true);
+
+        elements.settingsShortcutAccordionToggle.click();
+        expect(elements.settingsShortcutAccordionToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(elements.settingsShortcutAccordionPanel.hidden).toBe(false);
+
+        elements.settingsShortcutNextTrack.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'k',
+            code: 'KeyK',
+            bubbles: true,
+        }));
         elements.settingsSave.click();
 
         await flushPromises();
@@ -121,8 +143,56 @@ describe('createSettingsController', () => {
             coverArtPriority: ['embedded', 'file'],
             audioOutputDevice: 'device-1',
             audioOutputBufferMs: 1000,
+            keyboardShortcuts: expect.objectContaining({ nextTrack: 'K' }),
         }));
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(false);
+    });
+
+    it('maps shortcut-tab opens to the UI tab with the shortcuts accordion expanded', () => {
+        const { controller, elements } = mountSettingsController();
+
+        controller.open('shortcuts');
+
+        expect(elements.settingsTabUi.classList.contains('is-active')).toBe(true);
+        expect(elements.settingsPanelUi.hidden).toBe(false);
+        expect(elements.settingsPanelUi.classList.contains('is-shortcuts-expanded')).toBe(true);
+        expect(elements.settingsShortcutAccordionToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(elements.settingsShortcutAccordionPanel.hidden).toBe(false);
+        expect(document.activeElement).toBe(elements.settingsShortcutPlayPauseToggle);
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    });
+
+    it('scrolls the shortcuts accordion into view when expanded from the UI tab', () => {
+        const { controller, elements } = mountSettingsController();
+
+        controller.open('ui');
+        scrollIntoViewMock.mockClear();
+
+        elements.settingsShortcutAccordionToggle.click();
+
+        expect(elements.settingsPanelUi.classList.contains('is-shortcuts-expanded')).toBe(true);
+        expect(elements.settingsShortcutAccordionToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(elements.settingsShortcutAccordionPanel.hidden).toBe(false);
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    });
+
+    it('restores the compact UI panel layout when the shortcuts accordion is collapsed', () => {
+        const { controller, elements } = mountSettingsController();
+
+        controller.open('ui');
+
+        elements.settingsShortcutAccordionToggle.click();
+        expect(elements.settingsPanelUi.classList.contains('is-shortcuts-expanded')).toBe(true);
+
+        elements.settingsShortcutAccordionToggle.click();
+
+        expect(elements.settingsPanelUi.classList.contains('is-shortcuts-expanded')).toBe(false);
+        expect(elements.settingsShortcutAccordionToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(elements.settingsShortcutAccordionPanel.hidden).toBe(false);
+
+        vi.runAllTimers();
+
+        expect(elements.settingsShortcutAccordionPanel.hidden).toBe(true);
     });
 
     it('tracks force-reload progress and restores controls after completion', async () => {

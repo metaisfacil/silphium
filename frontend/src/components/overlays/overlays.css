@@ -513,9 +513,9 @@
 
 .settings-dialog {
     position: relative;
-    width: min(560px, calc(100vw - 2.5rem));
-    max-height: calc(100dvh - 4rem);
-    height: min(42rem, calc(100dvh - 4rem));
+    width: min(clamp(35rem, calc(32rem + 8vw), 39rem), calc(100vw - 2.5rem));
+    max-height: calc(100dvh - 3rem);
+    height: min(clamp(42rem, calc(39rem + 8dvh), 46rem), calc(100dvh - 3rem));
     display: flex;
     flex-direction: column;
     background: rgba(18, 18, 20, 0.96);
@@ -684,6 +684,10 @@
     animation: settings-panel-fade-in 180ms ease;
 }
 
+#settings-panel-ui.is-shortcuts-expanded {
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
 .settings-panel[hidden] {
     display: none;
 }
@@ -703,6 +707,80 @@
 .settings-field {
     display: grid;
     gap: 0.40rem;
+}
+
+.settings-accordion {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.7rem;
+    background: rgba(255, 255, 255, 0.04);
+    overflow: hidden;
+}
+
+#settings-panel-ui.is-shortcuts-expanded .settings-accordion {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+}
+
+.settings-accordion-toggle {
+    width: 100%;
+    box-sizing: border-box;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.82rem;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.78rem 0.9rem;
+    cursor: pointer;
+}
+
+.settings-accordion-toggle::after {
+    content: '▸';
+    font-size: 0.78rem;
+    opacity: 0.72;
+}
+
+.settings-accordion-toggle[aria-expanded='true'] {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.settings-accordion-toggle[aria-expanded='true']::after {
+    content: '▾';
+}
+
+.settings-accordion-panel {
+    display: grid;
+    align-content: start;
+    gap: 0.8rem;
+    min-height: 0;
+    max-height: 0;
+    opacity: 0;
+    padding: 0 0.9rem;
+    border-top: 1px solid transparent;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    pointer-events: none;
+    scrollbar-gutter: stable;
+    transition: max-height 180ms ease, opacity 160ms ease, padding-top 180ms ease, padding-bottom 180ms ease, border-top-color 180ms ease;
+}
+
+#settings-panel-ui.is-shortcuts-expanded .settings-accordion-panel {
+    max-height: 100%;
+    opacity: 1;
+    padding-top: 0.8rem;
+    padding-bottom: 0.9rem;
+    border-top-color: rgba(255, 255, 255, 0.12);
+    overflow-y: auto;
+    pointer-events: auto;
+}
+
+.settings-accordion-panel[hidden] {
+    display: none;
 }
 
 .settings-shortcuts-grid {

@@ -33,7 +33,8 @@ export type SettingsViewValues = SettingsFormValues & {
     audioOutputDevices: AudioOutputDevice[];
 };
 
-type SettingsTab = 'general' | 'network' | 'database' | 'playlists' | 'audio' | 'ui' | 'shortcuts';
+type SettingsPrimaryTab = 'general' | 'network' | 'database' | 'playlists' | 'audio' | 'ui';
+type SettingsTab = SettingsPrimaryTab | 'shortcuts';
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const allCoverArtPrioritySources: CoverArtPrioritySource[] = ['file', 'embedded', 'musicbrainz'];
@@ -108,14 +109,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabPlaylists,
         settingsTabAudio,
         settingsTabUi,
-        settingsTabShortcuts,
         settingsPanelGeneral,
         settingsPanelNetwork,
         settingsPanelDatabase,
         settingsPanelPlaylists,
         settingsPanelAudio,
         settingsPanelUi,
-        settingsPanelShortcuts,
+        settingsShortcutAccordionToggle,
+        settingsShortcutAccordionPanel,
         settingsLibraryFolderList,
         settingsAddLibraryFolder,
         settingsRemoveLibraryFolder,
@@ -159,11 +160,13 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     } = elements;
 
     const settingsModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+    const settingsShortcutAccordionTransitionMs = 180;
     const statusFadeDelayMs = 5000;
     let hideTimer: number | undefined;
     let libraryDepthHideTimer: number | undefined;
     let settingsStatusFadeTimer: number | undefined;
     let settingsLibraryDepthStatusFadeTimer: number | undefined;
+    let shortcutAccordionHideTimer: number | undefined;
 
     let favoritePlaylists: string[] = [];
     let selectedFavoritePlaylistIndex = -1;
@@ -192,6 +195,46 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         return Array.from(deduped);
+    };
+
+    const resolvePrimaryTab = (tab: SettingsTab): SettingsPrimaryTab => (tab === 'shortcuts' ? 'ui' : tab);
+
+    const scrollShortcutAccordionIntoView = (): void => {
+        const accordion = settingsShortcutAccordionToggle.closest('.settings-accordion');
+        const target = accordion instanceof HTMLElement ? accordion : settingsShortcutAccordionPanel;
+        target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    };
+
+    const clearShortcutAccordionHideTimer = (): void => {
+        if (shortcutAccordionHideTimer !== undefined) {
+            window.clearTimeout(shortcutAccordionHideTimer);
+            shortcutAccordionHideTimer = undefined;
+        }
+    };
+
+    const setShortcutAccordionExpanded = (expanded: boolean, animate = true): void => {
+        clearShortcutAccordionHideTimer();
+        settingsShortcutAccordionToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+
+        if (!animate) {
+            settingsPanelUi.classList.toggle('is-shortcuts-expanded', expanded);
+            settingsShortcutAccordionPanel.hidden = !expanded;
+            return;
+        }
+
+        if (expanded) {
+            settingsShortcutAccordionPanel.hidden = false;
+            window.requestAnimationFrame(() => {
+                settingsPanelUi.classList.add('is-shortcuts-expanded');
+            });
+            return;
+        }
+
+        settingsPanelUi.classList.remove('is-shortcuts-expanded');
+        shortcutAccordionHideTimer = window.setTimeout(() => {
+            settingsShortcutAccordionPanel.hidden = true;
+            shortcutAccordionHideTimer = undefined;
+        }, settingsShortcutAccordionTransitionMs);
     };
 
     const normalizeMusicBrainzTagWorkerCores = (value: string): number => {
@@ -668,34 +711,31 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     };
 
     const setActiveTab = (tab: SettingsTab): void => {
-        const generalActive = tab === 'general';
-        const networkActive = tab === 'network';
-        const databaseActive = tab === 'database';
-        const playlistsActive = tab === 'playlists';
-        const audioActive = tab === 'audio';
-        const uiActive = tab === 'ui';
-        const shortcutsActive = tab === 'shortcuts';
+        const primaryTab = resolvePrimaryTab(tab);
+        const generalActive = primaryTab === 'general';
+        const networkActive = primaryTab === 'network';
+        const databaseActive = primaryTab === 'database';
+        const playlistsActive = primaryTab === 'playlists';
+        const audioActive = primaryTab === 'audio';
+        const uiActive = primaryTab === 'ui';
         settingsTabGeneral.classList.toggle('is-active', generalActive);
         settingsTabNetwork.classList.toggle('is-active', networkActive);
         settingsTabDatabase.classList.toggle('is-active', databaseActive);
         settingsTabPlaylists.classList.toggle('is-active', playlistsActive);
         settingsTabAudio.classList.toggle('is-active', audioActive);
         settingsTabUi.classList.toggle('is-active', uiActive);
-        settingsTabShortcuts.classList.toggle('is-active', shortcutsActive);
         settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
         settingsTabNetwork.setAttribute('aria-selected', networkActive ? 'true' : 'false');
         settingsTabDatabase.setAttribute('aria-selected', databaseActive ? 'true' : 'false');
         settingsTabPlaylists.setAttribute('aria-selected', playlistsActive ? 'true' : 'false');
         settingsTabAudio.setAttribute('aria-selected', audioActive ? 'true' : 'false');
         settingsTabUi.setAttribute('aria-selected', uiActive ? 'true' : 'false');
-        settingsTabShortcuts.setAttribute('aria-selected', shortcutsActive ? 'true' : 'false');
         settingsPanelGeneral.hidden = !generalActive;
         settingsPanelNetwork.hidden = !networkActive;
         settingsPanelDatabase.hidden = !databaseActive;
         settingsPanelPlaylists.hidden = !playlistsActive;
         settingsPanelAudio.hidden = !audioActive;
         settingsPanelUi.hidden = !uiActive;
-        settingsPanelShortcuts.hidden = !shortcutsActive;
     };
 
     const normalizeAudioOutputBufferMs = (rawValue: string): number => {
@@ -818,6 +858,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     bindShortcutCaptureInput(settingsShortcutFocusLibraryFilter);
     bindShortcutCaptureInput(settingsShortcutOpenSettings);
 
+    setShortcutAccordionExpanded(false, false);
+
     settingsLibraryDepthLabelInput.addEventListener('input', () => {
         setLibraryDepthStatusMessage('');
     });
@@ -931,21 +973,52 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         } else {
             setSettingsStatusMessage('');
         }
+        const primaryTab = resolvePrimaryTab(initialTab);
+        const shortcutsRequested = initialTab === 'shortcuts';
+        setShortcutAccordionExpanded(shortcutsRequested, false);
         setActiveTab(initialTab);
         settingsModal.hidden = false;
         window.requestAnimationFrame(() => {
             settingsModal.classList.add('is-visible');
+            if (shortcutsRequested) {
+                scrollShortcutAccordionIntoView();
+            }
         });
-        if (initialTab === 'general' && settingsFFmpegPath.value.trim() === '') {
-            settingsFFmpegPath.focus();
+        if (primaryTab === 'general') {
+            if (settingsFFmpegPath.value.trim() === '') {
+                settingsFFmpegPath.focus();
+                return;
+            }
+            if (libraryFolders.length > 0) {
+                settingsLibraryFolderList.focus();
+                return;
+            }
+
+            settingsAddLibraryFolder.focus();
             return;
         }
-        if (libraryFolders.length > 0) {
-            settingsLibraryFolderList.focus();
+        if (primaryTab === 'network') {
+            settingsMusicBrainzServerUrl.focus();
+            return;
+        }
+        if (primaryTab === 'database') {
+            settingsMusicBrainzTagDatabaseEnabled.focus();
+            return;
+        }
+        if (primaryTab === 'playlists') {
+            settingsFavoritePlaylistList.focus();
+            return;
+        }
+        if (primaryTab === 'audio') {
+            settingsAudioOutputDevice.focus();
+            return;
+        }
+        if (shortcutsRequested) {
+            settingsShortcutPlayPauseToggle.focus();
             return;
         }
 
-        settingsAddLibraryFolder.focus();
+        settingsPlayerCardLayout.focus();
     };
 
     trigger.addEventListener('click', () => {
@@ -1075,11 +1148,17 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     settingsTabUi.addEventListener('click', () => {
         setActiveTab('ui');
+        settingsPlayerCardLayout.focus();
     });
 
-    settingsTabShortcuts.addEventListener('click', () => {
-        setActiveTab('shortcuts');
-        settingsShortcutPlayPauseToggle.focus();
+    settingsShortcutAccordionToggle.addEventListener('click', () => {
+        const shouldExpand = settingsShortcutAccordionPanel.hidden !== false;
+        setShortcutAccordionExpanded(shouldExpand);
+        if (shouldExpand) {
+            window.requestAnimationFrame(() => {
+                scrollShortcutAccordionIntoView();
+            });
+        }
     });
 
     settingsPlayerCardLayout.addEventListener('change', () => {
