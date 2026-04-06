@@ -33,7 +33,7 @@ export type SettingsViewValues = SettingsFormValues & {
     audioOutputDevices: AudioOutputDevice[];
 };
 
-type SettingsTab = 'general' | 'network' | 'playlists' | 'audio' | 'ui' | 'shortcuts';
+type SettingsTab = 'general' | 'network' | 'database' | 'playlists' | 'audio' | 'ui' | 'shortcuts';
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const allCoverArtPrioritySources: CoverArtPrioritySource[] = ['file', 'embedded', 'musicbrainz'];
@@ -104,12 +104,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsClose,
         settingsTabGeneral,
         settingsTabNetwork,
+        settingsTabDatabase,
         settingsTabPlaylists,
         settingsTabAudio,
         settingsTabUi,
         settingsTabShortcuts,
         settingsPanelGeneral,
         settingsPanelNetwork,
+        settingsPanelDatabase,
         settingsPanelPlaylists,
         settingsPanelAudio,
         settingsPanelUi,
@@ -590,24 +592,28 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const setActiveTab = (tab: SettingsTab): void => {
         const generalActive = tab === 'general';
         const networkActive = tab === 'network';
+        const databaseActive = tab === 'database';
         const playlistsActive = tab === 'playlists';
         const audioActive = tab === 'audio';
         const uiActive = tab === 'ui';
         const shortcutsActive = tab === 'shortcuts';
         settingsTabGeneral.classList.toggle('is-active', generalActive);
         settingsTabNetwork.classList.toggle('is-active', networkActive);
+        settingsTabDatabase.classList.toggle('is-active', databaseActive);
         settingsTabPlaylists.classList.toggle('is-active', playlistsActive);
         settingsTabAudio.classList.toggle('is-active', audioActive);
         settingsTabUi.classList.toggle('is-active', uiActive);
         settingsTabShortcuts.classList.toggle('is-active', shortcutsActive);
         settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
         settingsTabNetwork.setAttribute('aria-selected', networkActive ? 'true' : 'false');
+        settingsTabDatabase.setAttribute('aria-selected', databaseActive ? 'true' : 'false');
         settingsTabPlaylists.setAttribute('aria-selected', playlistsActive ? 'true' : 'false');
         settingsTabAudio.setAttribute('aria-selected', audioActive ? 'true' : 'false');
         settingsTabUi.setAttribute('aria-selected', uiActive ? 'true' : 'false');
         settingsTabShortcuts.setAttribute('aria-selected', shortcutsActive ? 'true' : 'false');
         settingsPanelGeneral.hidden = !generalActive;
         settingsPanelNetwork.hidden = !networkActive;
+        settingsPanelDatabase.hidden = !databaseActive;
         settingsPanelPlaylists.hidden = !playlistsActive;
         settingsPanelAudio.hidden = !audioActive;
         settingsPanelUi.hidden = !uiActive;
@@ -938,6 +944,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     settingsTabNetwork.addEventListener('click', () => {
         setActiveTab('network');
         settingsMusicBrainzServerUrl.focus();
+    });
+
+    settingsTabDatabase.addEventListener('click', () => {
+        setActiveTab('database');
+        settingsMusicBrainzTagDatabaseEnabled.focus();
     });
 
     settingsTabPlaylists.addEventListener('click', () => {

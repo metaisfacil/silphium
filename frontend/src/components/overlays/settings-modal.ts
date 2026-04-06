@@ -4,12 +4,14 @@ export type SettingsModalElements = {
     settingsClose: HTMLButtonElement;
     settingsTabGeneral: HTMLButtonElement;
     settingsTabNetwork: HTMLButtonElement;
+    settingsTabDatabase: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
     settingsTabAudio: HTMLButtonElement;
     settingsTabUi: HTMLButtonElement;
     settingsTabShortcuts: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelNetwork: HTMLDivElement;
+    settingsPanelDatabase: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
     settingsPanelAudio: HTMLDivElement;
     settingsPanelUi: HTMLDivElement;
@@ -67,11 +69,12 @@ export const renderSettingsModal = (): string => `
             <div class="settings-content">
                 <div class="settings-tabs" role="tablist" aria-label="Settings sections">
                     <button id="settings-tab-general" class="settings-tab is-active" type="button" role="tab" aria-controls="settings-panel-general" aria-selected="true">General</button>
-                    <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
-                    <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
-                    <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
                     <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
+                    <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
+                    <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
                     <button id="settings-tab-shortcuts" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-shortcuts" aria-selected="false">Shortcuts</button>
+                    <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Database</button>
+                    <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
                 </div>
                 <div id="settings-panel-general" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-field">
@@ -100,18 +103,6 @@ export const renderSettingsModal = (): string => `
                         </label>
                         <p class="settings-hint">Track labels are replaced on-the-fly by MusicBrainz lookup.</p>
                     </div>
-                    <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-musicbrainz-tag-database-enabled">
-                            <input id="settings-musicbrainz-tag-database-enabled" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Enable MusicBrainz tag database</span>
-                        </label>
-                        <p class="settings-hint">Builds a background MusicBrainz tag index for <code>mbtag:</code> library searches. Direct user lookups still take priority over the background worker.</p>
-                    </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz Tag Worker Cores</label>
-                        <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.</p>
-                        <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
-                    </div>
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
                     <div class="settings-field">
@@ -135,6 +126,20 @@ export const renderSettingsModal = (): string => `
                                 <span class="settings-server-rate-unit">ms</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div id="settings-panel-database" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-database" hidden>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-musicbrainz-tag-database-enabled">
+                            <input id="settings-musicbrainz-tag-database-enabled" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Enable MusicBrainz tag database</span>
+                        </label>
+                        <p class="settings-hint">Builds a background MusicBrainz tag index for <code>mbtag:</code> library searches. Direct user lookups still take priority over the background worker.</p>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz Tag Worker Cores</label>
+                        <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.</p>
+                        <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
@@ -258,12 +263,14 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsClose: root.querySelector('#settings-close') as HTMLButtonElement,
     settingsTabGeneral: root.querySelector('#settings-tab-general') as HTMLButtonElement,
     settingsTabNetwork: root.querySelector('#settings-tab-network') as HTMLButtonElement,
+    settingsTabDatabase: root.querySelector('#settings-tab-database') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
     settingsTabAudio: root.querySelector('#settings-tab-audio') as HTMLButtonElement,
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
     settingsTabShortcuts: root.querySelector('#settings-tab-shortcuts') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelNetwork: root.querySelector('#settings-panel-network') as HTMLDivElement,
+    settingsPanelDatabase: root.querySelector('#settings-panel-database') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
     settingsPanelAudio: root.querySelector('#settings-panel-audio') as HTMLDivElement,
     settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,
