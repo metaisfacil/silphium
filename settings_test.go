@@ -69,18 +69,18 @@ func TestNormalizeAppSettingsBrainzServerURLs(t *testing.T) {
 			wantListenBrainz: "",
 		},
 		{
-			name:             "trailing slash is removed",
+			name:                  "trailing slash is removed",
 			musicBrainzServerURL:  "https://musicbrainz.org/",
 			listenBrainzServerURL: "https://api.listenbrainz.org/",
-			wantMusicBrainz:  "https://musicbrainz.org",
-			wantListenBrainz: "https://api.listenbrainz.org",
+			wantMusicBrainz:       "https://musicbrainz.org",
+			wantListenBrainz:      "https://api.listenbrainz.org",
 		},
 		{
-			name:             "local server URLs preserved",
+			name:                  "local server URLs preserved",
 			musicBrainzServerURL:  "http://localhost:5000",
 			listenBrainzServerURL: "http://localhost:6000",
-			wantMusicBrainz:  "http://localhost:5000",
-			wantListenBrainz: "http://localhost:6000",
+			wantMusicBrainz:       "http://localhost:5000",
+			wantListenBrainz:      "http://localhost:6000",
 		},
 	}
 
