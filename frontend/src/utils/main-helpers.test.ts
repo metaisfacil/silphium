@@ -8,6 +8,7 @@ import {
     buildLibraryRootNameByPath,
     findLibraryFolderForFilePath,
     formatTechnicalMetadata,
+    hasExternalFileDragPayload,
     isTrackScrobbleAllowed,
     libraryFolderPathKey,
     normalizeLibraryFolders,
@@ -71,6 +72,13 @@ describe('main helpers', () => {
     it('formats technical metadata for lossless and lossy codecs', () => {
         expect(formatTechnicalMetadata(24, 48_000, 'flac', 0)).toBe('24/48 • FLAC');
         expect(formatTechnicalMetadata(24, 44_100, 'mp3', 320_000)).toBe('320k/44.1 • MP3');
+    });
+
+    it('detects external file drag payloads', () => {
+        expect(hasExternalFileDragPayload({ types: ['Files'] })).toBe(true);
+        expect(hasExternalFileDragPayload({ types: ['text/plain', 'Files'] })).toBe(true);
+        expect(hasExternalFileDragPayload({ types: ['text/plain'] })).toBe(false);
+        expect(hasExternalFileDragPayload(null)).toBe(false);
     });
 
     it('builds display metadata from cleaned tag values and versions', () => {

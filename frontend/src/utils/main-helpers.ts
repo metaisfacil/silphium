@@ -250,6 +250,14 @@ export const asReleaseDepth = (value: unknown): number => {
     return Math.min(Math.floor(numeric), 64);
 };
 
+export const hasExternalFileDragPayload = (dataTransfer: { types?: ArrayLike<string> | readonly string[] } | null | undefined): boolean => {
+    if (!dataTransfer?.types) {
+        return false;
+    }
+
+    return Array.from(dataTransfer.types).some((type) => String(type).toLowerCase() === 'files');
+};
+
 export const libraryFolderPathKey = (path: string): string => path.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 
 const getTagValuesIgnoreCase = (tags: Record<string, string[]>, ...keys: string[]): string[] => {

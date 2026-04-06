@@ -140,6 +140,7 @@ import {
     buildLibraryRootNameByPath,
     findLibraryFolderForFilePath,
     formatTime,
+    hasExternalFileDragPayload,
     isTrackScrobbleAllowed,
     libraryFolderPathKey,
     normalizeLibraryFolders,
@@ -4103,6 +4104,24 @@ playlistController = createPlaylistController({
 });
 
 playlistTargetModalController = createPlaylistTargetModalController(playlistTargetModalElements);
+
+const preventBrowserFileDropDefault = (event: DragEvent): void => {
+    if (!hasExternalFileDragPayload(event.dataTransfer)) {
+        return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer && event.type !== 'drop') {
+        event.dataTransfer.dropEffect = 'copy';
+    }
+};
+
+window.addEventListener('dragenter', preventBrowserFileDropDefault, { capture: true, passive: false });
+window.addEventListener('dragover', preventBrowserFileDropDefault, { capture: true, passive: false });
+window.addEventListener('drop', preventBrowserFileDropDefault, { capture: true, passive: false });
+document.addEventListener('dragenter', preventBrowserFileDropDefault, { capture: true, passive: false });
+document.addEventListener('dragover', preventBrowserFileDropDefault, { capture: true, passive: false });
+document.addEventListener('drop', preventBrowserFileDropDefault, { capture: true, passive: false });
 
 OnFileDrop((x: number, y: number, paths: string[]) => {
     const droppedPaths = (paths || []).map((path) => path.trim()).filter((path) => path !== '');
