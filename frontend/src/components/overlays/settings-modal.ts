@@ -3,11 +3,13 @@ export type SettingsModalElements = {
     settingsBackdrop: HTMLDivElement;
     settingsClose: HTMLButtonElement;
     settingsTabGeneral: HTMLButtonElement;
+    settingsTabNetwork: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
     settingsTabAudio: HTMLButtonElement;
     settingsTabUi: HTMLButtonElement;
     settingsTabShortcuts: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
+    settingsPanelNetwork: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
     settingsPanelAudio: HTMLDivElement;
     settingsPanelUi: HTMLDivElement;
@@ -65,6 +67,7 @@ export const renderSettingsModal = (): string => `
             <div class="settings-content">
                 <div class="settings-tabs" role="tablist" aria-label="Settings sections">
                     <button id="settings-tab-general" class="settings-tab is-active" type="button" role="tab" aria-controls="settings-panel-general" aria-selected="true">General</button>
+                    <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
                     <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
                     <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
                     <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
@@ -84,28 +87,6 @@ export const renderSettingsModal = (): string => `
                         <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz User Token</label>
                         <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
                         <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
-                    </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-musicbrainz-server-url">MusicBrainz Server URL</label>
-                        <p class="settings-hint">Override the MusicBrainz server used for lookups. Leave blank to use the public server. For any non-public server the rate limit field (ms) to the right is editable; the public server enforces a minimum of 1000&nbsp;ms and the field is locked.</p>
-                        <div class="settings-server-url-row">
-                            <input id="settings-musicbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://musicbrainz.org">
-                            <div class="settings-server-rate-group">
-                                <input id="settings-musicbrainz-request-rate-ms" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" aria-label="MusicBrainz request rate limit in milliseconds" placeholder="0">
-                                <span class="settings-server-rate-unit">ms</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-listenbrainz-server-url">ListenBrainz Server URL</label>
-                        <p class="settings-hint">Override the ListenBrainz server used for scrobbling. Leave blank to use the public server. For any non-public server the rate limit field (ms) to the right is editable; the public server enforces a minimum of 1000&nbsp;ms and the field is locked.</p>
-                        <div class="settings-server-url-row">
-                            <input id="settings-listenbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://api.listenbrainz.org">
-                            <div class="settings-server-rate-group">
-                                <input id="settings-listenbrainz-request-rate-ms" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" aria-label="ListenBrainz request rate limit in milliseconds" placeholder="0">
-                                <span class="settings-server-rate-unit">ms</span>
-                            </div>
-                        </div>
                     </div>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-ffmpeg-path">FFmpeg Executable Path</label>
@@ -130,6 +111,30 @@ export const renderSettingsModal = (): string => `
                         <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz Tag Worker Cores</label>
                         <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.</p>
                         <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
+                    </div>
+                </div>
+                <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-musicbrainz-server-url">MusicBrainz Server URL</label>
+                        <p class="settings-hint">Override the MusicBrainz server used for lookups. Local hosts are permitted a shorter cooldown between requests.</p>
+                        <div class="settings-server-url-row">
+                            <input id="settings-musicbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://musicbrainz.org">
+                            <div class="settings-server-rate-group">
+                                <input id="settings-musicbrainz-request-rate-ms" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" aria-label="MusicBrainz request rate limit in milliseconds" placeholder="0">
+                                <span class="settings-server-rate-unit">ms</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-listenbrainz-server-url">ListenBrainz Server URL</label>
+                        <p class="settings-hint">Override the ListenBrainz server used for scrobbling. Local hosts are permitted a shorter cooldown between requests.</p>
+                        <div class="settings-server-url-row">
+                            <input id="settings-listenbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://api.listenbrainz.org">
+                            <div class="settings-server-rate-group">
+                                <input id="settings-listenbrainz-request-rate-ms" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" aria-label="ListenBrainz request rate limit in milliseconds" placeholder="0">
+                                <span class="settings-server-rate-unit">ms</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
@@ -252,11 +257,13 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsBackdrop: root.querySelector('#settings-backdrop') as HTMLDivElement,
     settingsClose: root.querySelector('#settings-close') as HTMLButtonElement,
     settingsTabGeneral: root.querySelector('#settings-tab-general') as HTMLButtonElement,
+    settingsTabNetwork: root.querySelector('#settings-tab-network') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
     settingsTabAudio: root.querySelector('#settings-tab-audio') as HTMLButtonElement,
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
     settingsTabShortcuts: root.querySelector('#settings-tab-shortcuts') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
+    settingsPanelNetwork: root.querySelector('#settings-panel-network') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
     settingsPanelAudio: root.querySelector('#settings-panel-audio') as HTMLDivElement,
     settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,

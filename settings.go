@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -202,35 +204,79 @@ func normalizeBrainzServerURL(value string) string {
 
 const publicBrainzMinRateLimitMs = 1000
 
+func isLocalBrainzServerURL(normalizedServerURL string) bool {
+	trimmed := strings.TrimSpace(normalizedServerURL)
+	if trimmed == "" {
+		return false
+	}
+
+	withScheme := trimmed
+	if !strings.Contains(withScheme, "://") {
+		withScheme = "http://" + withScheme
+	}
+
+	parsed, err := url.Parse(withScheme)
+	if err != nil {
+		return false
+	}
+
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return false
+	}
+
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+
+	if ip.IsLoopback() {
+		return true
+	}
+
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return false
+	}
+
+	if ipv4[0] == 192 && ipv4[1] == 168 {
+		return true
+	}
+
+	return ipv4[0] == 10 && ipv4[1] == 0
+}
+
 func normalizeMusicBrainzRequestRateMs(rateMs int, normalizedServerURL string) int {
-	isPublic := normalizedServerURL == "" || strings.EqualFold(normalizedServerURL, musicBrainzPublicServerURL)
-	if isPublic {
-		if rateMs < publicBrainzMinRateLimitMs {
-			return publicBrainzMinRateLimitMs
+	if isLocalBrainzServerURL(normalizedServerURL) {
+		if rateMs < 0 {
+			return 0
 		}
 
 		return rateMs
 	}
 
-	if rateMs < 0 {
-		return 0
+	if rateMs < publicBrainzMinRateLimitMs {
+		return publicBrainzMinRateLimitMs
 	}
 
 	return rateMs
 }
 
 func normalizeListenBrainzRequestRateMs(rateMs int, normalizedServerURL string) int {
-	isPublic := normalizedServerURL == "" || strings.EqualFold(normalizedServerURL, listenBrainzPublicServerURL)
-	if isPublic {
-		if rateMs < publicBrainzMinRateLimitMs {
-			return publicBrainzMinRateLimitMs
+	if isLocalBrainzServerURL(normalizedServerURL) {
+		if rateMs < 0 {
+			return 0
 		}
 
 		return rateMs
 	}
 
-	if rateMs < 0 {
-		return 0
+	if rateMs < publicBrainzMinRateLimitMs {
+		return publicBrainzMinRateLimitMs
 	}
 
 	return rateMs

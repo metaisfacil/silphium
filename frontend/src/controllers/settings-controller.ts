@@ -33,7 +33,7 @@ export type SettingsViewValues = SettingsFormValues & {
     audioOutputDevices: AudioOutputDevice[];
 };
 
-type SettingsTab = 'general' | 'playlists' | 'audio' | 'ui' | 'shortcuts';
+type SettingsTab = 'general' | 'network' | 'playlists' | 'audio' | 'ui' | 'shortcuts';
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const allCoverArtPrioritySources: CoverArtPrioritySource[] = ['file', 'embedded', 'musicbrainz'];
@@ -103,11 +103,13 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsBackdrop,
         settingsClose,
         settingsTabGeneral,
+        settingsTabNetwork,
         settingsTabPlaylists,
         settingsTabAudio,
         settingsTabUi,
         settingsTabShortcuts,
         settingsPanelGeneral,
+        settingsPanelNetwork,
         settingsPanelPlaylists,
         settingsPanelAudio,
         settingsPanelUi,
@@ -204,39 +206,88 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         return Math.floor(parsed);
     };
 
-    const MUSICBRAINZ_PUBLIC_URL = 'https://musicbrainz.org';
-    const LISTENBRAINZ_PUBLIC_URL = 'https://api.listenbrainz.org';
     const PUBLIC_MIN_RATE_LIMIT_MS = 1000;
 
-    const isMusicBrainzPublicServer = (url: string): boolean => {
-        const normalized = url.trim().replace(/\/+$/, '');
-        return normalized === '' || normalized.toLowerCase() === MUSICBRAINZ_PUBLIC_URL.toLowerCase();
+    const parseServerHostname = (value: string): string => {
+        const trimmed = value.trim();
+        if (trimmed === '') {
+            return '';
+        }
+
+        const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+        try {
+            return new URL(withScheme).hostname.toLowerCase();
+        } catch {
+            return '';
+        }
     };
 
-    const isListenBrainzPublicServer = (url: string): boolean => {
-        const normalized = url.trim().replace(/\/+$/, '');
-        return normalized === '' || normalized.toLowerCase() === LISTENBRAINZ_PUBLIC_URL.toLowerCase();
+    const isLocalDevelopmentServer = (url: string): boolean => {
+        const host = parseServerHostname(url);
+        return host === 'localhost'
+            || host === '::1'
+            || host === '127.0.0.1'
+            || /^127\./.test(host)
+            || /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)
+            || /^10\.0\.\d{1,3}\.\d{1,3}$/.test(host);
     };
+
+    const normalizeServerRequestRateMs = (value: string, serverUrl: string): number => {
+        const parsed = normalizeRequestRateMs(value);
+        if (isLocalDevelopmentServer(serverUrl)) {
+            return parsed;
+        }
+
+        return Math.max(PUBLIC_MIN_RATE_LIMIT_MS, parsed);
+    };
+
+    const normalizedMusicBrainzRequestRateMs = (): number => normalizeServerRequestRateMs(
+        settingsMusicBrainzRequestRateMs.value,
+        settingsMusicBrainzServerUrl.value,
+    );
+
+    const normalizedListenBrainzRequestRateMs = (): number => normalizeServerRequestRateMs(
+        settingsListenBrainzRequestRateMs.value,
+        settingsListenBrainzServerUrl.value,
+    );
 
     const refreshMusicBrainzRateControls = (): void => {
-        const isPublic = isMusicBrainzPublicServer(settingsMusicBrainzServerUrl.value);
-        settingsMusicBrainzRequestRateMs.disabled = isPublic;
-        settingsMusicBrainzRequestRateMs.min = isPublic ? String(PUBLIC_MIN_RATE_LIMIT_MS) : '0';
-        if (isPublic) {
-            const stored = normalizeRequestRateMs(settingsMusicBrainzRequestRateMs.value);
-            settingsMusicBrainzRequestRateMs.value = String(Math.max(PUBLIC_MIN_RATE_LIMIT_MS, stored));
+        const isLocal = isLocalDevelopmentServer(settingsMusicBrainzServerUrl.value);
+        settingsMusicBrainzRequestRateMs.disabled = !isLocal;
+        settingsMusicBrainzRequestRateMs.min = isLocal ? '0' : String(PUBLIC_MIN_RATE_LIMIT_MS);
+        if (!isLocal) {
+            settingsMusicBrainzRequestRateMs.value = String(normalizedMusicBrainzRequestRateMs());
         }
     };
 
     const refreshListenBrainzRateControls = (): void => {
-        const isPublic = isListenBrainzPublicServer(settingsListenBrainzServerUrl.value);
-        settingsListenBrainzRequestRateMs.disabled = isPublic;
-        settingsListenBrainzRequestRateMs.min = isPublic ? String(PUBLIC_MIN_RATE_LIMIT_MS) : '0';
-        if (isPublic) {
-            const stored = normalizeRequestRateMs(settingsListenBrainzRequestRateMs.value);
-            settingsListenBrainzRequestRateMs.value = String(Math.max(PUBLIC_MIN_RATE_LIMIT_MS, stored));
+        const isLocal = isLocalDevelopmentServer(settingsListenBrainzServerUrl.value);
+        settingsListenBrainzRequestRateMs.disabled = !isLocal;
+        settingsListenBrainzRequestRateMs.min = isLocal ? '0' : String(PUBLIC_MIN_RATE_LIMIT_MS);
+        if (!isLocal) {
+            settingsListenBrainzRequestRateMs.value = String(normalizedListenBrainzRequestRateMs());
         }
     };
+
+    const buildFormValues = (): SettingsFormValues => ({
+        libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
+        ffmpegPath: settingsFFmpegPath.value,
+        listenBrainzUserToken: settingsListenBrainzToken.value,
+        musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
+        musicBrainzRequestRateMs: normalizedMusicBrainzRequestRateMs(),
+        listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
+        listenBrainzRequestRateMs: normalizedListenBrainzRequestRateMs(),
+        favoritePlaylists: favoritePlaylists.slice(),
+        coverArtPriority: coverArtPriority.slice(),
+        audioOutputDevice: settingsAudioOutputDevice.value || 'default',
+        audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
+        gaplessPlayback: settingsGaplessPlayback.checked,
+        replayGainEnabled: settingsReplayGain.checked,
+        preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
+        musicBrainzTagDatabaseEnabled: settingsMusicBrainzTagDatabaseEnabled.checked,
+        musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
+        keyboardShortcuts: getShortcutValues(),
+    });
 
     const refreshMusicBrainzTagWorkerControls = (): void => {
         settingsMusicBrainzTagWorkerCores.disabled = !settingsMusicBrainzTagDatabaseEnabled.checked;
@@ -538,21 +589,25 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     const setActiveTab = (tab: SettingsTab): void => {
         const generalActive = tab === 'general';
+        const networkActive = tab === 'network';
         const playlistsActive = tab === 'playlists';
         const audioActive = tab === 'audio';
         const uiActive = tab === 'ui';
         const shortcutsActive = tab === 'shortcuts';
         settingsTabGeneral.classList.toggle('is-active', generalActive);
+        settingsTabNetwork.classList.toggle('is-active', networkActive);
         settingsTabPlaylists.classList.toggle('is-active', playlistsActive);
         settingsTabAudio.classList.toggle('is-active', audioActive);
         settingsTabUi.classList.toggle('is-active', uiActive);
         settingsTabShortcuts.classList.toggle('is-active', shortcutsActive);
         settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
+        settingsTabNetwork.setAttribute('aria-selected', networkActive ? 'true' : 'false');
         settingsTabPlaylists.setAttribute('aria-selected', playlistsActive ? 'true' : 'false');
         settingsTabAudio.setAttribute('aria-selected', audioActive ? 'true' : 'false');
         settingsTabUi.setAttribute('aria-selected', uiActive ? 'true' : 'false');
         settingsTabShortcuts.setAttribute('aria-selected', shortcutsActive ? 'true' : 'false');
         settingsPanelGeneral.hidden = !generalActive;
+        settingsPanelNetwork.hidden = !networkActive;
         settingsPanelPlaylists.hidden = !playlistsActive;
         settingsPanelAudio.hidden = !audioActive;
         settingsPanelUi.hidden = !uiActive;
@@ -880,6 +935,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsAddLibraryFolder.focus();
     });
 
+    settingsTabNetwork.addEventListener('click', () => {
+        setActiveTab('network');
+        settingsMusicBrainzServerUrl.focus();
+    });
+
     settingsTabPlaylists.addEventListener('click', () => {
         setActiveTab('playlists');
         settingsFavoritePlaylistList.focus();
@@ -907,25 +967,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
 
-        const formValues: SettingsFormValues = {
-            libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
-            ffmpegPath: settingsFFmpegPath.value,
-            listenBrainzUserToken: settingsListenBrainzToken.value,
-            musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
-            musicBrainzRequestRateMs: normalizeRequestRateMs(settingsMusicBrainzRequestRateMs.value),
-            listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
-            listenBrainzRequestRateMs: normalizeRequestRateMs(settingsListenBrainzRequestRateMs.value),
-            favoritePlaylists: favoritePlaylists.slice(),
-            coverArtPriority: coverArtPriority.slice(),
-            audioOutputDevice: settingsAudioOutputDevice.value || 'default',
-            audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
-            gaplessPlayback: settingsGaplessPlayback.checked,
-            replayGainEnabled: settingsReplayGain.checked,
-            preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
-            musicBrainzTagDatabaseEnabled: settingsMusicBrainzTagDatabaseEnabled.checked,
-            musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
-            keyboardShortcuts: getShortcutValues(),
-        };
+        const formValues = buildFormValues();
 
         settingsApplyAudioNow.disabled = true;
         settingsStatus.textContent = 'Refreshing audio settings...';
@@ -1154,25 +1196,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         settingsSave.disabled = true;
         settingsForceReload.disabled = true;
-        const formValues: SettingsFormValues = {
-            libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
-            ffmpegPath: settingsFFmpegPath.value,
-            listenBrainzUserToken: settingsListenBrainzToken.value,
-            musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
-            musicBrainzRequestRateMs: normalizeRequestRateMs(settingsMusicBrainzRequestRateMs.value),
-            listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
-            listenBrainzRequestRateMs: normalizeRequestRateMs(settingsListenBrainzRequestRateMs.value),
-            favoritePlaylists: favoritePlaylists.slice(),
-            coverArtPriority: coverArtPriority.slice(),
-            audioOutputDevice: settingsAudioOutputDevice.value || 'default',
-            audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
-            gaplessPlayback: settingsGaplessPlayback.checked,
-            replayGainEnabled: settingsReplayGain.checked,
-            preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
-            musicBrainzTagDatabaseEnabled: settingsMusicBrainzTagDatabaseEnabled.checked,
-            musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
-            keyboardShortcuts: getShortcutValues(),
-        };
+        const formValues = buildFormValues();
 
         try {
             await options.save(formValues);
@@ -1193,25 +1217,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
 
-        const formValues: SettingsFormValues = {
-            libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
-            ffmpegPath: settingsFFmpegPath.value,
-            listenBrainzUserToken: settingsListenBrainzToken.value,
-            musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
-            musicBrainzRequestRateMs: normalizeRequestRateMs(settingsMusicBrainzRequestRateMs.value),
-            listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
-            listenBrainzRequestRateMs: normalizeRequestRateMs(settingsListenBrainzRequestRateMs.value),
-            favoritePlaylists: favoritePlaylists.slice(),
-            coverArtPriority: coverArtPriority.slice(),
-            audioOutputDevice: settingsAudioOutputDevice.value || 'default',
-            audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
-            gaplessPlayback: settingsGaplessPlayback.checked,
-            replayGainEnabled: settingsReplayGain.checked,
-            preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
-            musicBrainzTagDatabaseEnabled: settingsMusicBrainzTagDatabaseEnabled.checked,
-            musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
-            keyboardShortcuts: getShortcutValues(),
-        };
+        const formValues = buildFormValues();
 
         forceReloadInProgress = true;
         forceReloadEtaSeconds = null;

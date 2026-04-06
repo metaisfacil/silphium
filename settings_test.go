@@ -132,22 +132,40 @@ func TestNormalizeMusicBrainzRequestRateMs(t *testing.T) {
 			want:      2000,
 		},
 		{
-			name:      "custom URL: zero is allowed (no rate limit)",
+			name:      "loopback URL: zero is allowed",
 			rateMs:    0,
 			serverURL: "http://localhost:5000",
 			want:      0,
 		},
 		{
-			name:      "custom URL: negative is clamped to zero",
+			name:      "loopback URL: negative is clamped to zero",
 			rateMs:    -1,
 			serverURL: "http://localhost:5000",
 			want:      0,
 		},
 		{
-			name:      "custom URL: positive value is preserved",
+			name:      "loopback URL: positive value below 1000 is preserved",
+			rateMs:    250,
+			serverURL: "http://127.0.0.1:5000",
+			want:      250,
+		},
+		{
+			name:      "192.168.x.x URL: positive value below 1000 is preserved",
+			rateMs:    250,
+			serverURL: "http://192.168.1.15:5000",
+			want:      250,
+		},
+		{
+			name:      "10.0.x.x URL: positive value below 1000 is preserved",
+			rateMs:    250,
+			serverURL: "http://10.0.2.7:5000",
+			want:      250,
+		},
+		{
+			name:      "non-loopback custom URL: values below minimum are clamped",
 			rateMs:    250,
 			serverURL: "https://mb.example.com",
-			want:      250,
+			want:      1000,
 		},
 	}
 
@@ -193,22 +211,40 @@ func TestNormalizeListenBrainzRequestRateMs(t *testing.T) {
 			want:      2000,
 		},
 		{
-			name:      "custom URL: zero is allowed (no rate limit)",
+			name:      "loopback URL: zero is allowed",
 			rateMs:    0,
 			serverURL: "http://localhost:6000",
 			want:      0,
 		},
 		{
-			name:      "custom URL: negative is clamped to zero",
+			name:      "loopback URL: negative is clamped to zero",
 			rateMs:    -1,
 			serverURL: "http://localhost:6000",
 			want:      0,
 		},
 		{
-			name:      "custom URL: positive value is preserved",
+			name:      "loopback URL: positive value below 1000 is preserved",
+			rateMs:    250,
+			serverURL: "http://127.0.0.1:6000",
+			want:      250,
+		},
+		{
+			name:      "192.168.x.x URL: positive value below 1000 is preserved",
+			rateMs:    250,
+			serverURL: "http://192.168.1.15:6000",
+			want:      250,
+		},
+		{
+			name:      "10.0.x.x URL: positive value below 1000 is preserved",
+			rateMs:    250,
+			serverURL: "http://10.0.2.7:6000",
+			want:      250,
+		},
+		{
+			name:      "non-loopback custom URL: values below minimum are clamped",
 			rateMs:    250,
 			serverURL: "https://lb.example.com",
-			want:      250,
+			want:      1000,
 		},
 	}
 
@@ -236,18 +272,48 @@ func TestNormalizeAppSettingsRateMs(t *testing.T) {
 		}
 	})
 
-	t.Run("custom server rate is preserved as-is (including zero)", func(t *testing.T) {
+	t.Run("loopback server rate can be below 1000ms", func(t *testing.T) {
 		settings := normalizeAppSettings(AppSettings{
 			MusicBrainzServerURL:      "http://localhost:5000",
-			MusicBrainzRequestRateMs:  0,
+			MusicBrainzRequestRateMs:  1,
 			ListenBrainzServerURL:     "http://localhost:6000",
-			ListenBrainzRequestRateMs: 250,
+			ListenBrainzRequestRateMs: 1,
 		})
-		if settings.MusicBrainzRequestRateMs != 0 {
-			t.Fatalf("MusicBrainzRequestRateMs = %d, want 0", settings.MusicBrainzRequestRateMs)
+		if settings.MusicBrainzRequestRateMs != 1 {
+			t.Fatalf("MusicBrainzRequestRateMs = %d, want 1", settings.MusicBrainzRequestRateMs)
 		}
-		if settings.ListenBrainzRequestRateMs != 250 {
-			t.Fatalf("ListenBrainzRequestRateMs = %d, want 250", settings.ListenBrainzRequestRateMs)
+		if settings.ListenBrainzRequestRateMs != 1 {
+			t.Fatalf("ListenBrainzRequestRateMs = %d, want 1", settings.ListenBrainzRequestRateMs)
+		}
+	})
+
+	t.Run("private LAN server rate can be below 1000ms", func(t *testing.T) {
+		settings := normalizeAppSettings(AppSettings{
+			MusicBrainzServerURL:      "http://192.168.1.15:5000",
+			MusicBrainzRequestRateMs:  1,
+			ListenBrainzServerURL:     "http://10.0.2.7:6000",
+			ListenBrainzRequestRateMs: 1,
+		})
+		if settings.MusicBrainzRequestRateMs != 1 {
+			t.Fatalf("MusicBrainzRequestRateMs = %d, want 1", settings.MusicBrainzRequestRateMs)
+		}
+		if settings.ListenBrainzRequestRateMs != 1 {
+			t.Fatalf("ListenBrainzRequestRateMs = %d, want 1", settings.ListenBrainzRequestRateMs)
+		}
+	})
+
+	t.Run("non-loopback custom server rate is clamped to minimum 1000ms", func(t *testing.T) {
+		settings := normalizeAppSettings(AppSettings{
+			MusicBrainzServerURL:      "https://mb.example.com",
+			MusicBrainzRequestRateMs:  1,
+			ListenBrainzServerURL:     "https://lb.example.com",
+			ListenBrainzRequestRateMs: 1,
+		})
+		if settings.MusicBrainzRequestRateMs != 1000 {
+			t.Fatalf("MusicBrainzRequestRateMs = %d, want 1000", settings.MusicBrainzRequestRateMs)
+		}
+		if settings.ListenBrainzRequestRateMs != 1000 {
+			t.Fatalf("ListenBrainzRequestRateMs = %d, want 1000", settings.ListenBrainzRequestRateMs)
 		}
 	})
 }
