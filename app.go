@@ -65,6 +65,7 @@ type App struct {
 	musicBrainzTagLastPersistAt            time.Time
 	musicBrainzTagEntityKeysByTag          map[string]map[string]struct{}
 	musicBrainzTagReleaseFoldersByID       map[string]map[string]struct{}
+	musicBrainzTagReleaseFoldersByArtistID map[string]map[string]struct{}
 	musicBrainzTagArtistFoldersByID        map[string]map[string]struct{}
 	musicBrainzTagWorkerWake               chan struct{}
 	musicBrainzTagWorkerStop               chan struct{}

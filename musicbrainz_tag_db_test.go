@@ -239,6 +239,97 @@ func newMusicBrainzTagWorkerStateTestApp(rootPath string, indexedTracks ...Libra
 	return app
 }
 
+func primeMusicBrainzTagSearchAvailability(app *App, folderPaths ...string) {
+	app.libraryDerivedIndexDirty = false
+	app.libraryDerivedIndexBuilding = false
+	app.folderEntriesByFolder = make(map[string][]LibraryBrowserEntry, len(folderPaths))
+	for _, folderPath := range folderPaths {
+		app.folderEntriesByFolder[folderPath] = app.buildFolderEntriesFromMapsLocked(folderPath)
+	}
+	app.folderChildPathsByFolder = map[string][]string{}
+	app.trackFilesByFolder = map[string][]LibraryIndexedFile{}
+	app.searchFolderEntries = []LibraryBrowserEntry{}
+	app.searchTrackEntries = []LibraryBrowserEntry{}
+	app.searchTextEntries = []LibraryBrowserEntry{}
+	app.searchImageEntries = []LibraryBrowserEntry{}
+	app.searchResultsByQuery = map[string][]LibraryBrowserEntry{}
+}
+
+func TestSearchLibraryMusicBrainzArtistTagIncludesReleaseFolders(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	secondAlbumFolder := filepath.Join(fixture.rootOne, "Artist One", "Album Two")
+	if err := os.MkdirAll(secondAlbumFolder, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", secondAlbumFolder, err)
+	}
+
+	secondTrack := filepath.Join(secondAlbumFolder, "01 Second.flac")
+	writeTestFile(t, secondTrack, "second")
+
+	indexedTracks := []LibraryIndexedFile{
+		indexedTrackForTest(fixture.rootOne, fixture.trackOne),
+		indexedTrackForTest(fixture.rootOne, secondTrack),
+	}
+	artistMBID := "11111111-1111-4111-8111-111111111111"
+	releaseIDs := []string{
+		"22222222-2222-4222-8222-222222222222",
+		"33333333-3333-4333-8333-333333333333",
+	}
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne, indexedTracks...)
+
+	albumFolderPaths := make([]string, 0, len(indexedTracks))
+	artistFolderPath := ""
+	for index, indexed := range indexedTracks {
+		signature, ok := trackTagsFileSignatureForPath(indexed.Path)
+		if !ok {
+			t.Fatalf("trackTagsFileSignatureForPath(%q) failed", indexed.Path)
+		}
+
+		releaseFolderPath := releaseFolderPathForIndexedTrack(indexed, 2)
+		artistFolderPaths := artistFolderPathsForIndexedTrack(indexed, 2)
+		if artistFolderPath == "" && len(artistFolderPaths) > 0 {
+			artistFolderPath = artistFolderPaths[0]
+		}
+		albumFolderPaths = append(albumFolderPaths, releaseFolderPath)
+
+		app.musicBrainzTagStore.Tracks[indexed.Path] = musicBrainzTagTrackRecord{
+			Signature:         signature,
+			ReleaseID:         releaseIDs[index],
+			ArtistIDs:         []string{artistMBID},
+			ReleaseFolderPath: releaseFolderPath,
+			ArtistFolderPaths: artistFolderPaths,
+			LastScannedAt:     time.Now().Add(-time.Hour),
+		}
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("artist", artistMBID)] = musicBrainzTagEntityRecord{
+		EntityType:    "artist",
+		MBID:          artistMBID,
+		Tags:          []string{"pikopiko kei"},
+		LastFetchedAt: time.Now().Add(-time.Hour),
+	}
+	app.rebuildMusicBrainzTagIndexesLocked()
+	primeMusicBrainzTagSearchAvailability(app, artistFolderPath, albumFolderPaths[0], albumFolderPaths[1])
+
+	page := app.SearchLibrary(`mbtag:"pikopiko kei"`, 0, 20)
+	if page.TotalEntries != 5 {
+		t.Fatalf("SearchLibrary() totalEntries = %d, want %d", page.TotalEntries, 5)
+	}
+	if !hasBrowserEntry(page.Entries, "folder", artistFolderPath) {
+		t.Fatalf("SearchLibrary() entries missing artist folder %q: %#v", artistFolderPath, page.Entries)
+	}
+	if !hasBrowserEntry(page.Entries, "folder", albumFolderPaths[0]) {
+		t.Fatalf("SearchLibrary() entries missing album folder %q: %#v", albumFolderPaths[0], page.Entries)
+	}
+	if !hasBrowserEntry(page.Entries, "folder", albumFolderPaths[1]) {
+		t.Fatalf("SearchLibrary() entries missing album folder %q: %#v", albumFolderPaths[1], page.Entries)
+	}
+	if !hasBrowserEntry(page.Entries, "track", indexedTracks[0].Path) {
+		t.Fatalf("SearchLibrary() entries missing album track %q: %#v", indexedTracks[0].Path, page.Entries)
+	}
+	if !hasBrowserEntry(page.Entries, "track", indexedTracks[1].Path) {
+		t.Fatalf("SearchLibrary() entries missing album track %q: %#v", indexedTracks[1].Path, page.Entries)
+	}
+}
+
 func TestBuildMusicBrainzTagWorkerStateScansOneRepresentativeTrackPerRelease(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	secondTrack := filepath.Join(fixture.albumOneFolder, "02 Song.flac")

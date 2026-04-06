@@ -676,6 +676,11 @@ func (a *App) addMusicBrainzTagTrackIndexesLocked(record musicBrainzTagTrackReco
 	if record.ReleaseID != "" && record.ReleaseFolderPath != "" {
 		addMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByID, record.ReleaseID, record.ReleaseFolderPath)
 	}
+	if record.ReleaseFolderPath != "" {
+		for _, artistID := range record.ArtistIDs {
+			addMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByArtistID, artistID, record.ReleaseFolderPath)
+		}
+	}
 
 	for _, artistID := range record.ArtistIDs {
 		for _, folderPath := range record.ArtistFolderPaths {
@@ -687,6 +692,11 @@ func (a *App) addMusicBrainzTagTrackIndexesLocked(record musicBrainzTagTrackReco
 func (a *App) removeMusicBrainzTagTrackIndexesLocked(record musicBrainzTagTrackRecord) {
 	if record.ReleaseID != "" && record.ReleaseFolderPath != "" {
 		removeMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByID, record.ReleaseID, record.ReleaseFolderPath)
+	}
+	if record.ReleaseFolderPath != "" {
+		for _, artistID := range record.ArtistIDs {
+			removeMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByArtistID, artistID, record.ReleaseFolderPath)
+		}
 	}
 
 	for _, artistID := range record.ArtistIDs {
@@ -721,6 +731,7 @@ func (a *App) removeMusicBrainzTagEntityIndexesLocked(record musicBrainzTagEntit
 func (a *App) rebuildMusicBrainzTagIndexesLocked() {
 	a.musicBrainzTagEntityKeysByTag = make(map[string]map[string]struct{})
 	a.musicBrainzTagReleaseFoldersByID = make(map[string]map[string]struct{})
+	a.musicBrainzTagReleaseFoldersByArtistID = make(map[string]map[string]struct{})
 	a.musicBrainzTagArtistFoldersByID = make(map[string]map[string]struct{})
 
 	for _, record := range a.musicBrainzTagStore.Tracks {
@@ -1593,6 +1604,17 @@ func (a *App) musicBrainzTagMatchingFolderPaths(tagNames []string) []string {
 
 	folderPaths := make([]string, 0)
 	seen := make(map[string]struct{})
+	addFolderPaths := func(index map[string]map[string]struct{}, key string) {
+		for folderPath := range index[key] {
+			folderKey := strings.ToLower(folderPath)
+			if _, exists := seen[folderKey]; exists {
+				continue
+			}
+
+			seen[folderKey] = struct{}{}
+			folderPaths = append(folderPaths, folderPath)
+		}
+	}
 	for _, rawTagName := range tagNames {
 		tagName := normalizeMusicBrainzTagName(rawTagName)
 		if tagName == "" {
@@ -1608,25 +1630,10 @@ func (a *App) musicBrainzTagMatchingFolderPaths(tagNames []string) []string {
 
 			switch record.EntityType {
 			case "release":
-				for folderPath := range a.musicBrainzTagReleaseFoldersByID[record.MBID] {
-					key := strings.ToLower(folderPath)
-					if _, exists := seen[key]; exists {
-						continue
-					}
-
-					seen[key] = struct{}{}
-					folderPaths = append(folderPaths, folderPath)
-				}
+				addFolderPaths(a.musicBrainzTagReleaseFoldersByID, record.MBID)
 			case "artist":
-				for folderPath := range a.musicBrainzTagArtistFoldersByID[record.MBID] {
-					key := strings.ToLower(folderPath)
-					if _, exists := seen[key]; exists {
-						continue
-					}
-
-					seen[key] = struct{}{}
-					folderPaths = append(folderPaths, folderPath)
-				}
+				addFolderPaths(a.musicBrainzTagArtistFoldersByID, record.MBID)
+				addFolderPaths(a.musicBrainzTagReleaseFoldersByArtistID, record.MBID)
 			}
 		}
 	}
@@ -1661,19 +1668,39 @@ func (a *App) buildMusicBrainzTagSearchResultsLocked(tagNames []string) []Librar
 
 	entries := make([]LibraryBrowserEntry, 0, len(folderPaths))
 	seen := make(map[string]struct{}, len(folderPaths))
+	appendEntry := func(entry LibraryBrowserEntry) {
+		entryKey := strings.ToLower(entry.Kind + ":" + entry.Path)
+		if _, exists := seen[entryKey]; exists {
+			return
+		}
+
+		seen[entryKey] = struct{}{}
+		entries = append(entries, entry)
+	}
+	appendFolderEntries := func(folderPath string) {
+		var folderEntries []LibraryBrowserEntry
+		if a.isLibraryDerivedIndexReadyLocked() {
+			folderEntries = a.folderEntriesByFolder[folderPath]
+		} else {
+			folderEntries = a.buildFolderEntriesFromMapsLocked(folderPath)
+		}
+
+		for _, entry := range folderEntries {
+			appendEntry(entry)
+		}
+	}
 	for _, folderPath := range folderPaths {
 		cleanFolderPath := normalizeMusicBrainzTagFolderPath(folderPath)
 		if cleanFolderPath == "" {
 			continue
 		}
 
-		key := strings.ToLower(cleanFolderPath)
-		if _, exists := seen[key]; exists || !a.isMusicBrainzTagSearchFolderAvailableLocked(cleanFolderPath) {
+		if !a.isMusicBrainzTagSearchFolderAvailableLocked(cleanFolderPath) {
 			continue
 		}
 
-		seen[key] = struct{}{}
-		entries = append(entries, folderBrowserEntry(cleanFolderPath))
+		appendEntry(folderBrowserEntry(cleanFolderPath))
+		appendFolderEntries(cleanFolderPath)
 	}
 
 	sortBrowserEntriesByPath(entries)
