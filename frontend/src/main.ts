@@ -2117,11 +2117,13 @@ const playSidebarQueueSelection = async (trackIndexes: number[]): Promise<void> 
         suppressAutoSelectAfterFullLibraryScan = true;
     }
 
+    playlistController.activatePlaybackQueueSource();
+
     if (remainingTrackIndexes.length > 0) {
         playlistController.addToQueueNext(remainingTrackIndexes);
     }
 
-    await loadTrack(firstTrackIndex, true, trackIndexes);
+    await loadTrack(firstTrackIndex, true, trackIndexes, true);
     if (remainingTrackIndexes.length > 0) {
         await queueGaplessNextTrack(undefined, trackIndexes);
     }
@@ -3344,13 +3346,24 @@ const initializeAppVersion = async (): Promise<void> => {
 
 const resolveCoverForTrack = async (track: Track): Promise<string | undefined> => await coverArtService.resolveForTrack(track);
 
-const loadTrack = async (index: number, allowMissingTrackRecovery = true, replayGainSequenceOverrideIndexes?: number[]): Promise<void> => {
+const loadTrack = async (
+    index: number,
+    allowMissingTrackRecovery = true,
+    replayGainSequenceOverrideIndexes?: number[],
+    manualTrackSelection = false,
+): Promise<void> => {
     if (index < 0 || index >= tracks.length) {
         return;
     }
 
     gaplessQueueRequestVersion += 1;
     queuedGaplessTrackPath = '';
+    if (manualTrackSelection && playbackSequencingService.getPlaybackOrderMode() === 'shuffle-library') {
+        // Manual jumps in Shuffle: Library should restart from a freshly randomized queue.
+        playlistController.activatePlaybackQueueSource();
+        resetShuffleHistory();
+    }
+
     currentTrackIndex = index;
     playlistController.scheduleRender();
     setCoverFlipped(false);
@@ -3404,7 +3417,7 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true, replay
                 }
 
                 if (recoveredIndex >= 0) {
-                    await loadTrack(recoveredIndex, false, replayGainSequenceOverrideIndexes);
+                    await loadTrack(recoveredIndex, false, replayGainSequenceOverrideIndexes, manualTrackSelection);
                     return;
                 }
             } catch (rescanError) {
@@ -4360,8 +4373,9 @@ playlistController = createPlaylistController({
     savePlaylistData: (playlistPath: string, trackPaths: string[]) => SavePlaylistFile(playlistPath, trackPaths),
     appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => AppendTracksToPlaylistFile(playlistPath, trackPaths),
     getFavoritePlaylists: () => currentSettings.favoritePlaylists,
-    onTrackChosen: async (index: number): Promise<void> => {
-        await loadTrack(index);
+    onTrackChosen: async (index: number, context): Promise<void> => {
+        const manualTrackSelection = context.userInitiated && context.source !== 'queue';
+        await loadTrack(index, true, undefined, manualTrackSelection);
         await playCurrentTrack();
     },
     onExternalPlaylistLoaded: () => {
@@ -4482,7 +4496,9 @@ libraryController = createLibraryController({
             suppressAutoSelectAfterFullLibraryScan = true;
         }
 
-        void loadTrack(index).then(() => {
+        playlistController.activatePlaybackQueueSource();
+
+        void loadTrack(index, true, undefined, true).then(() => {
             void playCurrentTrack();
         });
     },
@@ -4496,7 +4512,9 @@ libraryController = createLibraryController({
             return;
         }
 
-        void loadTrack(resolvedIndex).then(() => {
+        playlistController.activatePlaybackQueueSource();
+
+        void loadTrack(resolvedIndex, true, undefined, true).then(() => {
             void playCurrentTrack();
         });
     },

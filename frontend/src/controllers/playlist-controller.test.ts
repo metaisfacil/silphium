@@ -127,7 +127,10 @@ describe('createPlaylistController', () => {
         elements.playlistSource.value = 'queue';
         elements.playlistSource.dispatchEvent(new Event('change', { bubbles: true }));
 
-        expect(onTrackChosen).toHaveBeenLastCalledWith(1);
+        expect(onTrackChosen).toHaveBeenLastCalledWith(1, {
+            source: 'playlist',
+            userInitiated: true,
+        });
         expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 1], currentPosition: 1 });
     });
 
@@ -214,5 +217,17 @@ describe('createPlaylistController', () => {
         setSelectedPlaylistPath('/playlists/empty.m3u8');
 
         await expect(controller.openPlaylistTarget()).resolves.toEqual({ path: '/playlists/empty.m3u8', label: 'empty.m3u8' });
+    });
+
+    it('switches playback source back to queue for external track playback', async () => {
+        const { controller } = mountPlaylistController();
+
+        const loaded = await controller.loadPlaylistByPath('/playlists/demo.m3u8');
+        expect(loaded).toBe(true);
+        expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 1], currentPosition: 0 });
+
+        controller.activatePlaybackQueueSource();
+
+        expect(controller.getSequenceOverride()).toBeNull();
     });
 });

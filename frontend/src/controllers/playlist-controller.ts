@@ -28,6 +28,11 @@ export type PlaylistTargetOption = {
     label: string;
 };
 
+type PlaylistTrackChosenContext = {
+    source: PlaylistSource;
+    userInitiated: boolean;
+};
+
 type PlaylistControllerOptions = {
     trigger: HTMLButtonElement;
     menu: PlaylistMenuElements;
@@ -45,7 +50,7 @@ type PlaylistControllerOptions = {
     savePlaylistData: (playlistPath: string, trackPaths: string[]) => Promise<boolean>;
     appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => Promise<boolean>;
     getFavoritePlaylists: () => string[];
-    onTrackChosen: (index: number) => Promise<void>;
+    onTrackChosen: (index: number, context: PlaylistTrackChosenContext) => Promise<void>;
     onExternalPlaylistLoaded: () => void;
 };
 
@@ -195,7 +200,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         options.onExternalPlaylistLoaded();
         hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
         if (loadedPlaylist.trackIndexes.length > 0) {
-            await options.onTrackChosen(loadedPlaylist.trackIndexes[0]);
+            await options.onTrackChosen(loadedPlaylist.trackIndexes[0], {
+                source: 'playlist',
+                userInitiated: false,
+            });
         }
 
         renderPlaylist();
@@ -661,6 +669,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         scheduleRender();
     };
 
+    const activatePlaybackQueueSource = (): void => {
+        playbackSource = 'queue';
+        editableQueueTrackIndexes = null;
+        scheduleRender();
+    };
+
     const resetState = (): void => {
         loadedPlaylistTrackIndexes = null;
         loadedPlaylistName = '';
@@ -947,7 +961,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         commitPlaybackSourceFromCurrentView();
-        void options.onTrackChosen(trackIndex).then(() => {
+        void options.onTrackChosen(trackIndex, {
+            source: selectedSource,
+            userInitiated: true,
+        }).then(() => {
             renderPlaylist();
         });
     });
@@ -1044,6 +1061,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     });
 
     return {
+        activatePlaybackQueueSource,
         clearEditableQueue,
         closeMenu,
         closeModal,
