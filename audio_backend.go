@@ -46,6 +46,7 @@ type AudioOutputDevice struct {
 type audioTrackSegment struct {
 	SourcePath string
 	PCMData    []byte
+	ReplayGainScale float64
 }
 
 func (s audioTrackSegment) byteLen() int64 {
@@ -158,6 +159,55 @@ func (b *AudioBackend) stateSummaryLocked() string {
 	)
 }
 
+func normalizeReplayGainScale(scale float64) float64 {
+	if math.IsNaN(scale) || math.IsInf(scale, 0) || scale <= 0 {
+		return 1
+	}
+
+	return scale
+}
+
+func (b *AudioBackend) effectivePlayerVolumeLocked() float64 {
+	volume := b.volume
+	if math.IsNaN(volume) || math.IsInf(volume, 0) {
+		return 0
+	}
+
+	if len(b.streamSegments) == 0 {
+		if volume < 0 {
+			return 0
+		}
+		return volume
+	}
+
+	playedLocalBytes := b.currentPlayedLocalBytesLocked()
+	segmentIndex, _, ok := b.segmentForPlaybackOffsetLocked(playedLocalBytes)
+	if !ok || segmentIndex < 0 || segmentIndex >= len(b.streamSegments) {
+		if volume < 0 {
+			return 0
+		}
+		return volume
+	}
+
+	segment := b.streamSegments[segmentIndex]
+	decodedScale := normalizeReplayGainScale(segment.ReplayGainScale)
+	desiredScale := 1.0
+	if b.replayGainEnabled {
+		desiredScale = decodedScale
+		if math.Abs(decodedScale-1) < 1e-9 {
+			replayGainInfo := b.resolveReplayGainInfo(segment.SourcePath, nil, nil)
+			desiredScale = normalizeReplayGainScale(replayGainInfo.Scale())
+		}
+	}
+
+	effectiveVolume := volume * (desiredScale / decodedScale)
+	if math.IsNaN(effectiveVolume) || math.IsInf(effectiveVolume, 0) || effectiveVolume < 0 {
+		return 0
+	}
+
+	return effectiveVolume
+}
+
 func (b *AudioBackend) flushPlayerBuffer(player *oto.Player) error {
 	if player == nil {
 		return nil
@@ -188,10 +238,17 @@ func (b *AudioBackend) ApplyAudioSettings(settings AudioSettings) {
 	b.outputDevice = normalized.OutputDevice
 	b.outputBuffer = time.Duration(normalized.OutputBufferMs) * time.Millisecond
 	b.gaplessPlayback = normalized.GaplessPlayback
+	previousReplayGainEnabled := b.replayGainEnabled
 	b.replayGainEnabled = normalized.ReplayGainEnabled
 	if !b.gaplessPlayback {
 		b.trimConsumedSegmentsLocked(b.currentPlayedGlobalBytesLocked())
 		b.clearFutureQueueLocked()
+	}
+	if previousReplayGainEnabled != b.replayGainEnabled {
+		b.clearFutureQueueLocked()
+		if b.player != nil && len(b.streamSegments) > 0 {
+			b.player.SetVolume(b.effectivePlayerVolumeLocked())
+		}
 	}
 
 	logAudioEvent(
@@ -346,7 +403,7 @@ func (b *AudioBackend) Initialize() error {
 	if b.context != nil {
 		if b.player == nil {
 			b.player = b.context.NewPlayer(&audioPlayerSource{backend: b})
-			b.player.SetVolume(b.volume)
+			b.player.SetVolume(b.effectivePlayerVolumeLocked())
 			logAudioEvent("Initialize attached player to existing context state=%s", b.stateSummaryLocked())
 		}
 		return nil
@@ -376,7 +433,7 @@ func (b *AudioBackend) Initialize() error {
 
 	b.context = context
 	b.player = context.NewPlayer(&audioPlayerSource{backend: b})
-	b.player.SetVolume(b.volume)
+	b.player.SetVolume(b.effectivePlayerVolumeLocked())
 	logAudioEvent("Initialize created context device=%q buffer=%s gapless=%t", b.outputDevice, b.outputBuffer, b.gaplessPlayback)
 	return nil
 }
@@ -440,7 +497,7 @@ func (b *AudioBackend) Reinitialize() error {
 	b.mutex.Lock()
 	player := b.player
 	if player != nil {
-		player.SetVolume(b.volume)
+		player.SetVolume(b.effectivePlayerVolumeLocked())
 	}
 	if wasPlaying && player != nil && len(b.streamSegments) > 0 {
 		b.playing = true
@@ -603,6 +660,7 @@ func (b *AudioBackend) prepareTrackSegment(path string, replayGainReleasePaths [
 	return audioTrackSegment{
 		SourcePath: path,
 		PCMData:    decodedPCM,
+		ReplayGainScale: replayGainInfo.Scale(),
 	}, nil
 }
 
@@ -633,7 +691,7 @@ func (b *AudioBackend) LoadTrackWithReplayGainContext(path string, replayGainRel
 	b.playing = false
 	player := b.player
 	if b.player != nil {
-		b.player.SetVolume(b.volume)
+		b.player.SetVolume(b.effectivePlayerVolumeLocked())
 	}
 	b.streamCond.Broadcast()
 	state := b.snapshotLocked()
@@ -895,7 +953,7 @@ func (b *AudioBackend) SetVolume(volume float64) (AudioPlaybackState, error) {
 
 	b.volume = volume
 	if b.player != nil {
-		b.player.SetVolume(volume)
+		b.player.SetVolume(b.effectivePlayerVolumeLocked())
 	}
 
 	return b.snapshotLocked(), nil
