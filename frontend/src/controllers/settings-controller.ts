@@ -160,6 +160,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     const settingsModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     let hideTimer: number | undefined;
+    let libraryDepthHideTimer: number | undefined;
 
     let favoritePlaylists: string[] = [];
     let selectedFavoritePlaylistIndex = -1;
@@ -430,17 +431,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         refreshForceReloadStatus();
     };
 
-    const closeLibraryDepthDialog = (value: LibraryFolderDialogValues | null, restoreFocus: boolean): void => {
-        if (settingsLibraryDepthModal.hidden) {
+    const closeLibraryDepthDialog = (value: LibraryFolderDialogValues | null, restoreFocus: boolean, immediate = false): void => {
+        if (settingsLibraryDepthModal.hidden && !settingsLibraryDepthModal.classList.contains('is-visible')) {
             return;
         }
 
-        settingsLibraryDepthModal.hidden = true;
-	    settingsLibraryDepthTitle.textContent = 'Library Folder Settings';
-	    settingsLibraryDepthLabelInput.value = '';
-        settingsLibraryDepthInput.value = '';
-        settingsLibraryDepthStatus.textContent = '';
-        settingsLibraryDepthConfirm.textContent = 'Apply';
+        if (libraryDepthHideTimer !== undefined) {
+            window.clearTimeout(libraryDepthHideTimer);
+            libraryDepthHideTimer = undefined;
+        }
 
         const resolve = pendingLibraryDepthResolver;
         pendingLibraryDepthResolver = null;
@@ -448,13 +447,34 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const focusTarget = libraryDepthReturnFocusTarget;
         libraryDepthReturnFocusTarget = null;
 
-        resolve?.(value);
+        const finalizeDialogClose = (): void => {
+            settingsLibraryDepthModal.hidden = true;
+            settingsLibraryDepthModal.classList.remove('is-visible');
+	        settingsLibraryDepthTitle.textContent = 'Library Folder Settings';
+	        settingsLibraryDepthLabelInput.value = '';
+            settingsLibraryDepthInput.value = '';
+            settingsLibraryDepthStatus.textContent = '';
+            settingsLibraryDepthConfirm.textContent = 'Apply';
 
-        if (restoreFocus && focusTarget) {
-            window.requestAnimationFrame(() => {
-                focusTarget.focus();
-            });
+            resolve?.(value);
+
+            if (restoreFocus && focusTarget) {
+                window.requestAnimationFrame(() => {
+                    focusTarget.focus();
+                });
+            }
+        };
+
+        if (immediate) {
+            finalizeDialogClose();
+            return;
         }
+
+        settingsLibraryDepthModal.classList.remove('is-visible');
+        libraryDepthHideTimer = window.setTimeout(() => {
+            libraryDepthHideTimer = undefined;
+            finalizeDialogClose();
+        }, settingsModalTransitionMs);
     };
 
     const openLibraryDepthDialog = (
@@ -462,7 +482,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         confirmLabel: string,
         title: string,
     ): Promise<LibraryFolderDialogValues | null> => {
-        closeLibraryDepthDialog(null, false);
+        closeLibraryDepthDialog(null, false, true);
 
         settingsLibraryDepthTitle.textContent = title;
         settingsLibraryDepthLabelInput.value = initialValues.label;
@@ -471,8 +491,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryDepthConfirm.textContent = confirmLabel;
         libraryDepthReturnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         settingsLibraryDepthModal.hidden = false;
+        settingsLibraryDepthModal.classList.remove('is-visible');
 
         window.requestAnimationFrame(() => {
+    	        settingsLibraryDepthModal.classList.add('is-visible');
 	        settingsLibraryDepthLabelInput.focus();
 	        settingsLibraryDepthLabelInput.select();
         });
@@ -785,7 +807,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     });
 
     const finalizeClose = (): void => {
-        closeLibraryDepthDialog(null, false);
+        closeLibraryDepthDialog(null, false, true);
         settingsModal.classList.remove('is-visible');
         lastLibraryFolderClickIndex = -1;
         lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;

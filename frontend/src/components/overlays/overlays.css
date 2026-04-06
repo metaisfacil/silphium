@@ -554,6 +554,8 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.52);
     backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 220ms ease;
 }
 
 .settings-subdialog {
@@ -566,6 +568,18 @@
     border-radius: 0.85rem;
     background: rgba(18, 18, 20, 0.98);
     box-shadow: 0 1.2rem 3rem rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.settings-submodal.is-visible .settings-submodal-backdrop {
+    opacity: 1;
+}
+
+.settings-submodal.is-visible .settings-subdialog {
+    opacity: 1;
+    transform: translateY(0) scale(1);
 }
 
 #settings-library-depth-form .settings-field {
