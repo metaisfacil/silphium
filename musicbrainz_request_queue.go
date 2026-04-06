@@ -14,6 +14,13 @@ type musicBrainzRequestPriority int
 const (
 	musicBrainzRequestPriorityBackground musicBrainzRequestPriority = iota
 	musicBrainzRequestPriorityInteractive
+	// Global backend override for MBZ queue cooldown in milliseconds.
+	// Keep at 0 to use the configured per-request rate limit.
+	musicBrainzRequestCooldownOverrideMs = 0
+	// Global backend override for MBZ request semaphore capacity.
+	// Keep at 0 to use the default scheduler capacity.
+	musicBrainzRequestSemaphoreOverride = 0
+	defaultMusicBrainzRequestSemaphore  = 1
 )
 
 type musicBrainzFetchResult struct {
@@ -32,13 +39,19 @@ type musicBrainzRequestQueue struct {
 	cond        *sync.Cond
 	interactive []*musicBrainzFetchRequest
 	background  []*musicBrainzFetchRequest
+	semaphore   chan struct{}
 }
 
 var defaultMusicBrainzRequestQueue = newMusicBrainzRequestQueue()
 
 func newMusicBrainzRequestQueue() *musicBrainzRequestQueue {
-	queue := &musicBrainzRequestQueue{}
+	queue := &musicBrainzRequestQueue{
+		semaphore: make(chan struct{}, effectiveMusicBrainzRequestSemaphoreCapacity()),
+	}
 	queue.cond = sync.NewCond(&queue.mu)
+	for i := 0; i < cap(queue.semaphore); i++ {
+		queue.semaphore <- struct{}{}
+	}
 	go queue.run()
 	return queue
 }
@@ -90,15 +103,48 @@ func (q *musicBrainzRequestQueue) run() {
 			continue
 		}
 
-		responseBody, ok := fetchMusicBrainzHTTPRequest(request.requestURL)
-		if request.rateLimitMs > 0 {
-			nextAllowedAt = time.Now().Add(time.Duration(request.rateLimitMs) * time.Millisecond)
+		<-q.semaphore
+		go func(activeRequest *musicBrainzFetchRequest) {
+			defer func() {
+				q.semaphore <- struct{}{}
+			}()
+
+			responseBody, ok := fetchMusicBrainzHTTPRequest(activeRequest.requestURL)
+			activeRequest.result <- musicBrainzFetchResult{body: responseBody, ok: ok}
+			close(activeRequest.result)
+		}(request)
+
+		effectiveCooldownMs := effectiveMusicBrainzRequestCooldownMs(request.rateLimitMs)
+		if effectiveCooldownMs > 0 {
+			nextAllowedAt = time.Now().Add(time.Duration(effectiveCooldownMs) * time.Millisecond)
 		} else {
 			nextAllowedAt = time.Time{}
 		}
-		request.result <- musicBrainzFetchResult{body: responseBody, ok: ok}
-		close(request.result)
 	}
+}
+
+func effectiveMusicBrainzRequestCooldownMs(configuredRateLimitMs int) int {
+	if musicBrainzRequestCooldownOverrideMs >= 1 {
+		return musicBrainzRequestCooldownOverrideMs
+	}
+
+	if configuredRateLimitMs >= 1 {
+		return configuredRateLimitMs
+	}
+
+	return 0
+}
+
+func effectiveMusicBrainzRequestSemaphoreCapacity() int {
+	if musicBrainzRequestSemaphoreOverride >= 1 {
+		return musicBrainzRequestSemaphoreOverride
+	}
+
+	if defaultMusicBrainzRequestSemaphore >= 1 {
+		return defaultMusicBrainzRequestSemaphore
+	}
+
+	return 1
 }
 
 func (q *musicBrainzRequestQueue) popNextLocked() *musicBrainzFetchRequest {

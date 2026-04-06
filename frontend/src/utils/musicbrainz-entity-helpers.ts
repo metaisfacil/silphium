@@ -13,6 +13,18 @@ import type {
     Track,
 } from '../types/app-types';
 
+const defaultMusicBrainzServerUrl = 'https://musicbrainz.org';
+let resolveMusicBrainzServerUrl: (() => string) | null = null;
+
+const musicBrainzServerUrlForLogs = (): string => {
+    const resolved = resolveMusicBrainzServerUrl ? resolveMusicBrainzServerUrl().trim() : '';
+    return resolved !== '' ? resolved : defaultMusicBrainzServerUrl;
+};
+
+export const setMusicBrainzRequestLogServerResolver = (resolver: (() => string) | null): void => {
+    resolveMusicBrainzServerUrl = resolver;
+};
+
 export const emptyMusicBrainzEntityInfo = (entityType: MusicBrainzEntityType, mbid: string): MusicBrainzEntityInfo => ({
     found: false,
     entityType,
@@ -26,9 +38,9 @@ export const emptyMusicBrainzEntityInfo = (entityType: MusicBrainzEntityType, mb
     rawJson: '',
 });
 
-const emptyMusicBrainzTrackMetadata = (recordingId: string, releaseId: string): MusicBrainzTrackMetadata => ({
+const emptyMusicBrainzTrackMetadata = (releaseId: string): MusicBrainzTrackMetadata => ({
     found: false,
-    recordingId,
+    recordingId: '',
     releaseId,
     title: '',
     album: '',
@@ -45,20 +57,23 @@ const emptyMusicBrainzExplorationGraph = (): MusicBrainzExplorationGraph => ({
     warnings: [],
 });
 
-export const lookupMusicBrainzTrackMetadata = async (recordingId: string, releaseId: string): Promise<MusicBrainzTrackMetadata> => {
-    const cleanRecordingId = recordingId.trim();
+export const lookupMusicBrainzTrackMetadata = async (releaseId: string): Promise<MusicBrainzTrackMetadata> => {
     const cleanReleaseId = releaseId.trim();
-    if (!cleanRecordingId && !cleanReleaseId) {
-        return emptyMusicBrainzTrackMetadata(cleanRecordingId, cleanReleaseId);
+    if (!cleanReleaseId) {
+        return emptyMusicBrainzTrackMetadata(cleanReleaseId);
     }
 
     try {
+        const releasePath = `/ws/2/release/${cleanReleaseId}?fmt=json&inc=artists+labels`;
         return await scheduleMusicBrainzRequest(async () => (
-            await LookupTrackMusicBrainzMetadata(cleanRecordingId, cleanReleaseId) as MusicBrainzTrackMetadata
-        ));
+            await LookupTrackMusicBrainzMetadata('', cleanReleaseId) as MusicBrainzTrackMetadata
+        ), {
+            server: musicBrainzServerUrlForLogs(),
+            path: releasePath,
+        });
     } catch (error) {
         console.error(error);
-        return emptyMusicBrainzTrackMetadata(cleanRecordingId, cleanReleaseId);
+        return emptyMusicBrainzTrackMetadata(cleanReleaseId);
     }
 };
 
@@ -66,7 +81,10 @@ export const lookupMusicBrainzEntity = async (entityType: MusicBrainzEntityType,
     try {
         return await scheduleMusicBrainzRequest(async () => (
             await LookupMusicBrainzEntity(entityType, mbid) as MusicBrainzEntityInfo
-        ));
+        ), {
+            server: musicBrainzServerUrlForLogs(),
+            path: `/ws/2/${entityType}/${mbid}?fmt=json&inc=...`,
+        });
     } catch (error) {
         console.error(error);
         return emptyMusicBrainzEntityInfo(entityType, mbid);
@@ -90,7 +108,10 @@ export const lookupMusicBrainzExploration = async (track: Track, requestId: stri
     try {
         return await scheduleMusicBrainzRequest(async () => (
             await LookupMusicBrainzExploration(recordingId, releaseId, artistIds, labelId, requestId) as MusicBrainzExplorationGraph
-        ));
+        ), {
+            server: musicBrainzServerUrlForLogs(),
+            path: '/ws/2/exploration (composite lookup)',
+        });
     } catch (error) {
         console.error(error);
         return emptyMusicBrainzExplorationGraph();

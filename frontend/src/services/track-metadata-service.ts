@@ -15,7 +15,7 @@ type TrackMetadataServiceOptions = {
     getTracks: () => Track[];
     setTrack: (index: number, track: Track) => void;
     readTrackTags: (paths: string[]) => Promise<Record<string, unknown>>;
-    lookupMusicBrainzTrackMetadata: (recordingId: string, releaseId: string) => Promise<MusicBrainzTrackMetadata>;
+    lookupMusicBrainzTrackMetadata: (releaseId: string) => Promise<MusicBrainzTrackMetadata>;
     getPreferMusicBrainzMetadata: () => boolean;
     getCurrentTrackIndex: () => number;
     getTagRequestVersion: () => number;
@@ -163,9 +163,8 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
             return false;
         }
 
-        const recordingId = track.mbIds.recordingId || '';
         const releaseId = track.mbIds.releaseId || '';
-        if (!recordingId && !releaseId) {
+        if (!releaseId) {
             options.setTrack(index, {
                 ...track,
                 mbMetadataResolved: true,
@@ -174,7 +173,8 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
         }
 
         try {
-            const metadata = await options.lookupMusicBrainzTrackMetadata(recordingId, releaseId);
+            // Only use release/artist metadata for hydration; avoid recording lookups.
+            const metadata = await options.lookupMusicBrainzTrackMetadata(releaseId);
             if (requestVersion !== options.getTagRequestVersion() || index !== options.getCurrentTrackIndex()) {
                 return false;
             }

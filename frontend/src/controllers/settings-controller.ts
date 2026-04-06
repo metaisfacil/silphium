@@ -353,7 +353,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const entityCount = musicBrainzTagWorkerProgress.pendingEntityLookups;
         const etaLabel = formatEtaLabel(etaSeconds);
         const remainingLabel = `${entityCount} ${entityCount === 1 ? 'entity' : 'entities'} still to look up`;
-        settingsMusicBrainzTagWorkerProgressRemaining.textContent = `${processedEntityCount} ${processedEntityCount === 1 ? 'entity' : 'entities'} processed • ${remainingLabel}${etaLabel ? ` • ${etaLabel} remaining at current pace` : '.'}`;
+        settingsMusicBrainzTagWorkerProgressRemaining.textContent = `${processedEntityCount} ${processedEntityCount === 1 ? 'entity' : 'entities'} processed • ${remainingLabel}${etaLabel ? ` • ${etaLabel} remaining` : '.'}`;
 
         if (!musicBrainzTagWorkerProgress.enabled) {
             settingsMusicBrainzTagWorkerProgressStatus.textContent = 'MusicBrainz tag database is disabled.';

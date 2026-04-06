@@ -145,8 +145,9 @@ import {
     lookupMusicBrainzEntity,
     mbidForTrackEntity,
     renderMusicBrainzEntityContent,
+    setMusicBrainzRequestLogServerResolver,
 } from './utils/musicbrainz-entity-helpers';
-import { scheduleMusicBrainzRequest } from './utils/musicbrainz-request-scheduler';
+import { scheduleListenBrainzRequest, scheduleMusicBrainzRequest } from './utils/musicbrainz-request-scheduler';
 import {
     defaultFocusedKeyboardShortcuts,
     formatShortcutBindingFromKeyboardEvent,
@@ -413,9 +414,18 @@ const completeStartupIfReady = async (): Promise<void> => {
     void refreshListenBrainzFeedbackForCurrentTrack(true);
 };
 
+const defaultMusicBrainzServerUrl = 'https://musicbrainz.org';
+const defaultListenBrainzServerUrl = 'https://api.listenbrainz.org';
+
 const playbackStateService = createPlaybackStateService();
+setMusicBrainzRequestLogServerResolver(() => currentSettings.musicBrainzServerUrl || defaultMusicBrainzServerUrl);
 const scrobbleService = createScrobbleService({
-    submitListenBrainz: SubmitListenBrainz,
+    submitListenBrainz: async (eventType, payload, listenedAt) => await scheduleListenBrainzRequest(async () => (
+        await SubmitListenBrainz(eventType, payload, listenedAt)
+    ), {
+        server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
+        path: '/1/submit-listens',
+    }),
 });
 const playbackSequencingService = createPlaybackSequencingService({
     getTracks: () => tracks,
@@ -429,7 +439,7 @@ const trackMetadataService = createTrackMetadataService({
         tracks[index] = track;
     },
     readTrackTags: ReadTrackTags,
-    lookupMusicBrainzTrackMetadata,
+    lookupMusicBrainzTrackMetadata: async (releaseId: string) => await lookupMusicBrainzTrackMetadata(releaseId),
     getPreferMusicBrainzMetadata: () => currentSettings.preferMusicBrainzMetadata,
     getCurrentTrackIndex: () => currentTrackIndex,
     getTagRequestVersion: () => tagRequestVersion,
@@ -514,8 +524,18 @@ const listenBrainzController = createListenBrainzController({
     ensureTrackTagsResolved: async (index: number): Promise<void> => {
         await trackMetadataService.ensureTrackTagsResolved(index);
     },
-    fetchRecordingFeedback: async (recordingMbid: string): Promise<number> => await GetListenBrainzRecordingFeedback(recordingMbid) as number,
-    submitRecordingFeedback: async (recordingMbid: string, score: ListenBrainzFeedbackScore): Promise<unknown> => await SubmitListenBrainzRecordingFeedback(recordingMbid, score),
+    fetchRecordingFeedback: async (recordingMbid: string): Promise<number> => await scheduleListenBrainzRequest(async () => (
+        await GetListenBrainzRecordingFeedback(recordingMbid) as number
+    ), {
+        server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
+        path: '/1/feedback/user/{user}/get-feedback-for-recordings',
+    }),
+    submitRecordingFeedback: async (recordingMbid: string, score: ListenBrainzFeedbackScore): Promise<unknown> => await scheduleListenBrainzRequest(async () => (
+        await SubmitListenBrainzRecordingFeedback(recordingMbid, score)
+    ), {
+        server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
+        path: '/1/feedback/recording-feedback',
+    }),
     beforeOpenMenu: () => {
         closePlayOrderMenu();
         closeTrackMetaMenu();
@@ -3920,7 +3940,10 @@ artistInfoController = createArtistInfoController({
     getRequestVersion: () => artistInfoRequestVersion,
     lookupArtistByMBID: (mbid: string) => scheduleMusicBrainzRequest(async () => (
         await LookupArtistByMBID(mbid)
-    )),
+    ), {
+        server: currentSettings.musicBrainzServerUrl || defaultMusicBrainzServerUrl,
+        path: `/ws/2/artist/${mbid}?fmt=json&inc=genres+tags+url-rels`,
+    }),
     openUrl: BrowserOpenURL,
 });
 

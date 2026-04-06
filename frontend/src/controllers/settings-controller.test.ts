@@ -298,6 +298,6 @@ describe('createSettingsController', () => {
             completedEntityLookups: 15,
         });
 
-        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('15 entities processed • 5 entities still to look up • ~5s remaining at current pace');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('15 entities processed • 5 entities still to look up • ~5s remaining');
     });
 });
