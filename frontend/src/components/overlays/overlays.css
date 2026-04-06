@@ -684,10 +684,6 @@
     animation: settings-panel-fade-in 180ms ease;
 }
 
-#settings-panel-ui.is-shortcuts-expanded {
-    grid-template-rows: auto auto minmax(0, 1fr);
-}
-
 .settings-panel[hidden] {
     display: none;
 }
@@ -816,12 +812,14 @@
 }
 
 #settings-panel-ui.is-shortcuts-expanded .settings-accordion-panel {
-    max-height: 100%;
+    max-height: min(24rem, 50vh);
     opacity: 1;
     padding-top: 0.8rem;
     padding-bottom: 0.9rem;
     border-top-color: rgba(255, 255, 255, 0.12);
+    overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     pointer-events: auto;
 }
 
@@ -831,9 +829,11 @@
 
 .settings-shortcuts-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(12.5rem, 100%), 1fr));
     align-items: start;
     gap: 0.8rem;
+    width: 100%;
+    max-width: 100%;
 }
 
 .settings-toggle-field {
@@ -903,7 +903,7 @@
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 0.55rem;
     background: rgba(0, 0, 0, 0.22);
-    min-height: 9.4rem;
+    min-height: 7rem;
     max-height: 13rem;
     overflow: auto;
 }

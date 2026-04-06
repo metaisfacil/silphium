@@ -125,6 +125,13 @@ export const renderSettingsModal = (): string => `
                         </label>
                         <p class="settings-hint">Track labels are replaced on-the-fly by MusicBrainz lookup.</p>
                     </div>
+                    <div id="settings-minimize-to-tray-field" class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-minimize-to-tray-on-close">
+                            <input id="settings-minimize-to-tray-on-close" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Minimize to system tray</span>
+                        </label>
+                        <p class="settings-hint">Disabled by default. When enabled, closing the window hides Silphium to the system tray instead of quitting.</p>
+                    </div>
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
                     <div class="settings-field">
@@ -267,13 +274,6 @@ export const renderSettingsModal = (): string => `
                         <label class="settings-label" for="settings-cover-art-priority-list">Cover art source priority</label>
                         <p class="settings-hint">Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.</p>
                         <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
-                    </div>
-                    <div id="settings-minimize-to-tray-field" class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-minimize-to-tray-on-close">
-                            <input id="settings-minimize-to-tray-on-close" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Minimize to system tray</span>
-                        </label>
-                        <p class="settings-hint">Disabled by default. When enabled, closing the window hides Silphium to the system tray instead of quitting.</p>
                     </div>
                     <div class="settings-accordion">
                         <button id="settings-shortcut-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-shortcut-accordion-panel">Keyboard shortcuts</button>
