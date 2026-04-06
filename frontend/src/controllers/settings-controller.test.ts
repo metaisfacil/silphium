@@ -39,7 +39,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     ffmpegPath: '',
     listenBrainzUserToken: '',
     scrobbleFilterMode: 'blacklist',
-    scrobbleFolders: ['/music/private'],
+    scrobbleRules: [{ field: 'path', operator: 'starts_with', value: '/music/private' }],
     musicBrainzServerUrl: 'https://musicbrainz.org',
     musicBrainzRequestRateMs: 0,
     listenBrainzServerUrl: '',
@@ -134,7 +134,7 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-musicbrainz-tag-worker-cores"]')?.textContent).toBe('MusicBrainz tag worker cores');
         expect(document.querySelector('label[for="settings-favourite-playlist-list"]')?.textContent).toBe('Favourite playlists');
         expect(document.querySelector('label[for="settings-scrobble-filter-mode"]')?.textContent).toBe('Scrobble mode');
-        expect(document.querySelector('label[for="settings-scrobble-folder-list"]')?.textContent).toBe('Scrobble folders');
+        expect(document.querySelector('label[for="settings-scrobble-rule-list"]')?.textContent).toBe('Scrobble rules');
         expect(document.querySelector('label[for="settings-audio-output-device"]')?.textContent).toBe('Audio output device');
         expect(document.querySelector('label[for="settings-audio-output-buffer-ms"]')?.textContent).toBe('Audio output buffer (ms)');
         expect(document.querySelector('label[for="settings-player-card-layout"]')?.textContent).toBe('Player card layout');
@@ -183,7 +183,7 @@ describe('createSettingsController', () => {
             libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
             ffmpegPath: 'D:/tools/ffmpeg.exe',
             scrobbleFilterMode: 'blacklist',
-            scrobbleFolders: ['/music/private'],
+            scrobbleRules: [{ field: 'path', operator: 'starts_with', value: '/music/private' }],
             favoritePlaylists: ['/playlists/favorites.m3u8'],
             coverArtPriority: ['embedded', 'file'],
             audioOutputDevice: 'device-1',
@@ -193,6 +193,39 @@ describe('createSettingsController', () => {
             keyboardShortcuts: expect.objectContaining({ nextTrack: 'K' }),
         }));
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(false);
+    });
+
+    it('adds a scrobble rule through the rule dialog', async () => {
+        const { controller, elements, save } = mountSettingsController({
+            getValues: () => ({
+                ...createSettingsViewValues(),
+                scrobbleRules: [],
+            }),
+        });
+
+        controller.open('scrobbling');
+
+        elements.settingsAddScrobbleRule.click();
+        expect(elements.settingsScrobbleRuleModal.hidden).toBe(false);
+
+        elements.settingsScrobbleRuleField.value = 'trackTitle';
+        elements.settingsScrobbleRuleField.dispatchEvent(new Event('change', { bubbles: true }));
+        elements.settingsScrobbleRuleOperator.value = 'regex';
+        elements.settingsScrobbleRuleOperator.dispatchEvent(new Event('change', { bubbles: true }));
+        elements.settingsScrobbleRuleValue.value = '/live/i';
+        elements.settingsScrobbleRuleForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+        vi.runAllTimers();
+        await flushPromises();
+
+        expect(elements.settingsScrobbleRuleModal.classList.contains('is-visible')).toBe(false);
+
+        elements.settingsSave.click();
+        await flushPromises();
+
+        expect(save).toHaveBeenCalledWith(expect.objectContaining({
+            scrobbleRules: [{ field: 'trackTitle', operator: 'regex', value: '/live/i' }],
+        }));
     });
 
     it('saves MusicBrainz stale days and staggering from the database tab', async () => {

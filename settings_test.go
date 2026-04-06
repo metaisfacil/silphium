@@ -358,6 +358,39 @@ func TestNormalizeScrobbleFilterMode(t *testing.T) {
 func TestNormalizeAppSettingsScrobbleRules(t *testing.T) {
 	settings := normalizeAppSettings(AppSettings{
 		ScrobbleFilterMode: "whitelist",
+		ScrobbleRules: []ScrobbleRule{
+			{Field: scrobbleRuleFieldTrackArtist, Operator: scrobbleRuleOperatorRegex, Value: " /foo/i "},
+			{Field: scrobbleRuleFieldTrackArtist, Operator: scrobbleRuleOperatorRegex, Value: "/foo/i"},
+			{Field: scrobbleRuleFieldTrackLength, Operator: scrobbleRuleOperatorLessThan, Value: "240"},
+			{Field: scrobbleRuleFieldTrackLength, Operator: scrobbleRuleOperatorLessThan, Value: "-10"},
+		},
+	})
+
+	if settings.ScrobbleFilterMode != "whitelist" {
+		t.Fatalf("ScrobbleFilterMode = %q, want %q", settings.ScrobbleFilterMode, "whitelist")
+	}
+
+	if len(settings.ScrobbleRules) != 2 {
+		t.Fatalf("ScrobbleRules length = %d, want 2", len(settings.ScrobbleRules))
+	}
+
+	if settings.ScrobbleRules[0].Field != scrobbleRuleFieldTrackArtist || settings.ScrobbleRules[0].Operator != scrobbleRuleOperatorRegex || settings.ScrobbleRules[0].Value != "/foo/i" {
+		t.Fatalf("first ScrobbleRule = %#v, want normalized regex track-artist rule", settings.ScrobbleRules[0])
+	}
+
+	if settings.ScrobbleRules[1].Field != scrobbleRuleFieldTrackLength || settings.ScrobbleRules[1].Operator != scrobbleRuleOperatorLessThan || settings.ScrobbleRules[1].Value != "240" {
+		t.Fatalf("second ScrobbleRule = %#v, want normalized track-length rule", settings.ScrobbleRules[1])
+	}
+
+	fallback := normalizeAppSettings(AppSettings{ScrobbleFilterMode: ""})
+	if fallback.ScrobbleFilterMode != "blacklist" {
+		t.Fatalf("default ScrobbleFilterMode = %q, want %q", fallback.ScrobbleFilterMode, "blacklist")
+	}
+}
+
+func TestNormalizeAppSettingsMigratesLegacyScrobbleFolders(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{
+		ScrobbleFilterMode: "blacklist",
 		ScrobbleFolders: []string{
 			"  C:/Music/Main  ",
 			"c:/music/main",
@@ -367,20 +400,21 @@ func TestNormalizeAppSettingsScrobbleRules(t *testing.T) {
 		},
 	})
 
-	if settings.ScrobbleFilterMode != "whitelist" {
-		t.Fatalf("ScrobbleFilterMode = %q, want %q", settings.ScrobbleFilterMode, "whitelist")
+	if len(settings.ScrobbleRules) != 2 {
+		t.Fatalf("ScrobbleRules length = %d, want 2", len(settings.ScrobbleRules))
 	}
 
-	if len(settings.ScrobbleFolders) != 2 {
-		t.Fatalf("ScrobbleFolders length = %d, want 2", len(settings.ScrobbleFolders))
-	}
+	for _, rule := range settings.ScrobbleRules {
+		if rule.Field != scrobbleRuleFieldPath {
+			t.Fatalf("legacy migrated rule field = %q, want %q", rule.Field, scrobbleRuleFieldPath)
+		}
 
-	if settings.ScrobbleFolders[0] == settings.ScrobbleFolders[1] {
-		t.Fatalf("ScrobbleFolders were not deduplicated: %#v", settings.ScrobbleFolders)
-	}
+		if rule.Operator != scrobbleRuleOperatorStartsWith {
+			t.Fatalf("legacy migrated rule operator = %q, want %q", rule.Operator, scrobbleRuleOperatorStartsWith)
+		}
 
-	fallback := normalizeAppSettings(AppSettings{ScrobbleFilterMode: ""})
-	if fallback.ScrobbleFilterMode != "blacklist" {
-		t.Fatalf("default ScrobbleFilterMode = %q, want %q", fallback.ScrobbleFilterMode, "blacklist")
+		if rule.Value == "" {
+			t.Fatalf("legacy migrated rule value should not be empty: %#v", rule)
+		}
 	}
 }

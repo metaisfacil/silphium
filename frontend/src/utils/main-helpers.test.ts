@@ -4,13 +4,15 @@ import type { Track } from '../types/app-types';
 import {
     asScrobbleFilterMode,
     buildDisplayMetadata,
+    describeScrobbleRule,
     buildLibraryRootNameByPath,
     findLibraryFolderForFilePath,
     formatTechnicalMetadata,
-    isTrackPathScrobbleAllowed,
+    isTrackScrobbleAllowed,
     libraryFolderPathKey,
     normalizeLibraryFolders,
-    normalizeScrobbleFolders,
+    normalizeScrobbleRules,
+    validateScrobbleRules,
 } from './main-helpers';
 
 const createTrack = (overrides: Partial<Track> = {}): Track => ({
@@ -92,46 +94,95 @@ describe('main helpers', () => {
         expect(asScrobbleFilterMode('whitelist')).toBe('whitelist');
         expect(asScrobbleFilterMode('')).toBe('blacklist');
 
-        expect(normalizeScrobbleFolders([
-            ' C:\\Music\\Main ',
-            'c:/music/main',
-            '',
-            '   ',
+        expect(normalizeScrobbleRules([
+            { field: 'path', operator: 'starts_with', value: ' C:\\Music\\Main ' },
+            { field: 'path', operator: 'starts_with', value: 'c:/music/main' },
+            { field: 'trackLength', operator: 'less_than', value: '240' },
+            { field: 'trackLength', operator: 'less_than', value: '-10' },
+        ])).toEqual([
+            { field: 'path', operator: 'starts_with', value: 'C:\\Music\\Main' },
+            { field: 'trackLength', operator: 'less_than', value: '240' },
+        ]);
+
+        expect(normalizeScrobbleRules(undefined, [
             '/music/archive',
             '/music/archive/',
         ])).toEqual([
-            'C:\\Music\\Main',
-            '/music/archive',
+            { field: 'path', operator: 'starts_with', value: '/music/archive' },
         ]);
     });
 
-    it('applies scrobble blacklist and whitelist path matching', () => {
-        expect(isTrackPathScrobbleAllowed(
-            'C:/Music/Main/Artist/Album/track.flac',
-            'blacklist',
-            ['C:/Music/Main'],
-        )).toBe(false);
+    it('validates and describes regex scrobble rules', () => {
+        expect(validateScrobbleRules([
+            { field: 'trackArtist', operator: 'regex', value: '(/invalid' },
+        ])).toContain('Invalid RegEx');
 
-        expect(isTrackPathScrobbleAllowed(
-            'C:/Music/Other/Artist/Album/track.flac',
-            'blacklist',
-            ['C:/Music/Main'],
+        expect(validateScrobbleRules([
+            { field: 'trackArtist', operator: 'regex', value: '/artist/i' },
+        ])).toBeNull();
+
+        expect(describeScrobbleRule({ field: 'trackLength', operator: 'greater_than', value: '240' })).toBe('Track length is longer than 240s');
+    });
+
+    it('matches scrobble rules against metadata fields and duration', () => {
+        const track = createTrack({
+            path: 'C:/Music/Main/Artist/Album/track.flac',
+            displayTitle: 'Signal Bloom',
+            displayAlbum: 'Night Archive',
+            displayArtist: 'Guest Singer',
+            allFileTags: {
+                albumartist: ['Various Artists'],
+                artist: ['Guest Singer'],
+                genre: ['Ambient', 'Drone'],
+            },
+            technicalDetails: {
+                durationSeconds: 301,
+            },
+            mbIds: {
+                artistId: 'artist-1',
+                releaseId: 'release-1',
+            },
+            artistMbids: ['artist-1', 'artist-2'],
+        });
+
+        expect(isTrackScrobbleAllowed(
+            track,
+            301,
+            'whitelist',
+            [{ field: 'albumArtist', operator: 'regex', value: '/various/i' }],
         )).toBe(true);
 
-        expect(isTrackPathScrobbleAllowed(
-            'C:/Music/Main/Artist/Album/track.flac',
+        expect(isTrackScrobbleAllowed(
+            track,
+            301,
             'whitelist',
-            ['C:/Music/Main'],
+            [{ field: 'genre', operator: 'contains', value: 'ambient' }],
         )).toBe(true);
 
-        expect(isTrackPathScrobbleAllowed(
-            'C:/Music/Other/Artist/Album/track.flac',
+        expect(isTrackScrobbleAllowed(
+            track,
+            301,
             'whitelist',
-            ['C:/Music/Main'],
+            [{ field: 'artistMbid', operator: 'equals', value: 'artist-2' }],
+        )).toBe(true);
+
+        expect(isTrackScrobbleAllowed(
+            track,
+            301,
+            'whitelist',
+            [{ field: 'trackLength', operator: 'greater_than', value: '240' }],
+        )).toBe(true);
+
+        expect(isTrackScrobbleAllowed(
+            track,
+            301,
+            'blacklist',
+            [{ field: 'path', operator: 'starts_with', value: 'C:/Music/Main' }],
         )).toBe(false);
 
-        expect(isTrackPathScrobbleAllowed(
-            'C:/Music/Main/track.flac',
+        expect(isTrackScrobbleAllowed(
+            track,
+            301,
             'whitelist',
             [],
         )).toBe(false);

@@ -56,12 +56,29 @@ export namespace main {
 	        this.replayGainEnabled = source["replayGainEnabled"];
 	    }
 	}
+	export class ScrobbleRule {
+	    field: string;
+	    operator: string;
+	    value?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScrobbleRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.field = source["field"];
+	        this.operator = source["operator"];
+	        this.value = source["value"];
+	    }
+	}
 	export class AppSettings {
 	    libraryFolders?: AppLibraryFolder[];
 	    libraryPath?: string;
 	    ffmpegPath?: string;
 	    listenBrainzUserToken: string;
 	    scrobbleFilterMode?: string;
+	    scrobbleRules?: ScrobbleRule[];
 	    scrobbleFolders?: string[];
 	    musicBrainzServerUrl?: string;
 	    musicBrainzRequestRateMs?: number;
@@ -90,6 +107,7 @@ export namespace main {
 	        this.ffmpegPath = source["ffmpegPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	        this.scrobbleFilterMode = source["scrobbleFilterMode"];
+	        this.scrobbleRules = this.convertValues(source["scrobbleRules"], ScrobbleRule);
 	        this.scrobbleFolders = source["scrobbleFolders"];
 	        this.musicBrainzServerUrl = source["musicBrainzServerUrl"];
 	        this.musicBrainzRequestRateMs = source["musicBrainzRequestRateMs"];
@@ -764,6 +782,7 @@ export namespace main {
 		    return a;
 		}
 	}
+	
 	export class TrackBlob {
 	    key: string;
 	    name: string;
