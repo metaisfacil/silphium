@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -148,24 +147,14 @@ func sortedMusicBrainzTagEntityKeys(store musicBrainzTagDatabaseStore) []string 
 	return entityKeys
 }
 
-func loadMusicBrainzTagDatabaseStore(databasePath string, legacyPath string) (musicBrainzTagDatabaseStore, bool) {
+func loadMusicBrainzTagDatabaseStore(databasePath string) musicBrainzTagDatabaseStore {
 	if musicBrainzTagDatabaseFileExists(databasePath) {
 		if store, err := loadMusicBrainzTagDatabaseStoreFromSQLite(databasePath); err == nil {
-			return store, false
+			return store
 		}
 	}
 
-	if musicBrainzTagDatabaseFileExists(legacyPath) {
-		rawBytes, err := os.ReadFile(legacyPath)
-		if err == nil {
-			var decoded musicBrainzTagDatabaseStore
-			if json.Unmarshal(rawBytes, &decoded) == nil {
-				return normalizeMusicBrainzTagDatabaseStore(decoded), true
-			}
-		}
-	}
-
-	return newMusicBrainzTagDatabaseStore(), false
+	return newMusicBrainzTagDatabaseStore()
 }
 
 func loadMusicBrainzTagDatabaseStoreFromSQLite(path string) (musicBrainzTagDatabaseStore, error) {

@@ -11,7 +11,6 @@ import (
 )
 
 const musicBrainzTagDatabaseFileName = "silphium.musicbrainz.tags.sqlite3"
-const legacyMusicBrainzTagDatabaseFileName = "silphium.musicbrainz.tags.json"
 const musicBrainzTagDatabaseVersion = 1
 const musicBrainzTagEntityRetryInterval = 6 * time.Hour
 const musicBrainzTagDatabaseFlushInterval = 5 * time.Second
@@ -554,11 +553,6 @@ func (a *App) musicBrainzTagDatabasePath() string {
 	return filepath.Join(filepath.Dir(settingsPath), musicBrainzTagDatabaseFileName)
 }
 
-func (a *App) legacyMusicBrainzTagDatabasePath() string {
-	settingsPath := a.ensureSettingsPath()
-	return filepath.Join(filepath.Dir(settingsPath), legacyMusicBrainzTagDatabaseFileName)
-}
-
 func normalizeMusicBrainzTagDatabaseStore(store musicBrainzTagDatabaseStore) musicBrainzTagDatabaseStore {
 	normalized := newMusicBrainzTagDatabaseStore()
 
@@ -603,11 +597,10 @@ func (a *App) ensureMusicBrainzTagDatabaseLoadedLocked() {
 		return
 	}
 
-	store, migratedFromLegacy := loadMusicBrainzTagDatabaseStore(a.musicBrainzTagDatabasePath(), a.legacyMusicBrainzTagDatabasePath())
+	store := loadMusicBrainzTagDatabaseStore(a.musicBrainzTagDatabasePath())
 
 	a.musicBrainzTagStore = store
 	a.musicBrainzTagStoreLoaded = true
-	a.musicBrainzTagStoreDirty = migratedFromLegacy
 	a.rebuildMusicBrainzTagIndexesLocked()
 }
 

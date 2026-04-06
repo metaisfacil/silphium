@@ -592,10 +592,7 @@ func TestMusicBrainzTagDatabaseSQLiteRoundTrip(t *testing.T) {
 		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite() error = %v", err)
 	}
 
-	loadedStore, migratedFromLegacy := loadMusicBrainzTagDatabaseStore(databasePath, filepath.Join(t.TempDir(), "legacy.json"))
-	if migratedFromLegacy {
-		t.Fatal("did not expect SQLite round trip to report legacy migration")
-	}
+	loadedStore := loadMusicBrainzTagDatabaseStore(databasePath)
 
 	loadedTrack, exists := loadedStore.Tracks[trackPath]
 	if !exists {
@@ -763,10 +760,7 @@ func TestMusicBrainzTagDatabaseSQLiteDeltaWrite(t *testing.T) {
 		t.Fatalf("updated writeMusicBrainzTagDatabaseStoreToSQLite() error = %v", err)
 	}
 
-	loadedStore, migratedFromLegacy := loadMusicBrainzTagDatabaseStore(databasePath, filepath.Join(t.TempDir(), "legacy.json"))
-	if migratedFromLegacy {
-		t.Fatal("did not expect delta write to report legacy migration")
-	}
+	loadedStore := loadMusicBrainzTagDatabaseStore(databasePath)
 
 	if len(loadedStore.Tracks) != 2 {
 		t.Fatalf("track count after delta write = %d, want %d", len(loadedStore.Tracks), 2)
