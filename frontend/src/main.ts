@@ -937,6 +937,8 @@ let suppressAutoSelectAfterFullLibraryScan = false;
 const libraryIndexedFilePageSize = 1000;
 const libraryIncrementalRefreshDebounceMs = 180;
 let pendingLibraryIncrementalRefreshHandle: number | null = null;
+const nowPlayingCoverRefreshDebounceMs = 220;
+let pendingNowPlayingCoverRefreshHandle: number | null = null;
 
 const beginLibraryLoadTracking = (): void => {
     activeLibraryLoadScanResolvedAtMs = null;
@@ -977,6 +979,28 @@ const scheduleLibraryIncrementalFolderRefresh = (): void => {
         logRescan('Refreshing current folder: %s', currentFolderPath || '(root)');
         libraryController.refreshCurrentFolder();
     }, libraryIncrementalRefreshDebounceMs);
+};
+
+const scheduleNowPlayingCoverRefresh = (): void => {
+    if (pendingNowPlayingCoverRefreshHandle !== null) {
+        window.clearTimeout(pendingNowPlayingCoverRefreshHandle);
+    }
+
+    pendingNowPlayingCoverRefreshHandle = window.setTimeout(() => {
+        pendingNowPlayingCoverRefreshHandle = null;
+
+        if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+            return;
+        }
+
+        const activeTrack = tracks[currentTrackIndex];
+        if (!activeTrack) {
+            return;
+        }
+
+        coverArtService.invalidateForTrack(activeTrack);
+        void applyCoverArtForTrack(currentTrackIndex);
+    }, nowPlayingCoverRefreshDebounceMs);
 };
 
 const rebuildTrackPathIndex = (): void => {
@@ -3138,6 +3162,7 @@ const handleLibraryScanUpdatedEvent = (scanResult: LibraryScanResult): void => {
     // For incremental updates, refresh the visible folder with a short debounce to
     // avoid rapid re-renders that interfere with pointer interactions.
     scheduleLibraryIncrementalFolderRefresh();
+    scheduleNowPlayingCoverRefresh();
     logRescan('handleLibraryScanUpdatedEvent END: took %.2fms', performance.now() - startTime);
 };
 

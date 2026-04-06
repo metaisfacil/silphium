@@ -261,6 +261,22 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
             return coverUrlByMusicBrainzRelease.get(releaseId);
         },
         getResolvedSourceForTrack: (trackPath: string): CoverArtPrioritySource | undefined => coverSourceByTrackPath.get(trackPathKey(trackPath)),
+        invalidateForTrack: (track: Track): void => {
+            const trackKey = trackPathKey(track.path || '');
+            const folderKey = folderKeyForPath(track.folderPath || '');
+
+            if (trackKey) {
+                coverUrlByTrackPath.delete(trackKey);
+                coverMediaArtworkByTrackPath.delete(trackKey);
+                coverSourceByTrackPath.delete(trackKey);
+            }
+
+            if (folderKey) {
+                coverPathByFolder.delete(folderKey);
+                coverUrlByFolder.delete(folderKey);
+                coverMediaArtworkByFolder.delete(folderKey);
+            }
+        },
         resolveForTrack: async (track: Track): Promise<string | undefined> => {
             const trackKey = trackPathKey(track.path);
             const priority = normalizeCoverArtPriority(options.getCoverArtPriority());
