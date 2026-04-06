@@ -74,6 +74,8 @@ export type SettingsModalElements = {
     settingsMusicBrainzTagWorkerProgressStatus: HTMLParagraphElement;
     settingsPlayerCardLayout: HTMLSelectElement;
     settingsCoverArtPriorityList: HTMLUListElement;
+    settingsMinimizeToTrayField: HTMLDivElement;
+    settingsMinimizeToTrayOnClose: HTMLInputElement;
     settingsShortcutPlayPauseToggle: HTMLInputElement;
     settingsShortcutNextTrack: HTMLInputElement;
     settingsShortcutPreviousTrack: HTMLInputElement;
@@ -266,6 +268,13 @@ export const renderSettingsModal = (): string => `
                         <p class="settings-hint">Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.</p>
                         <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
                     </div>
+                    <div id="settings-minimize-to-tray-field" class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-minimize-to-tray-on-close">
+                            <input id="settings-minimize-to-tray-on-close" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Minimize to system tray</span>
+                        </label>
+                        <p class="settings-hint">Disabled by default. When enabled, closing the window hides Silphium to the system tray instead of quitting.</p>
+                    </div>
                     <div class="settings-accordion">
                         <button id="settings-shortcut-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-shortcut-accordion-panel">Keyboard shortcuts</button>
                         <div id="settings-shortcut-accordion-panel" class="settings-accordion-panel" hidden>
@@ -440,6 +449,8 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsMusicBrainzTagWorkerProgressStatus: root.querySelector('#settings-musicbrainz-tag-worker-progress-status') as HTMLParagraphElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,
+    settingsMinimizeToTrayField: root.querySelector('#settings-minimize-to-tray-field') as HTMLDivElement,
+    settingsMinimizeToTrayOnClose: root.querySelector('#settings-minimize-to-tray-on-close') as HTMLInputElement,
     settingsShortcutPlayPauseToggle: root.querySelector('#settings-shortcut-play-pause') as HTMLInputElement,
     settingsShortcutNextTrack: root.querySelector('#settings-shortcut-next-track') as HTMLInputElement,
     settingsShortcutPreviousTrack: root.querySelector('#settings-shortcut-previous-track') as HTMLInputElement,

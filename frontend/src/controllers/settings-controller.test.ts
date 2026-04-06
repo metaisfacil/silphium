@@ -55,6 +55,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     musicBrainzTagStaleDays: 30,
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 4,
+    minimizeToTrayOnClose: false,
     musicBrainzTagWorkerProgress: createMusicBrainzTagWorkerProgress(),
     keyboardShortcuts: createKeyboardShortcuts(),
     audioOutputDevices: createAudioDevices(),

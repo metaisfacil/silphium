@@ -75,6 +75,7 @@ type App struct {
 	musicBrainzTagProgress                 MusicBrainzTagWorkerProgress
 	mediaKeyWatcherStop                    chan struct{}
 	mediaKeyWatcherDone                    chan struct{}
+	quitRequested                          atomic.Bool
 	libraryScan                            LibraryScanResult
 	scanInProgress                         bool
 	scanRemainingImmediateChildrenByFolder map[string]int
@@ -111,12 +112,15 @@ func (a *App) startup(ctx context.Context) {
 	a.loadStoredSettings()
 	a.audioBackend().SetFFmpegPath(a.settings.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(a.settings.Audio)
+	a.refreshSystemTrayForSettings()
 	a.startMediaKeyWatcher()
 	a.startMusicBrainzTagWorker()
 	a.notifyMusicBrainzTagWorker()
 }
 
 func (a *App) shutdown(context.Context) {
+	a.quitRequested.Store(true)
+	a.stopSystemTray()
 	a.stopMediaKeyWatcher()
 	a.stopLibraryWatcher()
 	a.stopMusicBrainzTagWorker()
@@ -136,6 +140,19 @@ func (a *App) audioBackend() *AudioBackend {
 // GetAppVersion returns the backend application version string.
 func (a *App) GetAppVersion() string {
 	return AppVersion
+}
+
+func (a *App) beforeClose(context.Context) bool {
+	if a.quitRequested.Load() {
+		return false
+	}
+
+	if !a.shouldMinimizeToTrayOnClose() {
+		return false
+	}
+
+	runtime.WindowHide(a.ctx)
+	return true
 }
 
 // LogFrontendMessage logs a message from the frontend to the backend console

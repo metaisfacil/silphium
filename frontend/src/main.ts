@@ -110,7 +110,7 @@ import {
     ValidateFFmpegPath,
 } from '../wailsjs/go/main/App';
 import { main as WailsModels } from '../wailsjs/go/models';
-import { BrowserOpenURL, EventsOn, OnFileDrop } from '../wailsjs/runtime/runtime';
+import { BrowserOpenURL, EventsOn, OnFileDrop, WindowHide, WindowIsMinimised } from '../wailsjs/runtime/runtime';
 import { applyMbLinks, openMbLink } from './musicbrainz';
 import type {
     AppLibraryFolder,
@@ -163,6 +163,7 @@ import {
 } from './utils/shortcut-bindings';
 
 const app = document.querySelector('#app') as HTMLElement | null;
+const isWindowsRuntime = /windows/i.test(navigator.userAgent);
 
 if (!app) {
     throw new Error('App container not found');
@@ -266,6 +267,7 @@ let currentSettings: AppSettings = {
     musicBrainzTagStaleDays: defaultMusicBrainzTagStaleDays,
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 1,
+    minimizeToTrayOnClose: false,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
 
@@ -392,6 +394,7 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         musicBrainzTagWorkerCores: Number.isFinite(settings.musicBrainzTagWorkerCores)
             ? Math.max(1, Math.min(128, Math.floor(settings.musicBrainzTagWorkerCores || 1)))
             : 1,
+        minimizeToTrayOnClose: !!settings.minimizeToTrayOnClose,
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
     };
 };
@@ -3324,6 +3327,49 @@ const unlockMediaSessionAnchorFromUserGesture = (): void => {
 };
 const handleFocusedHardwareMediaKey = (event: KeyboardEvent): boolean => mediaSessionController.handleHardwareMediaKey(event);
 
+let hideToTrayOnMinimizeInFlight = false;
+let hideToTrayRetryTimer: number | undefined;
+const hideToTrayRetryDelayMs = 60;
+const hideToTrayMaxRetries = 5;
+
+const clearHideToTrayRetryTimer = (): void => {
+    if (hideToTrayRetryTimer === undefined) {
+        return;
+    }
+
+    window.clearTimeout(hideToTrayRetryTimer);
+    hideToTrayRetryTimer = undefined;
+};
+
+const hideToTrayWhenMinimized = async (remainingRetries = hideToTrayMaxRetries): Promise<void> => {
+    if (!currentSettings.minimizeToTrayOnClose || hideToTrayOnMinimizeInFlight) {
+        clearHideToTrayRetryTimer();
+        return;
+    }
+
+    hideToTrayOnMinimizeInFlight = true;
+    try {
+        const isMinimized = await WindowIsMinimised();
+        if (!isMinimized) {
+            if (remainingRetries > 0) {
+                clearHideToTrayRetryTimer();
+                hideToTrayRetryTimer = window.setTimeout(() => {
+                    hideToTrayRetryTimer = undefined;
+                    void hideToTrayWhenMinimized(remainingRetries - 1);
+                }, hideToTrayRetryDelayMs);
+            }
+            return;
+        }
+
+        clearHideToTrayRetryTimer();
+        WindowHide();
+    } catch (error) {
+        console.debug(error);
+    } finally {
+        hideToTrayOnMinimizeInFlight = false;
+    }
+};
+
 const nonTypingInputTypes = new Set([
     'button',
     'checkbox',
@@ -3462,6 +3508,7 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             musicBrainzTagStaleDays: currentSettings.musicBrainzTagStaleDays,
             musicBrainzTagRequestStaggeringEnabled: currentSettings.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
+            minimizeToTrayOnClose: currentSettings.minimizeToTrayOnClose,
             keyboardShortcuts: currentSettings.keyboardShortcuts,
         })) as AppSettings;
 
@@ -3755,6 +3802,7 @@ const loadLibraryScan = async (scanResult: LibraryScanResult, options?: { autoSe
 settingsController = createSettingsController({
     trigger: librarySettings,
     elements: settingsElements,
+    isWindows: isWindowsRuntime,
     getValues: () => ({
         libraryFolders: currentSettings.libraryFolders,
         ffmpegPath: currentSettings.ffmpegPath,
@@ -3777,6 +3825,7 @@ settingsController = createSettingsController({
         musicBrainzTagStaleDays: currentSettings.musicBrainzTagStaleDays,
         musicBrainzTagRequestStaggeringEnabled: currentSettings.musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
+        minimizeToTrayOnClose: currentSettings.minimizeToTrayOnClose,
         musicBrainzTagWorkerProgress: currentMusicBrainzTagWorkerProgress,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
     }),
@@ -3803,6 +3852,7 @@ settingsController = createSettingsController({
         musicBrainzTagStaleDays,
         musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores,
+        minimizeToTrayOnClose,
         keyboardShortcuts,
     }): Promise<void> => {
         const ffmpegStatus = await validateConfiguredFFmpegPath(ffmpegPath);
@@ -3838,6 +3888,7 @@ settingsController = createSettingsController({
             musicBrainzTagStaleDays,
             musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores,
+            minimizeToTrayOnClose,
             keyboardShortcuts,
         })) as AppSettings;
 
@@ -3892,6 +3943,7 @@ settingsController = createSettingsController({
         musicBrainzTagStaleDays,
         musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores,
+        minimizeToTrayOnClose,
         keyboardShortcuts,
     }): Promise<AudioOutputDevice[]> => {
         const ffmpegStatus = await validateConfiguredFFmpegPath(ffmpegPath);
@@ -3927,6 +3979,7 @@ settingsController = createSettingsController({
             musicBrainzTagStaleDays,
             musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores,
+            minimizeToTrayOnClose,
             keyboardShortcuts,
         })) as AppSettings;
 
@@ -4786,6 +4839,7 @@ document.addEventListener('keyup', (event) => {
 
 window.addEventListener('blur', () => {
     setCtrlHeldState(false);
+    void hideToTrayWhenMinimized();
 });
 
 window.addEventListener('beforeunload', () => {
@@ -4794,6 +4848,7 @@ window.addEventListener('beforeunload', () => {
 
 window.addEventListener('resize', () => {
     updateLyricsPanelVisibility();
+    void hideToTrayWhenMinimized();
 });
 
 const cardResizeObserver = new ResizeObserver(() => {
