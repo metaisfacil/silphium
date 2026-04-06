@@ -94,6 +94,7 @@ export namespace main {
 	    musicBrainzTagStaleDays?: number;
 	    musicBrainzTagRequestStaggeringEnabled?: boolean;
 	    musicBrainzTagWorkerCores?: number;
+	    minimizeToTrayOnClose?: boolean;
 	    keyboardShortcuts: FocusedKeyboardShortcuts;
 	
 	    static createFrom(source: any = {}) {
@@ -123,6 +124,7 @@ export namespace main {
 	        this.musicBrainzTagStaleDays = source["musicBrainzTagStaleDays"];
 	        this.musicBrainzTagRequestStaggeringEnabled = source["musicBrainzTagRequestStaggeringEnabled"];
 	        this.musicBrainzTagWorkerCores = source["musicBrainzTagWorkerCores"];
+	        this.minimizeToTrayOnClose = source["minimizeToTrayOnClose"];
 	        this.keyboardShortcuts = this.convertValues(source["keyboardShortcuts"], FocusedKeyboardShortcuts);
 	    }
 	

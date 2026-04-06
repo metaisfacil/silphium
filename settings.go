@@ -68,6 +68,7 @@ type AppSettings struct {
 	MusicBrainzTagStaleDays                *int                     `json:"musicBrainzTagStaleDays,omitempty"`
 	MusicBrainzTagRequestStaggeringEnabled bool                     `json:"musicBrainzTagRequestStaggeringEnabled,omitempty"`
 	MusicBrainzTagWorkerCores              int                      `json:"musicBrainzTagWorkerCores,omitempty"`
+	MinimizeToTrayOnClose                  bool                     `json:"minimizeToTrayOnClose,omitempty"`
 	KeyboardShortcuts                      FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
 
@@ -622,6 +623,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		MusicBrainzTagStaleDays:                intPointer(musicBrainzTagStaleDays),
 		MusicBrainzTagRequestStaggeringEnabled: settings.MusicBrainzTagRequestStaggeringEnabled,
 		MusicBrainzTagWorkerCores:              normalizeMusicBrainzTagWorkerCores(settings.MusicBrainzTagWorkerCores),
+		MinimizeToTrayOnClose:                  settings.MinimizeToTrayOnClose,
 		KeyboardShortcuts:                      keyboardShortcuts,
 	}
 }
@@ -708,5 +710,6 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	a.audioBackend().SetFFmpegPath(normalized.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(normalized.Audio)
 	a.notifyMusicBrainzTagWorker()
+	a.refreshSystemTrayForSettings()
 	return normalized, nil
 }

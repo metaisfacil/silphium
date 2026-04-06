@@ -288,6 +288,7 @@ export type AppSettings = {
     musicBrainzTagStaleDays: number;
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
+    minimizeToTrayOnClose: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
 

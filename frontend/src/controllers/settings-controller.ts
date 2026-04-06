@@ -36,6 +36,7 @@ export type SettingsFormValues = {
     musicBrainzTagStaleDays: number;
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
+    minimizeToTrayOnClose: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
 
@@ -106,6 +107,7 @@ type SettingsControllerOptions = {
     onCloseBlocked?: (message: string) => void;
     getPlayerCardLayout: () => PlayerCardLayout;
     setPlayerCardLayout: (layout: PlayerCardLayout) => void;
+    isWindows?: boolean;
 };
 
 export type SettingsController = ReturnType<typeof createSettingsController>;
@@ -188,6 +190,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagWorkerProgressStatus,
         settingsPlayerCardLayout,
         settingsCoverArtPriorityList,
+        settingsMinimizeToTrayField,
+        settingsMinimizeToTrayOnClose,
         settingsShortcutPlayPauseToggle,
         settingsShortcutNextTrack,
         settingsShortcutPreviousTrack,
@@ -200,6 +204,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const settingsModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     const settingsShortcutAccordionTransitionMs = 180;
     const statusFadeDelayMs = 5000;
+    const showMinimizeToTrayOption = options.isWindows ?? true;
     let hideTimer: number | undefined;
     let libraryDepthHideTimer: number | undefined;
     let scrobbleRuleHideTimer: number | undefined;
@@ -242,6 +247,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let musicBrainzTagWorkerLastSampleAtMs: number | null = null;
     let musicBrainzTagWorkerLastCompletedEntityLookups = 0;
     const libraryFolderRepeatClickWindowMs = 400;
+
+    settingsMinimizeToTrayField.hidden = !showMinimizeToTrayOption;
 
     const scrobbleTextOperatorOptions: Array<{ value: ScrobbleRuleOperator; label: string }> = [
         { value: 'contains', label: 'Contains text' },
@@ -562,6 +569,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         musicBrainzTagStaleDays: normalizeMusicBrainzTagStaleDays(settingsMusicBrainzTagStaleDays.value),
         musicBrainzTagRequestStaggeringEnabled: settingsMusicBrainzTagRequestStaggeringEnabled.checked,
         musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
+        minimizeToTrayOnClose: settingsMinimizeToTrayOnClose.checked,
         keyboardShortcuts: getShortcutValues(),
     });
 
@@ -1430,6 +1438,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagStaleDays.value = String(values.musicBrainzTagStaleDays);
         settingsMusicBrainzTagRequestStaggeringEnabled.checked = !!values.musicBrainzTagRequestStaggeringEnabled;
         settingsMusicBrainzTagWorkerCores.value = values.musicBrainzTagWorkerCores > 0 ? String(values.musicBrainzTagWorkerCores) : '';
+        settingsMinimizeToTrayOnClose.checked = !!values.minimizeToTrayOnClose;
         refreshMusicBrainzTagWorkerControls();
         renderMusicBrainzTagWorkerProgress(values.musicBrainzTagWorkerProgress);
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
