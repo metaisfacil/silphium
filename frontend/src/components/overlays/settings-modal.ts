@@ -349,6 +349,7 @@ export const renderSettingsModal = (): string => `
                         <option value="albumTitle">Album title</option>
                         <option value="trackTitle">Track title</option>
                         <option value="genre">Genre</option>
+                        <option value="anyTag">Any tag</option>
                         <option value="artistMbid">Artist MBID</option>
                         <option value="albumMbid">Album MBID</option>
                         <option value="trackLength">Track length</option>

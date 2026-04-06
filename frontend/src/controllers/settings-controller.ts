@@ -281,6 +281,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         case 'albumTitle':
         case 'trackTitle':
         case 'genre':
+        case 'anyTag':
         case 'artistMbid':
         case 'albumMbid':
         case 'trackLength':
@@ -832,6 +833,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             settingsScrobbleRuleHint.textContent = 'Use /pattern/flags or a raw pattern. Raw patterns are compiled case-insensitively.';
         } else if (field === 'path' && settingsScrobbleRuleOperator.value === 'starts_with') {
             settingsScrobbleRuleHint.textContent = 'Use a folder or full path. Subpaths match automatically.';
+        } else if (field === 'anyTag') {
+            settingsScrobbleRuleHint.textContent = 'Checks all tag values on the track and matches if any tag contains this value.';
         } else {
             settingsScrobbleRuleHint.textContent = 'Text matching is case-insensitive.';
         }
@@ -840,7 +843,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsScrobbleRuleValue.inputMode = 'text';
         settingsScrobbleRuleValue.removeAttribute('min');
         settingsScrobbleRuleValue.removeAttribute('step');
-        settingsScrobbleRuleValue.placeholder = field === 'path' ? 'C:\\Music\\Private' : 'Value';
+        settingsScrobbleRuleValue.placeholder = field === 'path'
+            ? 'C:\\Music\\Private'
+            : field === 'anyTag'
+                ? 'live bootleg'
+                : 'Value';
     };
 
     const closeScrobbleRuleDialog = (value: ScrobbleRuleDialogValues | null, restoreFocus: boolean, immediate = false): void => {

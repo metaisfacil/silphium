@@ -361,6 +361,8 @@ func TestNormalizeAppSettingsScrobbleRules(t *testing.T) {
 		ScrobbleRules: []ScrobbleRule{
 			{Field: scrobbleRuleFieldTrackArtist, Operator: scrobbleRuleOperatorRegex, Value: " /foo/i "},
 			{Field: scrobbleRuleFieldTrackArtist, Operator: scrobbleRuleOperatorRegex, Value: "/foo/i"},
+			{Field: scrobbleRuleFieldAnyTag, Operator: scrobbleRuleOperatorContains, Value: "  ambient  "},
+			{Field: scrobbleRuleFieldAnyTag, Operator: scrobbleRuleOperatorContains, Value: "ambient"},
 			{Field: scrobbleRuleFieldTrackLength, Operator: scrobbleRuleOperatorLessThan, Value: "240"},
 			{Field: scrobbleRuleFieldTrackLength, Operator: scrobbleRuleOperatorLessThan, Value: "-10"},
 		},
@@ -370,16 +372,20 @@ func TestNormalizeAppSettingsScrobbleRules(t *testing.T) {
 		t.Fatalf("ScrobbleFilterMode = %q, want %q", settings.ScrobbleFilterMode, "whitelist")
 	}
 
-	if len(settings.ScrobbleRules) != 2 {
-		t.Fatalf("ScrobbleRules length = %d, want 2", len(settings.ScrobbleRules))
+	if len(settings.ScrobbleRules) != 3 {
+		t.Fatalf("ScrobbleRules length = %d, want 3", len(settings.ScrobbleRules))
 	}
 
 	if settings.ScrobbleRules[0].Field != scrobbleRuleFieldTrackArtist || settings.ScrobbleRules[0].Operator != scrobbleRuleOperatorRegex || settings.ScrobbleRules[0].Value != "/foo/i" {
 		t.Fatalf("first ScrobbleRule = %#v, want normalized regex track-artist rule", settings.ScrobbleRules[0])
 	}
 
-	if settings.ScrobbleRules[1].Field != scrobbleRuleFieldTrackLength || settings.ScrobbleRules[1].Operator != scrobbleRuleOperatorLessThan || settings.ScrobbleRules[1].Value != "240" {
-		t.Fatalf("second ScrobbleRule = %#v, want normalized track-length rule", settings.ScrobbleRules[1])
+	if settings.ScrobbleRules[1].Field != scrobbleRuleFieldAnyTag || settings.ScrobbleRules[1].Operator != scrobbleRuleOperatorContains || settings.ScrobbleRules[1].Value != "ambient" {
+		t.Fatalf("second ScrobbleRule = %#v, want normalized any-tag rule", settings.ScrobbleRules[1])
+	}
+
+	if settings.ScrobbleRules[2].Field != scrobbleRuleFieldTrackLength || settings.ScrobbleRules[2].Operator != scrobbleRuleOperatorLessThan || settings.ScrobbleRules[2].Value != "240" {
+		t.Fatalf("third ScrobbleRule = %#v, want normalized track-length rule", settings.ScrobbleRules[2])
 	}
 
 	fallback := normalizeAppSettings(AppSettings{ScrobbleFilterMode: ""})

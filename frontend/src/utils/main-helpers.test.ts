@@ -97,10 +97,13 @@ describe('main helpers', () => {
         expect(normalizeScrobbleRules([
             { field: 'path', operator: 'starts_with', value: ' C:\\Music\\Main ' },
             { field: 'path', operator: 'starts_with', value: 'c:/music/main' },
+            { field: 'anyTag', operator: 'contains', value: '  ambient  ' },
+            { field: 'anyTag', operator: 'contains', value: 'ambient' },
             { field: 'trackLength', operator: 'less_than', value: '240' },
             { field: 'trackLength', operator: 'less_than', value: '-10' },
         ])).toEqual([
             { field: 'path', operator: 'starts_with', value: 'C:\\Music\\Main' },
+            { field: 'anyTag', operator: 'contains', value: 'ambient' },
             { field: 'trackLength', operator: 'less_than', value: '240' },
         ]);
 
@@ -122,6 +125,7 @@ describe('main helpers', () => {
         ])).toBeNull();
 
         expect(describeScrobbleRule({ field: 'trackLength', operator: 'greater_than', value: '240' })).toBe('Track length is longer than 240s');
+        expect(describeScrobbleRule({ field: 'anyTag', operator: 'contains', value: 'live' })).toBe('Any tag contains live');
     });
 
     it('matches scrobble rules against metadata fields and duration', () => {
@@ -157,6 +161,13 @@ describe('main helpers', () => {
             301,
             'whitelist',
             [{ field: 'genre', operator: 'contains', value: 'ambient' }],
+        )).toBe(true);
+
+        expect(isTrackScrobbleAllowed(
+            track,
+            301,
+            'whitelist',
+            [{ field: 'anyTag', operator: 'contains', value: 'drone' }],
         )).toBe(true);
 
         expect(isTrackScrobbleAllowed(

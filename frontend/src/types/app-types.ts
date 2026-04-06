@@ -216,7 +216,7 @@ export type AudioPlaybackState = {
 
 export type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
 export type ScrobbleFilterMode = 'blacklist' | 'whitelist';
-export type ScrobbleRuleField = 'path' | 'albumArtist' | 'trackArtist' | 'albumTitle' | 'trackTitle' | 'genre' | 'artistMbid' | 'albumMbid' | 'trackLength';
+export type ScrobbleRuleField = 'path' | 'albumArtist' | 'trackArtist' | 'albumTitle' | 'trackTitle' | 'genre' | 'anyTag' | 'artistMbid' | 'albumMbid' | 'trackLength';
 export type ScrobbleTextRuleOperator = 'contains' | 'equals' | 'starts_with' | 'regex';
 export type ScrobbleDurationRuleOperator = 'less_than' | 'greater_than';
 export type ScrobbleRuleOperator = ScrobbleTextRuleOperator | ScrobbleDurationRuleOperator;

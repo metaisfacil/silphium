@@ -24,7 +24,7 @@ export const asScrobbleFilterMode = (value: string): ScrobbleFilterMode => {
 
 const asScrobbleRuleField = (value: string): ScrobbleRuleField | null => {
     if (value === 'path' || value === 'albumArtist' || value === 'trackArtist' || value === 'albumTitle' || value === 'trackTitle'
-        || value === 'genre' || value === 'artistMbid' || value === 'albumMbid' || value === 'trackLength') {
+        || value === 'genre' || value === 'anyTag' || value === 'artistMbid' || value === 'albumMbid' || value === 'trackLength') {
         return value;
     }
 
@@ -153,6 +153,8 @@ const scrobbleRuleFieldLabel = (field: ScrobbleRuleField): string => {
         return 'Track title';
     case 'genre':
         return 'Genre';
+    case 'anyTag':
+        return 'Any tag';
     case 'artistMbid':
         return 'Artist MBID';
     case 'albumMbid':
@@ -302,6 +304,20 @@ const getScrobbleTextCandidates = (track: Track, field: ScrobbleRuleField): stri
 
     if (field === 'genre') {
         return getTagValuesIgnoreCase(track.allFileTags, 'genre');
+    }
+
+    if (field === 'anyTag') {
+        const values: string[] = [];
+        for (const rawValues of Object.values(track.allFileTags)) {
+            for (const rawValue of rawValues) {
+                const value = rawValue.trim();
+                if (value !== '') {
+                    values.push(value);
+                }
+            }
+        }
+
+        return values;
     }
 
     if (field === 'artistMbid') {

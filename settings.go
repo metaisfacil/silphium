@@ -95,6 +95,7 @@ const scrobbleRuleFieldTrackArtist = "trackArtist"
 const scrobbleRuleFieldAlbumTitle = "albumTitle"
 const scrobbleRuleFieldTrackTitle = "trackTitle"
 const scrobbleRuleFieldGenre = "genre"
+const scrobbleRuleFieldAnyTag = "anyTag"
 const scrobbleRuleFieldArtistMBID = "artistMbid"
 const scrobbleRuleFieldAlbumMBID = "albumMbid"
 const scrobbleRuleFieldTrackLength = "trackLength"
@@ -200,6 +201,7 @@ func normalizeScrobbleRuleField(value string) string {
 		scrobbleRuleFieldAlbumTitle,
 		scrobbleRuleFieldTrackTitle,
 		scrobbleRuleFieldGenre,
+		scrobbleRuleFieldAnyTag,
 		scrobbleRuleFieldArtistMBID,
 		scrobbleRuleFieldAlbumMBID,
 		scrobbleRuleFieldTrackLength:
