@@ -1394,30 +1394,45 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 		}
 
 		if len(state.pendingEntityKeys) > 0 {
-			entityBatchSize := a.musicBrainzTagWorkerCount(len(state.pendingEntityKeys))
-			entityKeys := make([]string, 0, entityBatchSize)
-			for len(entityKeys) < entityBatchSize {
-				entityKey, ok := state.popNextEntityKey()
-				if !ok {
-					break
-				}
+			workerCount := a.musicBrainzTagWorkerCount(len(state.pendingEntityKeys))
+			if workerCount > 0 {
+				completedEntityFetches := 0
+				activeWorkers := 0
+				completionCh := make(chan struct{}, workerCount)
 
-				entityKeys = append(entityKeys, entityKey)
-			}
-
-			if len(entityKeys) > 0 {
-				var fetchGroup sync.WaitGroup
-				fetchGroup.Add(len(entityKeys))
-				for _, entityKey := range entityKeys {
+				launchFetch := func(entityKey string) {
+					activeWorkers += 1
 					go func(activeEntityKey string) {
-						defer fetchGroup.Done()
 						a.processMusicBrainzTagEntityFetch(activeEntityKey)
+						completionCh <- struct{}{}
 					}(entityKey)
 				}
 
-				fetchGroup.Wait()
-				state.completedEntityLookups += len(entityKeys)
-				didWork = true
+				for activeWorkers < workerCount {
+					entityKey, ok := state.popNextEntityKey()
+					if !ok {
+						break
+					}
+
+					launchFetch(entityKey)
+				}
+
+				for activeWorkers > 0 {
+					<-completionCh
+					activeWorkers -= 1
+					completedEntityFetches += 1
+					state.completedEntityLookups += 1
+
+					if completedEntityFetches%workerCount == 0 {
+						a.setMusicBrainzTagWorkerProgress(state.progressSnapshot(true))
+					}
+
+					nextEntityKey, ok := state.popNextEntityKey()
+					if ok {
+						launchFetch(nextEntityKey)
+					}
+				}
+				didWork = completedEntityFetches > 0
 			}
 		}
 
