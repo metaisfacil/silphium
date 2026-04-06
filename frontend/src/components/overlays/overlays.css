@@ -1960,6 +1960,17 @@
     background: rgba(255, 255, 255, 0.12);
 }
 
+.track-meta-menu-divider {
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.22);
+    height: 0;
+    margin: 0.28rem 0.35rem 0.22rem;
+}
+
+.track-meta-menu-divider[hidden] {
+    display: none;
+}
+
 .error-modal {
     position: fixed;
     inset: 0;

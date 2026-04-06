@@ -110,7 +110,7 @@ import {
     ValidateFFmpegPath,
 } from '../wailsjs/go/main/App';
 import { main as WailsModels } from '../wailsjs/go/models';
-import { BrowserOpenURL, EventsOn, OnFileDrop, WindowHide, WindowIsMinimised } from '../wailsjs/runtime/runtime';
+import { BrowserOpenURL, ClipboardSetText, EventsOn, OnFileDrop, WindowHide, WindowIsMinimised } from '../wailsjs/runtime/runtime';
 import { applyMbLinks, openMbLink } from './musicbrainz';
 import type {
     AppLibraryFolder,
@@ -687,7 +687,7 @@ trackTitle.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
     trackMetaMenuTarget = trackTitle;
-    openTrackMetaMenu(event.clientX, event.clientY, true);
+    openTrackMetaMenu(event.clientX, event.clientY, true, 'file');
 });
 trackAlbum.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -709,7 +709,7 @@ trackAlbum.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
     trackMetaMenuTarget = trackAlbum;
-    openTrackMetaMenu(event.clientX, event.clientY, false);
+    openTrackMetaMenu(event.clientX, event.clientY, false, 'folder');
 });
 trackArtist.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -740,7 +740,7 @@ trackArtist.addEventListener('contextmenu', (event) => {
         ? nestedLink
         : (firstArtistLink instanceof HTMLElement ? firstArtistLink : trackArtist);
 
-    openTrackMetaMenu(event.clientX, event.clientY, false);
+    openTrackMetaMenu(event.clientX, event.clientY, false, 'none');
 });
 trackTitleInline.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -762,7 +762,7 @@ trackTitleInline.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
     trackMetaMenuTarget = trackTitleInline;
-    openTrackMetaMenu(event.clientX, event.clientY, true);
+    openTrackMetaMenu(event.clientX, event.clientY, true, 'file');
 });
 trackReleaseAlbum.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -784,7 +784,7 @@ trackReleaseAlbum.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
     trackMetaMenuTarget = trackReleaseAlbum;
-    openTrackMetaMenu(event.clientX, event.clientY, false);
+    openTrackMetaMenu(event.clientX, event.clientY, false, 'folder');
 });
 trackReleaseLabel.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -831,7 +831,7 @@ trackArtistHeader.addEventListener('contextmenu', (event) => {
         ? nestedLink
         : (firstArtistLink instanceof HTMLElement ? firstArtistLink : trackArtistHeader);
 
-    openTrackMetaMenu(event.clientX, event.clientY, false);
+    openTrackMetaMenu(event.clientX, event.clientY, false, 'none');
 });
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
@@ -861,6 +861,9 @@ const { shareModal, shareBackdrop, shareDialog, shareClose, sharePreview, shareC
 const { playOrderMenu } = getPlayOrderMenuElements(document);
 const {
     trackMetaMenu,
+    trackMetaCopyFilePathBtn,
+    trackMetaCopyFolderPathBtn,
+    trackMetaCopyDivider,
     trackMetaOpenMbBtn,
     trackMetaParentFolderBtn,
     trackMetaBrowserFolderBtn,
@@ -1993,13 +1996,23 @@ const submitSidebarQueueFeedback = async (trackIndex: number | null, score: List
     await submitListenBrainzFeedbackForTrack(trackIndex, score);
 };
 
-const openTrackMetaMenu = (clientX: number, clientY: number, includeFolderAction: boolean): void => {
+type TrackMetaCopyAction = 'none' | 'file' | 'folder';
+
+const openTrackMetaMenu = (
+    clientX: number,
+    clientY: number,
+    includeFolderAction: boolean,
+    copyAction: TrackMetaCopyAction,
+): void => {
     if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
         return;
     }
 
     closePlayOrderMenu();
     closeListenBrainzFeedbackMenu();
+    trackMetaCopyFilePathBtn.hidden = copyAction !== 'file';
+    trackMetaCopyFolderPathBtn.hidden = copyAction !== 'folder';
+    trackMetaCopyDivider.hidden = copyAction === 'none';
     trackMetaParentFolderBtn.hidden = !includeFolderAction;
     trackMetaBrowserFolderBtn.hidden = !includeFolderAction;
     trackMetaMenu.hidden = false;
@@ -2045,6 +2058,40 @@ const openCurrentTrackFolderInFileBrowser = async (): Promise<void> => {
 
     try {
         await OpenFolderInFileBrowser(trackPath);
+    } catch (error) {
+        console.error(error);
+    }
+};
+
+const copyCurrentTrackFilePath = async (): Promise<void> => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return;
+    }
+
+    const trackPath = (tracks[currentTrackIndex].path || '').trim();
+    if (trackPath === '') {
+        return;
+    }
+
+    try {
+        await ClipboardSetText(trackPath);
+    } catch (error) {
+        console.error(error);
+    }
+};
+
+const copyCurrentTrackFolderPath = async (): Promise<void> => {
+    if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
+        return;
+    }
+
+    const folderPath = (tracks[currentTrackIndex].folderPath || '').trim();
+    if (folderPath === '') {
+        return;
+    }
+
+    try {
+        await ClipboardSetText(folderPath);
     } catch (error) {
         console.error(error);
     }
@@ -4581,6 +4628,16 @@ trackMetaParentFolderBtn.addEventListener('click', () => {
 trackMetaBrowserFolderBtn.addEventListener('click', () => {
     closeTrackMetaMenu();
     void openCurrentTrackFolderInFileBrowser();
+});
+
+trackMetaCopyFilePathBtn.addEventListener('click', () => {
+    closeTrackMetaMenu();
+    void copyCurrentTrackFilePath();
+});
+
+trackMetaCopyFolderPathBtn.addEventListener('click', () => {
+    closeTrackMetaMenu();
+    void copyCurrentTrackFolderPath();
 });
 
 trackMetaOpenMbBtn.addEventListener('click', () => {
