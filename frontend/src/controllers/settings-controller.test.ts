@@ -38,6 +38,9 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
     ffmpegPath: '',
     listenBrainzUserToken: '',
+    lastFmApiKey: '',
+    lastFmApiSecret: '',
+    lastFmSessionKey: '',
     scrobbleFilterMode: 'blacklist',
     scrobbleRules: [{ field: 'path', operator: 'starts_with', value: '/music/private' }],
     musicBrainzServerUrl: 'https://musicbrainz.org',
@@ -65,6 +68,7 @@ const mountSettingsController = (options: {
     getValues?: () => SettingsViewValues;
     save?: (values: SettingsFormValues) => Promise<void>;
     forceReload?: (values: SettingsFormValues) => Promise<void>;
+    fetchLastFmSessionKey?: (apiKey: string, apiSecret: string) => Promise<string>;
 } = {}) => {
     document.body.innerHTML = renderSettingsModal();
     const trigger = document.createElement('button');
@@ -73,6 +77,7 @@ const mountSettingsController = (options: {
     const elements = getSettingsModalElements(document);
     const save = options.save ?? vi.fn(async () => undefined);
     const forceReload = options.forceReload ?? vi.fn(async () => undefined);
+    const fetchLastFmSessionKey = options.fetchLastFmSessionKey ?? vi.fn(async () => 'session-key');
     const applyAudioNow = vi.fn(async () => createAudioDevices());
     const setPlayerCardLayout = vi.fn((_layout: PlayerCardLayout) => undefined);
 
@@ -83,6 +88,7 @@ const mountSettingsController = (options: {
         selectLibraryFolder: vi.fn(async () => ''),
         selectPlaylistFile: vi.fn(async () => ''),
         save,
+        fetchLastFmSessionKey,
         applyAudioNow,
         forceReload,
         getPlayerCardLayout: () => 'release',
@@ -94,6 +100,7 @@ const mountSettingsController = (options: {
         elements,
         save,
         forceReload,
+        fetchLastFmSessionKey,
     };
 };
 
@@ -130,6 +137,10 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-library-folder-list"]')?.textContent).toBe('Library folders');
         expect(document.querySelector('label[for="settings-ffmpeg-path"]')?.textContent).toBe('FFmpeg executable path');
         expect(document.querySelector('label[for="settings-listenbrainz-token"]')?.textContent).toBe('ListenBrainz user token');
+        expect(document.querySelector('label[for="settings-lastfm-api-key"]')?.textContent).toBe('Last.fm API key');
+        expect(document.querySelector('label[for="settings-lastfm-api-secret"]')?.textContent).toBe('Last.fm shared secret');
+        expect(document.querySelector('label[for="settings-lastfm-session-key"]')?.textContent).toBe('Last.fm session key');
+        expect(document.querySelector('#settings-lastfm-session-key-fetch')?.textContent).toBe('Fetch');
         expect(document.querySelector('label[for="settings-musicbrainz-server-url"]')?.textContent).toBe('MusicBrainz server URL');
         expect(document.querySelector('label[for="settings-listenbrainz-server-url"]')?.textContent).toBe('ListenBrainz server URL');
         expect(document.querySelector('label[for="settings-musicbrainz-tag-worker-cores"]')?.textContent).toBe('MusicBrainz tag worker cores');
@@ -194,6 +205,23 @@ describe('createSettingsController', () => {
             keyboardShortcuts: expect.objectContaining({ nextTrack: 'K' }),
         }));
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(false);
+    });
+
+    it('fetches Last.fm session key and fills the field', async () => {
+        const fetchLastFmSessionKey = vi.fn(async () => 'session-key-from-fetch');
+        const { controller, elements } = mountSettingsController({ fetchLastFmSessionKey });
+
+        controller.open('network');
+
+        elements.settingsLastFmApiKey.value = 'api-key';
+        elements.settingsLastFmApiSecret.value = 'shared-secret';
+        elements.settingsLastFmSessionKeyFetch.click();
+
+        await flushPromises();
+
+        expect(fetchLastFmSessionKey).toHaveBeenCalledWith('api-key', 'shared-secret');
+        expect(elements.settingsLastFmSessionKey.value).toBe('session-key-from-fetch');
+        expect(elements.settingsStatus.textContent).toBe('Last.fm session key fetched. Save settings to keep it.');
     });
 
     it('adds a scrobble rule through the rule dialog', async () => {

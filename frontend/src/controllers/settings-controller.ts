@@ -19,6 +19,9 @@ export type SettingsFormValues = {
     libraryFolders: AppLibraryFolder[];
     ffmpegPath: string;
     listenBrainzUserToken: string;
+    lastFmApiKey: string;
+    lastFmApiSecret: string;
+    lastFmSessionKey: string;
     scrobbleFilterMode: ScrobbleFilterMode;
     scrobbleRules: ScrobbleRule[];
     musicBrainzServerUrl: string;
@@ -101,6 +104,7 @@ type SettingsControllerOptions = {
     selectLibraryFolder: () => Promise<string>;
     selectPlaylistFile: () => Promise<string>;
     save: (values: SettingsFormValues) => Promise<void>;
+    fetchLastFmSessionKey: (apiKey: string, apiSecret: string) => Promise<string>;
     applyAudioNow: (values: SettingsFormValues) => Promise<AudioOutputDevice[]>;
     forceReload: (values: SettingsFormValues) => Promise<void>;
     beforeClose?: () => Promise<string | null>;
@@ -169,6 +173,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsScrobbleRuleConfirm,
         settingsFFmpegPath,
         settingsListenBrainzToken,
+        settingsLastFmApiKey,
+        settingsLastFmApiSecret,
+        settingsLastFmSessionKey,
+        settingsLastFmSessionKeyFetch,
         settingsMusicBrainzServerUrl,
         settingsMusicBrainzRequestRateMs,
         settingsListenBrainzServerUrl,
@@ -227,6 +235,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let pendingScrobbleRuleResolver: ((value: ScrobbleRuleDialogValues | null) => void) | null = null;
     let scrobbleRuleReturnFocusTarget: HTMLElement | null = null;
     let forceReloadInProgress = false;
+    let lastFmSessionFetchInProgress = false;
     let forceReloadEtaSeconds: number | null = null;
     let audioOutputDevices: AudioOutputDevice[] = [];
     let coverArtPriority: CoverArtPrioritySource[] = [...defaultCoverArtPriority];
@@ -553,6 +562,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
         ffmpegPath: settingsFFmpegPath.value,
         listenBrainzUserToken: settingsListenBrainzToken.value,
+        lastFmApiKey: settingsLastFmApiKey.value,
+        lastFmApiSecret: settingsLastFmApiSecret.value,
+        lastFmSessionKey: settingsLastFmSessionKey.value,
         scrobbleFilterMode: settingsScrobbleFilterMode.value === 'whitelist' ? 'whitelist' : 'blacklist',
         scrobbleRules: normalizeScrobbleRules(scrobbleRules).map((rule) => ({ ...rule })),
         musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
@@ -777,6 +789,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
                 settingsLibraryDepthStatusFadeTimer = value;
             },
         );
+    };
+
+    const refreshLastFmSessionFetchButton = (): void => {
+        settingsLastFmSessionKeyFetch.disabled = lastFmSessionFetchInProgress || settingsSave.disabled || settingsForceReload.disabled;
+        settingsLastFmSessionKeyFetch.textContent = lastFmSessionFetchInProgress ? 'Fetching...' : 'Fetch';
     };
 
     const setForceReloadEtaSeconds = (secondsRemaining: number | null): void => {
@@ -1277,6 +1294,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     setShortcutAccordionExpanded(false, false);
     renderMusicBrainzTagWorkerProgress(musicBrainzTagWorkerProgress);
+    refreshLastFmSessionFetchButton();
 
     settingsLibraryDepthLabelInput.addEventListener('input', () => {
         setLibraryDepthStatusMessage('');
@@ -1301,6 +1319,18 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     });
 
     settingsFFmpegPath.addEventListener('input', () => {
+        setSettingsStatusMessage('');
+    });
+
+    settingsLastFmApiKey.addEventListener('input', () => {
+        setSettingsStatusMessage('');
+    });
+
+    settingsLastFmApiSecret.addEventListener('input', () => {
+        setSettingsStatusMessage('');
+    });
+
+    settingsLastFmSessionKey.addEventListener('input', () => {
         setSettingsStatusMessage('');
     });
 
@@ -1428,6 +1458,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         libraryFolders = normalizeLibraryFolders(values.libraryFolders);
         settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
+        settingsLastFmApiKey.value = values.lastFmApiKey || '';
+        settingsLastFmApiSecret.value = values.lastFmApiSecret || '';
+        settingsLastFmSessionKey.value = values.lastFmSessionKey || '';
         settingsScrobbleFilterMode.value = values.scrobbleFilterMode === 'whitelist' ? 'whitelist' : 'blacklist';
         scrobbleRules = normalizeScrobbleRules(values.scrobbleRules);
         settingsMusicBrainzServerUrl.value = values.musicBrainzServerUrl || '';
@@ -1469,6 +1502,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         } else {
             setSettingsStatusMessage('');
         }
+        refreshLastFmSessionFetchButton();
         const primaryTab = resolvePrimaryTab(initialTab);
         const shortcutsRequested = initialTab === 'shortcuts';
         setShortcutAccordionExpanded(shortcutsRequested, false);
@@ -1652,6 +1686,52 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             setSettingsStatusMessage('Unable to refresh audio settings right now.');
         } finally {
             settingsApplyAudioNow.disabled = false;
+        }
+    });
+
+    settingsLastFmSessionKeyFetch.addEventListener('click', async () => {
+        if (settingsLastFmSessionKeyFetch.disabled || lastFmSessionFetchInProgress) {
+            return;
+        }
+
+        const apiKey = settingsLastFmApiKey.value.trim();
+        if (apiKey === '') {
+            setSettingsStatusMessage('Enter your Last.fm API key first.');
+            settingsLastFmApiKey.focus();
+            settingsLastFmApiKey.select();
+            return;
+        }
+
+        const apiSecret = settingsLastFmApiSecret.value.trim();
+        if (apiSecret === '') {
+            setSettingsStatusMessage('Enter your Last.fm shared secret first.');
+            settingsLastFmApiSecret.focus();
+            settingsLastFmApiSecret.select();
+            return;
+        }
+
+        lastFmSessionFetchInProgress = true;
+        refreshLastFmSessionFetchButton();
+        setSettingsStatusMessage('Opening Last.fm authorization...');
+
+        try {
+            const sessionKey = (await options.fetchLastFmSessionKey(apiKey, apiSecret)).trim();
+            if (sessionKey === '') {
+                throw new Error('Last.fm returned an empty session key.');
+            }
+
+            settingsLastFmSessionKey.value = sessionKey;
+            setSettingsStatusMessage('Last.fm session key fetched. Save settings to keep it.');
+            settingsLastFmSessionKey.focus();
+            settingsLastFmSessionKey.select();
+        } catch (error) {
+            console.error(error);
+            setSettingsStatusMessage(error instanceof Error && error.message.trim() !== ''
+                ? error.message
+                : 'Unable to fetch Last.fm session key right now.');
+        } finally {
+            lastFmSessionFetchInProgress = false;
+            refreshLastFmSessionFetchButton();
         }
     });
 
@@ -1931,6 +2011,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         settingsSave.disabled = true;
         settingsForceReload.disabled = true;
+        refreshLastFmSessionFetchButton();
 
         try {
             const formValues = buildFormValues();
@@ -1949,6 +2030,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         } finally {
             settingsSave.disabled = false;
             settingsForceReload.disabled = false;
+            refreshLastFmSessionFetchButton();
         }
     });
 
@@ -1962,6 +2044,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         refreshForceReloadStatus();
         settingsForceReload.disabled = true;
         settingsSave.disabled = true;
+        refreshLastFmSessionFetchButton();
 
         try {
             const formValues = buildFormValues();
@@ -1983,6 +2066,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         } finally {
             settingsForceReload.disabled = false;
             settingsSave.disabled = false;
+            refreshLastFmSessionFetchButton();
         }
     });
 

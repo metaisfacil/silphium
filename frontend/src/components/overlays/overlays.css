@@ -1141,6 +1141,13 @@
     gap: 0.45rem;
 }
 
+.settings-lastfm-session-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.45rem;
+}
+
 .settings-server-url-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

@@ -32,6 +32,14 @@ export function AudioStop():Promise<main.AudioPlaybackState>;
 
 export function GetAppVersion():Promise<string>;
 
+export function GetLastFmFollowing():Promise<Array<string>>;
+
+export function GetLastFmFollowingFeed(arg1:number):Promise<Array<main.ListenBrainzSocialEvent>>;
+
+export function GetLastFmRequestToken(arg1:string,arg2:string):Promise<string>;
+
+export function GetLastFmSessionKey(arg1:string,arg2:string,arg3:string):Promise<string>;
+
 export function GetLibraryFolderCoverPath(arg1:string):Promise<string>;
 
 export function GetLibraryFolderPage(arg1:string,arg2:number,arg3:number):Promise<main.LibraryFolderPage>;
@@ -105,6 +113,8 @@ export function SelectPlaylistSaveFile():Promise<string>;
 export function SelectShareImageSaveFile(arg1:string):Promise<string>;
 
 export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
+
+export function SubmitLastFm(arg1:string,arg2:main.LastFmTrackMetadata,arg3:number):Promise<void>;
 
 export function SubmitListenBrainz(arg1:string,arg2:main.ListenBrainzTrackMetadata,arg3:number):Promise<void>;
 

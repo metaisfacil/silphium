@@ -53,6 +53,10 @@ export type SettingsModalElements = {
     settingsScrobbleRuleConfirm: HTMLButtonElement;
     settingsFFmpegPath: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
+    settingsLastFmApiKey: HTMLInputElement;
+    settingsLastFmApiSecret: HTMLInputElement;
+    settingsLastFmSessionKey: HTMLInputElement;
+    settingsLastFmSessionKeyFetch: HTMLButtonElement;
     settingsMusicBrainzServerUrl: HTMLInputElement;
     settingsMusicBrainzRequestRateMs: HTMLInputElement;
     settingsListenBrainzServerUrl: HTMLInputElement;
@@ -140,6 +144,24 @@ export const renderSettingsModal = (): string => `
                         <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
                     </div>
                     <div class="settings-field">
+                        <label class="settings-label" for="settings-lastfm-api-key">Last.fm API key</label>
+                        <p class="settings-hint">Optional. When the API key, shared secret, and session key are all set, allowed scrobbles are also submitted to Last.fm.</p>
+                        <input id="settings-lastfm-api-key" class="settings-input" type="text" spellcheck="false" placeholder="Optional">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-lastfm-api-secret">Last.fm shared secret</label>
+                        <p class="settings-hint">Used to sign Last.fm write requests. Pair it with your own API key and desktop-auth session key.</p>
+                        <input id="settings-lastfm-api-secret" class="settings-input" type="password" spellcheck="false" placeholder="Optional">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-lastfm-session-key">Last.fm session key</label>
+                        <p class="settings-hint">Session keys are obtained through the Last.fm desktop authentication flow and remain valid until revoked.</p>
+                        <div class="settings-lastfm-session-row">
+                            <input id="settings-lastfm-session-key" class="settings-input" type="password" spellcheck="false" placeholder="Optional">
+                            <button id="settings-lastfm-session-key-fetch" class="settings-secondary-btn" type="button">Fetch</button>
+                        </div>
+                    </div>
+                    <div class="settings-field">
                         <label class="settings-label" for="settings-musicbrainz-server-url">MusicBrainz server URL</label>
                         <p class="settings-hint">Override the MusicBrainz server used for lookups. Local hosts are permitted a shorter cooldown between requests.</p>
                         <div class="settings-server-url-row">
@@ -216,7 +238,7 @@ export const renderSettingsModal = (): string => `
                 <div id="settings-panel-scrobbling" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-scrobbling" hidden>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-scrobble-filter-mode">Scrobble mode</label>
-                        <p class="settings-hint">In blacklist mode matching rules block scrobbles. In whitelist mode at least one rule must match before a scrobble is submitted.</p>
+                        <p class="settings-hint">In blacklist mode matching rules block scrobbles. In whitelist mode at least one rule must match before a scrobble is submitted. The same rules apply to every configured scrobble provider.</p>
                         <select id="settings-scrobble-filter-mode" class="settings-input settings-select">
                             <option value="blacklist">Blacklist: scrobble unless a rule matches</option>
                             <option value="whitelist">Whitelist: scrobble only when a rule matches</option>
@@ -429,6 +451,10 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsScrobbleRuleConfirm: root.querySelector('#settings-scrobble-rule-confirm') as HTMLButtonElement,
     settingsFFmpegPath: root.querySelector('#settings-ffmpeg-path') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
+    settingsLastFmApiKey: root.querySelector('#settings-lastfm-api-key') as HTMLInputElement,
+    settingsLastFmApiSecret: root.querySelector('#settings-lastfm-api-secret') as HTMLInputElement,
+    settingsLastFmSessionKey: root.querySelector('#settings-lastfm-session-key') as HTMLInputElement,
+    settingsLastFmSessionKeyFetch: root.querySelector('#settings-lastfm-session-key-fetch') as HTMLButtonElement,
     settingsMusicBrainzServerUrl: root.querySelector('#settings-musicbrainz-server-url') as HTMLInputElement,
     settingsMusicBrainzRequestRateMs: root.querySelector('#settings-musicbrainz-request-rate-ms') as HTMLInputElement,
     settingsListenBrainzServerUrl: root.querySelector('#settings-listenbrainz-server-url') as HTMLInputElement,

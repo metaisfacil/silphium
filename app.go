@@ -85,6 +85,8 @@ type App struct {
 	scanFinalizeMs                         float64
 	scanWatcherMs                          float64
 	searchGeneration                       atomic.Uint64
+	lastFmScrobbleMu                       sync.Mutex
+	lastFmRecentScrobbles                  map[string]lastFmScrobbleDedupEntry
 }
 
 // NewApp creates a new App application struct

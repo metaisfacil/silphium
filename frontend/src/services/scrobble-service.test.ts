@@ -51,12 +51,12 @@ describe('createScrobbleService', () => {
             tagsResolved: false,
         });
 
-        service.maybeSubmit(state, unresolvedTrack, true);
+        service.maybeSubmit(state, unresolvedTrack, { listenBrainz: true, lastFm: false });
 
         expect(submitListenBrainz).not.toHaveBeenCalled();
 
         const resolvedTrack = createTrack({ tagsResolved: true });
-        service.maybeSubmit(state, resolvedTrack, true);
+        service.maybeSubmit(state, resolvedTrack, { listenBrainz: true, lastFm: false });
 
         expect(submitListenBrainz).toHaveBeenCalledTimes(2);
         expect(submitListenBrainz).toHaveBeenNthCalledWith(
@@ -71,5 +71,130 @@ describe('createScrobbleService', () => {
             expect.objectContaining({ artistName: 'Resolved Artist' }),
             expect.any(Number),
         );
+    });
+
+    it('tracks submission state independently per provider', async () => {
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const submitListenBrainz = vi.fn(async () => undefined);
+        let lastFmAttemptCount = 0;
+        const submitLastFm = vi.fn(async () => {
+            lastFmAttemptCount += 1;
+            if (lastFmAttemptCount === 1) {
+                throw new Error('temporary failure');
+            }
+        });
+
+        const service = createScrobbleService({ submitListenBrainz, submitLastFm });
+        service.startTrackSession();
+
+        const state = createPlaybackState({ currentTime: 1 });
+        const track = createTrack();
+
+        service.maybeSubmit(state, track, { listenBrainz: true, lastFm: true });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        service.maybeSubmit(state, track, { listenBrainz: true, lastFm: true });
+
+        expect(submitListenBrainz).toHaveBeenCalledTimes(1);
+        expect(submitLastFm).toHaveBeenCalledTimes(2);
+        consoleErrorSpy.mockRestore();
+    });
+
+    it('does not resubmit when the same track session is started again', async () => {
+        const submitLastFm = vi.fn<[eventType: 'playing_now' | 'single', payload: unknown, listenedAt: number], Promise<void>>(async () => undefined);
+        const service = createScrobbleService({ submitLastFm });
+
+        const state = createPlaybackState({ currentTime: 200, duration: 300 });
+        const track = createTrack({ path: '/music/artist/album/fallback.flac' });
+
+        service.startTrackSession(track.path);
+        service.maybeSubmit(state, track, { listenBrainz: false, lastFm: true });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        service.startTrackSession(track.path);
+        service.maybeSubmit(state, track, { listenBrainz: false, lastFm: true });
+
+        const singleCalls = submitLastFm.mock.calls.filter((call) => call[0] === 'single');
+        expect(singleCalls).toHaveLength(1);
+    });
+
+    it('treats slash-variant paths as the same session track', async () => {
+        const submitLastFm = vi.fn<[eventType: 'playing_now' | 'single', payload: unknown, listenedAt: number], Promise<void>>(async () => undefined);
+        const service = createScrobbleService({ submitLastFm });
+
+        const state = createPlaybackState({ currentTime: 200, duration: 300 });
+        const track = createTrack({ path: 'C:/Music/Artist/Album/track.flac' });
+
+        service.startTrackSession('C:/Music/Artist/Album/track.flac');
+        service.maybeSubmit(state, track, { listenBrainz: false, lastFm: true });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        service.startTrackSession('C:\\Music\\Artist\\Album\\track.flac');
+        service.maybeSubmit(state, track, { listenBrainz: false, lastFm: true });
+
+        const singleCalls = submitLastFm.mock.calls.filter((call) => call[0] === 'single');
+        expect(singleCalls).toHaveLength(1);
+    });
+
+    it('does not retry failed Last.fm single scrobbles within the same session', async () => {
+        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const submitLastFm = vi.fn<[eventType: 'playing_now' | 'single', payload: unknown, listenedAt: number], Promise<void>>(async (eventType) => {
+            if (eventType === 'single') {
+                throw new Error('simulated network failure');
+            }
+        });
+        const service = createScrobbleService({ submitLastFm });
+
+        const state = createPlaybackState({ currentTime: 200, duration: 300 });
+        const track = createTrack();
+
+        service.startTrackSession(track.path);
+        service.maybeSubmit(state, track, { listenBrainz: false, lastFm: true });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        service.maybeSubmit(state, track, { listenBrainz: false, lastFm: true });
+
+        const singleCalls = submitLastFm.mock.calls.filter((call) => call[0] === 'single');
+        expect(singleCalls).toHaveLength(1);
+        consoleErrorSpy.mockRestore();
+    });
+
+    it('dedupes Last.fm singles when artist label changes but track identity is the same', async () => {
+        const submitLastFm = vi.fn<[eventType: 'playing_now' | 'single', payload: unknown, listenedAt: number], Promise<void>>(async () => undefined);
+        const service = createScrobbleService({ submitLastFm });
+
+        const state = createPlaybackState({ currentTime: 200, duration: 300 });
+        const romanized = createTrack({
+            displayArtist: 'Masato Kouda',
+            displayTitle: 'コメディックスタイル',
+            displayAlbum: '「魔法戦争」オリジナルサウンドトラック',
+            mbIds: {},
+        });
+        const native = createTrack({
+            displayArtist: '甲田雅人',
+            displayTitle: 'コメディックスタイル',
+            displayAlbum: '「魔法戦争」オリジナルサウンドトラック',
+            mbIds: {},
+        });
+
+        service.startTrackSession(romanized.path);
+        service.maybeSubmit(state, romanized, { listenBrainz: false, lastFm: true });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        service.startTrackSession(native.path);
+        service.maybeSubmit(state, native, { listenBrainz: false, lastFm: true });
+
+        const singleCalls = submitLastFm.mock.calls.filter((call) => call[0] === 'single');
+        expect(singleCalls).toHaveLength(1);
     });
 });

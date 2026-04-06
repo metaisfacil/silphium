@@ -549,6 +549,28 @@
     text-align: left;
 }
 
+.social-feed-user-link {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: rgba(255, 255, 255, 0.35);
+    text-underline-offset: 0.12rem;
+}
+
+.social-feed-user-link:hover,
+.social-feed-user-link:focus-visible {
+    color: rgba(255, 255, 255, 1);
+    text-decoration-color: rgba(255, 255, 255, 0.85);
+}
+
+.social-feed-user-link:focus-visible {
+    outline: 1px solid rgba(255, 255, 255, 0.5);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
 .social-feed-verb {
     margin-top: 0.12rem;
     font-size: 0.73rem;
@@ -579,35 +601,6 @@
     font-size: 0.82rem;
     line-height: 1.35;
     color: rgba(255, 255, 255, 0.72);
-}
-
-.social-feed-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    margin-top: 0.7rem;
-}
-
-.social-feed-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    padding: 0.22rem 0.5rem;
-    font-size: 0.7rem;
-    line-height: 1;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.86);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.05);
-}
-
-.social-feed-badge.is-live {
-    color: rgba(180, 255, 220, 0.96);
-    border-color: rgba(116, 214, 170, 0.28);
-    background: rgba(116, 214, 170, 0.12);
 }
 
 .social-feed-empty {

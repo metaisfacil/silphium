@@ -5,10 +5,11 @@ type SidebarSection = 'library' | 'social';
 
 type ListenBrainzSocialControllerOptions = {
     elements: Pick<SidebarElements, 'sidebarToggle' | 'sidebarSectionTrigger' | 'sidebarSectionTriggerLabel' | 'sidebarSectionMenu' | 'sidebarSectionOptionLibrary' | 'sidebarSectionOptionSocial' | 'sidebarPaneLibrary' | 'sidebarPaneSocial' | 'socialFeedStatus' | 'socialFeedList'>;
-    getToken: () => string;
+    hasAnyProviderConfigured: () => boolean;
     isSidebarVisible: () => boolean;
     fetchFollowingUsers: () => Promise<string[]>;
     fetchFollowingFeed: (count: number) => Promise<ListenBrainzSocialEvent[]>;
+    openUserProfile: (provider: 'listenbrainz' | 'lastfm', userName: string) => void | Promise<void>;
 };
 
 export type ListenBrainzSocialController = ReturnType<typeof createListenBrainzSocialController>;
@@ -19,6 +20,7 @@ const socialFeedUpdateAnimationMs = 420;
 const sidebarSectionSwitchAnimationMs = 240;
 
 const listenBrainzUserIcon = '<svg class="social-feed-listenbrainz-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 27 30" aria-hidden="true"><polygon fill="#353070" points="13 1 1 8 1 22 13 29 13 1"/><polygon fill="#eb743b" points="14 1 26 8 26 22 14 29 14 1"/></svg>';
+const lastFmUserIcon = '<svg class="social-feed-lastfm-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" aria-hidden="true"><g fill-rule="evenodd"><path fill="#fbfbfb" d="M125.78 125.25c-41.65 3.9-63.03 30.12-63.04 77.29-.01 32.45 10.87 53.98 32.86 65.02 22.61 11.35 60.18 9.34 81.94-4.38 3.1-1.96 6.05-4.25 6.05-4.7 0-.58-9.43-25.78-9.8-26.21-.17-.2-1.5.75-2.97 2.1-16.9 15.53-42.34 19.7-57.31 9.4-23.15-15.92-24.22-67.89-1.8-86.25 12.84-10.5 35.78-10.24 48.64.56 8.78 7.37 12.06 14.01 22.47 45.44 8.7 26.26 9.88 29.26 14.56 37.1 14.13 23.7 37.01 34.16 74.69 34.16 42.82 0 64.06-13.2 65.32-40.6.9-19.63-8.18-33.79-26.52-41.36-6.48-2.68-11.19-3.95-27.67-7.48-20.7-4.43-25.12-7.8-25.17-19.15-.05-11.28 7.3-16.78 22.44-16.77 14.42 0 21.45 4.56 23.73 15.35.34 1.65.66 3.05.69 3.1.08.13 30.3-3.4 30.93-3.61 1.99-.67-2.52-14.97-6.65-21.1-15.13-22.46-69.3-24.98-91.27-4.25-14.75 13.92-16.12 41.79-2.78 56.86 6.7 7.58 14.98 11.11 39.28 16.74 23.68 5.49 28.99 8.68 30.7 18.5 2.18 12.54-7.9 18.62-31.08 18.74-23.64.12-37.71-7.03-47.62-24.2-2.97-5.15-4.58-9.31-11.6-30.15-13-38.55-19.06-48.99-34.33-59.13-12.3-8.18-35.42-12.84-54.69-11.03"/><path fill="#e41c24" d="M66.8.63A78.3 78.3 0 0 0 .6 67.23c-.91 6.3-.91 259.23 0 265.53a78.2 78.2 0 0 0 66.64 66.64c6.3.91 259.22.91 265.52 0a78.2 78.2 0 0 0 66.64-66.64c.91-6.3.91-259.22 0-265.52A78.2 78.2 0 0 0 332.76.6C326.72-.27 72.61-.24 66.8.63m83.6 125.35c24.92 3.4 40.14 13.76 51.3 34.96 3.32 6.3 5.84 12.94 13.1 34.46 7.02 20.84 8.63 25 11.6 30.15 9.9 17.16 23.98 24.32 47.62 24.2 23.18-.12 33.26-6.2 31.08-18.74-1.71-9.82-7.02-13.01-30.7-18.5-18.13-4.2-22.87-5.68-29.09-9.07-13.86-7.57-19.58-18.43-19.04-36.13.84-27.23 20.8-42.33 55.96-42.3 30.85.01 48.87 11.25 53.06 33.08.95 4.95 1.04 6 .53 6.17-.62.2-30.85 3.74-30.93 3.61-.03-.05-.35-1.45-.7-3.1-2.26-10.79-9.3-15.34-23.72-15.35-15.14-.01-22.5 5.49-22.44 16.77.05 11.35 4.47 14.72 25.17 19.15 16.48 3.53 21.2 4.8 27.67 7.48 18.34 7.57 27.42 21.73 26.52 41.36-1.26 27.4-22.5 40.6-65.32 40.6-37.68 0-60.56-10.46-74.69-34.15-4.68-7.85-5.86-10.85-14.56-37.11-10.4-31.43-13.7-38.07-22.47-45.44-12.86-10.8-35.8-11.07-48.63-.56-22.43 18.36-21.36 70.33 1.79 86.25 14.97 10.3 40.41 6.13 57.31-9.4 1.47-1.35 2.8-2.3 2.97-2.1.37.43 9.8 25.63 9.8 26.2 0 .46-2.95 2.75-6.05 4.7-21.76 13.73-59.33 15.74-81.94 4.39-21.99-11.04-32.87-32.57-32.86-65.02 0-47.17 21.39-73.38 63.04-77.3 3.73-.35 20.27.15 24.61.74"/></g></svg>';
 
 const escapeHtml = (value: string): string => value
     .replaceAll('&', '&amp;')
@@ -27,20 +29,19 @@ const escapeHtml = (value: string): string => value
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
-const formatMusicServiceLabel = (event: ListenBrainzSocialEvent): string => {
-    const explicitName = (event.trackMetadata.additionalInfo.musicServiceName || '').trim();
-    if (explicitName !== '') {
-        return explicitName;
+const socialEventProvider = (event: ListenBrainzSocialEvent): 'listenbrainz' | 'lastfm' => {
+    const explicitName = (event.trackMetadata.additionalInfo.musicServiceName || '').trim().toLowerCase();
+    if (explicitName === 'last.fm' || explicitName === 'lastfm') {
+        return 'lastfm';
     }
 
-    const domain = (event.trackMetadata.additionalInfo.musicService || '').trim().toLowerCase();
-    if (domain === '') {
-        return '';
+    const serviceDomain = (event.trackMetadata.additionalInfo.musicService || '').trim().toLowerCase();
+    if (serviceDomain === 'last.fm' || serviceDomain === 'lastfm' || serviceDomain.includes('last.fm')) {
+        return 'lastfm';
     }
 
-    return domain.replace(/^www\./, '').replace(/\.[a-z0-9]+$/, '');
+    return 'listenbrainz';
 };
-
 const formatRelativeTime = (timestampSeconds: number): string => {
     if (!Number.isFinite(timestampSeconds) || timestampSeconds <= 0) {
         return 'just now';
@@ -237,17 +238,17 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
 
     const renderEvents = (): string => {
         if (socialEvents.length === 0) {
-            if (options.getToken().trim() === '') {
+            if (!options.hasAnyProviderConfigured()) {
                 return renderEmptyState(
-                    'ListenBrainz token required',
-                    'Add your ListenBrainz user token in Settings to load the people you follow and their recent scrobbles.',
+                    'Social account required',
+                    'Add your ListenBrainz token or Last.fm credentials in Settings to load the people you follow and their recent scrobbles.',
                 );
             }
 
             if (followingUsers.length === 0) {
                 return renderEmptyState(
                     'No followed users yet',
-                    'This view reads your ListenBrainz following feed. Follow a few people there and their new scrobbles will appear here.',
+                    'This view reads your ListenBrainz and Last.fm following feeds. Follow a few people there and their scrobbles will appear here.',
                 );
             }
 
@@ -266,25 +267,19 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
             const trackName = (event.trackMetadata.trackName || '').trim() || 'Unknown track';
             const artistName = (event.trackMetadata.artistName || '').trim() || 'Unknown artist';
             const releaseName = (event.trackMetadata.releaseName || '').trim();
-            const serviceLabel = formatMusicServiceLabel(event);
             const secondaryLine = releaseName !== ''
                 ? `${artistName} • ${releaseName}`
                 : artistName;
-            const badges: string[] = [];
-            if (event.playingNow) {
-                badges.push('<span class="social-feed-badge is-live">Live</span>');
-            }
-            if (serviceLabel !== '') {
-                badges.push(`<span class="social-feed-badge">${escapeHtml(serviceLabel)}</span>`);
-            }
+            const provider = socialEventProvider(event);
+            const iconMarkup = provider === 'lastfm' ? lastFmUserIcon : listenBrainzUserIcon;
 
             return `
                 <article class="social-feed-card${event.playingNow ? ' is-live' : ''}">
                     <div class="social-feed-card-header">
                         <div class="social-feed-identity">
-                            <span class="social-feed-avatar" aria-hidden="true">${listenBrainzUserIcon}</span>
+                            <span class="social-feed-avatar" aria-hidden="true">${iconMarkup}</span>
                             <div class="social-feed-user-copy">
-                                <p class="social-feed-user">${escapeHtml((event.userName || '').trim() || 'Unknown user')}</p>
+                                <button class="social-feed-user social-feed-user-link" type="button" data-social-user-name="${escapeHtml((event.userName || '').trim())}" data-social-user-provider="${provider}">${escapeHtml((event.userName || '').trim() || 'Unknown user')}</button>
                                 <p class="social-feed-verb">${event.playingNow ? 'is listening now' : 'scrobbled recently'}</p>
                             </div>
                         </div>
@@ -292,7 +287,6 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
                     </div>
                     <p class="social-feed-track">${escapeHtml(trackName)}</p>
                     <p class="social-feed-meta">${escapeHtml(secondaryLine)}</p>
-                    ${badges.length > 0 ? `<div class="social-feed-badges">${badges.join('')}</div>` : ''}
                 </article>
             `;
         }).join('');
@@ -333,7 +327,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
 
     const scheduleNextPoll = (): void => {
         stopPolling();
-        if (activeSection !== 'social' || options.getToken().trim() === '' || !options.isSidebarVisible()) {
+        if (activeSection !== 'social' || !options.hasAnyProviderConfigured() || !options.isSidebarVisible()) {
             return;
         }
 
@@ -349,8 +343,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
             return;
         }
 
-        const token = options.getToken().trim();
-        if (token === '') {
+        if (!options.hasAnyProviderConfigured()) {
             followingUsers = [];
             socialEvents = [];
             lastErrorMessage = '';
@@ -415,7 +408,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
     };
 
     const handleSettingsChanged = (): void => {
-        if (options.getToken().trim() === '') {
+        if (!options.hasAnyProviderConfigured()) {
             followingUsers = [];
             socialEvents = [];
             lastErrorMessage = '';
@@ -441,6 +434,25 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
     });
     sidebarSectionOptionLibrary.addEventListener('click', showLibrary);
     sidebarSectionOptionSocial.addEventListener('click', showSocial);
+    socialFeedList.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const userButton = target.closest('[data-social-user-name][data-social-user-provider]');
+        if (!(userButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const userName = (userButton.dataset.socialUserName || '').trim();
+        const provider = userButton.dataset.socialUserProvider;
+        if (userName === '' || (provider !== 'listenbrainz' && provider !== 'lastfm')) {
+            return;
+        }
+
+        void options.openUserProfile(provider, userName);
+    });
     document.addEventListener('click', (event) => {
         if (!sectionMenuOpen) {
             return;

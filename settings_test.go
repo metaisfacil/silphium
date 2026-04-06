@@ -357,6 +357,9 @@ func TestNormalizeScrobbleFilterMode(t *testing.T) {
 
 func TestNormalizeAppSettingsScrobbleRules(t *testing.T) {
 	settings := normalizeAppSettings(AppSettings{
+		LastFmAPIKey:       " api-key ",
+		LastFmAPISecret:    " shared-secret ",
+		LastFmSessionKey:   " session-key ",
 		ScrobbleFilterMode: "whitelist",
 		ScrobbleRules: []ScrobbleRule{
 			{Field: scrobbleRuleFieldTrackArtist, Operator: scrobbleRuleOperatorRegex, Value: " /foo/i "},
@@ -370,6 +373,10 @@ func TestNormalizeAppSettingsScrobbleRules(t *testing.T) {
 
 	if settings.ScrobbleFilterMode != "whitelist" {
 		t.Fatalf("ScrobbleFilterMode = %q, want %q", settings.ScrobbleFilterMode, "whitelist")
+	}
+
+	if settings.LastFmAPIKey != "api-key" || settings.LastFmAPISecret != "shared-secret" || settings.LastFmSessionKey != "session-key" {
+		t.Fatalf("Last.fm credentials = (%q, %q, %q), want trimmed values", settings.LastFmAPIKey, settings.LastFmAPISecret, settings.LastFmSessionKey)
 	}
 
 	if len(settings.ScrobbleRules) != 3 {
