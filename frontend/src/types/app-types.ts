@@ -304,6 +304,9 @@ export type AppSettings = {
     libraryPath: string;
     ffmpegPath: string;
     listenBrainzUserToken: string;
+    lastFmApiKey: string;
+    lastFmApiSecret: string;
+    lastFmSessionKey: string;
     scrobbleFilterMode: ScrobbleFilterMode;
     scrobbleRules: ScrobbleRule[];
     musicBrainzServerUrl: string;

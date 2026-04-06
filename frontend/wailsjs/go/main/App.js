@@ -62,6 +62,22 @@ export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
 }
 
+export function GetLastFmFollowing() {
+  return window['go']['main']['App']['GetLastFmFollowing']();
+}
+
+export function GetLastFmFollowingFeed(arg1) {
+  return window['go']['main']['App']['GetLastFmFollowingFeed'](arg1);
+}
+
+export function GetLastFmRequestToken(arg1, arg2) {
+  return window['go']['main']['App']['GetLastFmRequestToken'](arg1, arg2);
+}
+
+export function GetLastFmSessionKey(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetLastFmSessionKey'](arg1, arg2, arg3);
+}
+
 export function GetLibraryFolderCoverPath(arg1) {
   return window['go']['main']['App']['GetLibraryFolderCoverPath'](arg1);
 }
@@ -208,6 +224,10 @@ export function SelectShareImageSaveFile(arg1) {
 
 export function ShowErrorDialog(arg1, arg2) {
   return window['go']['main']['App']['ShowErrorDialog'](arg1, arg2);
+}
+
+export function SubmitLastFm(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SubmitLastFm'](arg1, arg2, arg3);
 }
 
 export function SubmitListenBrainz(arg1, arg2, arg3) {

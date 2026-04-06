@@ -30,9 +30,11 @@ const flushPromises = async (): Promise<void> => {
 
 const mountController = (options?: {
     token?: string;
+    hasAnyProviderConfigured?: boolean;
     isSidebarVisible?: () => boolean;
     fetchFollowingUsers?: () => Promise<string[]>;
     fetchFollowingFeed?: (count: number) => Promise<ListenBrainzSocialEvent[]>;
+    openUserProfile?: (provider: 'listenbrainz' | 'lastfm', userName: string) => void | Promise<void>;
 }) => {
     document.body.innerHTML = `
         <button id="sidebar-toggle" type="button"></button>
@@ -60,6 +62,7 @@ const mountController = (options?: {
 
     const fetchFollowingUsers = options?.fetchFollowingUsers || vi.fn(async () => ['alice', 'bob']);
     const fetchFollowingFeed = options?.fetchFollowingFeed || vi.fn(async () => [createEvent()]);
+    const openUserProfile = options?.openUserProfile || vi.fn();
 
     const controller = createListenBrainzSocialController({
         elements: {
@@ -74,10 +77,11 @@ const mountController = (options?: {
             socialFeedStatus,
             socialFeedList,
         },
-        getToken: () => options?.token ?? 'token',
+        hasAnyProviderConfigured: () => options?.hasAnyProviderConfigured ?? (options?.token ?? 'token').trim() !== '',
         isSidebarVisible: options?.isSidebarVisible || (() => true),
         fetchFollowingUsers,
         fetchFollowingFeed,
+        openUserProfile,
     });
 
     return {
@@ -93,6 +97,7 @@ const mountController = (options?: {
         socialFeedList,
         fetchFollowingUsers,
         fetchFollowingFeed,
+        openUserProfile,
     };
 };
 
@@ -178,20 +183,20 @@ describe('createListenBrainzSocialController', () => {
         expect(socialFeedList.textContent).toContain('bob');
     });
 
-    it('shows a token-required empty state when ListenBrainz is not configured', async () => {
+    it('shows an account-required empty state when no social provider is configured', async () => {
         const {
             sidebarSectionOptionSocial,
             socialFeedList,
             fetchFollowingUsers,
             fetchFollowingFeed,
-        } = mountController({ token: '' });
+        } = mountController({ hasAnyProviderConfigured: false });
 
         sidebarSectionOptionSocial.click();
         await flushPromises();
 
         expect(fetchFollowingUsers).not.toHaveBeenCalled();
         expect(fetchFollowingFeed).not.toHaveBeenCalled();
-        expect(socialFeedList.textContent).toContain('ListenBrainz token required');
+        expect(socialFeedList.textContent).toContain('Social account required');
     });
 
     it('polls again while the social tab stays active', async () => {
@@ -209,10 +214,10 @@ describe('createListenBrainzSocialController', () => {
     });
 
     it('keeps background polling silent once the feed has loaded', async () => {
-        let resolveSecondFeedRequest: ((events: ListenBrainzSocialEvent[]) => void) | null = null;
-        const fetchFollowingFeed = vi.fn<() => Promise<ListenBrainzSocialEvent[]>>()
+        let resolveSecondFeedRequest: (events: ListenBrainzSocialEvent[]) => void = () => undefined;
+        const fetchFollowingFeed = vi.fn<[count: number], Promise<ListenBrainzSocialEvent[]>>()
             .mockResolvedValueOnce([createEvent()])
-            .mockImplementationOnce(async () => await new Promise<ListenBrainzSocialEvent[]>((resolve) => {
+            .mockImplementationOnce(async (_count: number) => await new Promise<ListenBrainzSocialEvent[]>((resolve) => {
                 resolveSecondFeedRequest = resolve;
             }));
         const { sidebarSectionOptionSocial, socialFeedStatus } = mountController({ fetchFollowingFeed });
@@ -230,7 +235,7 @@ describe('createListenBrainzSocialController', () => {
         expect(fetchFollowingFeed).toHaveBeenCalledTimes(2);
         expect(socialFeedStatus.textContent).toBe('');
 
-        resolveSecondFeedRequest?.([createEvent({ id: 2, trackMetadata: {
+        resolveSecondFeedRequest([createEvent({ id: 2, trackMetadata: {
             artistName: 'Artist Two',
             trackName: 'Track Two',
             releaseName: 'Album Two',
@@ -292,5 +297,41 @@ describe('createListenBrainzSocialController', () => {
         expect(sidebarPaneLibrary.hidden).toBe(false);
         expect(sidebarPaneSocial.hidden).toBe(true);
         expect(controller.isSocialActive()).toBe(false);
+    });
+
+    it('opens the user profile when a username is clicked', async () => {
+        const openUserProfile = vi.fn();
+        const {
+            sidebarSectionOptionSocial,
+            socialFeedList,
+        } = mountController({
+            openUserProfile,
+            fetchFollowingFeed: vi.fn(async () => [
+                createEvent({
+                    userName: 'lastfm-user',
+                    trackMetadata: {
+                        artistName: 'Artist One',
+                        trackName: 'Track One',
+                        releaseName: 'Album One',
+                        additionalInfo: {
+                            musicServiceName: 'Last.fm',
+                        },
+                    },
+                }),
+            ]),
+        });
+
+        sidebarSectionOptionSocial.click();
+        await flushPromises();
+
+        await vi.waitFor(() => {
+            expect(socialFeedList.textContent).toContain('lastfm-user');
+        });
+
+        const userButton = socialFeedList.querySelector('[data-social-user-name="lastfm-user"]') as HTMLButtonElement | null;
+        expect(userButton).not.toBeNull();
+        userButton?.click();
+
+        expect(openUserProfile).toHaveBeenCalledWith('lastfm', 'lastfm-user');
     });
 });

@@ -51,6 +51,9 @@ type AppSettings struct {
 	LibraryPath                            string                   `json:"libraryPath,omitempty"`
 	FFmpegPath                             string                   `json:"ffmpegPath,omitempty"`
 	ListenBrainzUserToken                  string                   `json:"listenBrainzUserToken"`
+	LastFmAPIKey                           string                   `json:"lastFmApiKey"`
+	LastFmAPISecret                        string                   `json:"lastFmApiSecret"`
+	LastFmSessionKey                       string                   `json:"lastFmSessionKey"`
 	ScrobbleFilterMode                     string                   `json:"scrobbleFilterMode,omitempty"`
 	ScrobbleRules                          []ScrobbleRule           `json:"scrobbleRules,omitempty"`
 	ScrobbleFolders                        []string                 `json:"scrobbleFolders,omitempty"`
@@ -566,6 +569,9 @@ func normalizeLibraryFolders(folders []AppLibraryFolder, legacyPath string, lega
 
 func normalizeAppSettings(settings AppSettings) AppSettings {
 	token := strings.TrimSpace(settings.ListenBrainzUserToken)
+	lastFmAPIKey := strings.TrimSpace(settings.LastFmAPIKey)
+	lastFmAPISecret := strings.TrimSpace(settings.LastFmAPISecret)
+	lastFmSessionKey := strings.TrimSpace(settings.LastFmSessionKey)
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
 	libraryFolders := normalizeLibraryFolders(settings.LibraryFolders, settings.LibraryPath, settings.ReleaseDepth)
 	coverArtPriority := normalizeCoverArtPriority(settings.CoverArtPriority)
@@ -609,6 +615,9 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		LibraryPath:                            legacyLibraryPath,
 		FFmpegPath:                             normalizeFFmpegPath(settings.FFmpegPath),
 		ListenBrainzUserToken:                  token,
+		LastFmAPIKey:                           lastFmAPIKey,
+		LastFmAPISecret:                        lastFmAPISecret,
+		LastFmSessionKey:                       lastFmSessionKey,
 		ScrobbleFilterMode:                     scrobbleFilterMode,
 		ScrobbleRules:                          scrobbleRules,
 		MusicBrainzServerURL:                   musicBrainzServerURL,

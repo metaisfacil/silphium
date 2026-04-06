@@ -83,6 +83,10 @@ import {
     GetLibraryFolderPage,
     GetLibraryFolderTrackCount,
     GetLibraryFolderTrackPaths,
+    GetLastFmFollowing,
+    GetLastFmFollowingFeed,
+    GetLastFmRequestToken,
+    GetLastFmSessionKey,
     GetLibraryIndexedFilePage,
     GetListenBrainzFollowing,
     GetListenBrainzFollowingFeed,
@@ -108,6 +112,7 @@ import {
     SelectPlaylistFile,
     SelectPlaylistSaveFile,
     SelectShareImageSaveFile,
+    SubmitLastFm,
     SubmitListenBrainz,
     SubmitListenBrainzRecordingFeedback,
     ValidateFFmpegPath,
@@ -161,6 +166,7 @@ import {
     setMusicBrainzRequestLogServerResolver,
 } from './utils/musicbrainz-entity-helpers';
 import { scheduleListenBrainzRequest, scheduleMusicBrainzRequest } from './utils/musicbrainz-request-scheduler';
+import { scheduleLastFmRequest } from './utils/lastfm-request-scheduler';
 import {
     defaultFocusedKeyboardShortcuts,
     formatShortcutBindingFromKeyboardEvent,
@@ -252,6 +258,9 @@ let currentSettings: AppSettings = {
     libraryPath: '',
     ffmpegPath: '',
     listenBrainzUserToken: '',
+    lastFmApiKey: '',
+    lastFmApiSecret: '',
+    lastFmSessionKey: '',
     scrobbleFilterMode: 'blacklist',
     scrobbleRules: [],
     musicBrainzServerUrl: '',
@@ -371,6 +380,9 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         libraryPath: libraryFolders[0]?.path || '',
         ffmpegPath: (settings.ffmpegPath || '').trim(),
         listenBrainzUserToken: settings.listenBrainzUserToken || '',
+        lastFmApiKey: (settings.lastFmApiKey || '').trim(),
+        lastFmApiSecret: (settings.lastFmApiSecret || '').trim(),
+        lastFmSessionKey: (settings.lastFmSessionKey || '').trim(),
         scrobbleFilterMode: asScrobbleFilterMode(settings.scrobbleFilterMode || ''),
         scrobbleRules: normalizeScrobbleRules(settings.scrobbleRules, legacyScrobbleFolders),
         musicBrainzServerUrl: (settings.musicBrainzServerUrl || '').trim(),
@@ -449,6 +461,7 @@ const completeStartupIfReady = async (): Promise<void> => {
 
 const defaultMusicBrainzServerUrl = 'https://musicbrainz.org';
 const defaultListenBrainzServerUrl = 'https://api.listenbrainz.org';
+const defaultLastFmServerUrl = 'https://ws.audioscrobbler.com/2.0';
 
 const playbackStateService = createPlaybackStateService();
 setMusicBrainzRequestLogServerResolver(() => currentSettings.musicBrainzServerUrl || defaultMusicBrainzServerUrl);
@@ -458,6 +471,12 @@ const scrobbleService = createScrobbleService({
     ), {
         server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
         path: '/1/submit-listens',
+    }),
+    submitLastFm: async (eventType, payload, listenedAt) => await scheduleLastFmRequest(async () => (
+        await SubmitLastFm(eventType, payload, listenedAt)
+    ), {
+        server: defaultLastFmServerUrl,
+        path: eventType === 'playing_now' ? 'track.updateNowPlaying' : 'track.scrobble',
     }),
 });
 const playbackSequencingService = createPlaybackSequencingService({
@@ -585,7 +604,10 @@ const listenBrainzController = createListenBrainzController({
         playlistController.closeMenu();
     },
 });
-const canScrobble = (): boolean => listenBrainzController.canScrobble();
+const hasListenBrainzScrobbling = (): boolean => listenBrainzController.canScrobble();
+const hasLastFmScrobbling = (): boolean => currentSettings.lastFmApiKey.trim() !== ''
+    && currentSettings.lastFmApiSecret.trim() !== ''
+    && currentSettings.lastFmSessionKey.trim() !== '';
 const closeListenBrainzFeedbackMenu = (): void => {
     listenBrainzController.closeMenu();
 };
@@ -611,20 +633,63 @@ const listenBrainzSocialController = createListenBrainzSocialController({
         socialFeedStatus,
         socialFeedList,
     },
-    getToken: () => currentSettings.listenBrainzUserToken,
+    hasAnyProviderConfigured: () => hasListenBrainzScrobbling() || hasLastFmScrobbling(),
     isSidebarVisible: () => app.classList.contains('sidebar-open'),
-    fetchFollowingUsers: async (): Promise<string[]> => await scheduleListenBrainzRequest(async () => (
-        await GetListenBrainzFollowing() as string[]
-    ), {
-        server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
-        path: '/1/user/{user}/following',
-    }),
-    fetchFollowingFeed: async (count: number): Promise<ListenBrainzSocialEvent[]> => await scheduleListenBrainzRequest(async () => (
-        await GetListenBrainzFollowingFeed(count) as ListenBrainzSocialEvent[]
-    ), {
-        server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
-        path: '/1/user/{user}/feed/events/listens/following',
-    }),
+    fetchFollowingUsers: async (): Promise<string[]> => {
+        const providers: Array<Promise<string[]>> = [];
+
+        if (hasListenBrainzScrobbling()) {
+            providers.push(scheduleListenBrainzRequest(async () => (
+                await GetListenBrainzFollowing() as string[]
+            ), {
+                server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
+                path: '/1/user/{user}/following',
+            }));
+        }
+
+        if (hasLastFmScrobbling()) {
+            providers.push(scheduleLastFmRequest(async () => (
+                await GetLastFmFollowing() as string[]
+            ), {
+                server: defaultLastFmServerUrl,
+                path: 'user.getFriends',
+            }));
+        }
+
+        const merged = (await Promise.all(providers)).flat();
+        return [...new Set(merged.map((name) => name.trim()).filter((name) => name !== ''))].sort((left, right) => left.localeCompare(right));
+    },
+    fetchFollowingFeed: async (count: number): Promise<ListenBrainzSocialEvent[]> => {
+        const providers: Array<Promise<ListenBrainzSocialEvent[]>> = [];
+
+        if (hasListenBrainzScrobbling()) {
+            providers.push(scheduleListenBrainzRequest(async () => (
+                await GetListenBrainzFollowingFeed(count) as ListenBrainzSocialEvent[]
+            ), {
+                server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
+                path: '/1/user/{user}/feed/events/listens/following',
+            }));
+        }
+
+        if (hasLastFmScrobbling()) {
+            providers.push(scheduleLastFmRequest(async () => (
+                await GetLastFmFollowingFeed(count) as ListenBrainzSocialEvent[]
+            ), {
+                server: defaultLastFmServerUrl,
+                path: 'user.getRecentTracks',
+            }));
+        }
+
+        return (await Promise.all(providers)).flat();
+    },
+    openUserProfile: (provider, userName): void => {
+        const encodedUserName = encodeURIComponent(userName);
+        const profileUrl = provider === 'lastfm'
+            ? `https://www.last.fm/user/${encodedUserName}`
+            : `${(currentSettings.listenBrainzServerUrl || 'https://listenbrainz.org').replace(/\/+$/, '')}/user/${encodedUserName}/`;
+
+        void BrowserOpenURL(profileUrl);
+    },
 });
 const openMbOnCtrlClick = (event: MouseEvent, target: HTMLElement): void => {
     if (!event.ctrlKey) {
@@ -1237,13 +1302,17 @@ const syncCurrentTrackFromPlaybackState = (state: AudioPlaybackState): void => {
         return;
     }
 
-    const activeTrack = tracks[currentTrackIndex];
-    if (activeTrack && activeTrack.path === normalizedSourcePath) {
+    const resolvedIndex = ensureTrackIndexForPath(normalizedSourcePath);
+    if (resolvedIndex < 0 || resolvedIndex >= tracks.length) {
         return;
     }
 
-    const resolvedIndex = ensureTrackIndexForPath(normalizedSourcePath);
-    if (resolvedIndex < 0 || resolvedIndex >= tracks.length) {
+    const activeTrack = tracks[currentTrackIndex];
+    if (activeTrack && trackPathKey(activeTrack.path) === trackPathKey(normalizedSourcePath)) {
+        return;
+    }
+
+    if (resolvedIndex === currentTrackIndex) {
         return;
     }
 
@@ -1252,7 +1321,7 @@ const syncCurrentTrackFromPlaybackState = (state: AudioPlaybackState): void => {
     queuedGaplessTrackPath = '';
     playlistController.scheduleRender();
     setCoverFlipped(false);
-    scrobbleService.startTrackSession();
+    scrobbleService.startTrackSession(normalizedSourcePath);
 
     const track = tracks[resolvedIndex];
     if (currentSettings.preferMusicBrainzMetadata) {
@@ -1342,7 +1411,10 @@ const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState, sequenc
 const maybeSubmitListenBrainz = (state: AudioPlaybackState): void => {
     const track = currentTrackForPlaybackState(state);
     const allowTrack = !!track && isTrackScrobbleAllowed(track, state.duration, currentSettings.scrobbleFilterMode, currentSettings.scrobbleRules);
-    scrobbleService.maybeSubmit(state, track, canScrobble() && allowTrack);
+    scrobbleService.maybeSubmit(state, track, {
+        listenBrainz: hasListenBrainzScrobbling() && allowTrack,
+        lastFm: hasLastFmScrobbling() && allowTrack,
+    });
 };
 
 const updatePlayButton = (): void => {
@@ -1827,7 +1899,7 @@ const openSidebarQueueMenu = (
         && Number.isInteger(feedbackTrackIndex)
         && (feedbackTrackIndex as number) >= 0
         && (feedbackTrackIndex as number) < tracks.length;
-    const hasListenBrainzToken = canScrobble();
+    const hasListenBrainzToken = hasListenBrainzScrobbling();
     sidebarQueueFeedbackTrackIndex = canShowFeedbackActions ? (feedbackTrackIndex as number) : null;
     sidebarQueueFeedbackDivider.hidden = !canShowFeedbackActions;
     sidebarQueueLove.hidden = !canShowFeedbackActions;
@@ -3219,8 +3291,8 @@ const loadTrack = async (index: number, allowMissingTrackRecovery = true, replay
     currentTrackIndex = index;
     playlistController.scheduleRender();
     setCoverFlipped(false);
-    scrobbleService.startTrackSession();
     const track = tracks[currentTrackIndex];
+    scrobbleService.startTrackSession(track.path);
 
     if (currentSettings.preferMusicBrainzMetadata) {
         track.mbMetadataResolved = false;
@@ -3632,6 +3704,9 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             libraryPath: currentSettings.libraryPath,
             ffmpegPath: currentSettings.ffmpegPath,
             listenBrainzUserToken: currentSettings.listenBrainzUserToken,
+            lastFmApiKey: currentSettings.lastFmApiKey,
+            lastFmApiSecret: currentSettings.lastFmApiSecret,
+            lastFmSessionKey: currentSettings.lastFmSessionKey,
             musicBrainzServerUrl: currentSettings.musicBrainzServerUrl,
             musicBrainzRequestRateMs: currentSettings.musicBrainzRequestRateMs,
             listenBrainzServerUrl: currentSettings.listenBrainzServerUrl,
@@ -3945,6 +4020,9 @@ settingsController = createSettingsController({
         libraryFolders: currentSettings.libraryFolders,
         ffmpegPath: currentSettings.ffmpegPath,
         listenBrainzUserToken: currentSettings.listenBrainzUserToken,
+        lastFmApiKey: currentSettings.lastFmApiKey,
+        lastFmApiSecret: currentSettings.lastFmApiSecret,
+        lastFmSessionKey: currentSettings.lastFmSessionKey,
         scrobbleFilterMode: currentSettings.scrobbleFilterMode,
         scrobbleRules: currentSettings.scrobbleRules,
         musicBrainzServerUrl: currentSettings.musicBrainzServerUrl,
@@ -3973,6 +4051,9 @@ settingsController = createSettingsController({
         libraryFolders: requestedLibraryFolders,
         ffmpegPath,
         listenBrainzUserToken,
+        lastFmApiKey,
+        lastFmApiSecret,
+        lastFmSessionKey,
         scrobbleFilterMode,
         scrobbleRules,
         musicBrainzServerUrl,
@@ -4005,6 +4086,9 @@ settingsController = createSettingsController({
             libraryPath: primaryLibraryFolder?.path || '',
             ffmpegPath,
             listenBrainzUserToken,
+            lastFmApiKey,
+            lastFmApiSecret,
+            lastFmSessionKey,
             scrobbleFilterMode,
             scrobbleRules,
             musicBrainzServerUrl,
@@ -4041,7 +4125,7 @@ settingsController = createSettingsController({
 
         resetShuffleHistory();
 
-        if (!canScrobble()) {
+        if (!hasListenBrainzScrobbling()) {
             closeListenBrainzFeedbackMenu();
         }
 
@@ -4061,10 +4145,34 @@ settingsController = createSettingsController({
         await completeStartupIfReady();
         void refreshListenBrainzFeedbackForCurrentTrack(true);
     },
+    fetchLastFmSessionKey: async (apiKey: string, apiSecret: string): Promise<string> => {
+        const normalizedApiKey = apiKey.trim();
+        const normalizedApiSecret = apiSecret.trim();
+        if (normalizedApiKey === '' || normalizedApiSecret === '') {
+            throw new Error('Last.fm API key and shared secret are required.');
+        }
+
+        const requestToken = await GetLastFmRequestToken(normalizedApiKey, normalizedApiSecret) as string;
+        const authorizeUrl = `https://www.last.fm/api/auth/?api_key=${encodeURIComponent(normalizedApiKey)}&token=${encodeURIComponent(requestToken)}`;
+        await BrowserOpenURL(authorizeUrl);
+
+        const confirmed = await openQueueConfirmModal(
+            'Authorize Last.fm',
+            'Allow access in your browser, then click Proceed to finish fetching the session key.',
+        );
+        if (!confirmed) {
+            throw new Error('Last.fm authorization was cancelled.');
+        }
+
+        return await GetLastFmSessionKey(normalizedApiKey, normalizedApiSecret, requestToken) as string;
+    },
     applyAudioNow: async ({
         libraryFolders: requestedLibraryFolders,
         ffmpegPath,
         listenBrainzUserToken,
+        lastFmApiKey,
+        lastFmApiSecret,
+        lastFmSessionKey,
         scrobbleFilterMode,
         scrobbleRules,
         musicBrainzServerUrl,
@@ -4097,6 +4205,9 @@ settingsController = createSettingsController({
             libraryPath: primaryLibraryFolder?.path || '',
             ffmpegPath,
             listenBrainzUserToken,
+            lastFmApiKey,
+            lastFmApiSecret,
+            lastFmSessionKey,
             scrobbleFilterMode,
             scrobbleRules,
             musicBrainzServerUrl,

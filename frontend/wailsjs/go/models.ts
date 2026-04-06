@@ -77,6 +77,9 @@ export namespace main {
 	    libraryPath?: string;
 	    ffmpegPath?: string;
 	    listenBrainzUserToken: string;
+	    lastFmApiKey: string;
+	    lastFmApiSecret: string;
+	    lastFmSessionKey: string;
 	    scrobbleFilterMode?: string;
 	    scrobbleRules?: ScrobbleRule[];
 	    scrobbleFolders?: string[];
@@ -107,6 +110,9 @@ export namespace main {
 	        this.libraryPath = source["libraryPath"];
 	        this.ffmpegPath = source["ffmpegPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
+	        this.lastFmApiKey = source["lastFmApiKey"];
+	        this.lastFmApiSecret = source["lastFmApiSecret"];
+	        this.lastFmSessionKey = source["lastFmSessionKey"];
 	        this.scrobbleFilterMode = source["scrobbleFilterMode"];
 	        this.scrobbleRules = this.convertValues(source["scrobbleRules"], ScrobbleRule);
 	        this.scrobbleFolders = source["scrobbleFolders"];
@@ -222,6 +228,30 @@ export namespace main {
 	    }
 	}
 	
+	export class LastFmTrackMetadata {
+	    artistName: string;
+	    trackName: string;
+	    releaseName?: string;
+	    albumArtist?: string;
+	    trackNumber?: string;
+	    recordingMbid?: string;
+	    durationSeconds?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LastFmTrackMetadata(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.artistName = source["artistName"];
+	        this.trackName = source["trackName"];
+	        this.releaseName = source["releaseName"];
+	        this.albumArtist = source["albumArtist"];
+	        this.trackNumber = source["trackNumber"];
+	        this.recordingMbid = source["recordingMbid"];
+	        this.durationSeconds = source["durationSeconds"];
+	    }
+	}
 	export class LibraryBrowserEntry {
 	    kind: string;
 	    name: string;
