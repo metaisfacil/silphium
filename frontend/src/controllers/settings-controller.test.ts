@@ -121,6 +121,29 @@ describe('createSettingsController', () => {
         document.body.innerHTML = '';
     });
 
+    it('renders settings titles in sentence case', () => {
+        document.body.innerHTML = renderSettingsModal();
+
+        expect(document.querySelector('label[for="settings-library-folder-list"]')?.textContent).toBe('Library folders');
+        expect(document.querySelector('label[for="settings-ffmpeg-path"]')?.textContent).toBe('FFmpeg executable path');
+        expect(document.querySelector('label[for="settings-listenbrainz-token"]')?.textContent).toBe('ListenBrainz user token');
+        expect(document.querySelector('label[for="settings-musicbrainz-server-url"]')?.textContent).toBe('MusicBrainz server URL');
+        expect(document.querySelector('label[for="settings-listenbrainz-server-url"]')?.textContent).toBe('ListenBrainz server URL');
+        expect(document.querySelector('label[for="settings-musicbrainz-tag-worker-cores"]')?.textContent).toBe('MusicBrainz tag worker cores');
+        expect(document.querySelector('label[for="settings-favourite-playlist-list"]')?.textContent).toBe('Favourite playlists');
+        expect(document.querySelector('label[for="settings-audio-output-device"]')?.textContent).toBe('Audio output device');
+        expect(document.querySelector('label[for="settings-audio-output-buffer-ms"]')?.textContent).toBe('Audio output buffer (ms)');
+        expect(document.querySelector('label[for="settings-player-card-layout"]')?.textContent).toBe('Player card layout');
+        expect(document.querySelector('label[for="settings-cover-art-priority-list"]')?.textContent).toBe('Cover art source priority');
+        expect(document.querySelector('#settings-shortcut-accordion-toggle')?.textContent).toBe('Keyboard shortcuts');
+        expect(document.querySelector('label[for="settings-shortcut-play-pause"]')?.textContent).toBe('Play/pause toggle');
+        expect(document.querySelector('#settings-apply-audio-now')?.getAttribute('aria-label')).toBe('Refresh audio settings');
+        expect(document.querySelector('#settings-force-reload')?.textContent).toBe('Force reload');
+        expect(document.querySelector('#settings-library-depth-title')?.textContent).toBe('Library folder settings');
+        expect(document.querySelector('label[for="settings-library-depth-label-input"]')?.textContent).toBe('Custom label');
+        expect(document.querySelector('label[for="settings-library-depth-input"]')?.textContent).toBe('Release folder depth');
+    });
+
     it('hydrates the modal and saves the edited form state', async () => {
         const { controller, elements, save } = mountSettingsController();
 

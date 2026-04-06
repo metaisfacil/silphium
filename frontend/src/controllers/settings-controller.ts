@@ -701,8 +701,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const finalizeDialogClose = (): void => {
             settingsLibraryDepthModal.hidden = true;
             settingsLibraryDepthModal.classList.remove('is-visible');
-	        settingsLibraryDepthTitle.textContent = 'Library Folder Settings';
-	        settingsLibraryDepthLabelInput.value = '';
+            settingsLibraryDepthTitle.textContent = 'Library folder settings';
+            settingsLibraryDepthLabelInput.value = '';
             settingsLibraryDepthInput.value = '';
             setLibraryDepthStatusMessage('');
             settingsLibraryDepthConfirm.textContent = 'Apply';
@@ -761,13 +761,13 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return false;
         }
 
-	    const nextValues = await openLibraryDepthDialog({ label: folder.label, releaseDepth: folder.releaseDepth }, 'Save', 'Library Folder Settings');
-	    if (nextValues === null) {
+        const nextValues = await openLibraryDepthDialog({ label: folder.label, releaseDepth: folder.releaseDepth }, 'Save', 'Library folder settings');
+        if (nextValues === null) {
             return false;
         }
 
-	    folder.label = nextValues.label;
-	    folder.releaseDepth = nextValues.releaseDepth;
+        folder.label = nextValues.label;
+        folder.releaseDepth = nextValues.releaseDepth;
         setSelectedLibraryFolderIndex(index);
         settingsLibraryFolderList.focus();
         return true;
@@ -1202,34 +1202,34 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             const existingIndex = libraryFolders.findIndex((folder) => libraryFolderPathKey(folder.path) === selectedFolderKey);
             const existingFolder = existingIndex >= 0 ? libraryFolders[existingIndex] : null;
 
-	        const nextValues = await openLibraryDepthDialog(
-	            {
-	                label: existingFolder?.label || '',
-	                releaseDepth: existingFolder?.releaseDepth || 0,
-	            },
-	            existingFolder ? 'Save' : 'Add Folder',
-	            existingFolder ? 'Library Folder Settings' : 'Add Library Folder',
-	        );
-	        if (nextValues === null) {
+            const nextValues = await openLibraryDepthDialog(
+                {
+                    label: existingFolder?.label || '',
+                    releaseDepth: existingFolder?.releaseDepth || 0,
+                },
+                existingFolder ? 'Save' : 'Add folder',
+                existingFolder ? 'Library folder settings' : 'Add library folder',
+            );
+            if (nextValues === null) {
                 return;
             }
 
             if (existingIndex >= 0) {
                 libraryFolders[existingIndex] = {
                     ...libraryFolders[existingIndex],
-	                label: nextValues.label,
-	                releaseDepth: nextValues.releaseDepth,
+                    label: nextValues.label,
+                    releaseDepth: nextValues.releaseDepth,
                 };
                 setSelectedLibraryFolderIndex(existingIndex);
                 settingsLibraryFolderList.focus();
                 return;
             }
 
-	        libraryFolders = normalizeLibraryFolders([...libraryFolders, {
-	            path: selectedFolder,
-	            label: nextValues.label,
-	            releaseDepth: nextValues.releaseDepth,
-	        }]);
+            libraryFolders = normalizeLibraryFolders([...libraryFolders, {
+                path: selectedFolder,
+                label: nextValues.label,
+                releaseDepth: nextValues.releaseDepth,
+            }]);
             setSelectedLibraryFolderIndex(libraryFolders.findIndex((folder) => libraryFolderPathKey(folder.path) === selectedFolderKey));
             settingsLibraryFolderList.focus();
         } catch (error) {

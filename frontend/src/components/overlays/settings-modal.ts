@@ -84,7 +84,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-general" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-library-folder-list">Library Folders</label>
+                        <label class="settings-label" for="settings-library-folder-list">Library folders</label>
                         <p class="settings-hint">Add one or more library roots. A folder settings dialog opens after adding a folder, and you can double-click an existing entry to change its label or release depth.</p>
                         <ul id="settings-library-folder-list" class="settings-library-folder-list" role="listbox" aria-label="Library folders" tabindex="0"></ul>
                         <div class="settings-list-actions">
@@ -93,7 +93,7 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-ffmpeg-path">FFmpeg Executable Path</label>
+                        <label class="settings-label" for="settings-ffmpeg-path">FFmpeg executable path</label>
                         <p class="settings-hint">Optional full path to ffmpeg. Leave blank to use the version available on PATH.</p>
                         <input id="settings-ffmpeg-path" class="settings-input" type="text" spellcheck="false" placeholder="Leave blank to use PATH">
                     </div>
@@ -107,12 +107,12 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz User Token</label>
+                        <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz user token</label>
                         <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
                         <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-musicbrainz-server-url">MusicBrainz Server URL</label>
+                        <label class="settings-label" for="settings-musicbrainz-server-url">MusicBrainz server URL</label>
                         <p class="settings-hint">Override the MusicBrainz server used for lookups. Local hosts are permitted a shorter cooldown between requests.</p>
                         <div class="settings-server-url-row">
                             <input id="settings-musicbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://musicbrainz.org">
@@ -123,7 +123,7 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-listenbrainz-server-url">ListenBrainz Server URL</label>
+                        <label class="settings-label" for="settings-listenbrainz-server-url">ListenBrainz server URL</label>
                         <p class="settings-hint">Override the ListenBrainz server used for scrobbling. Local hosts are permitted a shorter cooldown between requests.</p>
                         <div class="settings-server-url-row">
                             <input id="settings-listenbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://api.listenbrainz.org">
@@ -158,13 +158,13 @@ export const renderSettingsModal = (): string => `
                         <p class="settings-hint">Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.</p>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz Tag Worker Cores</label>
+                        <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz tag worker cores</label>
                         <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.</p>
                         <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
                     </div>
                     <div class="settings-field settings-worker-progress-field">
                         <div class="settings-worker-progress-header">
-                            <span class="settings-label">Metadata Worker Progress</span>
+                            <span class="settings-label">Metadata worker progress</span>
                             <span id="settings-musicbrainz-tag-worker-progress-value" class="settings-worker-progress-value">0%</span>
                         </div>
                         <div id="settings-musicbrainz-tag-worker-progress-bar" class="settings-worker-progress-bar" role="progressbar" aria-label="Metadata worker progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete">
@@ -176,7 +176,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-favourite-playlist-list">Favourite Playlists</label>
+                        <label class="settings-label" for="settings-favourite-playlist-list">Favourite playlists</label>
                         <p class="settings-hint">These playlists will always appear in the playlist modal.</p>
                         <ul id="settings-favourite-playlist-list" class="settings-favorite-list" role="listbox" aria-label="Favourite playlists"></ul>
                         <div class="settings-list-actions">
@@ -187,15 +187,15 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-audio" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-audio" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-audio-output-device">Audio Output Device</label>
+                        <label class="settings-label" for="settings-audio-output-device">Audio output device</label>
                         <div class="settings-audio-device-row">
                             <select id="settings-audio-output-device" class="settings-input settings-select"></select>
-                            <button id="settings-apply-audio-now" class="settings-secondary-btn settings-audio-apply-btn" type="button" title="Refresh the device list and reload audio-related app state without restarting." aria-label="Refresh Audio Settings"><svg class="overlay-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M20 5V10H15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 19V14H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.6 9.2C7.6 7.2 9.6 6 12 6C14.4 6 16.4 7.1 17.5 8.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M17.4 14.8C16.4 16.8 14.4 18 12 18C9.6 18 7.6 16.9 6.5 15.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                            <button id="settings-apply-audio-now" class="settings-secondary-btn settings-audio-apply-btn" type="button" title="Refresh the device list and reload audio-related app state without restarting." aria-label="Refresh audio settings"><svg class="overlay-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M20 5V10H15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 19V14H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.6 9.2C7.6 7.2 9.6 6 12 6C14.4 6 16.4 7.1 17.5 8.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M17.4 14.8C16.4 16.8 14.4 18 12 18C9.6 18 7.6 16.9 6.5 15.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                         </div>
                         <p class="settings-hint">Choose the output device used when the audio backend initializes.<br>Use the refresh button to rescan devices and reload audio-related state without restarting.</p>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-audio-output-buffer-ms">Audio Output Buffer (ms)</label>
+                        <label class="settings-label" for="settings-audio-output-buffer-ms">Audio output buffer (ms)</label>
                         <p class="settings-hint">0 uses driver default. Higher values may reduce crackling but increase latency.<br>Applied on next app launch.</p>
                         <input id="settings-audio-output-buffer-ms" class="settings-input" type="number" min="0" max="1000" step="1" inputmode="numeric" placeholder="0">
                     </div>
@@ -216,7 +216,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-ui" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-ui" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-player-card-layout">Player Card Layout</label>
+                        <label class="settings-label" for="settings-player-card-layout">Player card layout</label>
                         <p class="settings-hint">Choose how track metadata is arranged on the player card.</p>
                         <select id="settings-player-card-layout" class="settings-input settings-select">
                             <option value="default">Default — Title, album, artist</option>
@@ -224,17 +224,17 @@ export const renderSettingsModal = (): string => `
                         </select>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-cover-art-priority-list">Cover Art Source Priority</label>
+                        <label class="settings-label" for="settings-cover-art-priority-list">Cover art source priority</label>
                         <p class="settings-hint">Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.</p>
                         <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
                     </div>
                     <div class="settings-accordion">
-                        <button id="settings-shortcut-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-shortcut-accordion-panel">Keyboard Shortcuts</button>
+                        <button id="settings-shortcut-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-shortcut-accordion-panel">Keyboard shortcuts</button>
                         <div id="settings-shortcut-accordion-panel" class="settings-accordion-panel" hidden>
                             <p class="settings-hint">Click a field and press a key combination. Use Delete to clear.</p>
                             <div class="settings-shortcuts-grid">
                                 <div class="settings-field">
-                                    <label class="settings-label" for="settings-shortcut-play-pause">Play/Pause toggle</label>
+                                    <label class="settings-label" for="settings-shortcut-play-pause">Play/pause toggle</label>
                                     <input id="settings-shortcut-play-pause" class="settings-input" type="text" readonly spellcheck="false" placeholder="Space">
                                 </div>
                                 <div class="settings-field">
@@ -263,7 +263,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <p id="settings-status" class="settings-status"></p>
                 <div class="settings-actions">
-                    <button id="settings-force-reload" class="settings-secondary-btn" type="button">Force Reload</button>
+                    <button id="settings-force-reload" class="settings-secondary-btn" type="button">Force reload</button>
                     <button id="settings-save" class="upload-btn" type="button">Save</button>
                 </div>
             </div>
@@ -271,14 +271,14 @@ export const renderSettingsModal = (): string => `
         <div id="settings-library-depth-modal" class="settings-submodal" hidden>
             <div id="settings-library-depth-backdrop" class="settings-submodal-backdrop"></div>
             <form id="settings-library-depth-form" class="settings-subdialog" role="dialog" aria-modal="true" aria-labelledby="settings-library-depth-title">
-                <p id="settings-library-depth-title" class="settings-subdialog-title">Library Folder Settings</p>
+                <p id="settings-library-depth-title" class="settings-subdialog-title">Library folder settings</p>
                 <div class="settings-field">
-                    <label class="settings-label" for="settings-library-depth-label-input">Custom Label</label>
+                    <label class="settings-label" for="settings-library-depth-label-input">Custom label</label>
                     <p class="settings-hint">Overrides the name shown for this library in the app.<br>Leave blank to use the folder name.</p>
                     <input id="settings-library-depth-label-input" class="settings-input" type="text" maxlength="120" placeholder="Optional">
                 </div>
                 <div class="settings-field">
-                    <label class="settings-label" for="settings-library-depth-input">Release Folder Depth</label>
+                    <label class="settings-label" for="settings-library-depth-input">Release folder depth</label>
                     <p class="settings-hint">Enter how many folder levels below this library root a release begins.<br>Use 0 to treat the whole folder as one release.</p>
                     <input id="settings-library-depth-input" class="settings-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
                 </div>
