@@ -58,6 +58,38 @@ export type Track = {
     mbArtistCredits: MusicBrainzArtistCredit[];
 };
 
+export type ListenBrainzSocialAdditionalInfo = {
+    recordingMbid?: string;
+    recordingMsid?: string;
+    releaseMbid?: string;
+    releaseGroupMbid?: string;
+    artistMbids?: string[];
+    originUrl?: string;
+    musicService?: string;
+    musicServiceName?: string;
+    durationMs?: number;
+};
+
+export type ListenBrainzSocialTrackMetadata = {
+    artistName: string;
+    trackName: string;
+    releaseName?: string;
+    additionalInfo: ListenBrainzSocialAdditionalInfo;
+};
+
+export type ListenBrainzSocialEvent = {
+    id: number;
+    created: number;
+    eventType: string;
+    hidden: boolean;
+    message?: string;
+    userName: string;
+    listenedAt?: number;
+    listenedAtIso?: string;
+    playingNow?: boolean;
+    trackMetadata: ListenBrainzSocialTrackMetadata;
+};
+
 export type TrackTags = {
     artist: string;
     album: string;

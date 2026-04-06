@@ -42,6 +42,10 @@ export function GetLibraryFolderTrackPaths(arg1:string):Promise<Array<string>>;
 
 export function GetLibraryIndexedFilePage(arg1:string,arg2:number,arg3:number):Promise<main.LibraryIndexedFilePage>;
 
+export function GetListenBrainzFollowing():Promise<Array<string>>;
+
+export function GetListenBrainzFollowingFeed(arg1:number):Promise<Array<main.ListenBrainzSocialEvent>>;
+
 export function GetListenBrainzRecordingFeedback(arg1:string):Promise<number>;
 
 export function GetMusicBrainzTagWorkerProgress():Promise<main.MusicBrainzTagWorkerProgress>;

@@ -430,6 +430,119 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ListenBrainzSocialAdditionalInfo {
+	    recordingMbid?: string;
+	    recordingMsid?: string;
+	    releaseMbid?: string;
+	    releaseGroupMbid?: string;
+	    artistMbids?: string[];
+	    originUrl?: string;
+	    musicService?: string;
+	    musicServiceName?: string;
+	    durationMs?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListenBrainzSocialAdditionalInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.recordingMbid = source["recordingMbid"];
+	        this.recordingMsid = source["recordingMsid"];
+	        this.releaseMbid = source["releaseMbid"];
+	        this.releaseGroupMbid = source["releaseGroupMbid"];
+	        this.artistMbids = source["artistMbids"];
+	        this.originUrl = source["originUrl"];
+	        this.musicService = source["musicService"];
+	        this.musicServiceName = source["musicServiceName"];
+	        this.durationMs = source["durationMs"];
+	    }
+	}
+	export class ListenBrainzSocialTrackMetadata {
+	    artistName: string;
+	    trackName: string;
+	    releaseName?: string;
+	    additionalInfo: ListenBrainzSocialAdditionalInfo;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListenBrainzSocialTrackMetadata(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.artistName = source["artistName"];
+	        this.trackName = source["trackName"];
+	        this.releaseName = source["releaseName"];
+	        this.additionalInfo = this.convertValues(source["additionalInfo"], ListenBrainzSocialAdditionalInfo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ListenBrainzSocialEvent {
+	    id: number;
+	    created: number;
+	    eventType: string;
+	    hidden: boolean;
+	    message?: string;
+	    userName: string;
+	    listenedAt?: number;
+	    listenedAtIso?: string;
+	    playingNow?: boolean;
+	    trackMetadata: ListenBrainzSocialTrackMetadata;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListenBrainzSocialEvent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.created = source["created"];
+	        this.eventType = source["eventType"];
+	        this.hidden = source["hidden"];
+	        this.message = source["message"];
+	        this.userName = source["userName"];
+	        this.listenedAt = source["listenedAt"];
+	        this.listenedAtIso = source["listenedAtIso"];
+	        this.playingNow = source["playingNow"];
+	        this.trackMetadata = this.convertValues(source["trackMetadata"], ListenBrainzSocialTrackMetadata);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class ListenBrainzTrackMetadata {
 	    artistName: string;
 	    trackName: string;

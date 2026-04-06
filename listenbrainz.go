@@ -18,6 +18,8 @@ const listenBrainzSubmitPath = "/1/submit-listens"
 const listenBrainzRecordingFeedbackPath = "/1/feedback/recording-feedback"
 const listenBrainzValidateTokenPath = "/1/validate-token"
 const listenBrainzGetFeedbackForRecordingsPath = "/1/feedback/user/%s/get-feedback-for-recordings"
+const listenBrainzFollowingPath = "/1/user/%s/following"
+const listenBrainzFeedEventsFollowingPath = "/1/user/%s/feed/events/listens/following"
 
 var listenBrainzFetchMu sync.Mutex
 var nextListenBrainzFetchAt time.Time
@@ -98,6 +100,96 @@ type listenBrainzRecordingFeedbackLookupResponse struct {
 	Feedback []listenBrainzRecordingFeedbackItem `json:"feedback"`
 }
 
+// ListenBrainzSocialAdditionalInfo stores the auxiliary metadata returned for a social listen event.
+type ListenBrainzSocialAdditionalInfo struct {
+	RecordingMBID    string   `json:"recordingMbid,omitempty"`
+	RecordingMSID    string   `json:"recordingMsid,omitempty"`
+	ReleaseMBID      string   `json:"releaseMbid,omitempty"`
+	ReleaseGroupMBID string   `json:"releaseGroupMbid,omitempty"`
+	ArtistMBIDs      []string `json:"artistMbids,omitempty"`
+	OriginURL        string   `json:"originUrl,omitempty"`
+	MusicService     string   `json:"musicService,omitempty"`
+	MusicServiceName string   `json:"musicServiceName,omitempty"`
+	DurationMs       int      `json:"durationMs,omitempty"`
+}
+
+// ListenBrainzSocialTrackMetadata stores the track details for one social listen event.
+type ListenBrainzSocialTrackMetadata struct {
+	ArtistName     string                           `json:"artistName"`
+	TrackName      string                           `json:"trackName"`
+	ReleaseName    string                           `json:"releaseName,omitempty"`
+	AdditionalInfo ListenBrainzSocialAdditionalInfo `json:"additionalInfo"`
+}
+
+// ListenBrainzSocialEvent stores one listen event returned by the ListenBrainz social feed.
+type ListenBrainzSocialEvent struct {
+	ID            int                             `json:"id"`
+	Created       int64                           `json:"created"`
+	EventType     string                          `json:"eventType"`
+	Hidden        bool                            `json:"hidden"`
+	Message       string                          `json:"message,omitempty"`
+	UserName      string                          `json:"userName"`
+	ListenedAt    int64                           `json:"listenedAt,omitempty"`
+	ListenedAtISO string                          `json:"listenedAtIso,omitempty"`
+	PlayingNow    bool                            `json:"playingNow,omitempty"`
+	TrackMetadata ListenBrainzSocialTrackMetadata `json:"trackMetadata"`
+}
+
+type listenBrainzFollowingResponse struct {
+	Following []string `json:"following"`
+	User      string   `json:"user"`
+}
+
+type listenBrainzSocialAdditionalInfoResponse struct {
+	RecordingMBID    string   `json:"recording_mbid,omitempty"`
+	RecordingMSID    string   `json:"recording_msid,omitempty"`
+	ReleaseMBID      string   `json:"release_mbid,omitempty"`
+	ReleaseGroupMBID string   `json:"release_group_mbid,omitempty"`
+	ArtistMBIDs      []string `json:"artist_mbids,omitempty"`
+	OriginURL        string   `json:"origin_url,omitempty"`
+	MusicService     string   `json:"music_service,omitempty"`
+	MusicServiceName string   `json:"music_service_name,omitempty"`
+	DurationMs       int      `json:"duration_ms,omitempty"`
+}
+
+type listenBrainzSocialTrackMetadataResponse struct {
+	AdditionalInfo listenBrainzSocialAdditionalInfoResponse `json:"additional_info"`
+	ArtistName     string                                   `json:"artist_name"`
+	ReleaseName    string                                   `json:"release_name"`
+	TrackName      string                                   `json:"track_name"`
+}
+
+type listenBrainzSocialMetadataResponse struct {
+	Created          int64                                   `json:"created,omitempty"`
+	RelationshipType string                                  `json:"relationship_type,omitempty"`
+	Message          string                                  `json:"message,omitempty"`
+	BlurbContent     string                                  `json:"blurb_content,omitempty"`
+	InsertedAt       int64                                   `json:"inserted_at,omitempty"`
+	ListenedAt       int64                                   `json:"listened_at,omitempty"`
+	ListenedAtISO    string                                  `json:"listened_at_iso,omitempty"`
+	PlayingNow       bool                                    `json:"playing_now,omitempty"`
+	TrackMetadata    listenBrainzSocialTrackMetadataResponse `json:"track_metadata"`
+	UserName         string                                  `json:"user_name,omitempty"`
+}
+
+type listenBrainzSocialEventResponse struct {
+	Created   int64                              `json:"created"`
+	EventType string                             `json:"event_type"`
+	Hidden    bool                               `json:"hidden"`
+	ID        int                                `json:"id"`
+	Message   string                             `json:"message,omitempty"`
+	Metadata  listenBrainzSocialMetadataResponse `json:"metadata"`
+	UserName  string                             `json:"user_name"`
+}
+
+type listenBrainzSocialFeedResponse struct {
+	Payload struct {
+		Count  int                               `json:"count"`
+		Events []listenBrainzSocialEventResponse `json:"events"`
+		UserID string                            `json:"user_id"`
+	} `json:"payload"`
+}
+
 func waitForListenBrainzRequestSlot(rateLimitMs int) {
 	if rateLimitMs <= 0 {
 		return
@@ -136,6 +228,18 @@ func parseListenBrainzError(statusCode int, responseBody []byte, fallback string
 	}
 
 	return fmt.Errorf("%s with status %d", fallback, statusCode)
+}
+
+func normalizeListenBrainzSocialCount(count int) int {
+	if count <= 0 {
+		return 25
+	}
+
+	if count > 1000 {
+		return 1000
+	}
+
+	return count
 }
 
 func (a *App) listenBrainzServerURL() string {
@@ -435,4 +539,170 @@ func (a *App) GetListenBrainzRecordingFeedback(recordingMBID string) (int, error
 	}
 
 	return 0, nil
+}
+
+// GetListenBrainzFollowing fetches the usernames followed by the configured ListenBrainz account.
+func (a *App) GetListenBrainzFollowing() ([]string, error) {
+	token, err := a.listenBrainzToken()
+	if err != nil {
+		return nil, err
+	}
+
+	userName, err := a.listenBrainzUserName(token)
+	if err != nil {
+		return nil, err
+	}
+
+	requestURL := fmt.Sprintf(
+		a.listenBrainzServerURL()+listenBrainzFollowingPath,
+		url.PathEscape(userName),
+	)
+
+	a.waitForListenBrainzRequestSlotIfNeeded()
+
+	httpRequest, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	httpRequest.Header.Set("Accept", "application/json")
+	httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	response, err := httpClient.Do(httpRequest)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
+	responseBody, readErr := io.ReadAll(response.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("unable to read listenbrainz following response")
+	}
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz following lookup failed")
+	}
+
+	parsedResponse := listenBrainzFollowingResponse{}
+	if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
+		return nil, errors.New("invalid listenbrainz following response")
+	}
+
+	following := make([]string, 0, len(parsedResponse.Following))
+	for _, rawUserName := range parsedResponse.Following {
+		trimmedUserName := strings.TrimSpace(rawUserName)
+		if trimmedUserName == "" {
+			continue
+		}
+
+		following = append(following, trimmedUserName)
+	}
+
+	return following, nil
+}
+
+// GetListenBrainzFollowingFeed fetches recent listen events for the configured account's followed users.
+func (a *App) GetListenBrainzFollowingFeed(count int) ([]ListenBrainzSocialEvent, error) {
+	token, err := a.listenBrainzToken()
+	if err != nil {
+		return nil, err
+	}
+
+	userName, err := a.listenBrainzUserName(token)
+	if err != nil {
+		return nil, err
+	}
+
+	requestURL := fmt.Sprintf(
+		a.listenBrainzServerURL()+listenBrainzFeedEventsFollowingPath,
+		url.PathEscape(userName),
+	)
+
+	query := url.Values{}
+	query.Set("count", fmt.Sprintf("%d", normalizeListenBrainzSocialCount(count)))
+	requestURL = requestURL + "?" + query.Encode()
+
+	a.waitForListenBrainzRequestSlotIfNeeded()
+
+	httpRequest, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	httpRequest.Header.Set("Accept", "application/json")
+	httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+
+	httpClient := &http.Client{Timeout: 15 * time.Second}
+	response, err := httpClient.Do(httpRequest)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = response.Body.Close()
+	}()
+
+	responseBody, readErr := io.ReadAll(response.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("unable to read listenbrainz following feed response")
+	}
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz following feed lookup failed")
+	}
+
+	parsedResponse := listenBrainzSocialFeedResponse{}
+	if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
+		return nil, errors.New("invalid listenbrainz following feed response")
+	}
+
+	events := make([]ListenBrainzSocialEvent, 0, len(parsedResponse.Payload.Events))
+	for _, event := range parsedResponse.Payload.Events {
+		mappedEvent := ListenBrainzSocialEvent{
+			ID:            event.ID,
+			Created:       event.Created,
+			EventType:     strings.TrimSpace(event.EventType),
+			Hidden:        event.Hidden,
+			Message:       strings.TrimSpace(event.Message),
+			UserName:      strings.TrimSpace(event.UserName),
+			ListenedAt:    event.Metadata.ListenedAt,
+			ListenedAtISO: strings.TrimSpace(event.Metadata.ListenedAtISO),
+			PlayingNow:    event.Metadata.PlayingNow,
+			TrackMetadata: ListenBrainzSocialTrackMetadata{
+				ArtistName:  strings.TrimSpace(event.Metadata.TrackMetadata.ArtistName),
+				TrackName:   strings.TrimSpace(event.Metadata.TrackMetadata.TrackName),
+				ReleaseName: strings.TrimSpace(event.Metadata.TrackMetadata.ReleaseName),
+				AdditionalInfo: ListenBrainzSocialAdditionalInfo{
+					RecordingMBID:    strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.RecordingMBID),
+					RecordingMSID:    strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.RecordingMSID),
+					ReleaseMBID:      strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.ReleaseMBID),
+					ReleaseGroupMBID: strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.ReleaseGroupMBID),
+					ArtistMBIDs:      event.Metadata.TrackMetadata.AdditionalInfo.ArtistMBIDs,
+					OriginURL:        strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.OriginURL),
+					MusicService:     strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.MusicService),
+					MusicServiceName: strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.MusicServiceName),
+					DurationMs:       event.Metadata.TrackMetadata.AdditionalInfo.DurationMs,
+				},
+			},
+		}
+
+		if mappedEvent.UserName == "" {
+			mappedEvent.UserName = strings.TrimSpace(event.Metadata.UserName)
+		}
+		if mappedEvent.Created <= 0 {
+			mappedEvent.Created = event.Metadata.Created
+		}
+		if mappedEvent.Created <= 0 {
+			mappedEvent.Created = event.Metadata.InsertedAt
+		}
+		if mappedEvent.Created <= 0 {
+			mappedEvent.Created = mappedEvent.ListenedAt
+		}
+
+		events = append(events, mappedEvent)
+	}
+
+	return events, nil
 }

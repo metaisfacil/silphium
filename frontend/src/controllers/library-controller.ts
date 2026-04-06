@@ -264,7 +264,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         sidebarToggle.setAttribute('aria-busy', 'false');
-        sidebarToggle.setAttribute('aria-label', sidebarOpen ? 'Close library' : 'Open library');
+        sidebarToggle.setAttribute('aria-label', sidebarOpen ? 'Close sidebar' : 'Open sidebar');
     };
 
     const setLibraryLoading = (loading: boolean): void => {
