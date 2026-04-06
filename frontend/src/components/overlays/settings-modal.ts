@@ -6,12 +6,14 @@ export type SettingsModalElements = {
     settingsTabNetwork: HTMLButtonElement;
     settingsTabDatabase: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
+    settingsTabScrobbling: HTMLButtonElement;
     settingsTabAudio: HTMLButtonElement;
     settingsTabUi: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelNetwork: HTMLDivElement;
     settingsPanelDatabase: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
+    settingsPanelScrobbling: HTMLDivElement;
     settingsPanelAudio: HTMLDivElement;
     settingsPanelUi: HTMLDivElement;
     settingsShortcutAccordionToggle: HTMLButtonElement;
@@ -22,6 +24,10 @@ export type SettingsModalElements = {
     settingsFavoritePlaylistList: HTMLUListElement;
     settingsAddFavoritePlaylist: HTMLButtonElement;
     settingsRemoveFavoritePlaylist: HTMLButtonElement;
+    settingsScrobbleFilterMode: HTMLSelectElement;
+    settingsScrobbleRuleList: HTMLUListElement;
+    settingsAddScrobbleRule: HTMLButtonElement;
+    settingsRemoveScrobbleRule: HTMLButtonElement;
     settingsForceReload: HTMLButtonElement;
     settingsSave: HTMLButtonElement;
     settingsLibraryDepthModal: HTMLDivElement;
@@ -33,6 +39,18 @@ export type SettingsModalElements = {
     settingsLibraryDepthStatus: HTMLParagraphElement;
     settingsLibraryDepthCancel: HTMLButtonElement;
     settingsLibraryDepthConfirm: HTMLButtonElement;
+    settingsScrobbleRuleModal: HTMLDivElement;
+    settingsScrobbleRuleBackdrop: HTMLDivElement;
+    settingsScrobbleRuleForm: HTMLFormElement;
+    settingsScrobbleRuleTitle: HTMLParagraphElement;
+    settingsScrobbleRuleField: HTMLSelectElement;
+    settingsScrobbleRuleOperator: HTMLSelectElement;
+    settingsScrobbleRuleValueLabel: HTMLLabelElement;
+    settingsScrobbleRuleValue: HTMLInputElement;
+    settingsScrobbleRuleHint: HTMLParagraphElement;
+    settingsScrobbleRuleStatus: HTMLParagraphElement;
+    settingsScrobbleRuleCancel: HTMLButtonElement;
+    settingsScrobbleRuleConfirm: HTMLButtonElement;
     settingsFFmpegPath: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
     settingsMusicBrainzServerUrl: HTMLInputElement;
@@ -79,6 +97,7 @@ export const renderSettingsModal = (): string => `
                     <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
                     <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
                     <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
+                    <button id="settings-tab-scrobbling" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-scrobbling" aria-selected="false">Scrobbling</button>
                     <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Database</button>
                     <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
                 </div>
@@ -182,6 +201,25 @@ export const renderSettingsModal = (): string => `
                         <div class="settings-list-actions">
                             <button id="settings-add-favorite-playlist" class="settings-list-btn" type="button" title="Add favourite playlist" aria-label="Add favourite playlist">+</button>
                             <button id="settings-remove-favorite-playlist" class="settings-list-btn" type="button" title="Remove selected favourite playlist" aria-label="Remove selected favourite playlist" disabled>-</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="settings-panel-scrobbling" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-scrobbling" hidden>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-scrobble-filter-mode">Scrobble mode</label>
+                        <p class="settings-hint">In blacklist mode matching rules block scrobbles. In whitelist mode at least one rule must match before a scrobble is submitted.</p>
+                        <select id="settings-scrobble-filter-mode" class="settings-input settings-select">
+                            <option value="blacklist">Blacklist: scrobble unless a rule matches</option>
+                            <option value="whitelist">Whitelist: scrobble only when a rule matches</option>
+                        </select>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-scrobble-rule-list">Scrobble rules</label>
+                        <p class="settings-hint">Rules can target paths, names, genres, MBIDs, and track length. Text rules support contains, equals, starts with, and RegEx matching. Double-click a rule to edit it.</p>
+                        <ul id="settings-scrobble-rule-list" class="settings-folder-list" role="listbox" aria-label="Scrobble rules"></ul>
+                        <div class="settings-list-actions">
+                            <button id="settings-add-scrobble-rule" class="settings-list-btn" type="button" title="Add scrobble rule" aria-label="Add scrobble rule">+</button>
+                            <button id="settings-remove-scrobble-rule" class="settings-list-btn" type="button" title="Remove selected scrobble rule" aria-label="Remove selected scrobble rule" disabled>-</button>
                         </div>
                     </div>
                 </div>
@@ -289,6 +327,40 @@ export const renderSettingsModal = (): string => `
                 </div>
             </form>
         </div>
+        <div id="settings-scrobble-rule-modal" class="settings-submodal" hidden>
+            <div id="settings-scrobble-rule-backdrop" class="settings-submodal-backdrop"></div>
+            <form id="settings-scrobble-rule-form" class="settings-subdialog" role="dialog" aria-modal="true" aria-labelledby="settings-scrobble-rule-title">
+                <p id="settings-scrobble-rule-title" class="settings-subdialog-title">Add scrobble rule</p>
+                <div class="settings-field">
+                    <label class="settings-label" for="settings-scrobble-rule-field">Rule field</label>
+                    <select id="settings-scrobble-rule-field" class="settings-input settings-select">
+                        <option value="path">Path</option>
+                        <option value="albumArtist">Album artist</option>
+                        <option value="trackArtist">Track artist</option>
+                        <option value="albumTitle">Album title</option>
+                        <option value="trackTitle">Track title</option>
+                        <option value="genre">Genre</option>
+                        <option value="artistMbid">Artist MBID</option>
+                        <option value="albumMbid">Album MBID</option>
+                        <option value="trackLength">Track length</option>
+                    </select>
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label" for="settings-scrobble-rule-operator">Rule operator</label>
+                    <select id="settings-scrobble-rule-operator" class="settings-input settings-select"></select>
+                </div>
+                <div class="settings-field">
+                    <label id="settings-scrobble-rule-value-label" class="settings-label" for="settings-scrobble-rule-value">Rule value</label>
+                    <p id="settings-scrobble-rule-hint" class="settings-hint">Enter a value for this rule.</p>
+                    <input id="settings-scrobble-rule-value" class="settings-input" type="text" spellcheck="false" placeholder="Value">
+                </div>
+                <p id="settings-scrobble-rule-status" class="settings-subdialog-status" aria-live="polite"></p>
+                <div class="settings-subdialog-actions">
+                    <button id="settings-scrobble-rule-cancel" class="settings-secondary-btn" type="button">Cancel</button>
+                    <button id="settings-scrobble-rule-confirm" class="upload-btn" type="submit">Apply</button>
+                </div>
+            </form>
+        </div>
     </div>
 `;
 
@@ -300,12 +372,14 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsTabNetwork: root.querySelector('#settings-tab-network') as HTMLButtonElement,
     settingsTabDatabase: root.querySelector('#settings-tab-database') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
+    settingsTabScrobbling: root.querySelector('#settings-tab-scrobbling') as HTMLButtonElement,
     settingsTabAudio: root.querySelector('#settings-tab-audio') as HTMLButtonElement,
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelNetwork: root.querySelector('#settings-panel-network') as HTMLDivElement,
     settingsPanelDatabase: root.querySelector('#settings-panel-database') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
+    settingsPanelScrobbling: root.querySelector('#settings-panel-scrobbling') as HTMLDivElement,
     settingsPanelAudio: root.querySelector('#settings-panel-audio') as HTMLDivElement,
     settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,
     settingsShortcutAccordionToggle: root.querySelector('#settings-shortcut-accordion-toggle') as HTMLButtonElement,
@@ -316,6 +390,10 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsFavoritePlaylistList: root.querySelector('#settings-favourite-playlist-list') as HTMLUListElement,
     settingsAddFavoritePlaylist: root.querySelector('#settings-add-favorite-playlist') as HTMLButtonElement,
     settingsRemoveFavoritePlaylist: root.querySelector('#settings-remove-favorite-playlist') as HTMLButtonElement,
+    settingsScrobbleFilterMode: root.querySelector('#settings-scrobble-filter-mode') as HTMLSelectElement,
+    settingsScrobbleRuleList: root.querySelector('#settings-scrobble-rule-list') as HTMLUListElement,
+    settingsAddScrobbleRule: root.querySelector('#settings-add-scrobble-rule') as HTMLButtonElement,
+    settingsRemoveScrobbleRule: root.querySelector('#settings-remove-scrobble-rule') as HTMLButtonElement,
     settingsForceReload: root.querySelector('#settings-force-reload') as HTMLButtonElement,
     settingsSave: root.querySelector('#settings-save') as HTMLButtonElement,
     settingsLibraryDepthModal: root.querySelector('#settings-library-depth-modal') as HTMLDivElement,
@@ -327,6 +405,18 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsLibraryDepthStatus: root.querySelector('#settings-library-depth-status') as HTMLParagraphElement,
     settingsLibraryDepthCancel: root.querySelector('#settings-library-depth-cancel') as HTMLButtonElement,
     settingsLibraryDepthConfirm: root.querySelector('#settings-library-depth-confirm') as HTMLButtonElement,
+    settingsScrobbleRuleModal: root.querySelector('#settings-scrobble-rule-modal') as HTMLDivElement,
+    settingsScrobbleRuleBackdrop: root.querySelector('#settings-scrobble-rule-backdrop') as HTMLDivElement,
+    settingsScrobbleRuleForm: root.querySelector('#settings-scrobble-rule-form') as HTMLFormElement,
+    settingsScrobbleRuleTitle: root.querySelector('#settings-scrobble-rule-title') as HTMLParagraphElement,
+    settingsScrobbleRuleField: root.querySelector('#settings-scrobble-rule-field') as HTMLSelectElement,
+    settingsScrobbleRuleOperator: root.querySelector('#settings-scrobble-rule-operator') as HTMLSelectElement,
+    settingsScrobbleRuleValueLabel: root.querySelector('#settings-scrobble-rule-value-label') as HTMLLabelElement,
+    settingsScrobbleRuleValue: root.querySelector('#settings-scrobble-rule-value') as HTMLInputElement,
+    settingsScrobbleRuleHint: root.querySelector('#settings-scrobble-rule-hint') as HTMLParagraphElement,
+    settingsScrobbleRuleStatus: root.querySelector('#settings-scrobble-rule-status') as HTMLParagraphElement,
+    settingsScrobbleRuleCancel: root.querySelector('#settings-scrobble-rule-cancel') as HTMLButtonElement,
+    settingsScrobbleRuleConfirm: root.querySelector('#settings-scrobble-rule-confirm') as HTMLButtonElement,
     settingsFFmpegPath: root.querySelector('#settings-ffmpeg-path') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsMusicBrainzServerUrl: root.querySelector('#settings-musicbrainz-server-url') as HTMLInputElement,

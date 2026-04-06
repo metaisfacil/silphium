@@ -1,7 +1,7 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout } from '../types/app-types';
-import { asReleaseDepth, libraryFolderPathKey, normalizeLibraryFolderLabel, normalizeLibraryFolders } from '../utils/main-helpers';
+import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout, ScrobbleFilterMode, ScrobbleRule, ScrobbleRuleField, ScrobbleRuleOperator } from '../types/app-types';
+import { asReleaseDepth, describeScrobbleRule, libraryFolderPathKey, normalizeLibraryFolderLabel, normalizeLibraryFolders, normalizeScrobbleRules, validateScrobbleRules } from '../utils/main-helpers';
 import { formatShortcutBindingFromKeyboardEvent, normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 
 type LibraryFolderDialogValues = {
@@ -9,10 +9,18 @@ type LibraryFolderDialogValues = {
     releaseDepth: number;
 };
 
+type ScrobbleRuleDialogValues = {
+    field: ScrobbleRuleField;
+    operator: ScrobbleRuleOperator;
+    value: string;
+};
+
 export type SettingsFormValues = {
     libraryFolders: AppLibraryFolder[];
     ffmpegPath: string;
     listenBrainzUserToken: string;
+    scrobbleFilterMode: ScrobbleFilterMode;
+    scrobbleRules: ScrobbleRule[];
     musicBrainzServerUrl: string;
     musicBrainzRequestRateMs: number;
     listenBrainzServerUrl: string;
@@ -36,7 +44,7 @@ export type SettingsViewValues = SettingsFormValues & {
     musicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
 };
 
-type SettingsPrimaryTab = 'general' | 'network' | 'database' | 'playlists' | 'audio' | 'ui';
+type SettingsPrimaryTab = 'general' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui';
 type SettingsTab = SettingsPrimaryTab | 'shortcuts';
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
@@ -112,12 +120,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabNetwork,
         settingsTabDatabase,
         settingsTabPlaylists,
+        settingsTabScrobbling,
         settingsTabAudio,
         settingsTabUi,
         settingsPanelGeneral,
         settingsPanelNetwork,
         settingsPanelDatabase,
         settingsPanelPlaylists,
+        settingsPanelScrobbling,
         settingsPanelAudio,
         settingsPanelUi,
         settingsShortcutAccordionToggle,
@@ -128,6 +138,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsFavoritePlaylistList,
         settingsAddFavoritePlaylist,
         settingsRemoveFavoritePlaylist,
+        settingsScrobbleFilterMode,
+        settingsScrobbleRuleList,
+        settingsAddScrobbleRule,
+        settingsRemoveScrobbleRule,
         settingsForceReload,
         settingsSave,
         settingsLibraryDepthModal,
@@ -139,6 +153,18 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryDepthStatus,
         settingsLibraryDepthCancel,
         settingsLibraryDepthConfirm,
+        settingsScrobbleRuleModal,
+        settingsScrobbleRuleBackdrop,
+        settingsScrobbleRuleForm,
+        settingsScrobbleRuleTitle,
+        settingsScrobbleRuleField,
+        settingsScrobbleRuleOperator,
+        settingsScrobbleRuleValueLabel,
+        settingsScrobbleRuleValue,
+        settingsScrobbleRuleHint,
+        settingsScrobbleRuleStatus,
+        settingsScrobbleRuleCancel,
+        settingsScrobbleRuleConfirm,
         settingsFFmpegPath,
         settingsListenBrainzToken,
         settingsMusicBrainzServerUrl,
@@ -176,18 +202,25 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const statusFadeDelayMs = 5000;
     let hideTimer: number | undefined;
     let libraryDepthHideTimer: number | undefined;
+    let scrobbleRuleHideTimer: number | undefined;
     let settingsStatusFadeTimer: number | undefined;
     let settingsLibraryDepthStatusFadeTimer: number | undefined;
     let shortcutAccordionHideTimer: number | undefined;
 
     let favoritePlaylists: string[] = [];
     let selectedFavoritePlaylistIndex = -1;
+    let scrobbleRules: ScrobbleRule[] = [];
+    let selectedScrobbleRuleIndex = -1;
+    let lastScrobbleRuleClickIndex = -1;
+    let lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
     let libraryFolders: AppLibraryFolder[] = [];
     let selectedLibraryFolderIndex = -1;
     let lastLibraryFolderClickIndex = -1;
     let lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
     let pendingLibraryDepthResolver: ((value: LibraryFolderDialogValues | null) => void) | null = null;
     let libraryDepthReturnFocusTarget: HTMLElement | null = null;
+    let pendingScrobbleRuleResolver: ((value: ScrobbleRuleDialogValues | null) => void) | null = null;
+    let scrobbleRuleReturnFocusTarget: HTMLElement | null = null;
     let forceReloadInProgress = false;
     let forceReloadEtaSeconds: number | null = null;
     let audioOutputDevices: AudioOutputDevice[] = [];
@@ -210,6 +243,17 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let musicBrainzTagWorkerLastCompletedEntityLookups = 0;
     const libraryFolderRepeatClickWindowMs = 400;
 
+    const scrobbleTextOperatorOptions: Array<{ value: ScrobbleRuleOperator; label: string }> = [
+        { value: 'contains', label: 'Contains text' },
+        { value: 'equals', label: 'Equals text' },
+        { value: 'starts_with', label: 'Starts with' },
+        { value: 'regex', label: 'Matches RegEx' },
+    ];
+    const scrobbleDurationOperatorOptions: Array<{ value: ScrobbleRuleOperator; label: string }> = [
+        { value: 'less_than', label: 'Is shorter than' },
+        { value: 'greater_than', label: 'Is longer than' },
+    ];
+
     const normalizeFavoritePlaylists = (items: string[]): string[] => {
         const deduped = new Set<string>();
         const lines = items
@@ -221,6 +265,38 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         return Array.from(deduped);
+    };
+
+    const asScrobbleRuleField = (value: string): ScrobbleRuleField => {
+        switch (value) {
+        case 'albumArtist':
+        case 'trackArtist':
+        case 'albumTitle':
+        case 'trackTitle':
+        case 'genre':
+        case 'artistMbid':
+        case 'albumMbid':
+        case 'trackLength':
+            return value;
+        default:
+            return 'path';
+        }
+    };
+
+    const defaultScrobbleRuleOperator = (field: ScrobbleRuleField): ScrobbleRuleOperator => {
+        if (field === 'trackLength') {
+            return 'greater_than';
+        }
+
+        if (field === 'path') {
+            return 'starts_with';
+        }
+
+        return 'contains';
+    };
+
+    const operatorOptionsForScrobbleRuleField = (field: ScrobbleRuleField): Array<{ value: ScrobbleRuleOperator; label: string }> => {
+        return field === 'trackLength' ? scrobbleDurationOperatorOptions : scrobbleTextOperatorOptions;
     };
 
     const resolvePrimaryTab = (tab: SettingsTab): SettingsPrimaryTab => (tab === 'shortcuts' ? 'ui' : tab);
@@ -469,6 +545,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
         ffmpegPath: settingsFFmpegPath.value,
         listenBrainzUserToken: settingsListenBrainzToken.value,
+        scrobbleFilterMode: settingsScrobbleFilterMode.value === 'whitelist' ? 'whitelist' : 'blacklist',
+        scrobbleRules: normalizeScrobbleRules(scrobbleRules).map((rule) => ({ ...rule })),
         musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
         musicBrainzRequestRateMs: normalizedMusicBrainzRequestRateMs(),
         listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
@@ -519,6 +597,33 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         settingsRemoveFavoritePlaylist.disabled = selectedFavoritePlaylistIndex < 0;
+    };
+
+    const renderScrobbleRuleList = (): void => {
+        settingsScrobbleRuleList.innerHTML = '';
+
+        if (scrobbleRules.length === 0) {
+            settingsScrobbleRuleList.innerHTML = '<li class="settings-folder-empty">No scrobble rules configured.</li>';
+            settingsRemoveScrobbleRule.disabled = true;
+            return;
+        }
+
+        scrobbleRules.forEach((rule, index) => {
+            const item = document.createElement('li');
+            item.className = 'settings-folder-item';
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `settings-folder-item-btn${index === selectedScrobbleRuleIndex ? ' is-selected' : ''}`;
+            button.dataset.scrobbleRuleIndex = String(index);
+            button.title = `${describeScrobbleRule(rule)}\nDouble-click to edit`;
+            button.textContent = describeScrobbleRule(rule);
+
+            item.append(button);
+            settingsScrobbleRuleList.append(item);
+        });
+
+        settingsRemoveScrobbleRule.disabled = selectedScrobbleRuleIndex < 0;
     };
 
     const renderLibraryFolderList = (): void => {
@@ -680,6 +785,147 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         forceReloadEtaSeconds = normalized;
         refreshForceReloadStatus();
+    };
+
+    const setScrobbleRuleStatusMessage = (message: string): void => {
+        settingsScrobbleRuleStatus.textContent = message;
+    };
+
+    const refreshScrobbleRuleDialogControls = (preferredOperator?: ScrobbleRuleOperator): void => {
+        const field = asScrobbleRuleField(settingsScrobbleRuleField.value);
+        const options = operatorOptionsForScrobbleRuleField(field);
+        const currentOperator = preferredOperator ?? (settingsScrobbleRuleOperator.value as ScrobbleRuleOperator);
+        settingsScrobbleRuleOperator.innerHTML = '';
+        options.forEach((option) => {
+            const element = document.createElement('option');
+            element.value = option.value;
+            element.textContent = option.label;
+            settingsScrobbleRuleOperator.append(element);
+        });
+
+        const selectedOperator = options.some((option) => option.value === currentOperator)
+            ? currentOperator
+            : defaultScrobbleRuleOperator(field);
+        settingsScrobbleRuleOperator.value = selectedOperator;
+
+        if (field === 'trackLength') {
+            settingsScrobbleRuleValueLabel.textContent = 'Threshold (seconds)';
+            settingsScrobbleRuleHint.textContent = 'Compare the full track duration in whole seconds.';
+            settingsScrobbleRuleValue.type = 'number';
+            settingsScrobbleRuleValue.min = '0';
+            settingsScrobbleRuleValue.step = '1';
+            settingsScrobbleRuleValue.inputMode = 'numeric';
+            settingsScrobbleRuleValue.placeholder = '240';
+            return;
+        }
+
+        settingsScrobbleRuleValueLabel.textContent = field === 'path' ? 'Path or pattern' : 'Text or pattern';
+        if (settingsScrobbleRuleOperator.value === 'regex') {
+            settingsScrobbleRuleHint.textContent = 'Use /pattern/flags or a raw pattern. Raw patterns are compiled case-insensitively.';
+        } else if (field === 'path' && settingsScrobbleRuleOperator.value === 'starts_with') {
+            settingsScrobbleRuleHint.textContent = 'Use a folder or full path. Subpaths match automatically.';
+        } else {
+            settingsScrobbleRuleHint.textContent = 'Text matching is case-insensitive.';
+        }
+
+        settingsScrobbleRuleValue.type = 'text';
+        settingsScrobbleRuleValue.inputMode = 'text';
+        settingsScrobbleRuleValue.removeAttribute('min');
+        settingsScrobbleRuleValue.removeAttribute('step');
+        settingsScrobbleRuleValue.placeholder = field === 'path' ? 'C:\\Music\\Private' : 'Value';
+    };
+
+    const closeScrobbleRuleDialog = (value: ScrobbleRuleDialogValues | null, restoreFocus: boolean, immediate = false): void => {
+        if (settingsScrobbleRuleModal.hidden && !settingsScrobbleRuleModal.classList.contains('is-visible')) {
+            return;
+        }
+
+        if (scrobbleRuleHideTimer !== undefined) {
+            window.clearTimeout(scrobbleRuleHideTimer);
+            scrobbleRuleHideTimer = undefined;
+        }
+
+        const resolve = pendingScrobbleRuleResolver;
+        pendingScrobbleRuleResolver = null;
+
+        const focusTarget = scrobbleRuleReturnFocusTarget;
+        scrobbleRuleReturnFocusTarget = null;
+
+        const finalizeDialogClose = (): void => {
+            settingsScrobbleRuleModal.hidden = true;
+            settingsScrobbleRuleModal.classList.remove('is-visible');
+            settingsScrobbleRuleTitle.textContent = 'Add scrobble rule';
+            settingsScrobbleRuleField.value = 'path';
+            refreshScrobbleRuleDialogControls('starts_with');
+            settingsScrobbleRuleValue.value = '';
+            setScrobbleRuleStatusMessage('');
+            settingsScrobbleRuleConfirm.textContent = 'Apply';
+
+            resolve?.(value);
+
+            if (restoreFocus && focusTarget) {
+                window.requestAnimationFrame(() => {
+                    focusTarget.focus();
+                });
+            }
+        };
+
+        if (immediate) {
+            finalizeDialogClose();
+            return;
+        }
+
+        settingsScrobbleRuleModal.classList.remove('is-visible');
+        scrobbleRuleHideTimer = window.setTimeout(() => {
+            scrobbleRuleHideTimer = undefined;
+            finalizeDialogClose();
+        }, settingsModalTransitionMs);
+    };
+
+    const openScrobbleRuleDialog = (
+        initialValues: ScrobbleRuleDialogValues,
+        confirmLabel: string,
+        title: string,
+    ): Promise<ScrobbleRuleDialogValues | null> => {
+        closeScrobbleRuleDialog(null, false, true);
+
+        settingsScrobbleRuleTitle.textContent = title;
+        settingsScrobbleRuleField.value = initialValues.field;
+        refreshScrobbleRuleDialogControls(initialValues.operator);
+        settingsScrobbleRuleValue.value = initialValues.value;
+        setScrobbleRuleStatusMessage('');
+        settingsScrobbleRuleConfirm.textContent = confirmLabel;
+        scrobbleRuleReturnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        settingsScrobbleRuleModal.hidden = false;
+        settingsScrobbleRuleModal.classList.remove('is-visible');
+
+        window.requestAnimationFrame(() => {
+            settingsScrobbleRuleModal.classList.add('is-visible');
+            settingsScrobbleRuleValue.focus();
+            settingsScrobbleRuleValue.select();
+        });
+
+        return new Promise<ScrobbleRuleDialogValues | null>((resolve) => {
+            pendingScrobbleRuleResolver = resolve;
+        });
+    };
+
+    const editScrobbleRule = async (index: number): Promise<boolean> => {
+        const rule = scrobbleRules[index];
+        if (!rule) {
+            return false;
+        }
+
+        const nextValues = await openScrobbleRuleDialog({ ...rule }, 'Save', 'Scrobble rule');
+        if (nextValues === null) {
+            return false;
+        }
+
+        scrobbleRules[index] = { ...nextValues };
+        selectedScrobbleRuleIndex = index;
+        renderScrobbleRuleList();
+        settingsScrobbleRuleList.focus();
+        return true;
     };
 
     const closeLibraryDepthDialog = (value: LibraryFolderDialogValues | null, restoreFocus: boolean, immediate = false): void => {
@@ -868,24 +1114,28 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const networkActive = primaryTab === 'network';
         const databaseActive = primaryTab === 'database';
         const playlistsActive = primaryTab === 'playlists';
+        const scrobblingActive = primaryTab === 'scrobbling';
         const audioActive = primaryTab === 'audio';
         const uiActive = primaryTab === 'ui';
         settingsTabGeneral.classList.toggle('is-active', generalActive);
         settingsTabNetwork.classList.toggle('is-active', networkActive);
         settingsTabDatabase.classList.toggle('is-active', databaseActive);
         settingsTabPlaylists.classList.toggle('is-active', playlistsActive);
+        settingsTabScrobbling.classList.toggle('is-active', scrobblingActive);
         settingsTabAudio.classList.toggle('is-active', audioActive);
         settingsTabUi.classList.toggle('is-active', uiActive);
         settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
         settingsTabNetwork.setAttribute('aria-selected', networkActive ? 'true' : 'false');
         settingsTabDatabase.setAttribute('aria-selected', databaseActive ? 'true' : 'false');
         settingsTabPlaylists.setAttribute('aria-selected', playlistsActive ? 'true' : 'false');
+        settingsTabScrobbling.setAttribute('aria-selected', scrobblingActive ? 'true' : 'false');
         settingsTabAudio.setAttribute('aria-selected', audioActive ? 'true' : 'false');
         settingsTabUi.setAttribute('aria-selected', uiActive ? 'true' : 'false');
         settingsPanelGeneral.hidden = !generalActive;
         settingsPanelNetwork.hidden = !networkActive;
         settingsPanelDatabase.hidden = !databaseActive;
         settingsPanelPlaylists.hidden = !playlistsActive;
+        settingsPanelScrobbling.hidden = !scrobblingActive;
         settingsPanelAudio.hidden = !audioActive;
         settingsPanelUi.hidden = !uiActive;
     };
@@ -1021,6 +1271,20 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         setLibraryDepthStatusMessage('');
     });
 
+    settingsScrobbleRuleField.addEventListener('change', () => {
+        refreshScrobbleRuleDialogControls();
+        setScrobbleRuleStatusMessage('');
+    });
+
+    settingsScrobbleRuleOperator.addEventListener('change', () => {
+        refreshScrobbleRuleDialogControls(settingsScrobbleRuleOperator.value as ScrobbleRuleOperator);
+        setScrobbleRuleStatusMessage('');
+    });
+
+    settingsScrobbleRuleValue.addEventListener('input', () => {
+        setScrobbleRuleStatusMessage('');
+    });
+
     settingsFFmpegPath.addEventListener('input', () => {
         setSettingsStatusMessage('');
     });
@@ -1031,6 +1295,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     settingsLibraryDepthCancel.addEventListener('click', () => {
         closeLibraryDepthDialog(null, true);
+    });
+
+    settingsScrobbleRuleBackdrop.addEventListener('click', () => {
+        closeScrobbleRuleDialog(null, true);
+    });
+
+    settingsScrobbleRuleCancel.addEventListener('click', () => {
+        closeScrobbleRuleDialog(null, true);
     });
 
     settingsLibraryDepthForm.addEventListener('submit', (event) => {
@@ -1057,11 +1329,57 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }, false);
     });
 
+    settingsScrobbleRuleForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+
+        const field = asScrobbleRuleField(settingsScrobbleRuleField.value);
+        const operator = settingsScrobbleRuleOperator.value as ScrobbleRuleOperator;
+        const value = settingsScrobbleRuleValue.value.trim();
+        if (value === '') {
+            setScrobbleRuleStatusMessage(field === 'trackLength'
+                ? 'Enter a whole number 0 or greater.'
+                : 'Enter a value for this rule.');
+            settingsScrobbleRuleValue.focus();
+            settingsScrobbleRuleValue.select();
+            return;
+        }
+
+        if (field === 'trackLength' && !/^\d+$/.test(value)) {
+            setScrobbleRuleStatusMessage('Enter a whole number 0 or greater.');
+            settingsScrobbleRuleValue.focus();
+            settingsScrobbleRuleValue.select();
+            return;
+        }
+
+        const nextRules = normalizeScrobbleRules([{ field, operator, value }]);
+        if (nextRules.length === 0) {
+            setScrobbleRuleStatusMessage(field === 'trackLength'
+                ? 'Enter a whole number 0 or greater.'
+                : 'Enter a valid value for this rule.');
+            settingsScrobbleRuleValue.focus();
+            settingsScrobbleRuleValue.select();
+            return;
+        }
+
+        const validationMessage = validateScrobbleRules(nextRules);
+        if (validationMessage) {
+            setScrobbleRuleStatusMessage(validationMessage);
+            settingsScrobbleRuleValue.focus();
+            settingsScrobbleRuleValue.select();
+            return;
+        }
+
+        closeScrobbleRuleDialog(nextRules[0], false);
+    });
+
     const finalizeClose = (): void => {
         closeLibraryDepthDialog(null, false, true);
+        closeScrobbleRuleDialog(null, false, true);
         settingsModal.classList.remove('is-visible');
         lastLibraryFolderClickIndex = -1;
         lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
+        lastScrobbleRuleClickIndex = -1;
+        lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
 
         if (hideTimer !== undefined) {
             window.clearTimeout(hideTimer);
@@ -1095,6 +1413,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         libraryFolders = normalizeLibraryFolders(values.libraryFolders);
         settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
+        settingsScrobbleFilterMode.value = values.scrobbleFilterMode === 'whitelist' ? 'whitelist' : 'blacklist';
+        scrobbleRules = normalizeScrobbleRules(values.scrobbleRules);
         settingsMusicBrainzServerUrl.value = values.musicBrainzServerUrl || '';
         settingsMusicBrainzRequestRateMs.value = values.musicBrainzRequestRateMs > 0 ? String(values.musicBrainzRequestRateMs) : '';
         settingsListenBrainzServerUrl.value = values.listenBrainzServerUrl || '';
@@ -1119,10 +1439,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         coverArtPriorityOrder = normalizeCoverArtPriorityOrder(values.coverArtPriority);
         selectedLibraryFolderIndex = libraryFolders.length > 0 ? 0 : -1;
         selectedFavoritePlaylistIndex = -1;
+        selectedScrobbleRuleIndex = -1;
         lastLibraryFolderClickIndex = -1;
         lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
+        lastScrobbleRuleClickIndex = -1;
+        lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
         renderLibraryFolderList();
         renderFavoritePlaylistList();
+        renderScrobbleRuleList();
         renderCoverArtPriorityList();
         if (forceReloadInProgress) {
             refreshForceReloadStatus();
@@ -1163,6 +1487,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
         if (primaryTab === 'playlists') {
             settingsFavoritePlaylistList.focus();
+            return;
+        }
+        if (primaryTab === 'scrobbling') {
+            settingsScrobbleFilterMode.focus();
             return;
         }
         if (primaryTab === 'audio') {
@@ -1268,6 +1596,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsAudioOutputDevice.focus();
     });
 
+    settingsTabScrobbling.addEventListener('click', () => {
+        setActiveTab('scrobbling');
+        settingsScrobbleFilterMode.focus();
+    });
+
     settingsMusicBrainzTagDatabaseEnabled.addEventListener('change', () => {
         refreshMusicBrainzTagWorkerControls();
     });
@@ -1285,12 +1618,16 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
 
-        const formValues = buildFormValues();
-
         settingsApplyAudioNow.disabled = true;
         setSettingsStatusMessage('Refreshing audio settings...');
 
         try {
+            const formValues = buildFormValues();
+            const validationMessage = validateScrobbleRules(formValues.scrobbleRules);
+            if (validationMessage) {
+                throw new Error(validationMessage);
+            }
+
             const refreshedDevices = await options.applyAudioNow(formValues);
             refreshAudioOutputDevices(refreshedDevices, formValues.audioOutputDevice || 'default');
             setSettingsStatusMessage('Audio settings refreshed.');
@@ -1340,6 +1677,39 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         selectedFavoritePlaylistIndex = nextIndex;
         renderFavoritePlaylistList();
+    });
+
+    settingsScrobbleRuleList.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const button = target.closest('[data-scrobble-rule-index]');
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const nextIndex = Number(button.dataset.scrobbleRuleIndex);
+        if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= scrobbleRules.length) {
+            return;
+        }
+
+        const isRepeatClick = nextIndex === lastScrobbleRuleClickIndex
+            && event.timeStamp - lastScrobbleRuleClickAt <= libraryFolderRepeatClickWindowMs;
+
+        lastScrobbleRuleClickIndex = nextIndex;
+        lastScrobbleRuleClickAt = event.timeStamp;
+        selectedScrobbleRuleIndex = nextIndex;
+        renderScrobbleRuleList();
+
+        if (!isRepeatClick) {
+            return;
+        }
+
+        lastScrobbleRuleClickIndex = -1;
+        lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
+        void editScrobbleRule(nextIndex);
     });
 
     settingsLibraryFolderList.addEventListener('click', (event) => {
@@ -1503,6 +1873,21 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
     });
 
+    settingsAddScrobbleRule.addEventListener('click', async () => {
+        setSettingsStatusMessage('');
+
+        const nextRule = await openScrobbleRuleDialog({ field: 'path', operator: 'starts_with', value: '' }, 'Add rule', 'Add scrobble rule');
+        if (nextRule === null) {
+            return;
+        }
+
+        scrobbleRules = normalizeScrobbleRules([...scrobbleRules, nextRule]);
+        selectedScrobbleRuleIndex = scrobbleRules.findIndex((rule) => (
+            rule.field === nextRule.field && rule.operator === nextRule.operator && rule.value === nextRule.value
+        ));
+        renderScrobbleRuleList();
+    });
+
     settingsRemoveFavoritePlaylist.addEventListener('click', () => {
         if (selectedFavoritePlaylistIndex < 0 || selectedFavoritePlaylistIndex >= favoritePlaylists.length) {
             return;
@@ -1513,6 +1898,16 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         renderFavoritePlaylistList();
     });
 
+    settingsRemoveScrobbleRule.addEventListener('click', () => {
+        if (selectedScrobbleRuleIndex < 0 || selectedScrobbleRuleIndex >= scrobbleRules.length) {
+            return;
+        }
+
+        scrobbleRules.splice(selectedScrobbleRuleIndex, 1);
+        selectedScrobbleRuleIndex = -1;
+        renderScrobbleRuleList();
+    });
+
     settingsSave.addEventListener('click', async () => {
         if (settingsSave.disabled) {
             return;
@@ -1520,9 +1915,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         settingsSave.disabled = true;
         settingsForceReload.disabled = true;
-        const formValues = buildFormValues();
 
         try {
+            const formValues = buildFormValues();
+            const validationMessage = validateScrobbleRules(formValues.scrobbleRules);
+            if (validationMessage) {
+                throw new Error(validationMessage);
+            }
+
             await options.save(formValues);
             finalizeClose();
         } catch (error) {
@@ -1541,8 +1941,6 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
 
-        const formValues = buildFormValues();
-
         forceReloadInProgress = true;
         forceReloadEtaSeconds = null;
         refreshForceReloadStatus();
@@ -1550,6 +1948,12 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsSave.disabled = true;
 
         try {
+            const formValues = buildFormValues();
+            const validationMessage = validateScrobbleRules(formValues.scrobbleRules);
+            if (validationMessage) {
+                throw new Error(validationMessage);
+            }
+
             await options.save(formValues);
             await options.forceReload(formValues);
             forceReloadInProgress = false;
@@ -1572,6 +1976,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         handleEscape: (): boolean => {
             if (settingsModal.hidden) {
                 return false;
+            }
+
+            if (!settingsScrobbleRuleModal.hidden) {
+                closeScrobbleRuleDialog(null, true);
+                return true;
             }
 
             if (!settingsLibraryDepthModal.hidden) {

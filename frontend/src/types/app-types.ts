@@ -215,6 +215,17 @@ export type AudioPlaybackState = {
 };
 
 export type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
+export type ScrobbleFilterMode = 'blacklist' | 'whitelist';
+export type ScrobbleRuleField = 'path' | 'albumArtist' | 'trackArtist' | 'albumTitle' | 'trackTitle' | 'genre' | 'artistMbid' | 'albumMbid' | 'trackLength';
+export type ScrobbleTextRuleOperator = 'contains' | 'equals' | 'starts_with' | 'regex';
+export type ScrobbleDurationRuleOperator = 'less_than' | 'greater_than';
+export type ScrobbleRuleOperator = ScrobbleTextRuleOperator | ScrobbleDurationRuleOperator;
+
+export type ScrobbleRule = {
+    field: ScrobbleRuleField;
+    operator: ScrobbleRuleOperator;
+    value: string;
+};
 
 export type CoverArtPrioritySource = 'file' | 'embedded' | 'musicbrainz';
 
@@ -261,6 +272,8 @@ export type AppSettings = {
     libraryPath: string;
     ffmpegPath: string;
     listenBrainzUserToken: string;
+    scrobbleFilterMode: ScrobbleFilterMode;
+    scrobbleRules: ScrobbleRule[];
     musicBrainzServerUrl: string;
     musicBrainzRequestRateMs: number;
     listenBrainzServerUrl: string;

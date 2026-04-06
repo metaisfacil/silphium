@@ -1,6 +1,10 @@
 import type {
     AppLibraryFolder,
     PlaybackOrderMode,
+    ScrobbleFilterMode,
+    ScrobbleRule,
+    ScrobbleRuleField,
+    ScrobbleRuleOperator,
     Track,
     TrackTags,
     TrackTechnicalDetails,
@@ -12,6 +16,224 @@ export const asPlaybackOrderMode = (value: string): PlaybackOrderMode => {
     }
 
     return 'ordered-library';
+};
+
+export const asScrobbleFilterMode = (value: string): ScrobbleFilterMode => {
+    return value === 'whitelist' ? 'whitelist' : 'blacklist';
+};
+
+const asScrobbleRuleField = (value: string): ScrobbleRuleField | null => {
+    if (value === 'path' || value === 'albumArtist' || value === 'trackArtist' || value === 'albumTitle' || value === 'trackTitle'
+        || value === 'genre' || value === 'artistMbid' || value === 'albumMbid' || value === 'trackLength') {
+        return value;
+    }
+
+    return null;
+};
+
+const defaultScrobbleRuleOperator = (field: ScrobbleRuleField): ScrobbleRuleOperator => {
+    if (field === 'trackLength') {
+        return 'greater_than';
+    }
+
+    if (field === 'path') {
+        return 'starts_with';
+    }
+
+    return 'contains';
+};
+
+const asScrobbleRuleOperator = (value: string, field: ScrobbleRuleField): ScrobbleRuleOperator => {
+    if (field === 'trackLength') {
+        return value === 'less_than' || value === 'greater_than'
+            ? value
+            : defaultScrobbleRuleOperator(field);
+    }
+
+    return value === 'contains' || value === 'equals' || value === 'starts_with' || value === 'regex'
+        ? value
+        : defaultScrobbleRuleOperator(field);
+};
+
+const normalizeLegacyScrobbleFolders = (folders: string[] | undefined): string[] => {
+    if (!Array.isArray(folders)) {
+        return [];
+    }
+
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+    for (const folder of folders) {
+        const cleaned = String(folder || '').trim();
+        if (cleaned === '') {
+            continue;
+        }
+
+        const key = libraryFolderPathKey(cleaned);
+        if (!key || seen.has(key)) {
+            continue;
+        }
+
+        seen.add(key);
+        normalized.push(cleaned);
+    }
+
+    return normalized;
+};
+
+const normalizeScrobbleRuleValue = (field: ScrobbleRuleField, value: string): string => {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+        return '';
+    }
+
+    if (field === 'trackLength') {
+        const parsed = Number.parseInt(trimmed, 10);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            return '';
+        }
+
+        return String(Math.floor(parsed));
+    }
+
+    return trimmed;
+};
+
+export const normalizeScrobbleRules = (
+    rules: ScrobbleRule[] | undefined,
+    legacyFolders?: string[],
+): ScrobbleRule[] => {
+    const candidates = Array.isArray(rules) && rules.length > 0
+        ? rules
+        : normalizeLegacyScrobbleFolders(legacyFolders).map((folder) => ({
+            field: 'path' as const,
+            operator: 'starts_with' as const,
+            value: folder,
+        }));
+
+    const normalized: ScrobbleRule[] = [];
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+        const field = asScrobbleRuleField(String(candidate?.field || ''));
+        if (!field) {
+            continue;
+        }
+
+        const operator = asScrobbleRuleOperator(String(candidate?.operator || ''), field);
+        const value = normalizeScrobbleRuleValue(field, String(candidate?.value || ''));
+        if (value === '') {
+            continue;
+        }
+
+        const dedupeValue = field === 'path' && operator !== 'regex'
+            ? libraryFolderPathKey(value)
+            : value.toLowerCase();
+        const key = `${field}|${operator}|${dedupeValue}`;
+        if (seen.has(key)) {
+            continue;
+        }
+
+        seen.add(key);
+        normalized.push({ field, operator, value });
+    }
+
+    return normalized;
+};
+
+const scrobbleRuleFieldLabel = (field: ScrobbleRuleField): string => {
+    switch (field) {
+    case 'path':
+        return 'Path';
+    case 'albumArtist':
+        return 'Album artist';
+    case 'trackArtist':
+        return 'Track artist';
+    case 'albumTitle':
+        return 'Album title';
+    case 'trackTitle':
+        return 'Track title';
+    case 'genre':
+        return 'Genre';
+    case 'artistMbid':
+        return 'Artist MBID';
+    case 'albumMbid':
+        return 'Album MBID';
+    case 'trackLength':
+        return 'Track length';
+    }
+};
+
+const scrobbleRuleOperatorLabel = (operator: ScrobbleRuleOperator): string => {
+    switch (operator) {
+    case 'contains':
+        return 'contains';
+    case 'equals':
+        return 'equals';
+    case 'starts_with':
+        return 'starts with';
+    case 'regex':
+        return 'matches RegEx';
+    case 'less_than':
+        return 'is shorter than';
+    case 'greater_than':
+        return 'is longer than';
+    }
+};
+
+export const describeScrobbleRule = (rule: ScrobbleRule): string => {
+    if (rule.field === 'trackLength') {
+        return `${scrobbleRuleFieldLabel(rule.field)} ${scrobbleRuleOperatorLabel(rule.operator)} ${rule.value}s`;
+    }
+
+    return `${scrobbleRuleFieldLabel(rule.field)} ${scrobbleRuleOperatorLabel(rule.operator)} ${rule.value}`;
+};
+
+const parseScrobbleRegex = (pattern: string): RegExp | null => {
+    const trimmed = pattern.trim();
+    if (trimmed === '') {
+        return null;
+    }
+
+    if (trimmed.startsWith('/')) {
+        const lastSlashIndex = trimmed.lastIndexOf('/');
+        if (lastSlashIndex > 0) {
+            const body = trimmed.slice(1, lastSlashIndex);
+            const flags = trimmed.slice(lastSlashIndex + 1);
+            try {
+                return new RegExp(body, flags);
+            } catch {
+                return null;
+            }
+        }
+    }
+
+    try {
+        return new RegExp(trimmed, 'i');
+    } catch {
+        return null;
+    }
+};
+
+export const validateScrobbleRules = (rules: ScrobbleRule[]): string | null => {
+    for (const rule of rules) {
+        if (rule.field === 'trackLength') {
+            const numeric = Number.parseInt(rule.value, 10);
+            if (!Number.isFinite(numeric) || numeric < 0) {
+                return `Invalid track length in rule: ${describeScrobbleRule(rule)}`;
+            }
+
+            continue;
+        }
+
+        if (rule.operator !== 'regex') {
+            continue;
+        }
+
+        if (!parseScrobbleRegex(rule.value)) {
+            return `Invalid RegEx in rule: ${describeScrobbleRule(rule)}`;
+        }
+    }
+
+    return null;
 };
 
 export const asReleaseDepth = (value: unknown): number => {
@@ -27,6 +249,161 @@ export const asReleaseDepth = (value: unknown): number => {
 };
 
 export const libraryFolderPathKey = (path: string): string => path.trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+const getTagValuesIgnoreCase = (tags: Record<string, string[]>, ...keys: string[]): string[] => {
+    const normalizedKeys = keys.map((key) => key.toLowerCase());
+    const values: string[] = [];
+    for (const [key, rawValues] of Object.entries(tags)) {
+        if (!normalizedKeys.includes(key.toLowerCase())) {
+            continue;
+        }
+
+        for (const rawValue of rawValues) {
+            const value = rawValue.trim();
+            if (value !== '') {
+                values.push(value);
+            }
+        }
+    }
+
+    return values;
+};
+
+const getFirstTagValueIgnoreCase = (tags: Record<string, string[]>, ...keys: string[]): string => {
+    return getTagValuesIgnoreCase(tags, ...keys)[0] || '';
+};
+
+const getScrobbleTextCandidates = (track: Track, field: ScrobbleRuleField): string[] => {
+    if (field === 'path') {
+        return track.path.trim() ? [track.path.trim()] : [];
+    }
+
+    if (field === 'albumArtist') {
+        const tagged = getFirstTagValueIgnoreCase(track.allFileTags, 'albumartist', 'album artist', 'album_artist');
+        const fallback = track.displayArtist.trim();
+        return tagged ? [tagged] : (fallback ? [fallback] : []);
+    }
+
+    if (field === 'trackArtist') {
+        const tagged = getFirstTagValueIgnoreCase(track.allFileTags, 'artist', 'trackartist', 'track artist');
+        const fallback = track.displayArtist.trim();
+        return tagged ? [tagged] : (fallback ? [fallback] : []);
+    }
+
+    if (field === 'albumTitle') {
+        const albumTitle = track.displayAlbum.trim();
+        return albumTitle ? [albumTitle] : [];
+    }
+
+    if (field === 'trackTitle') {
+        const trackTitle = (track.displayTitle || track.title).trim();
+        return trackTitle ? [trackTitle] : [];
+    }
+
+    if (field === 'genre') {
+        return getTagValuesIgnoreCase(track.allFileTags, 'genre');
+    }
+
+    if (field === 'artistMbid') {
+        const candidates = [track.mbIds.artistId || '', ...track.artistMbids]
+            .map((value) => value.trim())
+            .filter((value) => value !== '');
+        return Array.from(new Set(candidates));
+    }
+
+    if (field === 'albumMbid') {
+        const albumMbid = (track.mbIds.releaseId || '').trim();
+        return albumMbid ? [albumMbid] : [];
+    }
+
+    return [];
+};
+
+const normalizeRuleComparisonText = (field: ScrobbleRuleField, value: string): string => {
+    if (field === 'path') {
+        return libraryFolderPathKey(value);
+    }
+
+    return value.trim().toLowerCase();
+};
+
+const matchesScrobbleTextRule = (candidate: string, rule: ScrobbleRule): boolean => {
+    if (rule.field === 'trackLength') {
+        return false;
+    }
+
+    if (rule.operator === 'regex') {
+        const regex = parseScrobbleRegex(rule.value);
+        return regex ? regex.test(candidate) : false;
+    }
+
+    const normalizedCandidate = normalizeRuleComparisonText(rule.field, candidate);
+    const normalizedRuleValue = normalizeRuleComparisonText(rule.field, rule.value);
+    if (normalizedRuleValue === '') {
+        return false;
+    }
+
+    if (rule.operator === 'equals') {
+        return normalizedCandidate === normalizedRuleValue;
+    }
+
+    if (rule.operator === 'starts_with') {
+        if (rule.field === 'path') {
+            return normalizedCandidate === normalizedRuleValue || normalizedCandidate.startsWith(`${normalizedRuleValue}/`);
+        }
+
+        return normalizedCandidate.startsWith(normalizedRuleValue);
+    }
+
+    return normalizedCandidate.includes(normalizedRuleValue);
+};
+
+const trackDurationSecondsForRule = (track: Track, playbackDurationSeconds: number): number | null => {
+    if (Number.isFinite(playbackDurationSeconds) && playbackDurationSeconds > 0) {
+        return playbackDurationSeconds;
+    }
+
+    if (Number.isFinite(track.technicalDetails.durationSeconds) && (track.technicalDetails.durationSeconds || 0) > 0) {
+        return track.technicalDetails.durationSeconds || null;
+    }
+
+    return null;
+};
+
+const matchesScrobbleRule = (track: Track, playbackDurationSeconds: number, rule: ScrobbleRule): boolean => {
+    if (rule.field === 'trackLength') {
+        const durationSeconds = trackDurationSecondsForRule(track, playbackDurationSeconds);
+        if (durationSeconds === null) {
+            return false;
+        }
+
+        const thresholdSeconds = Number.parseInt(rule.value, 10);
+        if (!Number.isFinite(thresholdSeconds)) {
+            return false;
+        }
+
+        return rule.operator === 'less_than'
+            ? durationSeconds < thresholdSeconds
+            : durationSeconds > thresholdSeconds;
+    }
+
+    return getScrobbleTextCandidates(track, rule.field).some((candidate) => matchesScrobbleTextRule(candidate, rule));
+};
+
+export const isTrackScrobbleAllowed = (
+    track: Track,
+    playbackDurationSeconds: number,
+    mode: ScrobbleFilterMode,
+    scrobbleRules: ScrobbleRule[],
+): boolean => {
+    if (scrobbleRules.length === 0) {
+        return mode === 'blacklist';
+    }
+
+    const hasMatch = scrobbleRules.some((rule) => matchesScrobbleRule(track, playbackDurationSeconds, rule));
+    return mode === 'whitelist' ? hasMatch : !hasMatch;
+};
+
 export const normalizeLibraryFolderLabel = (value: unknown): string => String(value || '')
     .replace(/[\\/]+/g, ' ')
     .replace(/\s+/g, ' ')

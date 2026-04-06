@@ -333,7 +333,7 @@ describe('createLibraryController', () => {
     });
 
     it('preserves tree scroll position while search pages stream in', async () => {
-        let resolveSecondPage: ((page: LibrarySearchPage) => void) | null = null;
+        let resolveSecondPage: ((page: LibrarySearchPage) => void) | undefined;
         const createPagedEntry = (index: number): LibraryBrowserEntry => ({
             kind: 'track',
             name: `Track ${index}.flac`,
@@ -371,7 +371,11 @@ describe('createLibraryController', () => {
         expect(firstPane).not.toBeNull();
         firstPane!.scrollTop = 240;
 
-        resolveSecondPage?.(createSearchPageSlice('paged', secondPageEntries, 100, 150));
+        if (!resolveSecondPage) {
+            throw new Error('Expected second-page resolver to be initialized');
+        }
+
+        resolveSecondPage(createSearchPageSlice('paged', secondPageEntries, 100, 150));
         await flushPromises();
 
         const updatedPane = libraryBrowser.querySelector('.library-search-pane') as HTMLUListElement | null;

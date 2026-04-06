@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -37,12 +38,22 @@ type AudioSettings struct {
 	ReplayGainEnabled bool   `json:"replayGainEnabled,omitempty"`
 }
 
+// ScrobbleRule describes one persisted scrobble filtering rule.
+type ScrobbleRule struct {
+	Field    string `json:"field"`
+	Operator string `json:"operator"`
+	Value    string `json:"value,omitempty"`
+}
+
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
 	LibraryFolders                         []AppLibraryFolder       `json:"libraryFolders,omitempty"`
 	LibraryPath                            string                   `json:"libraryPath,omitempty"`
 	FFmpegPath                             string                   `json:"ffmpegPath,omitempty"`
 	ListenBrainzUserToken                  string                   `json:"listenBrainzUserToken"`
+	ScrobbleFilterMode                     string                   `json:"scrobbleFilterMode,omitempty"`
+	ScrobbleRules                          []ScrobbleRule           `json:"scrobbleRules,omitempty"`
+	ScrobbleFolders                        []string                 `json:"scrobbleFolders,omitempty"`
 	MusicBrainzServerURL                   string                   `json:"musicBrainzServerUrl,omitempty"`
 	MusicBrainzRequestRateMs               int                      `json:"musicBrainzRequestRateMs,omitempty"`
 	ListenBrainzServerURL                  string                   `json:"listenBrainzServerUrl,omitempty"`
@@ -61,6 +72,7 @@ type AppSettings struct {
 }
 
 const defaultPlaybackOrder = "ordered-library"
+const defaultScrobbleFilterMode = "blacklist"
 const maxReleaseDepth = 64
 const defaultMusicBrainzTagStaleDays = 30
 const maxMusicBrainzTagStaleDays = 36500
@@ -75,6 +87,23 @@ const coverArtPriorityEmbedded = "embedded"
 const coverArtPriorityMusicBrainz = "musicbrainz"
 const defaultAudioOutputDevice = "default"
 const maxAudioOutputBufferMs = 1000
+
+const scrobbleRuleFieldPath = "path"
+const scrobbleRuleFieldAlbumArtist = "albumArtist"
+const scrobbleRuleFieldTrackArtist = "trackArtist"
+const scrobbleRuleFieldAlbumTitle = "albumTitle"
+const scrobbleRuleFieldTrackTitle = "trackTitle"
+const scrobbleRuleFieldGenre = "genre"
+const scrobbleRuleFieldArtistMBID = "artistMbid"
+const scrobbleRuleFieldAlbumMBID = "albumMbid"
+const scrobbleRuleFieldTrackLength = "trackLength"
+
+const scrobbleRuleOperatorContains = "contains"
+const scrobbleRuleOperatorEquals = "equals"
+const scrobbleRuleOperatorStartsWith = "starts_with"
+const scrobbleRuleOperatorRegex = "regex"
+const scrobbleRuleOperatorLessThan = "less_than"
+const scrobbleRuleOperatorGreaterThan = "greater_than"
 
 var defaultCoverArtPriority = []string{coverArtPriorityFile, coverArtPriorityEmbedded}
 
@@ -124,6 +153,171 @@ func normalizePlaybackOrder(value string) string {
 	default:
 		return defaultPlaybackOrder
 	}
+}
+
+func normalizeScrobbleFilterMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "whitelist":
+		return "whitelist"
+	case "blacklist":
+		return "blacklist"
+	default:
+		return defaultScrobbleFilterMode
+	}
+}
+
+func normalizeScrobbleFolders(folders []string) []string {
+	normalizedFolders := make([]string, 0, len(folders))
+	seenFolders := make(map[string]struct{}, len(folders))
+	for _, candidate := range folders {
+		normalized := normalizePath(candidate)
+		if normalized == "" {
+			continue
+		}
+
+		if absolutePath, err := filepath.Abs(normalized); err == nil {
+			normalized = filepath.Clean(absolutePath)
+		}
+
+		lookupKey := strings.ToLower(normalized)
+		if _, exists := seenFolders[lookupKey]; exists {
+			continue
+		}
+
+		seenFolders[lookupKey] = struct{}{}
+		normalizedFolders = append(normalizedFolders, normalized)
+	}
+
+	return normalizedFolders
+}
+
+func normalizeScrobbleRuleField(value string) string {
+	switch strings.TrimSpace(value) {
+	case scrobbleRuleFieldPath,
+		scrobbleRuleFieldAlbumArtist,
+		scrobbleRuleFieldTrackArtist,
+		scrobbleRuleFieldAlbumTitle,
+		scrobbleRuleFieldTrackTitle,
+		scrobbleRuleFieldGenre,
+		scrobbleRuleFieldArtistMBID,
+		scrobbleRuleFieldAlbumMBID,
+		scrobbleRuleFieldTrackLength:
+		return strings.TrimSpace(value)
+	default:
+		return ""
+	}
+}
+
+func defaultScrobbleRuleOperator(field string) string {
+	if field == scrobbleRuleFieldTrackLength {
+		return scrobbleRuleOperatorGreaterThan
+	}
+
+	if field == scrobbleRuleFieldPath {
+		return scrobbleRuleOperatorStartsWith
+	}
+
+	return scrobbleRuleOperatorContains
+}
+
+func normalizeScrobbleRuleOperator(value string, field string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if field == scrobbleRuleFieldTrackLength {
+		switch normalized {
+		case scrobbleRuleOperatorLessThan, scrobbleRuleOperatorGreaterThan:
+			return normalized
+		default:
+			return defaultScrobbleRuleOperator(field)
+		}
+	}
+
+	switch normalized {
+	case scrobbleRuleOperatorContains, scrobbleRuleOperatorEquals, scrobbleRuleOperatorStartsWith, scrobbleRuleOperatorRegex:
+		return normalized
+	default:
+		return defaultScrobbleRuleOperator(field)
+	}
+}
+
+func normalizeScrobbleRuleValue(field string, operator string, value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+
+	if field == scrobbleRuleFieldTrackLength {
+		parsed, err := strconv.Atoi(trimmed)
+		if err != nil || parsed < 0 {
+			return ""
+		}
+
+		return strconv.Itoa(parsed)
+	}
+
+	if field == scrobbleRuleFieldPath && operator != scrobbleRuleOperatorRegex {
+		normalizedPath := normalizePath(trimmed)
+		if normalizedPath == "" {
+			return ""
+		}
+
+		if absolutePath, err := filepath.Abs(normalizedPath); err == nil {
+			normalizedPath = filepath.Clean(absolutePath)
+		}
+
+		return normalizedPath
+	}
+
+	return trimmed
+}
+
+func legacyScrobbleFolderRules(folders []string) []ScrobbleRule {
+	normalizedFolders := normalizeScrobbleFolders(folders)
+	legacyRules := make([]ScrobbleRule, 0, len(normalizedFolders))
+	for _, folder := range normalizedFolders {
+		legacyRules = append(legacyRules, ScrobbleRule{
+			Field:    scrobbleRuleFieldPath,
+			Operator: scrobbleRuleOperatorStartsWith,
+			Value:    folder,
+		})
+	}
+
+	return legacyRules
+}
+
+func normalizeScrobbleRules(rules []ScrobbleRule, legacyFolders []string) []ScrobbleRule {
+	candidates := rules
+	if len(candidates) == 0 {
+		candidates = legacyScrobbleFolderRules(legacyFolders)
+	}
+
+	normalizedRules := make([]ScrobbleRule, 0, len(candidates))
+	seenRules := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		field := normalizeScrobbleRuleField(candidate.Field)
+		if field == "" {
+			continue
+		}
+
+		operator := normalizeScrobbleRuleOperator(candidate.Operator, field)
+		normalizedValue := normalizeScrobbleRuleValue(field, operator, candidate.Value)
+		if normalizedValue == "" {
+			continue
+		}
+
+		dedupeKey := strings.ToLower(field + "|" + operator + "|" + normalizedValue)
+		if _, exists := seenRules[dedupeKey]; exists {
+			continue
+		}
+
+		seenRules[dedupeKey] = struct{}{}
+		normalizedRules = append(normalizedRules, ScrobbleRule{
+			Field:    field,
+			Operator: operator,
+			Value:    normalizedValue,
+		})
+	}
+
+	return normalizedRules
 }
 
 func maxMusicBrainzTagWorkerCores() int {
@@ -404,12 +598,16 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	}
 	musicBrainzServerURL := normalizeBrainzServerURL(settings.MusicBrainzServerURL)
 	listenBrainzServerURL := normalizeBrainzServerURL(settings.ListenBrainzServerURL)
+	scrobbleFilterMode := normalizeScrobbleFilterMode(settings.ScrobbleFilterMode)
+	scrobbleRules := normalizeScrobbleRules(settings.ScrobbleRules, settings.ScrobbleFolders)
 
 	return AppSettings{
 		LibraryFolders:                         libraryFolders,
 		LibraryPath:                            legacyLibraryPath,
 		FFmpegPath:                             normalizeFFmpegPath(settings.FFmpegPath),
 		ListenBrainzUserToken:                  token,
+		ScrobbleFilterMode:                     scrobbleFilterMode,
+		ScrobbleRules:                          scrobbleRules,
 		MusicBrainzServerURL:                   musicBrainzServerURL,
 		MusicBrainzRequestRateMs:               normalizeMusicBrainzRequestRateMs(settings.MusicBrainzRequestRateMs, musicBrainzServerURL),
 		ListenBrainzServerURL:                  listenBrainzServerURL,
