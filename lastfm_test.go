@@ -311,6 +311,176 @@ func TestSubmitLastFm(t *testing.T) {
 	})
 }
 
+func TestSubmitLastFmLove(t *testing.T) {
+	originalBaseURL := lastFmAPIBaseURL
+	t.Cleanup(func() {
+		lastFmAPIBaseURL = originalBaseURL
+	})
+
+	t.Run("submits track love payload", func(t *testing.T) {
+		requestCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			requestCount++
+			rawBody, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatalf("ReadAll(request.Body) error = %v", err)
+			}
+
+			values, err := url.ParseQuery(string(rawBody))
+			if err != nil {
+				t.Fatalf("ParseQuery(request.Body) error = %v", err)
+			}
+
+			if got := values.Get("method"); got != "track.love" {
+				t.Fatalf("method = %q, want %q", got, "track.love")
+			}
+			if got := values.Get("artist"); got != "Test Artist" {
+				t.Fatalf("artist = %q, want %q", got, "Test Artist")
+			}
+			if got := values.Get("track"); got != "Test Track" {
+				t.Fatalf("track = %q, want %q", got, "Test Track")
+			}
+			if got := values.Get("mbid"); got != "recording-mbid" {
+				t.Fatalf("mbid = %q, want %q", got, "recording-mbid")
+			}
+			if values.Get("api_sig") == "" {
+				t.Fatal("api_sig should not be empty")
+			}
+
+			writer.Header().Set("Content-Type", "text/xml; charset=utf-8")
+			_, _ = writer.Write([]byte("<lfm status=\"ok\"></lfm>"))
+		}))
+		defer server.Close()
+
+		lastFmAPIBaseURL = server.URL
+		app := &App{
+			settingsLoaded: true,
+			settings: AppSettings{
+				LastFmAPIKey:     "api-key",
+				LastFmAPISecret:  "shared-secret",
+				LastFmSessionKey: "session-key",
+			},
+		}
+
+		err := app.SubmitLastFmLove(LastFmTrackMetadata{
+			ArtistName:    "Test Artist",
+			TrackName:     "Test Track",
+			RecordingMBID: "recording-mbid",
+		})
+		if err != nil {
+			t.Fatalf("SubmitLastFmLove() error = %v", err)
+		}
+
+		if requestCount != 1 {
+			t.Fatalf("request count = %d, want 1", requestCount)
+		}
+	})
+
+	t.Run("requires artist and track", func(t *testing.T) {
+		app := &App{
+			settingsLoaded: true,
+			settings: AppSettings{
+				LastFmAPIKey:     "api-key",
+				LastFmAPISecret:  "shared-secret",
+				LastFmSessionKey: "session-key",
+			},
+		}
+
+		err := app.SubmitLastFmLove(LastFmTrackMetadata{ArtistName: "", TrackName: ""})
+		if err == nil {
+			t.Fatal("SubmitLastFmLove() error = nil, want error")
+		}
+		if got, want := err.Error(), "artist name and track name are required for Last.fm love submissions"; got != want {
+			t.Fatalf("SubmitLastFmLove() error = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestSubmitLastFmUnlove(t *testing.T) {
+	originalBaseURL := lastFmAPIBaseURL
+	t.Cleanup(func() {
+		lastFmAPIBaseURL = originalBaseURL
+	})
+
+	t.Run("submits track unlove payload", func(t *testing.T) {
+		requestCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			requestCount++
+			rawBody, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatalf("ReadAll(request.Body) error = %v", err)
+			}
+
+			values, err := url.ParseQuery(string(rawBody))
+			if err != nil {
+				t.Fatalf("ParseQuery(request.Body) error = %v", err)
+			}
+
+			if got := values.Get("method"); got != "track.unlove" {
+				t.Fatalf("method = %q, want %q", got, "track.unlove")
+			}
+			if got := values.Get("artist"); got != "Test Artist" {
+				t.Fatalf("artist = %q, want %q", got, "Test Artist")
+			}
+			if got := values.Get("track"); got != "Test Track" {
+				t.Fatalf("track = %q, want %q", got, "Test Track")
+			}
+			if got := values.Get("mbid"); got != "recording-mbid" {
+				t.Fatalf("mbid = %q, want %q", got, "recording-mbid")
+			}
+			if values.Get("api_sig") == "" {
+				t.Fatal("api_sig should not be empty")
+			}
+
+			writer.Header().Set("Content-Type", "text/xml; charset=utf-8")
+			_, _ = writer.Write([]byte("<lfm status=\"ok\"></lfm>"))
+		}))
+		defer server.Close()
+
+		lastFmAPIBaseURL = server.URL
+		app := &App{
+			settingsLoaded: true,
+			settings: AppSettings{
+				LastFmAPIKey:     "api-key",
+				LastFmAPISecret:  "shared-secret",
+				LastFmSessionKey: "session-key",
+			},
+		}
+
+		err := app.SubmitLastFmUnlove(LastFmTrackMetadata{
+			ArtistName:    "Test Artist",
+			TrackName:     "Test Track",
+			RecordingMBID: "recording-mbid",
+		})
+		if err != nil {
+			t.Fatalf("SubmitLastFmUnlove() error = %v", err)
+		}
+
+		if requestCount != 1 {
+			t.Fatalf("request count = %d, want 1", requestCount)
+		}
+	})
+
+	t.Run("requires artist and track", func(t *testing.T) {
+		app := &App{
+			settingsLoaded: true,
+			settings: AppSettings{
+				LastFmAPIKey:     "api-key",
+				LastFmAPISecret:  "shared-secret",
+				LastFmSessionKey: "session-key",
+			},
+		}
+
+		err := app.SubmitLastFmUnlove(LastFmTrackMetadata{ArtistName: "", TrackName: ""})
+		if err == nil {
+			t.Fatal("SubmitLastFmUnlove() error = nil, want error")
+		}
+		if got, want := err.Error(), "artist name and track name are required for Last.fm unlove submissions"; got != want {
+			t.Fatalf("SubmitLastFmUnlove() error = %q, want %q", got, want)
+		}
+	})
+}
+
 func TestGetLastFmRequestToken(t *testing.T) {
 	originalBaseURL := lastFmAPIBaseURL
 	t.Cleanup(func() {

@@ -113,6 +113,8 @@ import {
     SelectPlaylistSaveFile,
     SelectShareImageSaveFile,
     SubmitLastFm,
+    SubmitLastFmLove,
+    SubmitLastFmUnlove,
     SubmitListenBrainz,
     SubmitListenBrainzRecordingFeedback,
     ValidateFFmpegPath,
@@ -462,6 +464,59 @@ const completeStartupIfReady = async (): Promise<void> => {
 const defaultMusicBrainzServerUrl = 'https://musicbrainz.org';
 const defaultListenBrainzServerUrl = 'https://api.listenbrainz.org';
 const defaultLastFmServerUrl = 'https://ws.audioscrobbler.com/2.0';
+const hasLastFmCredentialsConfigured = (): boolean => currentSettings.lastFmApiKey.trim() !== ''
+    && currentSettings.lastFmApiSecret.trim() !== ''
+    && currentSettings.lastFmSessionKey.trim() !== '';
+
+const firstTagValue = (track: Track, ...keys: string[]): string => {
+    for (const key of keys) {
+        const normalizedKey = key.toLowerCase();
+        for (const [tagName, values] of Object.entries(track.allFileTags || {})) {
+            if (tagName.toLowerCase() !== normalizedKey) {
+                continue;
+            }
+
+            const firstValue = values.find((value) => value.trim() !== '');
+            if (firstValue) {
+                return firstValue.trim();
+            }
+        }
+    }
+
+    return '';
+};
+
+const normalizedTrackNumber = (track: Track): string | undefined => {
+    const candidate = (track.displayTrackNumber || firstTagValue(track, 'tracknumber', 'track number', 'track')).trim();
+    if (candidate === '') {
+        return undefined;
+    }
+
+    const normalized = candidate.split('/')[0]?.trim() || '';
+    return /^\d+$/.test(normalized) ? normalized : undefined;
+};
+
+const submitLastFmFeedbackForTrack = async (track: Track, score: ListenBrainzFeedbackScore): Promise<void> => {
+    if ((score !== 1 && score !== 0) || !hasLastFmCredentialsConfigured()) {
+        return;
+    }
+
+    const payload = {
+        artistName: track.displayArtist || firstTagValue(track, 'artist') || 'Unknown Artist',
+        trackName: track.displayTitle || track.title || track.name,
+        releaseName: track.displayAlbum || firstTagValue(track, 'album') || '',
+        albumArtist: firstTagValue(track, 'albumartist', 'album artist', 'album_artist') || undefined,
+        trackNumber: normalizedTrackNumber(track),
+        recordingMbid: track.mbIds.recordingId || undefined,
+    };
+
+    await scheduleLastFmRequest(async () => (
+        score === 1 ? await SubmitLastFmLove(payload) : await SubmitLastFmUnlove(payload)
+    ), {
+        server: defaultLastFmServerUrl,
+        path: score === 1 ? 'track.love' : 'track.unlove',
+    });
+};
 
 const playbackStateService = createPlaybackStateService();
 setMusicBrainzRequestLogServerResolver(() => currentSettings.musicBrainzServerUrl || defaultMusicBrainzServerUrl);
@@ -597,6 +652,9 @@ const listenBrainzController = createListenBrainzController({
         server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
         path: '/1/feedback/recording-feedback',
     }),
+    onFeedbackSubmitted: async (track: Track, score: ListenBrainzFeedbackScore): Promise<void> => {
+        await submitLastFmFeedbackForTrack(track, score);
+    },
     beforeOpenMenu: () => {
         closePlayOrderMenu();
         closeTrackMetaMenu();
@@ -605,9 +663,7 @@ const listenBrainzController = createListenBrainzController({
     },
 });
 const hasListenBrainzScrobbling = (): boolean => listenBrainzController.canScrobble();
-const hasLastFmScrobbling = (): boolean => currentSettings.lastFmApiKey.trim() !== ''
-    && currentSettings.lastFmApiSecret.trim() !== ''
-    && currentSettings.lastFmSessionKey.trim() !== '';
+const hasLastFmScrobbling = (): boolean => hasLastFmCredentialsConfigured();
 const closeListenBrainzFeedbackMenu = (): void => {
     listenBrainzController.closeMenu();
 };
@@ -1411,9 +1467,16 @@ const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState, sequenc
 const maybeSubmitListenBrainz = (state: AudioPlaybackState): void => {
     const track = currentTrackForPlaybackState(state);
     const allowTrack = !!track && isTrackScrobbleAllowed(track, state.duration, currentSettings.scrobbleFilterMode, currentSettings.scrobbleRules);
+    const deferLastFmNowPlaying = !!track
+        && currentSettings.preferMusicBrainzMetadata
+        && !track.mbMetadataResolved
+        && (track.mbIds.releaseId || '').trim() !== '';
+
     scrobbleService.maybeSubmit(state, track, {
         listenBrainz: hasListenBrainzScrobbling() && allowTrack,
         lastFm: hasLastFmScrobbling() && allowTrack,
+    }, {
+        deferLastFmNowPlaying,
     });
 };
 

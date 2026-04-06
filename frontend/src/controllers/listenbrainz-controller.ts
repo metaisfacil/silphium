@@ -11,6 +11,7 @@ type ListenBrainzControllerOptions = {
     ensureTrackTagsResolved: (index: number) => Promise<void>;
     fetchRecordingFeedback: (recordingMbid: string) => Promise<number>;
     submitRecordingFeedback: (recordingMbid: string, score: ListenBrainzFeedbackScore) => Promise<unknown>;
+    onFeedbackSubmitted?: (track: Track, score: ListenBrainzFeedbackScore) => Promise<void> | void;
     beforeOpenMenu?: () => void;
 };
 
@@ -203,6 +204,14 @@ export const createListenBrainzController = (options: ListenBrainzControllerOpti
             listenBrainzFeedbackScoreByRecordingMbid.set(normalizedRecordingMbid, score);
             if (normalizedRecordingMbid === currentTrackRecordingMbid().toLowerCase()) {
                 currentListenBrainzFeedbackScore = score;
+            }
+
+            if (latestTrack && options.onFeedbackSubmitted) {
+                try {
+                    await options.onFeedbackSubmitted(latestTrack, score);
+                } catch (error) {
+                    console.error(error);
+                }
             }
         } catch (error) {
             console.error(error);

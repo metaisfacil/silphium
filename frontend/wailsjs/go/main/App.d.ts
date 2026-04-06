@@ -116,6 +116,10 @@ export function ShowErrorDialog(arg1:string,arg2:string):Promise<void>;
 
 export function SubmitLastFm(arg1:string,arg2:main.LastFmTrackMetadata,arg3:number):Promise<void>;
 
+export function SubmitLastFmLove(arg1:main.LastFmTrackMetadata):Promise<void>;
+
+export function SubmitLastFmUnlove(arg1:main.LastFmTrackMetadata):Promise<void>;
+
 export function SubmitListenBrainz(arg1:string,arg2:main.ListenBrainzTrackMetadata,arg3:number):Promise<void>;
 
 export function SubmitListenBrainzRecordingFeedback(arg1:string,arg2:number):Promise<void>;

@@ -230,6 +230,14 @@ export function SubmitLastFm(arg1, arg2, arg3) {
   return window['go']['main']['App']['SubmitLastFm'](arg1, arg2, arg3);
 }
 
+export function SubmitLastFmLove(arg1) {
+  return window['go']['main']['App']['SubmitLastFmLove'](arg1);
+}
+
+export function SubmitLastFmUnlove(arg1) {
+  return window['go']['main']['App']['SubmitLastFmUnlove'](arg1);
+}
+
 export function SubmitListenBrainz(arg1, arg2, arg3) {
   return window['go']['main']['App']['SubmitListenBrainz'](arg1, arg2, arg3);
 }

@@ -16,6 +16,10 @@ type ScrobbleProvider = 'listenBrainz' | 'lastFm';
 
 type ScrobbleProviderAvailability = Record<ScrobbleProvider, boolean>;
 
+type ScrobbleSubmissionOptions = {
+    deferLastFmNowPlaying?: boolean;
+};
+
 type ScrobbleServiceOptions = {
     submitListenBrainz?: (eventType: 'playing_now' | 'single', payload: ScrobblePayload, listenedAt: number) => Promise<unknown>;
     submitLastFm?: (eventType: 'playing_now' | 'single', payload: ScrobblePayload, listenedAt: number) => Promise<unknown>;
@@ -202,7 +206,12 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
     };
 
     return {
-        maybeSubmit: (state: AudioPlaybackState, track: Track | undefined, availability: ScrobbleProviderAvailability): void => {
+        maybeSubmit: (
+            state: AudioPlaybackState,
+            track: Track | undefined,
+            availability: ScrobbleProviderAvailability,
+            submissionOptions?: ScrobbleSubmissionOptions,
+        ): void => {
             if (!track) {
                 return;
             }
@@ -225,6 +234,10 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
             if (state.playing) {
                 for (const provider of enabledProviders) {
                     if (nowPlayingSubmittedSessionId[provider] === scrobbleSessionId || nowPlayingInFlight[provider]) {
+                        continue;
+                    }
+
+                    if (provider === 'lastFm' && submissionOptions?.deferLastFmNowPlaying) {
                         continue;
                     }
 

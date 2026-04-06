@@ -197,4 +197,55 @@ describe('createScrobbleService', () => {
         const singleCalls = submitLastFm.mock.calls.filter((call) => call[0] === 'single');
         expect(singleCalls).toHaveLength(1);
     });
+
+    it('defers Last.fm now-playing until metadata hydration completes', async () => {
+        const submitListenBrainz = vi.fn(async () => undefined);
+        const submitLastFm = vi.fn(async () => undefined);
+        const service = createScrobbleService({ submitListenBrainz, submitLastFm });
+
+        const state = createPlaybackState({ currentTime: 1, duration: 300 });
+        const unresolvedMetadataTrack = createTrack({
+            tagsResolved: true,
+            mbMetadataResolved: false,
+            mbIds: { releaseId: 'release-123' },
+        });
+
+        service.startTrackSession(unresolvedMetadataTrack.path);
+        service.maybeSubmit(
+            state,
+            unresolvedMetadataTrack,
+            { listenBrainz: true, lastFm: true },
+            { deferLastFmNowPlaying: true },
+        );
+
+        expect(submitListenBrainz).toHaveBeenCalledTimes(1);
+        expect(submitListenBrainz).toHaveBeenNthCalledWith(
+            1,
+            'playing_now',
+            expect.any(Object),
+            0,
+        );
+        expect(submitLastFm).not.toHaveBeenCalled();
+
+        const hydratedMetadataTrack = createTrack({
+            tagsResolved: true,
+            mbMetadataResolved: true,
+            mbIds: { releaseId: 'release-123' },
+        });
+
+        service.maybeSubmit(
+            state,
+            hydratedMetadataTrack,
+            { listenBrainz: true, lastFm: true },
+            { deferLastFmNowPlaying: false },
+        );
+
+        expect(submitLastFm).toHaveBeenCalledTimes(1);
+        expect(submitLastFm).toHaveBeenNthCalledWith(
+            1,
+            'playing_now',
+            expect.any(Object),
+            0,
+        );
+    });
 });

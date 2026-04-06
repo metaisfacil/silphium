@@ -544,6 +544,84 @@ func (a *App) SubmitLastFm(listenType string, metadata LastFmTrackMetadata, list
 	return nil
 }
 
+// SubmitLastFmLove submits a Last.fm track.love event for a track.
+func (a *App) SubmitLastFmLove(metadata LastFmTrackMetadata) error {
+	apiKey, apiSecret, sessionKey, err := a.lastFmCredentials()
+	if err != nil {
+		return err
+	}
+
+	cleanArtistName := strings.TrimSpace(metadata.ArtistName)
+	cleanTrackName := strings.TrimSpace(metadata.TrackName)
+	if cleanArtistName == "" || cleanTrackName == "" {
+		return errors.New("artist name and track name are required for Last.fm love submissions")
+	}
+
+	params := map[string]string{
+		"api_key": apiKey,
+		"artist":  cleanArtistName,
+		"method":  "track.love",
+		"sk":      sessionKey,
+		"track":   cleanTrackName,
+	}
+	if recordingMBID := strings.TrimSpace(metadata.RecordingMBID); recordingMBID != "" {
+		params["mbid"] = recordingMBID
+	}
+
+	params["api_sig"] = signLastFmParams(params, apiSecret)
+
+	responseBody, err := callLastFmAPI(params)
+	if err != nil {
+		return err
+	}
+
+	fallback := "invalid last.fm love response"
+	if parseErr := parseLastFmResponse(responseBody, fallback); parseErr != nil {
+		return parseErr
+	}
+
+	return nil
+}
+
+// SubmitLastFmUnlove submits a Last.fm track.unlove event for a track.
+func (a *App) SubmitLastFmUnlove(metadata LastFmTrackMetadata) error {
+	apiKey, apiSecret, sessionKey, err := a.lastFmCredentials()
+	if err != nil {
+		return err
+	}
+
+	cleanArtistName := strings.TrimSpace(metadata.ArtistName)
+	cleanTrackName := strings.TrimSpace(metadata.TrackName)
+	if cleanArtistName == "" || cleanTrackName == "" {
+		return errors.New("artist name and track name are required for Last.fm unlove submissions")
+	}
+
+	params := map[string]string{
+		"api_key": apiKey,
+		"artist":  cleanArtistName,
+		"method":  "track.unlove",
+		"sk":      sessionKey,
+		"track":   cleanTrackName,
+	}
+	if recordingMBID := strings.TrimSpace(metadata.RecordingMBID); recordingMBID != "" {
+		params["mbid"] = recordingMBID
+	}
+
+	params["api_sig"] = signLastFmParams(params, apiSecret)
+
+	responseBody, err := callLastFmAPI(params)
+	if err != nil {
+		return err
+	}
+
+	fallback := "invalid last.fm unlove response"
+	if parseErr := parseLastFmResponse(responseBody, fallback); parseErr != nil {
+		return parseErr
+	}
+
+	return nil
+}
+
 func (a *App) lastFmSessionCredentials() (string, string, error) {
 	a.ensureSettingsLoaded()
 
