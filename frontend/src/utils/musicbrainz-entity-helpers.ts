@@ -203,12 +203,12 @@ export const renderMusicBrainzEntityContent = (
         contentElement.append(tags);
     }
 
-    if (entity.urls.length > 0) {
-        const linksTitle = document.createElement('p');
-        linksTitle.className = 'mb-entity-section-title';
-        linksTitle.textContent = 'Links';
-        contentElement.append(linksTitle);
+    const linksTitle = document.createElement('p');
+    linksTitle.className = 'mb-entity-section-title';
+    linksTitle.textContent = 'External Links';
+    contentElement.append(linksTitle);
 
+    if (entity.urls.length > 0) {
         const links = document.createElement('ul');
         links.className = 'mb-entity-links';
         for (const url of entity.urls) {
@@ -253,6 +253,11 @@ export const renderMusicBrainzEntityContent = (
         }
 
         contentElement.append(links);
+    } else {
+        const emptyLinks = document.createElement('p');
+        emptyLinks.className = 'mb-entity-empty';
+        emptyLinks.textContent = 'None available.';
+        contentElement.append(emptyLinks);
     }
 
     const rawDetails = document.createElement('details');
