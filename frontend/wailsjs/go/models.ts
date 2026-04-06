@@ -651,6 +651,34 @@ export namespace main {
 		}
 	}
 	
+	export class MusicBrainzTagWorkerProgress {
+	    enabled: boolean;
+	    active: boolean;
+	    progress: number;
+	    pendingTrackScans: number;
+	    totalTrackScans: number;
+	    completedTrackScans: number;
+	    pendingEntityLookups: number;
+	    totalEntityLookups: number;
+	    completedEntityLookups: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MusicBrainzTagWorkerProgress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.active = source["active"];
+	        this.progress = source["progress"];
+	        this.pendingTrackScans = source["pendingTrackScans"];
+	        this.totalTrackScans = source["totalTrackScans"];
+	        this.completedTrackScans = source["completedTrackScans"];
+	        this.pendingEntityLookups = source["pendingEntityLookups"];
+	        this.totalEntityLookups = source["totalEntityLookups"];
+	        this.completedEntityLookups = source["completedEntityLookups"];
+	    }
+	}
 	export class MusicBrainzTrackMetadata {
 	    found: boolean;
 	    recordingId: string;

@@ -1,6 +1,6 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, FocusedKeyboardShortcuts, PlayerCardLayout } from '../types/app-types';
+import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout } from '../types/app-types';
 import { asReleaseDepth, libraryFolderPathKey, normalizeLibraryFolderLabel, normalizeLibraryFolders } from '../utils/main-helpers';
 import { formatShortcutBindingFromKeyboardEvent, normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 
@@ -31,6 +31,7 @@ export type SettingsFormValues = {
 
 export type SettingsViewValues = SettingsFormValues & {
     audioOutputDevices: AudioOutputDevice[];
+    musicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
 };
 
 type SettingsPrimaryTab = 'general' | 'network' | 'database' | 'playlists' | 'audio' | 'ui';
@@ -148,6 +149,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsPreferMusicBrainzMetadata,
         settingsMusicBrainzTagDatabaseEnabled,
         settingsMusicBrainzTagWorkerCores,
+        settingsMusicBrainzTagWorkerProgressBar,
+        settingsMusicBrainzTagWorkerProgressFill,
+        settingsMusicBrainzTagWorkerProgressValue,
+        settingsMusicBrainzTagWorkerProgressRemaining,
+        settingsMusicBrainzTagWorkerProgressStatus,
         settingsPlayerCardLayout,
         settingsCoverArtPriorityList,
         settingsShortcutPlayPauseToggle,
@@ -182,6 +188,20 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let coverArtPriority: CoverArtPrioritySource[] = [...defaultCoverArtPriority];
     let coverArtPriorityOrder: CoverArtPrioritySource[] = [...allCoverArtPrioritySources];
     let draggedCoverPriorityIndex = -1;
+    let musicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress = {
+        enabled: false,
+        active: false,
+        progress: 0,
+        pendingTrackScans: 0,
+        totalTrackScans: 0,
+        completedTrackScans: 0,
+        pendingEntityLookups: 0,
+        totalEntityLookups: 0,
+        completedEntityLookups: 0,
+    };
+    let musicBrainzTagWorkerEntityRatePerSecond: number | null = null;
+    let musicBrainzTagWorkerLastSampleAtMs: number | null = null;
+    let musicBrainzTagWorkerLastCompletedEntityLookups = 0;
     const libraryFolderRepeatClickWindowMs = 400;
 
     const normalizeFavoritePlaylists = (items: string[]): string[] => {
@@ -244,6 +264,118 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         return Math.min(Math.floor(parsed), 128);
+    };
+
+    const normalizeMusicBrainzTagWorkerProgress = (value?: Partial<MusicBrainzTagWorkerProgress> | null): MusicBrainzTagWorkerProgress => {
+        const source = value || {};
+        const progress = Number.isFinite(source.progress) ? Number(source.progress) : 0;
+        const clampCount = (count: unknown): number => {
+            const numeric = Number(count);
+            if (!Number.isFinite(numeric) || numeric <= 0) {
+                return 0;
+            }
+
+            return Math.floor(numeric);
+        };
+
+        return {
+            enabled: !!source.enabled,
+            active: !!source.active,
+            progress: Math.max(0, Math.min(1, progress)),
+            pendingTrackScans: clampCount(source.pendingTrackScans),
+            totalTrackScans: clampCount(source.totalTrackScans),
+            completedTrackScans: clampCount(source.completedTrackScans),
+            pendingEntityLookups: clampCount(source.pendingEntityLookups),
+            totalEntityLookups: clampCount(source.totalEntityLookups),
+            completedEntityLookups: clampCount(source.completedEntityLookups),
+        };
+    };
+
+    const resetMusicBrainzTagWorkerEtaTracking = (): void => {
+        musicBrainzTagWorkerEntityRatePerSecond = null;
+        musicBrainzTagWorkerLastSampleAtMs = null;
+        musicBrainzTagWorkerLastCompletedEntityLookups = 0;
+    };
+
+    const estimateMusicBrainzTagWorkerEtaSeconds = (nextProgress: MusicBrainzTagWorkerProgress): number | null => {
+        if (!nextProgress.enabled || !nextProgress.active || nextProgress.pendingEntityLookups <= 0) {
+            resetMusicBrainzTagWorkerEtaTracking();
+            return null;
+        }
+
+        const nowMs = Date.now();
+        const completedEntityLookups = nextProgress.completedEntityLookups;
+        const previousSampleAtMs = musicBrainzTagWorkerLastSampleAtMs;
+        const shouldResetTracking = previousSampleAtMs === null
+            || completedEntityLookups < musicBrainzTagWorkerLastCompletedEntityLookups
+            || !musicBrainzTagWorkerProgress.active
+            || musicBrainzTagWorkerProgress.pendingEntityLookups <= 0;
+
+        if (shouldResetTracking) {
+            musicBrainzTagWorkerEntityRatePerSecond = null;
+            musicBrainzTagWorkerLastSampleAtMs = nowMs;
+            musicBrainzTagWorkerLastCompletedEntityLookups = completedEntityLookups;
+            return null;
+        }
+
+        const elapsedSeconds = Math.max(0, (nowMs - previousSampleAtMs) / 1000);
+        const completedDelta = completedEntityLookups - musicBrainzTagWorkerLastCompletedEntityLookups;
+        if (completedDelta > 0 && elapsedSeconds > 0) {
+            const instantRate = completedDelta / elapsedSeconds;
+            musicBrainzTagWorkerEntityRatePerSecond = musicBrainzTagWorkerEntityRatePerSecond === null
+                ? instantRate
+                : (musicBrainzTagWorkerEntityRatePerSecond * 0.65) + (instantRate * 0.35);
+            musicBrainzTagWorkerLastSampleAtMs = nowMs;
+            musicBrainzTagWorkerLastCompletedEntityLookups = completedEntityLookups;
+        }
+
+        if (musicBrainzTagWorkerEntityRatePerSecond === null || musicBrainzTagWorkerEntityRatePerSecond <= 0) {
+            return null;
+        }
+
+        return nextProgress.pendingEntityLookups / musicBrainzTagWorkerEntityRatePerSecond;
+    };
+
+    const renderMusicBrainzTagWorkerProgress = (value: MusicBrainzTagWorkerProgress): void => {
+        const nextProgress = normalizeMusicBrainzTagWorkerProgress(value);
+        const etaSeconds = estimateMusicBrainzTagWorkerEtaSeconds(nextProgress);
+        musicBrainzTagWorkerProgress = nextProgress;
+        const progressPercent = Math.round(musicBrainzTagWorkerProgress.progress * 100);
+
+        settingsMusicBrainzTagWorkerProgressValue.textContent = `${progressPercent}%`;
+        settingsMusicBrainzTagWorkerProgressFill.style.width = `${progressPercent}%`;
+        settingsMusicBrainzTagWorkerProgressBar.setAttribute('aria-valuenow', String(progressPercent));
+        settingsMusicBrainzTagWorkerProgressBar.setAttribute('aria-valuetext', `${progressPercent}% complete`);
+        settingsMusicBrainzTagWorkerProgressBar.classList.toggle('is-active', musicBrainzTagWorkerProgress.active);
+        settingsMusicBrainzTagWorkerProgressBar.classList.toggle('is-disabled', !musicBrainzTagWorkerProgress.enabled);
+
+        const processedEntityCount = musicBrainzTagWorkerProgress.completedEntityLookups;
+        const entityCount = musicBrainzTagWorkerProgress.pendingEntityLookups;
+        const etaLabel = formatEtaLabel(etaSeconds);
+        const remainingLabel = `${entityCount} ${entityCount === 1 ? 'entity' : 'entities'} still to look up`;
+        settingsMusicBrainzTagWorkerProgressRemaining.textContent = `${processedEntityCount} ${processedEntityCount === 1 ? 'entity' : 'entities'} processed • ${remainingLabel}${etaLabel ? ` • ${etaLabel} remaining at current pace` : '.'}`;
+
+        if (!musicBrainzTagWorkerProgress.enabled) {
+            settingsMusicBrainzTagWorkerProgressStatus.textContent = 'MusicBrainz tag database is disabled.';
+            return;
+        }
+
+        if (musicBrainzTagWorkerProgress.active) {
+            if (musicBrainzTagWorkerProgress.pendingTrackScans > 0 && musicBrainzTagWorkerProgress.pendingEntityLookups > 0) {
+                settingsMusicBrainzTagWorkerProgressStatus.textContent = 'Scanning local track metadata and fetching queued MusicBrainz entities.';
+                return;
+            }
+
+            if (musicBrainzTagWorkerProgress.pendingTrackScans > 0) {
+                settingsMusicBrainzTagWorkerProgressStatus.textContent = 'Scanning local track metadata to build the lookup queue.';
+                return;
+            }
+
+            settingsMusicBrainzTagWorkerProgressStatus.textContent = 'Fetching queued MusicBrainz entities.';
+            return;
+        }
+
+        settingsMusicBrainzTagWorkerProgressStatus.textContent = 'Background metadata index is up to date.';
     };
 
     const normalizeRequestRateMs = (value: string): number => {
@@ -859,6 +991,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     bindShortcutCaptureInput(settingsShortcutOpenSettings);
 
     setShortcutAccordionExpanded(false, false);
+    renderMusicBrainzTagWorkerProgress(musicBrainzTagWorkerProgress);
 
     settingsLibraryDepthLabelInput.addEventListener('input', () => {
         setLibraryDepthStatusMessage('');
@@ -956,6 +1089,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagDatabaseEnabled.checked = !!values.musicBrainzTagDatabaseEnabled;
         settingsMusicBrainzTagWorkerCores.value = values.musicBrainzTagWorkerCores > 0 ? String(values.musicBrainzTagWorkerCores) : '';
         refreshMusicBrainzTagWorkerControls();
+        renderMusicBrainzTagWorkerProgress(values.musicBrainzTagWorkerProgress);
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
         favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
@@ -1427,6 +1561,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return true;
         },
         open,
+        setMusicBrainzTagWorkerProgress: renderMusicBrainzTagWorkerProgress,
         setForceReloadEtaSeconds,
     };
 };

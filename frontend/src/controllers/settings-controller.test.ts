@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getSettingsModalElements, renderSettingsModal } from '../components/overlays/settings-modal';
-import type { AudioOutputDevice, FocusedKeyboardShortcuts, PlayerCardLayout } from '../types/app-types';
+import type { AudioOutputDevice, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout } from '../types/app-types';
 import { createSettingsController, type SettingsFormValues, type SettingsViewValues } from './settings-controller';
 
 const flushPromises = async (): Promise<void> => {
@@ -22,6 +22,18 @@ const createKeyboardShortcuts = (): FocusedKeyboardShortcuts => ({
     openSettings: 'Ctrl+P',
 });
 
+const createMusicBrainzTagWorkerProgress = (): MusicBrainzTagWorkerProgress => ({
+    enabled: true,
+    active: true,
+    progress: 0.25,
+    pendingTrackScans: 3,
+    totalTrackScans: 8,
+    completedTrackScans: 5,
+    pendingEntityLookups: 12,
+    totalEntityLookups: 20,
+    completedEntityLookups: 8,
+});
+
 const createSettingsViewValues = (): SettingsViewValues => ({
     libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
     ffmpegPath: '',
@@ -39,6 +51,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     preferMusicBrainzMetadata: true,
     musicBrainzTagDatabaseEnabled: true,
     musicBrainzTagWorkerCores: 4,
+    musicBrainzTagWorkerProgress: createMusicBrainzTagWorkerProgress(),
     keyboardShortcuts: createKeyboardShortcuts(),
     audioOutputDevices: createAudioDevices(),
 });
@@ -84,6 +97,7 @@ describe('createSettingsController', () => {
 
     beforeEach(() => {
         vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-04-05T00:00:00Z'));
         vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback): number => {
             callback(0);
             return 0;
@@ -223,5 +237,67 @@ describe('createSettingsController', () => {
         expect(elements.settingsStatus.textContent).toBe('Library reloaded.');
         expect(elements.settingsForceReload.disabled).toBe(false);
         expect(elements.settingsSave.disabled).toBe(false);
+    });
+
+    it('renders and updates MusicBrainz tag worker progress in the database tab', () => {
+        const { controller, elements } = mountSettingsController();
+
+        controller.open('database');
+
+        expect(elements.settingsMusicBrainzTagWorkerProgressValue.textContent).toBe('25%');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('8 entities processed • 12 entities still to look up.');
+
+        controller.setMusicBrainzTagWorkerProgress({
+            enabled: true,
+            active: false,
+            progress: 1,
+            pendingTrackScans: 0,
+            totalTrackScans: 8,
+            completedTrackScans: 8,
+            pendingEntityLookups: 0,
+            totalEntityLookups: 20,
+            completedEntityLookups: 20,
+        });
+
+        expect(elements.settingsMusicBrainzTagWorkerProgressValue.textContent).toBe('100%');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('20 entities processed • 0 entities still to look up.');
+        expect(elements.settingsMusicBrainzTagWorkerProgressStatus.textContent).toBe('Background metadata index is up to date.');
+    });
+
+    it('appends an ETA to MusicBrainz tag worker progress once a pace is established', () => {
+        const { controller, elements } = mountSettingsController({
+            getValues: () => ({
+                ...createSettingsViewValues(),
+                musicBrainzTagWorkerProgress: {
+                    enabled: true,
+                    active: true,
+                    progress: 0.5,
+                    pendingTrackScans: 0,
+                    totalTrackScans: 8,
+                    completedTrackScans: 8,
+                    pendingEntityLookups: 10,
+                    totalEntityLookups: 20,
+                    completedEntityLookups: 10,
+                },
+            }),
+        });
+
+        controller.open('database');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('10 entities processed • 10 entities still to look up.');
+
+        vi.setSystemTime(new Date('2026-04-05T00:00:05Z'));
+        controller.setMusicBrainzTagWorkerProgress({
+            enabled: true,
+            active: true,
+            progress: 0.75,
+            pendingTrackScans: 0,
+            totalTrackScans: 8,
+            completedTrackScans: 8,
+            pendingEntityLookups: 5,
+            totalEntityLookups: 20,
+            completedEntityLookups: 15,
+        });
+
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('15 entities processed • 5 entities still to look up • ~5s remaining at current pace');
     });
 });

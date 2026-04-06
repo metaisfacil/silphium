@@ -137,6 +137,18 @@ export type LibraryScanProgress = {
     phase: 'counting' | 'scanning' | 'finalizing';
 };
 
+export type MusicBrainzTagWorkerProgress = {
+    enabled: boolean;
+    active: boolean;
+    progress: number;
+    pendingTrackScans: number;
+    totalTrackScans: number;
+    completedTrackScans: number;
+    pendingEntityLookups: number;
+    totalEntityLookups: number;
+    completedEntityLookups: number;
+};
+
 export type LibraryBrowserEntry = {
     kind: 'folder' | 'track' | 'text-file' | 'image-file';
     name: string;

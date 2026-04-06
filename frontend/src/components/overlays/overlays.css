@@ -709,6 +709,52 @@
     gap: 0.40rem;
 }
 
+.settings-worker-progress-field {
+    gap: 0.55rem;
+}
+
+.settings-worker-progress-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.settings-worker-progress-value {
+    font-size: 0.76rem;
+    opacity: 0.72;
+}
+
+.settings-worker-progress-bar {
+    position: relative;
+    overflow: hidden;
+    height: 0.62rem;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.settings-worker-progress-fill {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(142, 204, 255, 0.88), rgba(112, 235, 194, 0.88));
+    transition: width 160ms ease;
+}
+
+.settings-worker-progress-bar.is-active .settings-worker-progress-fill {
+    box-shadow: 0 0 0.8rem rgba(112, 235, 194, 0.22);
+}
+
+.settings-worker-progress-bar.is-disabled .settings-worker-progress-fill {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.settings-worker-progress-status {
+    opacity: 0.7;
+}
+
 .settings-accordion {
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 0.7rem;

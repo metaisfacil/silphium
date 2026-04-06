@@ -47,6 +47,11 @@ export type SettingsModalElements = {
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsMusicBrainzTagDatabaseEnabled: HTMLInputElement;
     settingsMusicBrainzTagWorkerCores: HTMLInputElement;
+    settingsMusicBrainzTagWorkerProgressBar: HTMLDivElement;
+    settingsMusicBrainzTagWorkerProgressFill: HTMLSpanElement;
+    settingsMusicBrainzTagWorkerProgressValue: HTMLSpanElement;
+    settingsMusicBrainzTagWorkerProgressRemaining: HTMLParagraphElement;
+    settingsMusicBrainzTagWorkerProgressStatus: HTMLParagraphElement;
     settingsPlayerCardLayout: HTMLSelectElement;
     settingsCoverArtPriorityList: HTMLUListElement;
     settingsShortcutPlayPauseToggle: HTMLInputElement;
@@ -139,6 +144,17 @@ export const renderSettingsModal = (): string => `
                         <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz Tag Worker Cores</label>
                         <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.</p>
                         <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
+                    </div>
+                    <div class="settings-field settings-worker-progress-field">
+                        <div class="settings-worker-progress-header">
+                            <span class="settings-label">Metadata Worker Progress</span>
+                            <span id="settings-musicbrainz-tag-worker-progress-value" class="settings-worker-progress-value">0%</span>
+                        </div>
+                        <div id="settings-musicbrainz-tag-worker-progress-bar" class="settings-worker-progress-bar" role="progressbar" aria-label="Metadata worker progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete">
+                            <span id="settings-musicbrainz-tag-worker-progress-fill" class="settings-worker-progress-fill"></span>
+                        </div>
+                        <p id="settings-musicbrainz-tag-worker-progress-remaining" class="settings-hint">0 entities processed • 0 entities still to look up.</p>
+                        <p id="settings-musicbrainz-tag-worker-progress-status" class="settings-hint settings-worker-progress-status">MusicBrainz tag worker idle.</p>
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
@@ -308,6 +324,11 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsMusicBrainzTagDatabaseEnabled: root.querySelector('#settings-musicbrainz-tag-database-enabled') as HTMLInputElement,
     settingsMusicBrainzTagWorkerCores: root.querySelector('#settings-musicbrainz-tag-worker-cores') as HTMLInputElement,
+    settingsMusicBrainzTagWorkerProgressBar: root.querySelector('#settings-musicbrainz-tag-worker-progress-bar') as HTMLDivElement,
+    settingsMusicBrainzTagWorkerProgressFill: root.querySelector('#settings-musicbrainz-tag-worker-progress-fill') as HTMLSpanElement,
+    settingsMusicBrainzTagWorkerProgressValue: root.querySelector('#settings-musicbrainz-tag-worker-progress-value') as HTMLSpanElement,
+    settingsMusicBrainzTagWorkerProgressRemaining: root.querySelector('#settings-musicbrainz-tag-worker-progress-remaining') as HTMLParagraphElement,
+    settingsMusicBrainzTagWorkerProgressStatus: root.querySelector('#settings-musicbrainz-tag-worker-progress-status') as HTMLParagraphElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,
     settingsShortcutPlayPauseToggle: root.querySelector('#settings-shortcut-play-pause') as HTMLInputElement,

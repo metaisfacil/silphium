@@ -42,6 +42,8 @@ export function GetLibraryIndexedFilePage(arg1:string,arg2:number,arg3:number):P
 
 export function GetListenBrainzRecordingFeedback(arg1:string):Promise<number>;
 
+export function GetMusicBrainzTagWorkerProgress():Promise<main.MusicBrainzTagWorkerProgress>;
+
 export function GetSettings():Promise<main.AppSettings>;
 
 export function InitializeAudioBackend():Promise<main.AudioPlaybackState>;

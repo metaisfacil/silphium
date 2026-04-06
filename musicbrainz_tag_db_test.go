@@ -136,6 +136,254 @@ func TestMusicBrainzTagEntityNeedsFetchLockedUsesEmptyTagInterval(t *testing.T) 
 	}
 }
 
+func TestMusicBrainzTagWorkerStateProgressSnapshot(t *testing.T) {
+	state := musicBrainzTagWorkerState{
+		pendingTrackPaths:      []string{"track-2.flac", "track-3.flac"},
+		totalTrackPaths:        5,
+		completedTrackPaths:    3,
+		pendingEntityKeys:      map[string]struct{}{"artist:1": {}, "release:2": {}},
+		totalEntityLookups:     4,
+		completedEntityLookups: 2,
+	}
+
+	progress := state.progressSnapshot(true)
+	if !progress.Enabled {
+		t.Fatal("expected worker progress to be enabled")
+	}
+	if !progress.Active {
+		t.Fatal("expected worker progress to be active")
+	}
+	if progress.PendingEntityLookups != 2 {
+		t.Fatalf("pendingEntityLookups = %d, want %d", progress.PendingEntityLookups, 2)
+	}
+	if progress.PendingTrackScans != 2 {
+		t.Fatalf("pendingTrackScans = %d, want %d", progress.PendingTrackScans, 2)
+	}
+	if progress.Progress != (5.0 / 9.0) {
+		t.Fatalf("progress = %.6f, want %.6f", progress.Progress, 5.0/9.0)
+	}
+}
+
+func TestMusicBrainzTagWorkerStateProgressSnapshotDisabled(t *testing.T) {
+	progress := (musicBrainzTagWorkerState{}).progressSnapshot(false)
+	if progress.Enabled {
+		t.Fatal("did not expect disabled worker progress to be enabled")
+	}
+	if progress.Active {
+		t.Fatal("did not expect disabled worker progress to be active")
+	}
+	if progress.Progress != 0 {
+		t.Fatalf("progress = %.2f, want 0", progress.Progress)
+	}
+}
+
+func indexedTrackForTest(rootPath string, path string) LibraryIndexedFile {
+	relativePath, err := filepath.Rel(rootPath, path)
+	if err != nil {
+		panic(err)
+	}
+
+	folderPath := filepath.Dir(relativePath)
+	rootName := filepath.Base(rootPath)
+	normalizedFolderPath := rootName
+	if folderPath != "." {
+		normalizedFolderPath = filepath.ToSlash(filepath.Join(rootName, folderPath))
+	}
+
+	return LibraryIndexedFile{
+		Name:         filepath.Base(path),
+		Path:         normalizePath(path),
+		RelativePath: filepath.ToSlash(relativePath),
+		FolderPath:   normalizedFolderPath,
+		RootPath:     normalizePath(rootPath),
+		RootName:     rootName,
+	}
+}
+
+func newMusicBrainzTagWorkerStateTestApp(rootPath string, indexedTracks ...LibraryIndexedFile) *App {
+	trackByPath := make(map[string]LibraryIndexedFile, len(indexedTracks))
+	for _, indexed := range indexedTracks {
+		trackByPath[indexed.Path] = indexed
+	}
+
+	app := &App{
+		settings: AppSettings{
+			LibraryFolders: []AppLibraryFolder{{
+				Path:         rootPath,
+				ReleaseDepth: 2,
+			}},
+			MusicBrainzTagDatabaseEnabled: true,
+		},
+		settingsLoaded:            true,
+		trackByPath:               trackByPath,
+		musicBrainzTagStore:       newMusicBrainzTagDatabaseStore(),
+		musicBrainzTagStoreLoaded: true,
+	}
+	app.rebuildMusicBrainzTagIndexesLocked()
+	return app
+}
+
+func TestBuildMusicBrainzTagWorkerStateScansOneRepresentativeTrackPerRelease(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	secondTrack := filepath.Join(fixture.albumOneFolder, "02 Song.flac")
+	writeTestFile(t, secondTrack, "track two")
+
+	firstIndexed := indexedTrackForTest(fixture.rootOne, fixture.trackOne)
+	secondIndexed := indexedTrackForTest(fixture.rootOne, secondTrack)
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne, firstIndexed, secondIndexed)
+
+	state := app.buildMusicBrainzTagWorkerState(1)
+	if len(state.pendingTrackPaths) != 1 {
+		t.Fatalf("pendingTrackPaths = %#v, want one representative path", state.pendingTrackPaths)
+	}
+	if state.pendingTrackPaths[0] != firstIndexed.Path {
+		t.Fatalf("representative path = %q, want %q", state.pendingTrackPaths[0], firstIndexed.Path)
+	}
+	if state.totalTrackPaths != 1 {
+		t.Fatalf("totalTrackPaths = %d, want 1", state.totalTrackPaths)
+	}
+	if state.completedTrackPaths != 0 {
+		t.Fatalf("completedTrackPaths = %d, want 0", state.completedTrackPaths)
+	}
+}
+
+func TestBuildMusicBrainzTagWorkerStateReusesReleaseRecordWhenRepresentativePathChanges(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	replacementTrack := filepath.Join(fixture.albumOneFolder, "02 Song.flac")
+	writeTestFile(t, replacementTrack, "replacement track")
+
+	replacementIndexed := indexedTrackForTest(fixture.rootOne, replacementTrack)
+	releaseFolderPath := releaseFolderPathForIndexedTrack(replacementIndexed, 2)
+	artistFolderPaths := artistFolderPathsForIndexedTrack(replacementIndexed, 2)
+	replacementSignature, ok := trackTagsFileSignatureForPath(replacementTrack)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) failed", replacementTrack)
+	}
+
+	artistMBID := "11111111-1111-4111-8111-111111111111"
+	releaseMBID := "22222222-2222-4222-8222-222222222222"
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne, replacementIndexed)
+	app.musicBrainzTagStore.Tracks[normalizePath(fixture.trackOne)] = musicBrainzTagTrackRecord{
+		Signature: trackTagsFileSignature{
+			Size:      1,
+			ModUnixNs: 2,
+		},
+		ReleaseID:         releaseMBID,
+		ArtistIDs:         []string{artistMBID},
+		ReleaseFolderPath: releaseFolderPath,
+		ArtistFolderPaths: artistFolderPaths,
+		LastScannedAt:     time.Now().Add(-time.Hour),
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("artist", artistMBID)] = musicBrainzTagEntityRecord{
+		EntityType:    "artist",
+		MBID:          artistMBID,
+		LastFetchedAt: time.Now().Add(-time.Hour),
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("release", releaseMBID)] = musicBrainzTagEntityRecord{
+		EntityType:    "release",
+		MBID:          releaseMBID,
+		LastFetchedAt: time.Now().Add(-time.Hour),
+	}
+	app.rebuildMusicBrainzTagIndexesLocked()
+
+	state := app.buildMusicBrainzTagWorkerState(1)
+	if len(state.pendingTrackPaths) != 0 {
+		t.Fatalf("pendingTrackPaths = %#v, want no rescan", state.pendingTrackPaths)
+	}
+	if state.totalTrackPaths != 1 {
+		t.Fatalf("totalTrackPaths = %d, want 1", state.totalTrackPaths)
+	}
+	if state.completedTrackPaths != 1 {
+		t.Fatalf("completedTrackPaths = %d, want 1", state.completedTrackPaths)
+	}
+	if len(state.pendingEntityKeys) != 0 {
+		t.Fatalf("pendingEntityKeys = %#v, want none", state.pendingEntityKeys)
+	}
+	if state.totalEntityLookups != 2 {
+		t.Fatalf("totalEntityLookups = %d, want 2", state.totalEntityLookups)
+	}
+	if state.completedEntityLookups != 2 {
+		t.Fatalf("completedEntityLookups = %d, want 2", state.completedEntityLookups)
+	}
+
+	if _, exists := app.musicBrainzTagStore.Tracks[normalizePath(fixture.trackOne)]; exists {
+		t.Fatal("did not expect stale representative path to remain in the store")
+	}
+
+	record, exists := app.musicBrainzTagStore.Tracks[replacementIndexed.Path]
+	if !exists {
+		t.Fatalf("expected representative record at %q", replacementIndexed.Path)
+	}
+	if record.Signature != replacementSignature {
+		t.Fatalf("representative signature = %#v, want %#v", record.Signature, replacementSignature)
+	}
+	if record.ReleaseID != releaseMBID {
+		t.Fatalf("representative release ID = %q, want %q", record.ReleaseID, releaseMBID)
+	}
+	if !stringSlicesEqual(record.ArtistIDs, []string{artistMBID}) {
+		t.Fatalf("representative artist IDs = %#v, want %#v", record.ArtistIDs, []string{artistMBID})
+	}
+}
+
+func TestBuildMusicBrainzTagWorkerStateCountsAlreadySatisfiedWork(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	indexed := indexedTrackForTest(fixture.rootOne, fixture.trackOne)
+	releaseFolderPath := releaseFolderPathForIndexedTrack(indexed, 2)
+	artistFolderPaths := artistFolderPathsForIndexedTrack(indexed, 2)
+	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) failed", fixture.trackOne)
+	}
+
+	artistMBID := "11111111-1111-4111-8111-111111111111"
+	releaseMBID := "22222222-2222-4222-8222-222222222222"
+	staleFetchedAt := time.Now().Add(-31 * 24 * time.Hour)
+	freshFetchedAt := time.Now().Add(-time.Hour)
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne, indexed)
+	app.musicBrainzTagStore.Tracks[indexed.Path] = musicBrainzTagTrackRecord{
+		Signature:         signature,
+		ReleaseID:         releaseMBID,
+		ArtistIDs:         []string{artistMBID},
+		ReleaseFolderPath: releaseFolderPath,
+		ArtistFolderPaths: artistFolderPaths,
+		LastScannedAt:     time.Now().Add(-time.Hour),
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("artist", artistMBID)] = musicBrainzTagEntityRecord{
+		EntityType:    "artist",
+		MBID:          artistMBID,
+		Tags:          []string{"rock"},
+		LastFetchedAt: freshFetchedAt,
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("release", releaseMBID)] = musicBrainzTagEntityRecord{
+		EntityType:    "release",
+		MBID:          releaseMBID,
+		Tags:          []string{"rock"},
+		LastFetchedAt: staleFetchedAt,
+	}
+	app.rebuildMusicBrainzTagIndexesLocked()
+
+	state := app.buildMusicBrainzTagWorkerState(1)
+	if state.totalTrackPaths != 1 {
+		t.Fatalf("totalTrackPaths = %d, want 1", state.totalTrackPaths)
+	}
+	if state.completedTrackPaths != 1 {
+		t.Fatalf("completedTrackPaths = %d, want 1", state.completedTrackPaths)
+	}
+	if state.totalEntityLookups != 2 {
+		t.Fatalf("totalEntityLookups = %d, want 2", state.totalEntityLookups)
+	}
+	if state.completedEntityLookups != 1 {
+		t.Fatalf("completedEntityLookups = %d, want 1", state.completedEntityLookups)
+	}
+	if len(state.pendingEntityKeys) != 1 {
+		t.Fatalf("pendingEntityKeys = %#v, want one pending entity", state.pendingEntityKeys)
+	}
+	progress := state.progressSnapshot(true)
+	if progress.Progress != (2.0 / 3.0) {
+		t.Fatalf("progress = %.6f, want %.6f", progress.Progress, 2.0/3.0)
+	}
+}
+
 func TestMusicBrainzTagDatabaseSQLiteRoundTrip(t *testing.T) {
 	databasePath := filepath.Join(t.TempDir(), "silphium.musicbrainz.tags.sqlite3")
 	trackPath := filepath.Join("C:\\Music", "Artist", "Album", "track.flac")

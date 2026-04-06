@@ -20,6 +20,7 @@ func init() {
 const libraryScanUpdatedEvent = "silphium:library:scan-updated"
 const libraryScanProgressEvent = "silphium:library:scan-progress"
 const libraryRescanLogEvent = "silphium:library:rescan-log"
+const musicBrainzTagWorkerProgressEvent = "silphium:musicbrainz:tag-worker-progress"
 const mediaKeyEvent = "silphium:media:key"
 
 // AppVersion is set at build time via -ldflags "-X main.AppVersion=...".
@@ -69,6 +70,8 @@ type App struct {
 	musicBrainzTagWorkerStop               chan struct{}
 	musicBrainzTagWorkerDone               chan struct{}
 	musicBrainzTagWorkGeneration           atomic.Uint64
+	musicBrainzTagProgressMu               sync.Mutex
+	musicBrainzTagProgress                 MusicBrainzTagWorkerProgress
 	mediaKeyWatcherStop                    chan struct{}
 	mediaKeyWatcherDone                    chan struct{}
 	libraryScan                            LibraryScanResult

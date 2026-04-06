@@ -63,6 +63,7 @@ import {
     AudioReinitializeBackend,
     AudioGetState,
     AudioGetReplayGainReleaseDynamicRange,
+    GetMusicBrainzTagWorkerProgress,
     AudioLoadTrack,
     AudioLoadTrackWithReplayGainContext,
     AudioPause,
@@ -120,6 +121,7 @@ import type {
     LibraryScanProgress,
     LibraryScanResult,
     LibrarySearchPage,
+    MusicBrainzTagWorkerProgress,
     MusicBrainzEntityType,
     PlayerCardLayout,
     PlaybackOrderMode,
@@ -215,6 +217,18 @@ const replayGainReleaseDynamicRangeLabelByKey = new Map<string, string>();
 const replayGainReleaseDynamicRangePendingByKey = new Map<string, Promise<string>>();
 let replayGainReleaseDynamicRangeRequestVersion = 0;
 let availableAudioOutputDevices: AudioOutputDevice[] = [];
+const defaultMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress = {
+    enabled: false,
+    active: false,
+    progress: 0,
+    pendingTrackScans: 0,
+    totalTrackScans: 0,
+    completedTrackScans: 0,
+    pendingEntityLookups: 0,
+    totalEntityLookups: 0,
+    completedEntityLookups: 0,
+};
+let currentMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress = { ...defaultMusicBrainzTagWorkerProgress };
 let currentSettings: AppSettings = {
     libraryFolders: [],
     libraryPath: '',
@@ -238,6 +252,31 @@ let currentSettings: AppSettings = {
     musicBrainzTagDatabaseEnabled: false,
     musicBrainzTagWorkerCores: 1,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
+};
+
+const normalizeMusicBrainzTagWorkerProgress = (value?: Partial<MusicBrainzTagWorkerProgress> | null): MusicBrainzTagWorkerProgress => {
+    const source = value || {};
+    const progress = Number.isFinite(source.progress) ? Number(source.progress) : 0;
+    const normalizeCount = (count: unknown): number => {
+        const numeric = Number(count);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            return 0;
+        }
+
+        return Math.floor(numeric);
+    };
+
+    return {
+        enabled: !!source.enabled,
+        active: !!source.active,
+        progress: Math.max(0, Math.min(1, progress)),
+        pendingTrackScans: normalizeCount(source.pendingTrackScans),
+        totalTrackScans: normalizeCount(source.totalTrackScans),
+        completedTrackScans: normalizeCount(source.completedTrackScans),
+        pendingEntityLookups: normalizeCount(source.pendingEntityLookups),
+        totalEntityLookups: normalizeCount(source.totalEntityLookups),
+        completedEntityLookups: normalizeCount(source.completedEntityLookups),
+    };
 };
 let startupInitializationComplete = false;
 let ffmpegConfigurationRequired = false;
@@ -2890,6 +2929,10 @@ const initializeSettings = async (): Promise<void> => {
 
         const settings = await GetSettings() as AppSettings;
         currentSettings = normalizeAppSettings(settings);
+        currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(
+            await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
+        );
+        settingsController.setMusicBrainzTagWorkerProgress(currentMusicBrainzTagWorkerProgress);
         setPlaybackOrderMode(currentSettings.playbackOrder);
         await completeStartupIfReady();
         return;
@@ -3624,6 +3667,7 @@ settingsController = createSettingsController({
         preferMusicBrainzMetadata: currentSettings.preferMusicBrainzMetadata,
         musicBrainzTagDatabaseEnabled: currentSettings.musicBrainzTagDatabaseEnabled,
         musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
+        musicBrainzTagWorkerProgress: currentMusicBrainzTagWorkerProgress,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
     }),
     selectLibraryFolder: SelectLibraryFolder,
@@ -4605,6 +4649,11 @@ EventsOn('silphium:library:scan-updated', (scanResult: LibraryScanResult) => {
 
 EventsOn('silphium:library:scan-progress', (scanProgress: LibraryScanProgress) => {
     updateLibraryLoadingEtaFromProgress(scanProgress);
+});
+
+EventsOn('silphium:musicbrainz:tag-worker-progress', (progress: MusicBrainzTagWorkerProgress) => {
+    currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(progress);
+    settingsController.setMusicBrainzTagWorkerProgress(currentMusicBrainzTagWorkerProgress);
 });
 
 EventsOn('silphium:media:key', (action: string) => {

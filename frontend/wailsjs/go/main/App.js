@@ -82,6 +82,10 @@ export function GetListenBrainzRecordingFeedback(arg1) {
   return window['go']['main']['App']['GetListenBrainzRecordingFeedback'](arg1);
 }
 
+export function GetMusicBrainzTagWorkerProgress() {
+  return window['go']['main']['App']['GetMusicBrainzTagWorkerProgress']();
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
