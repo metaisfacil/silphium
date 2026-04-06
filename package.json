@@ -1,0 +1,11 @@
+{
+  "name": "silphium",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test:backend": "go test ./...",
+    "test:frontend": "npm --prefix frontend test -- --run",
+    "test:frontend:coverage": "npm --prefix frontend run test:coverage",
+    "test:all": "npm run test:backend && npm run test:frontend"
+  }
+}

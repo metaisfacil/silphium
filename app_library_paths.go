@@ -231,7 +231,12 @@ func coverPriority(name string) int {
 }
 
 func normalizePath(path string) string {
-	return filepath.Clean(strings.TrimSpace(path))
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return ""
+	}
+
+	return filepath.Clean(trimmed)
 }
 
 func normalizeLibraryRelativePath(path string) (string, bool) {

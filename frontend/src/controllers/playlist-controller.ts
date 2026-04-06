@@ -567,6 +567,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         loadedPlaylistPath = '';
         editableQueueTrackIndexes = null;
         selectedSource = 'queue';
+        selectedFavoriteIndex = null;
         playbackSource = 'queue';
         hydrationRunId += 1;
         dragFromPosition = null;

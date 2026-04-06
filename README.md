@@ -60,6 +60,20 @@ Run Go tests:
 go test ./...
 ```
 
+Run frontend tests:
+
+```bash
+cd frontend
+npm test
+```
+
+Run frontend coverage:
+
+```bash
+cd frontend
+npm run test:coverage
+```
+
 Build frontend only:
 
 ```bash

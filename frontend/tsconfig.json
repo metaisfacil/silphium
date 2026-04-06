@@ -8,7 +8,7 @@
       "DOM"
     ],
     "moduleResolution": "Node",
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     "strict": true,
     "sourceMap": true,
     "resolveJsonModule": true,
