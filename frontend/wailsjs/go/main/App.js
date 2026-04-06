@@ -82,6 +82,14 @@ export function GetLibraryIndexedFilePage(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetLibraryIndexedFilePage'](arg1, arg2, arg3);
 }
 
+export function GetListenBrainzFollowing() {
+  return window['go']['main']['App']['GetListenBrainzFollowing']();
+}
+
+export function GetListenBrainzFollowingFeed(arg1) {
+  return window['go']['main']['App']['GetListenBrainzFollowingFeed'](arg1);
+}
+
 export function GetListenBrainzRecordingFeedback(arg1) {
   return window['go']['main']['App']['GetListenBrainzRecordingFeedback'](arg1);
 }

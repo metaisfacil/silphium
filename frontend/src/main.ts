@@ -8,6 +8,7 @@ import { createImageModalController, type ImageModalController } from './control
 import { createLibraryController } from './controllers/library-controller';
 import type { LibraryController } from './controllers/library-controller';
 import { createListenBrainzController, type ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
+import { createListenBrainzSocialController } from './controllers/listenbrainz-social-controller';
 import { createMediaSessionController, type ExternalPlaybackAction } from './controllers/media-session-controller';
 import { createPlaylistController, type LoadedPlaylistData, type PlaylistController } from './controllers/playlist-controller';
 import { createPlaylistTargetModalController, type PlaylistTargetModalController } from './controllers/playlist-target-modal-controller';
@@ -83,6 +84,8 @@ import {
     GetLibraryFolderTrackCount,
     GetLibraryFolderTrackPaths,
     GetLibraryIndexedFilePage,
+    GetListenBrainzFollowing,
+    GetListenBrainzFollowingFeed,
     ResolveLibraryFolderForPath,
     GetListenBrainzRecordingFeedback,
     IsLibraryFolderImmediateDescendantsEnumerated,
@@ -127,6 +130,7 @@ import type {
     LibrarySearchPage,
     MusicBrainzTagWorkerProgress,
     MusicBrainzEntityType,
+    ListenBrainzSocialEvent,
     PlayerCardLayout,
     PlaybackOrderMode,
     PlaylistLoadResult,
@@ -488,11 +492,20 @@ const {
     librarySidebar,
     librarySettings,
     libraryAbout,
+    sidebarSectionTrigger,
+    sidebarSectionTriggerLabel,
+    sidebarSectionMenu,
+    sidebarSectionOptionLibrary,
+    sidebarSectionOptionSocial,
+    sidebarPaneLibrary,
+    sidebarPaneSocial,
     libraryBack,
     libraryPath,
     librarySearch,
     libraryBrowser,
     libraryScanYieldIndicator,
+    socialFeedStatus,
+    socialFeedList,
 } = getSidebarElements(document);
 const {
     playerShell,
@@ -585,6 +598,34 @@ const refreshListenBrainzFeedbackForCurrentTrack = async (force = false): Promis
 const submitListenBrainzFeedbackForTrack = async (trackIndex: number, score: ListenBrainzFeedbackScore): Promise<void> => {
     await listenBrainzController.submitFeedbackForTrack(trackIndex, score);
 };
+const listenBrainzSocialController = createListenBrainzSocialController({
+    elements: {
+        sidebarToggle,
+        sidebarSectionTrigger,
+        sidebarSectionTriggerLabel,
+        sidebarSectionMenu,
+        sidebarSectionOptionLibrary,
+        sidebarSectionOptionSocial,
+        sidebarPaneLibrary,
+        sidebarPaneSocial,
+        socialFeedStatus,
+        socialFeedList,
+    },
+    getToken: () => currentSettings.listenBrainzUserToken,
+    isSidebarVisible: () => app.classList.contains('sidebar-open'),
+    fetchFollowingUsers: async (): Promise<string[]> => await scheduleListenBrainzRequest(async () => (
+        await GetListenBrainzFollowing() as string[]
+    ), {
+        server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
+        path: '/1/user/{user}/following',
+    }),
+    fetchFollowingFeed: async (count: number): Promise<ListenBrainzSocialEvent[]> => await scheduleListenBrainzRequest(async () => (
+        await GetListenBrainzFollowingFeed(count) as ListenBrainzSocialEvent[]
+    ), {
+        server: currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
+        path: '/1/user/{user}/feed/events/listens/following',
+    }),
+});
 const openMbOnCtrlClick = (event: MouseEvent, target: HTMLElement): void => {
     if (!event.ctrlKey) {
         return;
@@ -3109,6 +3150,7 @@ const initializeSettings = async (): Promise<void> => {
 
         const settings = await GetSettings() as AppSettings;
         currentSettings = normalizeAppSettings(settings);
+        listenBrainzSocialController.handleSettingsChanged();
         currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(
             await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
         );
@@ -3499,6 +3541,8 @@ const handleFocusedKeyboardShortcut = (event: KeyboardEvent): boolean => {
         if (!libraryController.isSidebarOpen()) {
             libraryController.setSidebarOpen(true);
         }
+
+        listenBrainzSocialController.showLibrary();
 
         window.requestAnimationFrame(() => {
             librarySearch.focus();
@@ -3962,6 +4006,7 @@ settingsController = createSettingsController({
         })) as AppSettings;
 
         currentSettings = normalizeAppSettings(savedSettings);
+        listenBrainzSocialController.handleSettingsChanged();
         setPlaybackOrderMode(currentSettings.playbackOrder);
         if (currentTrackIndex >= 0 && currentTrackIndex < tracks.length) {
             void applyCoverArtForTrack(currentTrackIndex);
@@ -4053,6 +4098,7 @@ settingsController = createSettingsController({
         })) as AppSettings;
 
         currentSettings = normalizeAppSettings(savedSettings);
+        listenBrainzSocialController.handleSettingsChanged();
         setPlaybackOrderMode(currentSettings.playbackOrder);
         const outputDevices = await refreshAvailableAudioOutputDevices();
 
