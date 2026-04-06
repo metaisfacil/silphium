@@ -103,6 +103,27 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
         shuffleScopeKey = '';
     };
 
+    const syncShuffleCursorToCurrentTrack = (orderedIndexes: number[]): void => {
+        const currentTrackIndex = options.getCurrentTrackIndex();
+        if (currentTrackIndex < 0) {
+            return;
+        }
+
+        const existingPosition = shuffleHistory.lastIndexOf(currentTrackIndex);
+        if (existingPosition >= 0) {
+            shuffleCursor = existingPosition;
+            return;
+        }
+
+        // Gapless transitions can advance the backend source before the frontend
+        // calls nextTrackIndexForDirection, so append the externally advanced
+        // current track and move the cursor forward to keep history aligned.
+        if (orderedIndexes.includes(currentTrackIndex)) {
+            shuffleHistory.push(currentTrackIndex);
+            shuffleCursor = shuffleHistory.length - 1;
+        }
+    };
+
     const pickRandomTrackIndex = (candidates: number[], currentIndex: number): number => {
         if (candidates.length === 0) {
             return currentIndex;
@@ -139,6 +160,8 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
             shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
             shuffleCursor = 0;
         }
+
+        syncShuffleCursorToCurrentTrack(orderedIndexes);
 
         while (shuffleHistory.length - shuffleCursor - 1 < count) {
             const currentIndex = shuffleHistory[shuffleHistory.length - 1];
@@ -193,6 +216,8 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
             shuffleCursor = 0;
         }
 
+        syncShuffleCursorToCurrentTrack(orderedIndexes);
+
         if (direction < 0) {
             if (shuffleCursor > 0) {
                 shuffleCursor -= 1;
@@ -241,6 +266,16 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
         if (previewCursor < 0) {
             previewHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
             previewCursor = 0;
+        }
+
+        if (currentTrackIndex >= 0) {
+            const existingPosition = previewHistory.lastIndexOf(currentTrackIndex);
+            if (existingPosition >= 0) {
+                previewCursor = existingPosition;
+            } else if (orderedIndexes.includes(currentTrackIndex)) {
+                previewHistory.push(currentTrackIndex);
+                previewCursor = previewHistory.length - 1;
+            }
         }
 
         if (direction < 0) {

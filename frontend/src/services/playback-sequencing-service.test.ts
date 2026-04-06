@@ -104,4 +104,37 @@ describe('createPlaybackSequencingService', () => {
 
         expect(randomSpy).toHaveBeenCalled();
     });
+
+    it('realigns shuffle history after external gapless track advance', () => {
+        const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+        const tracks = [
+            createTrack('01 Alpha', 'Library/Album A'),
+            createTrack('02 Beta', 'Library/Album B'),
+            createTrack('03 Gamma', 'Library/Album C'),
+        ];
+        let currentTrackIndex = 0;
+
+        const service = createPlaybackSequencingService({
+            getTracks: () => tracks,
+            getCurrentTrackIndex: () => currentTrackIndex,
+            getReleaseDepthForTrack: () => 0,
+            initialPlaybackOrderMode: 'shuffle-library',
+        });
+
+        expect(service.peekNextTrackIndexForDirection(1)).toBe(1);
+
+        // Simulate backend gapless transition: current track advanced to the queued track
+        // without a direct nextTrackIndexForDirection call from the frontend.
+        currentTrackIndex = 1;
+
+        const peekedIndex = service.peekNextTrackIndexForDirection(1);
+        expect(peekedIndex).toBeDefined();
+        expect(peekedIndex).not.toBe(1);
+
+        const nextTrackIndex = service.nextTrackIndexForDirection(1);
+        expect(nextTrackIndex).toBeDefined();
+        expect(nextTrackIndex).not.toBe(1);
+
+        expect(randomSpy).toHaveBeenCalled();
+    });
 });
