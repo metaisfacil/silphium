@@ -483,7 +483,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 				result.ImageFiles = append(result.ImageFiles, indexed)
 				kind = "image-file"
 
-				if !isJpegPath(currentPath) {
+				if !isPreferredCoverImagePath(currentPath) {
 					break
 				}
 

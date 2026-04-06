@@ -55,9 +55,9 @@ func isImagePath(path string) bool {
 	return ok
 }
 
-func isJpegPath(path string) bool {
+func isPreferredCoverImagePath(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".jpg" || ext == ".jpeg"
+	return ext == ".jpg" || ext == ".jpeg" || ext == ".png"
 }
 
 func libraryRootDisplayBaseForPath(path string) string {
@@ -218,15 +218,23 @@ func (a *App) primaryActiveLibraryRoot() (libraryRootConfig, bool) {
 }
 
 func coverPriority(name string) int {
+	lowerName := strings.ToLower(name)
+
 	switch {
-	case strings.EqualFold(name, "cover.jpg"):
+	case lowerName == "cover.jpg":
 		return 0
-	case strings.EqualFold(name, "folder.jpg"):
+	case lowerName == "folder.jpg":
 		return 1
-	case strings.HasPrefix(strings.ToLower(name), "albumart"):
+	case strings.HasPrefix(lowerName, "albumart") && !strings.HasSuffix(lowerName, ".png"):
 		return 2
-	default:
+	case lowerName == "cover.png":
 		return 3
+	case lowerName == "folder.png":
+		return 4
+	case strings.HasPrefix(lowerName, "albumart") && strings.HasSuffix(lowerName, ".png"):
+		return 5
+	default:
+		return 6
 	}
 }
 
