@@ -2018,6 +2018,192 @@
     background: rgba(255, 255, 255, 0.2);
 }
 
+.playlist-target-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    display: grid;
+    place-items: center;
+}
+
+.playlist-target-modal[hidden] {
+    display: none;
+}
+
+.playlist-target-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 220ms ease;
+}
+
+.playlist-target-dialog {
+    position: relative;
+    width: min(420px, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    display: flex;
+    flex-direction: column;
+    background: rgba(18, 18, 20, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.9rem;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.playlist-target-modal.is-visible .playlist-target-backdrop {
+    opacity: 1;
+}
+
+.playlist-target-modal.is-visible .playlist-target-dialog {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.playlist-target-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.playlist-target-title {
+    margin: 0;
+    font-size: 0.86rem;
+    font-weight: 700;
+    opacity: 0.95;
+}
+
+.playlist-target-close {
+    width: 1.8rem;
+    height: 1.8rem;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.playlist-target-content {
+    padding: 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.playlist-target-message {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    opacity: 0.92;
+}
+
+.playlist-target-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.playlist-target-field-label {
+    font-size: 0.72rem;
+    line-height: 1;
+    opacity: 0.72;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.playlist-target-select {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.45rem;
+    background: rgba(0, 0, 0, 0.34);
+    color: inherit;
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 0.5rem 1.65rem 0.5rem 0.65rem;
+    line-height: 1.25;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.72) 50%), linear-gradient(135deg, rgba(255, 255, 255, 0.72) 50%, transparent 50%);
+    background-position: calc(100% - 0.95rem) calc(50% - 1px), calc(100% - 0.63rem) calc(50% - 1px);
+    background-size: 0.34rem 0.34rem, 0.34rem 0.34rem;
+    background-repeat: no-repeat;
+}
+
+.playlist-target-select:hover:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.46);
+}
+
+.playlist-target-select:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.44);
+    outline-offset: 1px;
+}
+
+.playlist-target-select:disabled {
+    opacity: 0.48;
+    cursor: default;
+}
+
+.playlist-target-hint {
+    margin: -0.15rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    opacity: 0.76;
+}
+
+.playlist-target-hint[hidden] {
+    display: none;
+}
+
+.playlist-target-tools {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.playlist-target-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.playlist-target-action {
+    min-width: 5.2rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.45rem;
+    background: rgba(255, 255, 255, 0.12);
+    color: inherit;
+    font: inherit;
+    font-size: 0.82rem;
+    padding: 0.4rem 0.78rem;
+    cursor: pointer;
+}
+
+.playlist-target-action.secondary {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.playlist-target-action:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.playlist-target-action:disabled {
+    opacity: 0.42;
+    cursor: default;
+}
+
 .playlist-modal {
     position: fixed;
     inset: 0;

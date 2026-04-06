@@ -97,4 +97,18 @@ func TestAppHighRiskMethodsSmoke(t *testing.T) {
 	if loadedPlaylist.TrackFiles[0].RootName != "Main Library" {
 		t.Fatalf("LoadPlaylistFile() first track rootName = %q, want %q", loadedPlaylist.TrackFiles[0].RootName, "Main Library")
 	}
+
+	secondTrack := filepath.Join(fixture.albumOneFolder, "02 Added.flac")
+	writeTestFile(t, secondTrack, "track two")
+	if !app.AppendTracksToPlaylistFile(playlistPath, []string{"", "   ", secondTrack}) {
+		t.Fatal("AppendTracksToPlaylistFile() = false, want true")
+	}
+
+	loadedPlaylist = app.LoadPlaylistFile(playlistPath)
+	if len(loadedPlaylist.TrackFiles) != 2 {
+		t.Fatalf("LoadPlaylistFile() trackFiles length after append = %d, want %d", len(loadedPlaylist.TrackFiles), 2)
+	}
+	if loadedPlaylist.TrackFiles[1].Path != secondTrack {
+		t.Fatalf("LoadPlaylistFile() appended track path = %q, want %q", loadedPlaylist.TrackFiles[1].Path, secondTrack)
+	}
 }

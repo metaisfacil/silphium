@@ -14,23 +14,26 @@ type PlaylistLoadResult struct {
 	TrackFiles []LibraryIndexedFile `json:"trackFiles"`
 }
 
-// SavePlaylistFile writes the provided track paths to an M3U/M3U8 playlist file.
-func (a *App) SavePlaylistFile(path string, trackPaths []string) bool {
+func playlistFilePathForWrite(path string) (string, bool) {
 	cleanPath := normalizePath(path)
 	if cleanPath == "" {
-		return false
+		return "", false
 	}
 
 	absolutePath, err := filepath.Abs(cleanPath)
 	if err != nil {
-		return false
+		return "", false
 	}
+
 	cleanPath = filepath.Clean(absolutePath)
-
 	if mkdirErr := os.MkdirAll(filepath.Dir(cleanPath), 0o755); mkdirErr != nil {
-		return false
+		return "", false
 	}
 
+	return cleanPath, true
+}
+
+func writePlaylistContents(trackPaths []string) string {
 	var builder strings.Builder
 	builder.WriteString("#EXTM3U\n")
 	for _, trackPath := range trackPaths {
@@ -40,6 +43,63 @@ func (a *App) SavePlaylistFile(path string, trackPaths []string) bool {
 		}
 
 		builder.WriteString(trimmed)
+		builder.WriteByte('\n')
+	}
+
+	return builder.String()
+}
+
+// SavePlaylistFile writes the provided track paths to an M3U/M3U8 playlist file.
+func (a *App) SavePlaylistFile(path string, trackPaths []string) bool {
+	cleanPath, ok := playlistFilePathForWrite(path)
+	if !ok {
+		return false
+	}
+
+	if writeErr := os.WriteFile(cleanPath, []byte(writePlaylistContents(trackPaths)), 0o644); writeErr != nil {
+		return false
+	}
+
+	return true
+}
+
+// AppendTracksToPlaylistFile appends the provided track paths to an existing M3U/M3U8 playlist file.
+func (a *App) AppendTracksToPlaylistFile(path string, trackPaths []string) bool {
+	cleanPath, ok := playlistFilePathForWrite(path)
+	if !ok {
+		return false
+	}
+
+	trimmedTrackPaths := make([]string, 0, len(trackPaths))
+	for _, trackPath := range trackPaths {
+		trimmed := strings.TrimSpace(trackPath)
+		if trimmed == "" {
+			continue
+		}
+
+		trimmedTrackPaths = append(trimmedTrackPaths, trimmed)
+	}
+	if len(trimmedTrackPaths) == 0 {
+		return false
+	}
+
+	existingContents, err := os.ReadFile(cleanPath)
+	if err != nil && !os.IsNotExist(err) {
+		return false
+	}
+
+	var builder strings.Builder
+	if len(existingContents) == 0 {
+		builder.WriteString("#EXTM3U\n")
+	} else {
+		builder.Write(existingContents)
+		if existingContents[len(existingContents)-1] != '\n' {
+			builder.WriteByte('\n')
+		}
+	}
+
+	for _, trackPath := range trimmedTrackPaths {
+		builder.WriteString(trackPath)
 		builder.WriteByte('\n')
 	}
 

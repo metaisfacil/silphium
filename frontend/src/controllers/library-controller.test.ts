@@ -109,6 +109,13 @@ const mountLibraryController = () => {
         folderPath: 'Library/Artist One/Album One',
         relativePath: tracks[0].relativePath,
     };
+    const searchTrackEntryTwo: LibraryBrowserEntry = {
+        kind: 'track',
+        name: '02 Outro.flac',
+        path: tracks[1].path,
+        folderPath: 'Library/Artist Two/Album Two',
+        relativePath: tracks[1].relativePath,
+    };
 
     const loadFolderPage = vi.fn(async (folderPath: string) => {
         if (folderPath === 'Library/Artist One') {
@@ -121,7 +128,19 @@ const mountLibraryController = () => {
 
         return createFolderPage(folderPath, []);
     });
-    const searchLibrary = vi.fn(async (query: string) => createSearchPage(query, [searchTrackEntry]));
+    const searchLibrary = vi.fn(async (query: string) => {
+        const normalizedQuery = query.trim().toLowerCase();
+        if (normalizedQuery === 'intro') {
+            return createSearchPage(query, [searchTrackEntry]);
+        }
+
+        if (normalizedQuery === 'artist') {
+            return createSearchPage(query, [searchTrackEntry, searchTrackEntryTwo]);
+        }
+
+        return createSearchPage(query, []);
+    });
+    const onFolderQueueRequested = vi.fn(() => undefined);
     const onSidebarClosed = vi.fn(() => undefined);
 
     const controller = createLibraryController({
@@ -148,7 +167,7 @@ const mountLibraryController = () => {
         onTextFileChosen: vi.fn(() => undefined),
         onImageFileChosen: vi.fn(() => undefined),
         onQueueRequested: vi.fn(() => undefined),
-        onFolderQueueRequested: vi.fn(() => undefined),
+        onFolderQueueRequested,
         onSidebarClosed,
     });
 
@@ -158,6 +177,7 @@ const mountLibraryController = () => {
         libraryBrowser,
         searchLibrary,
         loadFolderPage,
+        onFolderQueueRequested,
         onSidebarClosed,
         trackPath: searchTrackEntry.path,
     };
@@ -171,6 +191,16 @@ describe('createLibraryController', () => {
             return 0;
         }) as typeof requestAnimationFrame);
         vi.stubGlobal('cancelAnimationFrame', vi.fn());
+        vi.stubGlobal('matchMedia', vi.fn().mockImplementation(() => ({
+            matches: false,
+            media: '(prefers-reduced-motion: reduce)',
+            onchange: null,
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            dispatchEvent: vi.fn(() => false),
+        })));
     });
 
     afterEach(() => {
@@ -255,5 +285,40 @@ describe('createLibraryController', () => {
         expect(controller.getLibrarySearchQuery()).toBe('');
 	    expect(controller.isLibrarySearchActive()).toBe(false);
         expect(controller.getCurrentFolderPath()).toBe('Library/Artist Two');
+    });
+
+    it('right-clicks a filtered search folder with only that subtree track indexes', async () => {
+        const { controller, librarySearch, libraryBrowser, onFolderQueueRequested } = mountLibraryController();
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        librarySearch.value = 'artist';
+        librarySearch.dispatchEvent(new Event('input', { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(180);
+        await flushPromises();
+
+        const rootFolderButton = libraryBrowser.querySelector('[data-search-folder-path="Library"]') as HTMLButtonElement | null;
+        expect(rootFolderButton).not.toBeNull();
+        rootFolderButton?.click();
+
+        const artistFolderButton = libraryBrowser.querySelector('[data-search-folder-path="Library/Artist One"]') as HTMLButtonElement | null;
+        expect(artistFolderButton).not.toBeNull();
+
+        artistFolderButton?.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 21,
+            clientY: 34,
+        }));
+
+        expect(onFolderQueueRequested).toHaveBeenCalledWith(
+            21,
+            34,
+            'Library/Artist One',
+            expect.stringContaining('Artist One'),
+            [0],
+        );
     });
 });

@@ -27,6 +27,8 @@ const mountPlaylistController = () => {
     const trackViews = [createTrackView(0), createTrackView(1), createTrackView(2)];
     let currentTrackIndex = 0;
     let favoritePlaylists = ['/playlists/favorite.m3u8'];
+    let selectedPlaylistPath = '';
+    let selectedPlaylistSavePath = '';
 
     const onTrackChosen = vi.fn(async (trackIndex: number) => {
         currentTrackIndex = trackIndex;
@@ -40,8 +42,14 @@ const mountPlaylistController = () => {
             return { name: 'favorite.m3u8', trackIndexes: [1, 0] };
         }
 
+        if (playlistPath.endsWith('empty.m3u8')) {
+            return { name: 'empty.m3u8', trackIndexes: [] };
+        }
+
         return null;
     });
+    const appendTracksToPlaylistData = vi.fn(async () => true);
+    const savePlaylistData = vi.fn(async () => true);
 
     const controller = createPlaylistController({
         trigger,
@@ -57,10 +65,11 @@ const mountPlaylistController = () => {
             currentPosition: Math.max(0, [0, 1, 2].indexOf(currentTrackIndex)),
         }),
         ensureTrackTagsResolvedBatch: vi.fn(async () => undefined),
-        selectPlaylistFile: vi.fn(async () => ''),
-        selectPlaylistSaveFile: vi.fn(async () => ''),
+        selectPlaylistFile: vi.fn(async () => selectedPlaylistPath),
+        selectPlaylistSaveFile: vi.fn(async () => selectedPlaylistSavePath),
         loadPlaylistData,
-        savePlaylistData: vi.fn(async () => true),
+        savePlaylistData,
+        appendTracksToPlaylistData,
         getFavoritePlaylists: () => favoritePlaylists,
         onTrackChosen,
         onExternalPlaylistLoaded: vi.fn(() => undefined),
@@ -69,8 +78,16 @@ const mountPlaylistController = () => {
     return {
         controller,
         elements: modal,
+        appendTracksToPlaylistData,
         loadPlaylistData,
         onTrackChosen,
+        savePlaylistData,
+        setSelectedPlaylistPath: (nextPath: string) => {
+            selectedPlaylistPath = nextPath;
+        },
+        setSelectedPlaylistSavePath: (nextPath: string) => {
+            selectedPlaylistSavePath = nextPath;
+        },
         setFavoritePlaylists: (nextFavoritePlaylists: string[]) => {
             favoritePlaylists = nextFavoritePlaylists;
         },
@@ -137,5 +154,65 @@ describe('createPlaylistController', () => {
 
         expect(controller.getSequenceOverride()).toBeNull();
         expect(elements.playlistSource.value).toBe('queue');
+    });
+
+    it('lists playlist targets without the queue and appends to the loaded playlist state', async () => {
+        const { controller, appendTracksToPlaylistData } = mountPlaylistController();
+
+        expect(controller.getAvailablePlaylistTargets()).toEqual([
+            { path: '/playlists/favorite.m3u8', label: 'favorite.m3u8' },
+        ]);
+
+        const loaded = await controller.loadPlaylistByPath('/playlists/demo.m3u8');
+
+        expect(loaded).toBe(true);
+        expect(controller.getAvailablePlaylistTargets()).toEqual([
+            { path: '/playlists/favorite.m3u8', label: 'favorite.m3u8' },
+            { path: '/playlists/demo.m3u8', label: 'demo.m3u8' },
+        ]);
+
+        const appended = await controller.appendTracksToPlaylist('/playlists/demo.m3u8', [0, 2, 99]);
+
+        expect(appended).toBe(true);
+        expect(appendTracksToPlaylistData).toHaveBeenCalledWith('/playlists/demo.m3u8', [
+            '/music/track-0.flac',
+            '/music/track-2.flac',
+        ]);
+        expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 1, 0, 2], currentPosition: 0 });
+    });
+
+    it('loads empty playlists without forcing playback and keeps them available as targets', async () => {
+        const { controller, elements, onTrackChosen } = mountPlaylistController();
+
+        const loaded = await controller.loadPlaylistByPath('/playlists/empty.m3u8');
+
+        expect(loaded).toBe(true);
+        expect(onTrackChosen).not.toHaveBeenCalled();
+        expect(elements.playlistModal.hidden).toBe(false);
+        expect(elements.playlistSource.value).toBe('playlist');
+        expect(elements.playlistList.textContent).toContain('No tracks available');
+        expect(controller.getAvailablePlaylistTargets()).toContainEqual({ path: '/playlists/empty.m3u8', label: 'empty.m3u8' });
+    });
+
+    it('creates an empty playlist target and exposes it to the custom modal flow', async () => {
+        const { controller, elements, savePlaylistData, setSelectedPlaylistSavePath } = mountPlaylistController();
+
+        controller.openModal();
+        setSelectedPlaylistSavePath('/playlists/new-empty.m3u8');
+
+        const created = await controller.createPlaylistTarget();
+
+        expect(savePlaylistData).toHaveBeenCalledWith('/playlists/new-empty.m3u8', []);
+        expect(created).toEqual({ path: '/playlists/new-empty.m3u8', label: 'new-empty.m3u8' });
+        expect(elements.playlistSource.value).toBe('playlist');
+        expect(elements.playlistList.textContent).toContain('No tracks available');
+    });
+
+    it('opens a playlist target through the file picker flow', async () => {
+        const { controller, setSelectedPlaylistPath } = mountPlaylistController();
+
+        setSelectedPlaylistPath('/playlists/empty.m3u8');
+
+        await expect(controller.openPlaylistTarget()).resolves.toEqual({ path: '/playlists/empty.m3u8', label: 'empty.m3u8' });
     });
 });

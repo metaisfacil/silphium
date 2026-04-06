@@ -79,7 +79,7 @@ type LibraryControllerOptions = {
     onTextFileChosen: (index: number) => void;
     onImageFileChosen: (index: number) => void;
     onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number) => void;
-    onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string) => void;
+    onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string, trackIndexes?: number[]) => void;
     onSidebarClosed: () => void;
 };
 
@@ -689,6 +689,32 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         return current;
+    };
+
+    const collectSearchTreeTrackIndexes = (node: SearchTreeNode): number[] => {
+        const collectedTrackIndexes: number[] = [];
+        const seenTrackIndexes = new Set<number>();
+
+        const visitNode = (currentNode: SearchTreeNode): void => {
+            const sortedFolders = [...currentNode.folders].sort((left, right) => compareLibraryLabels(left.name, right.name));
+            sortedFolders.forEach((folder) => {
+                visitNode(folder);
+            });
+
+            const sortedTrackEntries = [...currentNode.trackEntries].sort((left, right) => compareLibraryLabels(left.name, right.name));
+            sortedTrackEntries.forEach((entry) => {
+                const trackIndex = options.resolveTrackIndex(entry.path);
+                if (trackIndex < 0 || seenTrackIndexes.has(trackIndex)) {
+                    return;
+                }
+
+                seenTrackIndexes.add(trackIndex);
+                collectedTrackIndexes.push(trackIndex);
+            });
+        };
+
+        visitNode(node);
+        return collectedTrackIndexes;
     };
 
     const createLibraryIconElement = (kind: 'folder' | 'track' | 'text-file' | 'image-file'): HTMLSpanElement => {
@@ -1993,10 +2019,29 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             return;
         }
 
+        const searchFolderPath = button.dataset.searchFolderPath;
+        if (searchFolderPath !== undefined) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const searchFolderNode = activeSearchTreeRoot
+                ? findSearchTreeNode(activeSearchTreeRoot, searchFolderPath)
+                : null;
+            const trackIndexes = searchFolderNode ? collectSearchTreeTrackIndexes(searchFolderNode) : [];
+            options.onFolderQueueRequested(
+                event.clientX,
+                event.clientY,
+                searchFolderPath,
+                button.textContent?.trim() || searchFolderPath,
+                trackIndexes,
+            );
+            return;
+        }
+
         const isFolderButton = button.classList.contains('library-tree-folder')
             || button.classList.contains('folder');
         if (isFolderButton) {
-            const folderPath = button.dataset.searchFolderPath ?? button.dataset.folderPath ?? '';
+            const folderPath = button.dataset.folderPath ?? '';
             event.preventDefault();
             event.stopPropagation();
             options.onFolderQueueRequested(
@@ -2018,19 +2063,6 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             event.preventDefault();
             event.stopPropagation();
             options.onQueueRequested(event.clientX, event.clientY, [trackIndex], trackIndex);
-            return;
-        }
-
-        const searchFolderPath = button.dataset.searchFolderPath;
-        if (searchFolderPath !== undefined) {
-            event.preventDefault();
-            event.stopPropagation();
-            options.onFolderQueueRequested(
-                event.clientX,
-                event.clientY,
-                searchFolderPath,
-                button.textContent?.trim() || searchFolderPath,
-            );
             return;
         }
 

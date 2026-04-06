@@ -10,6 +10,7 @@ import type { LibraryController } from './controllers/library-controller';
 import { createListenBrainzController, type ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import { createMediaSessionController, type ExternalPlaybackAction } from './controllers/media-session-controller';
 import { createPlaylistController, type LoadedPlaylistData, type PlaylistController } from './controllers/playlist-controller';
+import { createPlaylistTargetModalController, type PlaylistTargetModalController } from './controllers/playlist-target-modal-controller';
 import { createSettingsController, type SettingsController } from './controllers/settings-controller';
 import {
     appendIndexedFilesToScanCollections,
@@ -33,6 +34,7 @@ import {
     getPlayOrderMenuElements,
     getPlaylistMenuElements,
     getPlaylistModalElements,
+    getPlaylistTargetModalElements,
     getQueueConfirmModalElements,
     getShareModalElements,
     getSidebarQueueMenuElements,
@@ -47,6 +49,7 @@ import {
     renderPlayOrderMenu,
     renderPlaylistMenu,
     renderPlaylistModal,
+    renderPlaylistTargetModal,
     renderQueueConfirmModal,
     renderShareModal,
     renderSidebarQueueMenu,
@@ -63,6 +66,7 @@ import {
     AudioReinitializeBackend,
     AudioGetState,
     AudioGetReplayGainReleaseDynamicRange,
+    AppendTracksToPlaylistFile,
     GetMusicBrainzTagWorkerProgress,
     AudioLoadTrack,
     AudioLoadTrackWithReplayGainContext,
@@ -181,6 +185,7 @@ app.innerHTML = `
         ${renderTrackMetaMenu()}
         ${renderSidebarQueueMenu()}
         ${renderPlaylistMenu()}
+        ${renderPlaylistTargetModal()}
         ${renderPlaylistModal()}
 `;
 
@@ -291,6 +296,7 @@ let sidebarQueueFeedbackTrackIndex: number | null = null;
 let sidebarQueueFolderPath = '';
 let sidebarQueueFolderLabel = '';
 let sidebarQueueFolderTarget = false;
+let sidebarQueueTrackIndexesScopedToSelection = false;
 let queueConfirmResolver: ((confirmed: boolean) => void) | null = null;
 let sharePreviewRequestVersion = 0;
 let sharePreviewSnapshot: {
@@ -851,14 +857,17 @@ const {
     sidebarQueuePlay,
     sidebarQueueAddNext,
     sidebarQueueEnd,
+    sidebarQueueAddToPlaylist,
     sidebarQueueFeedbackDivider,
     sidebarQueueLove,
     sidebarQueueHate,
 } = getSidebarQueueMenuElements(document);
 const playlistMenuElements = getPlaylistMenuElements(document);
+const playlistTargetModalElements = getPlaylistTargetModalElements(document);
 const playlistModalElements = getPlaylistModalElements(document);
 let settingsController: SettingsController;
 let playlistController: PlaylistController;
+let playlistTargetModalController: PlaylistTargetModalController;
 let artistInfoController: ArtistInfoController;
 let imageModalController: ImageModalController;
 let libraryController: LibraryController;
@@ -1672,6 +1681,7 @@ type SidebarQueueSelectionContext = {
     folderPath: string;
     folderLabel: string;
     folderTarget: boolean;
+    trackIndexesScopedToSelection: boolean;
 };
 
 const captureSidebarQueueSelectionContext = (): SidebarQueueSelectionContext | null => {
@@ -1688,6 +1698,7 @@ const captureSidebarQueueSelectionContext = (): SidebarQueueSelectionContext | n
         folderPath: sidebarQueueFolderPath,
         folderLabel: sidebarQueueFolderLabel,
         folderTarget: sidebarQueueFolderTarget,
+        trackIndexesScopedToSelection: sidebarQueueTrackIndexesScopedToSelection,
     };
 };
 
@@ -1698,6 +1709,7 @@ const closeSidebarQueueMenu = (): void => {
     sidebarQueueFolderPath = '';
     sidebarQueueFolderLabel = '';
     sidebarQueueFolderTarget = false;
+    sidebarQueueTrackIndexesScopedToSelection = false;
 };
 
 const openSidebarQueueMenu = (
@@ -1708,6 +1720,7 @@ const openSidebarQueueMenu = (
     folderPath?: string,
     folderLabel?: string,
     folderTarget = false,
+    trackIndexesScopedToSelection = false,
 ): void => {
     const normalizedFolderPath = (folderPath || '').trim();
     if (trackIndexes.length === 0 && normalizedFolderPath === '' && !folderTarget) {
@@ -1724,6 +1737,7 @@ const openSidebarQueueMenu = (
     sidebarQueueFolderLabel = (folderLabel || '').trim() || normalizedFolderPath;
     const isFolderTarget = folderTarget || normalizedFolderPath !== '';
     sidebarQueueFolderTarget = isFolderTarget;
+    sidebarQueueTrackIndexesScopedToSelection = trackIndexesScopedToSelection;
     const canShowFeedbackActions = !isFolderTarget
         && Number.isInteger(feedbackTrackIndex)
         && (feedbackTrackIndex as number) >= 0
@@ -1789,6 +1803,10 @@ const resolveSidebarQueueTrackIndexesForAction = async (
     actionLabel: string,
     selection: SidebarQueueSelectionContext,
 ): Promise<number[]> => {
+    if (selection.trackIndexesScopedToSelection) {
+        return selection.trackIndexes;
+    }
+
     if (!selection.folderTarget) {
         return selection.trackIndexes;
     }
@@ -1802,7 +1820,7 @@ const resolveSidebarQueueTrackIndexesForAction = async (
         const formattedDescendantCount = descendantCount.toLocaleString('en-US');
         const folderLabel = selection.folderLabel || selection.folderPath;
         const shouldProceed = await openQueueConfirmModal(
-            `Queue ${formattedDescendantCount} tracks?`,
+            `${actionLabel} ${formattedDescendantCount} tracks?`,
             `${actionLabel} for "${folderLabel}" requires scanning ${formattedDescendantCount} descendant files and may significantly reduce performance. Continue?`,
         );
         if (!shouldProceed) {
@@ -1814,6 +1832,56 @@ const resolveSidebarQueueTrackIndexesForAction = async (
     return trackPaths
         .map((trackPath) => ensureTrackIndexForPath(trackPath))
         .filter((trackIndex) => trackIndex >= 0);
+};
+
+const cleanSidebarQueueSelectionLabel = (label: string): string => {
+    return label.replace(/^[▸▾•]\s*/u, '').trim();
+};
+
+const playlistTargetMessageForSelection = (
+    selection: SidebarQueueSelectionContext,
+    trackIndexes: number[],
+): string => {
+    const formattedCount = trackIndexes.length.toLocaleString('en-US');
+    if (selection.folderTarget) {
+        const folderLabel = cleanSidebarQueueSelectionLabel(selection.folderLabel) || selection.folderPath || 'this folder';
+        const trackLabel = trackIndexes.length === 1 ? '1 track' : `${formattedCount} tracks`;
+        return `Add ${trackLabel} from "${folderLabel}" to:`;
+    }
+
+    if (trackIndexes.length === 1) {
+        const track = tracks[trackIndexes[0]];
+        const trackLabel = track?.displayTitle || track?.name || 'this track';
+        return `Add "${trackLabel}" to:`;
+    }
+
+    return `Add ${formattedCount} tracks to:`;
+};
+
+const addSidebarSelectionToPlaylist = async (selection: SidebarQueueSelectionContext): Promise<void> => {
+    const actionLabel = 'Add to playlist';
+    const trackIndexes = await resolveSidebarQueueTrackIndexesForAction(actionLabel, selection);
+    if (trackIndexes.length === 0) {
+        return;
+    }
+
+    const playlistPath = await playlistTargetModalController.prompt({
+        title: actionLabel,
+        message: playlistTargetMessageForSelection(selection, trackIndexes),
+        confirmLabel: actionLabel,
+        getPlaylists: () => playlistController.getAvailablePlaylistTargets(),
+        onOpenPlaylist: () => playlistController.openPlaylistTarget(),
+        onCreatePlaylist: () => playlistController.createPlaylistTarget(),
+        emptyStateMessage: 'No playlists are available yet. Open one or create one below.',
+    });
+    if (!playlistPath) {
+        return;
+    }
+
+    const appended = await playlistController.appendTracksToPlaylist(playlistPath, trackIndexes);
+    if (!appended) {
+        openErrorModal('Add to playlist failed', 'Silphium could not append the selected items to that playlist.');
+    }
 };
 
 const playSidebarQueueSelection = async (trackIndexes: number[]): Promise<void> => {
@@ -3398,10 +3466,6 @@ const loadPlaylistData = async (playlistPath: string): Promise<LoadedPlaylistDat
     tracks = mergeResult.tracks;
     rebuildTrackPathIndex();
 
-    if (mergeResult.trackIndexes.length === 0) {
-        return null;
-    }
-
     return {
         name: loaded.name || '',
         trackIndexes: mergeResult.trackIndexes,
@@ -3905,6 +3969,7 @@ playlistController = createPlaylistController({
     selectPlaylistSaveFile: SelectPlaylistSaveFile,
     loadPlaylistData,
     savePlaylistData: (playlistPath: string, trackPaths: string[]) => SavePlaylistFile(playlistPath, trackPaths),
+    appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => AppendTracksToPlaylistFile(playlistPath, trackPaths),
     getFavoritePlaylists: () => currentSettings.favoritePlaylists,
     onTrackChosen: async (index: number): Promise<void> => {
         await loadTrack(index);
@@ -3914,6 +3979,8 @@ playlistController = createPlaylistController({
         resetShuffleHistory();
     },
 });
+
+playlistTargetModalController = createPlaylistTargetModalController(playlistTargetModalElements);
 
 OnFileDrop((x: number, y: number, paths: string[]) => {
     const droppedPaths = (paths || []).map((path) => path.trim()).filter((path) => path !== '');
@@ -4033,8 +4100,21 @@ libraryController = createLibraryController({
     onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number) => {
         openSidebarQueueMenu(clientX, clientY, trackIndexes, feedbackTrackIndex);
     },
-    onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string) => {
-        openSidebarQueueMenu(clientX, clientY, [], undefined, folderPath, folderLabel, true);
+    onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string, trackIndexes?: number[]) => {
+        const normalizedTrackIndexes = (trackIndexes || []).filter((trackIndex) => (
+            Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < tracks.length
+        ));
+        const trackIndexesScopedToSelection = trackIndexes !== undefined;
+        openSidebarQueueMenu(
+            clientX,
+            clientY,
+            normalizedTrackIndexes,
+            undefined,
+            folderPath,
+            folderLabel,
+            true,
+            trackIndexesScopedToSelection,
+        );
     },
     onSidebarClosed: () => {
         closeSidebarQueueMenu();
@@ -4150,6 +4230,18 @@ sidebarQueueAddNext.addEventListener('click', () => {
 
         playlistController.addToQueueNext(trackIndexes);
     })();
+});
+
+sidebarQueueAddToPlaylist.addEventListener('click', () => {
+    const selection = captureSidebarQueueSelectionContext();
+    if (selection === null) {
+        return;
+    }
+
+    closeSidebarQueueMenu();
+    void addSidebarSelectionToPlaylist(selection).catch((error: unknown) => {
+        console.error(error);
+    });
 });
 
 sidebarQueuePlay.addEventListener('click', () => {
@@ -4302,10 +4394,18 @@ settingsElements.settingsBackdrop.addEventListener('click', suppressTrackMetaCli
 settingsElements.settingsClose.addEventListener('click', suppressTrackMetaClicks);
 playlistModalElements.playlistBackdrop.addEventListener('click', suppressTrackMetaClicks);
 playlistModalElements.playlistClose.addEventListener('click', suppressTrackMetaClicks);
+playlistTargetModalElements.playlistTargetBackdrop.addEventListener('click', suppressTrackMetaClicks);
+playlistTargetModalElements.playlistTargetClose.addEventListener('click', suppressTrackMetaClicks);
+playlistTargetModalElements.playlistTargetCancel.addEventListener('click', suppressTrackMetaClicks);
+playlistTargetModalElements.playlistTargetConfirm.addEventListener('click', suppressTrackMetaClicks);
 imageModalElements.imageFileBackdrop.addEventListener('click', suppressTrackMetaClicks);
 
 document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') {
+        return;
+    }
+
+    if (playlistTargetModalController.handleEscape()) {
         return;
     }
 
@@ -4495,6 +4595,10 @@ document.addEventListener('click', (e) => {
 
     if (!volumeRow.contains(target)) {
         volumeRow.classList.remove('open');
+    }
+
+    if (playlistTargetModalController.handleDocumentClick(target)) {
+        return;
     }
 
     if (playlistController.handleDocumentClick(target)) {
