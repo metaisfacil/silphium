@@ -87,11 +87,6 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz User Token</label>
-                        <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
-                        <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
-                    </div>
-                    <div class="settings-field">
                         <label class="settings-label" for="settings-ffmpeg-path">FFmpeg Executable Path</label>
                         <p class="settings-hint">Optional full path to ffmpeg. Leave blank to use the version available on PATH.</p>
                         <input id="settings-ffmpeg-path" class="settings-input" type="text" spellcheck="false" placeholder="Leave blank to use PATH">
@@ -105,6 +100,11 @@ export const renderSettingsModal = (): string => `
                     </div>
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz User Token</label>
+                        <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
+                        <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
+                    </div>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-musicbrainz-server-url">MusicBrainz Server URL</label>
                         <p class="settings-hint">Override the MusicBrainz server used for lookups. Local hosts are permitted a shorter cooldown between requests.</p>
