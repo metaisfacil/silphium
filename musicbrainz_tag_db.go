@@ -847,7 +847,7 @@ func (a *App) scanMusicBrainzTagTrack(indexed LibraryIndexedFile, releaseDepth i
 		return nil
 	}
 
-	trackTags := TrackTags{}
+	var trackTags TrackTags
 	hasMetadata := false
 	if cachedTags, cachedHasMetadata, cacheHit := a.getTrackTagsCache(indexed.Path, signature); cacheHit {
 		trackTags = cachedTags

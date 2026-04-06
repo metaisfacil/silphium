@@ -484,7 +484,9 @@ func writeMusicBrainzTagDatabaseStoreToSQLite(path string, store musicBrainzTagD
 	if err != nil {
 		return err
 	}
-	defer transaction.Rollback()
+	defer func() {
+		_ = transaction.Rollback()
+	}()
 
 	for _, statement := range []string{
 		`DELETE FROM entities WHERE entity_type NOT IN ('artist', 'release')`,
