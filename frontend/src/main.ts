@@ -141,6 +141,7 @@ import {
     findLibraryFolderForFilePath,
     formatTime,
     hasExternalFileDragPayload,
+    isSupportedAudioFilePath,
     isTrackScrobbleAllowed,
     libraryFolderPathKey,
     normalizeLibraryFolders,
@@ -1958,6 +1959,26 @@ const playDroppedLibraryFolder = async (folderPath: string): Promise<boolean> =>
 
     libraryController.setSidebarAutoFolderPath(normalizedFolderPath);
     await playSidebarQueueSelection(trackIndexes);
+    return true;
+};
+
+const playDroppedTrackPath = async (path: string): Promise<boolean> => {
+    const normalizedPath = path.trim();
+    if (normalizedPath === '') {
+        return false;
+    }
+
+    const resolvedFolderPath = await resolveDroppedLibraryFolderPath(normalizedPath);
+    if (resolvedFolderPath === '') {
+        return false;
+    }
+
+    const trackIndex = ensureTrackIndexForPath(normalizedPath);
+    if (trackIndex < 0) {
+        return false;
+    }
+
+    await playSidebarQueueSelection([trackIndex]);
     return true;
 };
 
@@ -4137,7 +4158,15 @@ OnFileDrop((x: number, y: number, paths: string[]) => {
         return;
     }
 
-    const droppedFolderPath = droppedPaths.find((path) => !/\.(m3u8?|M3U8?)$/.test(path));
+    const droppedAudioPath = droppedPaths.find((path) => isSupportedAudioFilePath(path));
+    if (droppedAudioPath) {
+        void playDroppedTrackPath(droppedAudioPath).catch((error: unknown) => {
+            console.error(error);
+        });
+        return;
+    }
+
+    const droppedFolderPath = droppedPaths.find((path) => !/\.(m3u8?|M3U8?)$/.test(path) && !isSupportedAudioFilePath(path));
     if (!droppedFolderPath) {
         return;
     }

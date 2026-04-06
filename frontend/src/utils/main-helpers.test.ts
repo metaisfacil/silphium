@@ -9,6 +9,7 @@ import {
     findLibraryFolderForFilePath,
     formatTechnicalMetadata,
     hasExternalFileDragPayload,
+    isSupportedAudioFilePath,
     isTrackScrobbleAllowed,
     libraryFolderPathKey,
     normalizeLibraryFolders,
@@ -79,6 +80,14 @@ describe('main helpers', () => {
         expect(hasExternalFileDragPayload({ types: ['text/plain', 'Files'] })).toBe(true);
         expect(hasExternalFileDragPayload({ types: ['text/plain'] })).toBe(false);
         expect(hasExternalFileDragPayload(null)).toBe(false);
+    });
+
+    it('recognizes supported audio file paths', () => {
+        expect(isSupportedAudioFilePath('C:/Music/Artist/Album/track.flac')).toBe(true);
+        expect(isSupportedAudioFilePath('C:/Music/Artist/Album/track.FLAC')).toBe(true);
+        expect(isSupportedAudioFilePath('C:/Music/playlist.m3u8')).toBe(false);
+        expect(isSupportedAudioFilePath('C:/Music/Artist/Album')).toBe(false);
+        expect(isSupportedAudioFilePath('')).toBe(false);
     });
 
     it('builds display metadata from cleaned tag values and versions', () => {
