@@ -159,8 +159,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     } = elements;
 
     const settingsModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+    const statusFadeDelayMs = 5000;
     let hideTimer: number | undefined;
     let libraryDepthHideTimer: number | undefined;
+    let settingsStatusFadeTimer: number | undefined;
+    let settingsLibraryDepthStatusFadeTimer: number | undefined;
 
     let favoritePlaylists: string[] = [];
     let selectedFavoritePlaylistIndex = -1;
@@ -409,9 +412,62 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         const etaLabel = formatEtaLabel(forceReloadEtaSeconds);
-        settingsStatus.textContent = etaLabel
+        setSettingsStatusMessage(etaLabel
             ? `Reloading library... ${etaLabel} remaining`
-            : 'Reloading library...';
+            : 'Reloading library...');
+    };
+
+    const setStatusMessageWithFade = (
+        element: HTMLParagraphElement,
+        message: string,
+        getTimer: () => number | undefined,
+        setTimer: (value: number | undefined) => void,
+    ): void => {
+        const activeTimer = getTimer();
+        if (activeTimer !== undefined) {
+            window.clearTimeout(activeTimer);
+            setTimer(undefined);
+        }
+
+        element.classList.remove('is-faded');
+        element.textContent = message;
+
+        if (message.trim() === '') {
+            return;
+        }
+
+        const fadeTimer = window.setTimeout(() => {
+            element.classList.add('is-faded');
+            const clearTimer = window.setTimeout(() => {
+                element.textContent = '';
+                element.classList.remove('is-faded');
+                setTimer(undefined);
+            }, settingsModalTransitionMs);
+            setTimer(clearTimer);
+        }, statusFadeDelayMs);
+        setTimer(fadeTimer);
+    };
+
+    const setSettingsStatusMessage = (message: string): void => {
+        setStatusMessageWithFade(
+            settingsStatus,
+            message,
+            () => settingsStatusFadeTimer,
+            (value) => {
+                settingsStatusFadeTimer = value;
+            },
+        );
+    };
+
+    const setLibraryDepthStatusMessage = (message: string): void => {
+        setStatusMessageWithFade(
+            settingsLibraryDepthStatus,
+            message,
+            () => settingsLibraryDepthStatusFadeTimer,
+            (value) => {
+                settingsLibraryDepthStatusFadeTimer = value;
+            },
+        );
     };
 
     const setForceReloadEtaSeconds = (secondsRemaining: number | null): void => {
@@ -453,7 +509,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 	        settingsLibraryDepthTitle.textContent = 'Library Folder Settings';
 	        settingsLibraryDepthLabelInput.value = '';
             settingsLibraryDepthInput.value = '';
-            settingsLibraryDepthStatus.textContent = '';
+            setLibraryDepthStatusMessage('');
             settingsLibraryDepthConfirm.textContent = 'Apply';
 
             resolve?.(value);
@@ -487,7 +543,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryDepthTitle.textContent = title;
         settingsLibraryDepthLabelInput.value = initialValues.label;
         settingsLibraryDepthInput.value = initialValues.releaseDepth > 0 ? String(initialValues.releaseDepth) : '';
-        settingsLibraryDepthStatus.textContent = '';
+        setLibraryDepthStatusMessage('');
         settingsLibraryDepthConfirm.textContent = confirmLabel;
         libraryDepthReturnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         settingsLibraryDepthModal.hidden = false;
@@ -763,15 +819,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     bindShortcutCaptureInput(settingsShortcutOpenSettings);
 
     settingsLibraryDepthLabelInput.addEventListener('input', () => {
-        settingsLibraryDepthStatus.textContent = '';
+        setLibraryDepthStatusMessage('');
     });
 
     settingsLibraryDepthInput.addEventListener('input', () => {
-        settingsLibraryDepthStatus.textContent = '';
+        setLibraryDepthStatusMessage('');
     });
 
     settingsFFmpegPath.addEventListener('input', () => {
-        settingsStatus.textContent = '';
+        setSettingsStatusMessage('');
     });
 
     settingsLibraryDepthBackdrop.addEventListener('click', () => {
@@ -794,7 +850,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         if (!/^\d+$/.test(trimmed)) {
-            settingsLibraryDepthStatus.textContent = 'Enter a whole number 0 or greater.';
+            setLibraryDepthStatusMessage('Enter a whole number 0 or greater.');
             settingsLibraryDepthInput.focus();
             settingsLibraryDepthInput.select();
             return;
@@ -818,7 +874,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         hideTimer = window.setTimeout(() => {
             settingsModal.hidden = true;
-            settingsStatus.textContent = '';
+            setSettingsStatusMessage('');
             hideTimer = undefined;
         }, settingsModalTransitionMs);
     };
@@ -873,7 +929,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         if (forceReloadInProgress) {
             refreshForceReloadStatus();
         } else {
-            settingsStatus.textContent = '';
+            setSettingsStatusMessage('');
         }
         setActiveTab(initialTab);
         settingsModal.hidden = false;
@@ -905,7 +961,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     });
 
     settingsAddLibraryFolder.addEventListener('click', async () => {
-        settingsStatus.textContent = '';
+        setSettingsStatusMessage('');
 
         try {
             const selectedFolder = await options.selectLibraryFolder();
@@ -949,7 +1005,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             settingsLibraryFolderList.focus();
         } catch (error) {
             console.error(error);
-            settingsStatus.textContent = 'Unable to open folder picker.';
+            setSettingsStatusMessage('Unable to open folder picker.');
         }
     });
 
@@ -1003,15 +1059,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const formValues = buildFormValues();
 
         settingsApplyAudioNow.disabled = true;
-        settingsStatus.textContent = 'Refreshing audio settings...';
+        setSettingsStatusMessage('Refreshing audio settings...');
 
         try {
             const refreshedDevices = await options.applyAudioNow(formValues);
             refreshAudioOutputDevices(refreshedDevices, formValues.audioOutputDevice || 'default');
-            settingsStatus.textContent = 'Audio settings refreshed.';
+            setSettingsStatusMessage('Audio settings refreshed.');
         } catch (error) {
             console.error(error);
-            settingsStatus.textContent = 'Unable to refresh audio settings right now.';
+            setSettingsStatusMessage('Unable to refresh audio settings right now.');
         } finally {
             settingsApplyAudioNow.disabled = false;
         }
@@ -1195,7 +1251,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     });
 
     settingsAddFavoritePlaylist.addEventListener('click', async () => {
-        settingsStatus.textContent = '';
+        setSettingsStatusMessage('');
 
         try {
             const selectedPlaylist = await options.selectPlaylistFile();
@@ -1208,7 +1264,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             renderFavoritePlaylistList();
         } catch (error) {
             console.error(error);
-            settingsStatus.textContent = 'Unable to open playlist picker.';
+            setSettingsStatusMessage('Unable to open playlist picker.');
         }
     });
 
@@ -1236,9 +1292,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             finalizeClose();
         } catch (error) {
             console.error(error);
-            settingsStatus.textContent = error instanceof Error && error.message.trim() !== ''
+            setSettingsStatusMessage(error instanceof Error && error.message.trim() !== ''
                 ? error.message
-                : 'Unable to save settings.';
+                : 'Unable to save settings.');
         } finally {
             settingsSave.disabled = false;
             settingsForceReload.disabled = false;
@@ -1263,12 +1319,12 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             await options.forceReload(formValues);
             forceReloadInProgress = false;
             forceReloadEtaSeconds = null;
-            settingsStatus.textContent = 'Library reloaded.';
+            setSettingsStatusMessage('Library reloaded.');
         } catch (error) {
             console.error(error);
             forceReloadInProgress = false;
             forceReloadEtaSeconds = null;
-            settingsStatus.textContent = 'Unable to force reload library.';
+            setSettingsStatusMessage('Unable to force reload library.');
         } finally {
             settingsForceReload.disabled = false;
             settingsSave.disabled = false;

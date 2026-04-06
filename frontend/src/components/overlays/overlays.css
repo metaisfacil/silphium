@@ -597,6 +597,12 @@
     min-height: 1.05rem;
     font-size: 0.76rem;
     color: rgba(255, 210, 170, 0.9);
+    opacity: 1;
+    transition: opacity 220ms ease;
+}
+
+.settings-subdialog-status.is-faded {
+    opacity: 0;
 }
 
 .settings-subdialog-actions {
@@ -1078,6 +1084,11 @@
     font-size: 0.78rem;
     opacity: 0.75;
     margin-top: -0.15rem;
+    transition: opacity 220ms ease;
+}
+
+.settings-status.is-faded {
+    opacity: 0;
 }
 
 .settings-actions {
