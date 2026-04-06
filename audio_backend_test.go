@@ -41,3 +41,44 @@ func TestSnapshotLockedRetainsProgressAfterDroppedSegment(t *testing.T) {
 		t.Fatalf("snapshot duration = %.2f, want 3.00", state.Duration)
 	}
 }
+
+func TestEffectivePlayerVolumeLockedCompensatesDecodedReplayGainScale(t *testing.T) {
+	backend := NewAudioBackend()
+	backend.volume = 0.8
+	backend.streamSegments = []audioTrackSegment{{
+		SourcePath:      "track.flac",
+		PCMData:         make([]byte, audioBytesPerSecond),
+		ReplayGainScale: 2,
+	}}
+
+	backend.replayGainEnabled = true
+	if got, want := backend.effectivePlayerVolumeLocked(), 0.8; got != want {
+		t.Fatalf("effectivePlayerVolumeLocked() replaygain-on = %.4f, want %.4f", got, want)
+	}
+
+	backend.replayGainEnabled = false
+	if got, want := backend.effectivePlayerVolumeLocked(), 0.4; got != want {
+		t.Fatalf("effectivePlayerVolumeLocked() replaygain-off = %.4f, want %.4f", got, want)
+	}
+}
+
+func TestApplyAudioSettingsClearsQueuedTrackOnReplayGainToggle(t *testing.T) {
+	backend := NewAudioBackend()
+	backend.gaplessPlayback = true
+	backend.replayGainEnabled = false
+	backend.streamSegments = []audioTrackSegment{
+		{SourcePath: "current.flac", PCMData: make([]byte, audioBytesPerSecond), ReplayGainScale: 1},
+		{SourcePath: "next.flac", PCMData: make([]byte, audioBytesPerSecond), ReplayGainScale: 1},
+	}
+
+	backend.ApplyAudioSettings(AudioSettings{
+		OutputDevice:      defaultAudioOutputDevice,
+		OutputBufferMs:    0,
+		GaplessPlayback:   true,
+		ReplayGainEnabled: true,
+	})
+
+	if got, want := len(backend.streamSegments), 1; got != want {
+		t.Fatalf("queued segments after replaygain toggle = %d, want %d", got, want)
+	}
+}
