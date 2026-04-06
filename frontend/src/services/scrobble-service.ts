@@ -50,6 +50,10 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
                 scrobbleSessionStartedAt = Math.floor(Date.now() / 1000);
             }
 
+            if (!track.tagsResolved) {
+                return;
+            }
+
             if (state.playing && nowPlayingSubmittedSessionId !== scrobbleSessionId && !nowPlayingInFlight) {
                 nowPlayingInFlight = true;
                 void options.submitListenBrainz('playing_now', buildListenBrainzMetadata(track), 0)
