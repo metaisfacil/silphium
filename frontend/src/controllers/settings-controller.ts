@@ -245,6 +245,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const settingsModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     const settingsShortcutAccordionTransitionMs = 180;
     const settingsTabScrollStepPx = 160;
+    const settingsTabsShell = settingsTabs.parentElement instanceof HTMLDivElement
+        ? settingsTabs.parentElement
+        : null;
     const statusFadeDelayMs = 5000;
     const showMinimizeToTrayOption = options.isWindows ?? true;
     const isWindowsRuntime = options.isWindows ?? false;
@@ -1467,8 +1470,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const canScroll = maxScrollLeft > 1;
         settingsTabsScrollLeft.hidden = !canScroll;
         settingsTabsScrollRight.hidden = !canScroll;
-        settingsTabsScrollLeft.disabled = !canScroll || settingsTabs.scrollLeft <= 1;
-        settingsTabsScrollRight.disabled = !canScroll || settingsTabs.scrollLeft >= maxScrollLeft - 1;
+        const hasLeftOverflow = canScroll && settingsTabs.scrollLeft > 1;
+        const hasRightOverflow = canScroll && settingsTabs.scrollLeft < maxScrollLeft - 1;
+        settingsTabsScrollLeft.disabled = !hasLeftOverflow;
+        settingsTabsScrollRight.disabled = !hasRightOverflow;
+        if (settingsTabsShell) {
+            settingsTabsShell.classList.toggle('has-left-overflow', hasLeftOverflow);
+            settingsTabsShell.classList.toggle('has-right-overflow', hasRightOverflow);
+        }
     };
 
     const scrollTabsBy = (offsetPx: number): void => {

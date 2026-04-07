@@ -1486,9 +1486,21 @@ const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState, sequenc
         return;
     }
 
+    // Library scan swaps can remap track indexes repeatedly while metadata is in flux.
+    // Skipping gapless prequeue during that window avoids requeue storms and lock contention.
+    if (fullLibraryScanLoadActive) {
+        return;
+    }
+
     const playbackState = stateOverride || playbackStateService.getPlaybackState();
     const activeTrack = currentTrackForPlaybackState(playbackState);
     if (!playbackState.loaded || !activeTrack) {
+        return;
+    }
+
+    // Only prequeue while the backend is actively playing this source.
+    // When paused/stopped-at-zero, repeated state polls can otherwise churn prequeue decisions.
+    if (!playbackState.playing) {
         return;
     }
 
