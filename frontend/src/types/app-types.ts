@@ -286,6 +286,17 @@ export type AudioOutputDevice = {
     isDefault: boolean;
 };
 
+export type AudioVisualizationFrame = {
+    loaded: boolean;
+    playing: boolean;
+    sourcePath: string;
+    sampleRate: number;
+    channelCount: number;
+    frameCount: number;
+    peak: number;
+    samples: number[];
+};
+
 export type FFmpegPathStatus = {
     available: boolean;
     resolvedPath?: string;
@@ -323,6 +334,7 @@ export type AppSettings = {
     musicBrainzTagStaleDays: number;
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
+    lissajousEnabled: boolean;
     minimizeToTrayOnClose: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };

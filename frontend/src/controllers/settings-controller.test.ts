@@ -58,6 +58,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     musicBrainzTagStaleDays: 30,
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 4,
+    lissajousEnabled: true,
     minimizeToTrayOnClose: false,
     musicBrainzTagWorkerProgress: createMusicBrainzTagWorkerProgress(),
     keyboardShortcuts: createKeyboardShortcuts(),
@@ -150,7 +151,8 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-audio-output-device"]')?.textContent).toBe('Audio output device');
         expect(document.querySelector('label[for="settings-audio-output-buffer-ms"]')?.textContent).toBe('Audio output buffer (ms)');
         expect(document.querySelector('label[for="settings-player-card-layout"]')?.textContent).toBe('Player card layout');
-        expect(document.querySelector('label[for="settings-cover-art-priority-list"]')?.textContent).toBe('Cover art source priority');
+        expect(document.querySelector('label[for="settings-lissajous-enabled"]')?.textContent?.trim()).toBe('Show lissajous visualizer');
+        expect(document.querySelector('#settings-cover-art-priority-accordion-toggle')?.textContent).toBe('Cover art source priority');
         expect(document.querySelector('#settings-shortcut-accordion-toggle')?.textContent).toBe('Keyboard shortcuts');
         expect(document.querySelector('label[for="settings-shortcut-play-pause"]')?.textContent).toBe('Play/pause toggle');
         expect(document.querySelector('#settings-apply-audio-now')?.getAttribute('aria-label')).toBe('Refresh audio settings');
@@ -175,7 +177,12 @@ describe('createSettingsController', () => {
         elements.settingsAudioOutputBufferMs.value = '2500';
         elements.settingsTabUi.click();
         expect(document.activeElement).toBe(elements.settingsPlayerCardLayout);
+        expect(elements.settingsCoverArtPriorityAccordionPanel.hidden).toBe(true);
         expect(elements.settingsShortcutAccordionPanel.hidden).toBe(true);
+
+        elements.settingsCoverArtPriorityAccordionToggle.click();
+        expect(elements.settingsCoverArtPriorityAccordionToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(elements.settingsCoverArtPriorityAccordionPanel.hidden).toBe(false);
 
         elements.settingsShortcutAccordionToggle.click();
         expect(elements.settingsShortcutAccordionToggle.getAttribute('aria-expanded')).toBe('true');
@@ -202,6 +209,7 @@ describe('createSettingsController', () => {
             audioOutputBufferMs: 1000,
             musicBrainzTagStaleDays: 30,
             musicBrainzTagRequestStaggeringEnabled: false,
+            lissajousEnabled: true,
             keyboardShortcuts: expect.objectContaining({ nextTrack: 'K' }),
         }));
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(false);
@@ -276,12 +284,13 @@ describe('createSettingsController', () => {
 
     it('maps shortcut-tab opens to the UI tab with the shortcuts accordion expanded', () => {
         const { controller, elements } = mountSettingsController();
+        const shortcutAccordion = elements.settingsShortcutAccordionToggle.closest('.settings-accordion');
 
         controller.open('shortcuts');
 
         expect(elements.settingsTabUi.classList.contains('is-active')).toBe(true);
         expect(elements.settingsPanelUi.hidden).toBe(false);
-        expect(elements.settingsPanelUi.classList.contains('is-shortcuts-expanded')).toBe(true);
+        expect(shortcutAccordion?.classList.contains('is-expanded')).toBe(true);
         expect(elements.settingsShortcutAccordionToggle.getAttribute('aria-expanded')).toBe('true');
         expect(elements.settingsShortcutAccordionPanel.hidden).toBe(false);
         expect(document.activeElement).toBe(elements.settingsShortcutPlayPauseToggle);
@@ -290,13 +299,14 @@ describe('createSettingsController', () => {
 
     it('scrolls the shortcuts accordion into view when expanded from the UI tab', () => {
         const { controller, elements } = mountSettingsController();
+        const shortcutAccordion = elements.settingsShortcutAccordionToggle.closest('.settings-accordion');
 
         controller.open('ui');
         scrollIntoViewMock.mockClear();
 
         elements.settingsShortcutAccordionToggle.click();
 
-        expect(elements.settingsPanelUi.classList.contains('is-shortcuts-expanded')).toBe(true);
+        expect(shortcutAccordion?.classList.contains('is-expanded')).toBe(true);
         expect(elements.settingsShortcutAccordionToggle.getAttribute('aria-expanded')).toBe('true');
         expect(elements.settingsShortcutAccordionPanel.hidden).toBe(false);
         expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
@@ -304,15 +314,16 @@ describe('createSettingsController', () => {
 
     it('restores the compact UI panel layout when the shortcuts accordion is collapsed', () => {
         const { controller, elements } = mountSettingsController();
+        const shortcutAccordion = elements.settingsShortcutAccordionToggle.closest('.settings-accordion');
 
         controller.open('ui');
 
         elements.settingsShortcutAccordionToggle.click();
-        expect(elements.settingsPanelUi.classList.contains('is-shortcuts-expanded')).toBe(true);
+        expect(shortcutAccordion?.classList.contains('is-expanded')).toBe(true);
 
         elements.settingsShortcutAccordionToggle.click();
 
-        expect(elements.settingsPanelUi.classList.contains('is-shortcuts-expanded')).toBe(false);
+        expect(shortcutAccordion?.classList.contains('is-expanded')).toBe(false);
         expect(elements.settingsShortcutAccordionToggle.getAttribute('aria-expanded')).toBe('false');
         expect(elements.settingsShortcutAccordionPanel.hidden).toBe(false);
 

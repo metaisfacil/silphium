@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+)
 
 func TestCurrentPlayedGlobalBytesUsesDroppedPrefix(t *testing.T) {
 	backend := NewAudioBackend()
@@ -80,5 +83,53 @@ func TestApplyAudioSettingsClearsQueuedTrackOnReplayGainToggle(t *testing.T) {
 
 	if got, want := len(backend.streamSegments), 1; got != want {
 		t.Fatalf("queued segments after replaygain toggle = %d, want %d", got, want)
+	}
+}
+
+func encodeStereoPCM(frames [][2]int16) []byte {
+	pcm := make([]byte, len(frames)*audioBytesPerFrame)
+	for index, frame := range frames {
+		byteOffset := index * audioBytesPerFrame
+		binary.LittleEndian.PutUint16(pcm[byteOffset:byteOffset+2], uint16(frame[0]))
+		binary.LittleEndian.PutUint16(pcm[byteOffset+2:byteOffset+4], uint16(frame[1]))
+	}
+	return pcm
+}
+
+func TestVisualizationFrameReturnsStereoWindow(t *testing.T) {
+	backend := NewAudioBackend()
+	backend.streamSegments = []audioTrackSegment{{
+		SourcePath: "track.flac",
+		PCMData: encodeStereoPCM([][2]int16{
+			{1000, -1000},
+			{2000, -2000},
+			{3000, -3000},
+			{4000, -4000},
+		}),
+	}}
+	backend.streamReadOffset = int64(len(backend.streamSegments[0].PCMData))
+	backend.playbackBaseBytes = backend.streamReadOffset
+
+	frame := backend.VisualizationFrame(4)
+	if !frame.Loaded {
+		t.Fatal("expected visualization frame to be loaded")
+	}
+	if frame.SourcePath != "track.flac" {
+		t.Fatalf("visualization frame sourcePath = %q, want %q", frame.SourcePath, "track.flac")
+	}
+	if frame.FrameCount != 4 {
+		t.Fatalf("visualization frame count = %d, want %d", frame.FrameCount, 4)
+	}
+	if got, want := len(frame.Samples), 8; got != want {
+		t.Fatalf("visualization sample len = %d, want %d", got, want)
+	}
+	if frame.Samples[0] != 1000 || frame.Samples[1] != -1000 {
+		t.Fatalf("unexpected first stereo sample pair = [%d %d]", frame.Samples[0], frame.Samples[1])
+	}
+	if frame.Samples[6] != 4000 || frame.Samples[7] != -4000 {
+		t.Fatalf("unexpected last stereo sample pair = [%d %d]", frame.Samples[6], frame.Samples[7])
+	}
+	if frame.Peak <= 0.12 || frame.Peak > 0.13 {
+		t.Fatalf("visualization peak = %.4f, want approx 0.1221", frame.Peak)
 	}
 }

@@ -9,6 +9,7 @@ import { createLibraryController } from './controllers/library-controller';
 import type { LibraryController } from './controllers/library-controller';
 import { createListenBrainzController, type ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import { createListenBrainzSocialController } from './controllers/listenbrainz-social-controller';
+import { createLissajousVisualizerController } from './controllers/lissajous-visualizer-controller';
 import { createMediaSessionController, type ExternalPlaybackAction } from './controllers/media-session-controller';
 import { createPlaylistController, type LoadedPlaylistData, type PlaylistController } from './controllers/playlist-controller';
 import { createPlaylistTargetModalController, type PlaylistTargetModalController } from './controllers/playlist-target-modal-controller';
@@ -65,6 +66,7 @@ import {
     ScanConfiguredLibraryFolders,
     AudioListOutputDevices,
     AudioReinitializeBackend,
+    AudioGetVisualizationFrame,
     AudioGetState,
     AudioGetReplayGainReleaseDynamicRange,
     AppendTracksToPlaylistFile,
@@ -127,6 +129,7 @@ import type {
     AppSettings,
     AudioOutputDevice,
     AudioPlaybackState,
+    AudioVisualizationFrame,
     CoverArtPrioritySource,
     FFmpegPathStatus,
     ImageLibraryFile,
@@ -284,6 +287,7 @@ let currentSettings: AppSettings = {
     musicBrainzTagStaleDays: defaultMusicBrainzTagStaleDays,
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 1,
+    lissajousEnabled: true,
     minimizeToTrayOnClose: false,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
@@ -414,6 +418,7 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         musicBrainzTagWorkerCores: Number.isFinite(settings.musicBrainzTagWorkerCores)
             ? Math.max(1, Math.min(128, Math.floor(settings.musicBrainzTagWorkerCores || 1)))
             : 1,
+        lissajousEnabled: settings.lissajousEnabled !== false,
         minimizeToTrayOnClose: !!settings.minimizeToTrayOnClose,
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
     };
@@ -585,6 +590,7 @@ const {
     playerShell,
     playerLane,
     playerCard,
+    playerLissajousCanvas,
     trackTitle,
     trackAlbum,
     trackPosition,
@@ -626,6 +632,14 @@ const {
     shareBtn,
     volume,
 } = getMediaControlsElements(document);
+const lissajousVisualizerController = createLissajousVisualizerController({
+    canvas: playerLissajousCanvas,
+    getPlaybackState: () => playbackStateService.getPlaybackState(),
+    fetchVisualizationFrame: async (frameCount: number): Promise<AudioVisualizationFrame> => (
+        await AudioGetVisualizationFrame(frameCount) as AudioVisualizationFrame
+    ),
+});
+lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
 const listenBrainzController = createListenBrainzController({
     elements: {
         playerCard,
@@ -1582,6 +1596,7 @@ const applyPlaybackState = (nextState: AudioPlaybackState): void => {
     updateMediaSessionMetadata();
     updateMediaSessionPlaybackState();
     updateMediaSessionPositionState();
+    lissajousVisualizerController.setPlaybackState(nextState);
     void queueGaplessNextTrack(nextState);
     void refreshReplayGainReleaseDynamicRangeIndicator();
 
@@ -1625,6 +1640,7 @@ const initializeBackendPlayback = async (): Promise<void> => {
         applyPlaybackState(initialState);
         volume.value = String(initialState.volume);
         startPlaybackPolling();
+        lissajousVisualizerController.start();
     } catch (error) {
         playbackStateService.setBackendReady(false);
         handleAudioError(error);
@@ -3312,6 +3328,7 @@ const initializeSettings = async (): Promise<void> => {
 
         const settings = await GetSettings() as AppSettings;
         currentSettings = normalizeAppSettings(settings);
+        lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
         listenBrainzSocialController.handleSettingsChanged();
         currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(
             await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
@@ -3797,11 +3814,13 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             musicBrainzTagStaleDays: currentSettings.musicBrainzTagStaleDays,
             musicBrainzTagRequestStaggeringEnabled: currentSettings.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
+            lissajousEnabled: currentSettings.lissajousEnabled,
             minimizeToTrayOnClose: currentSettings.minimizeToTrayOnClose,
             keyboardShortcuts: currentSettings.keyboardShortcuts,
         })) as AppSettings;
 
         currentSettings = normalizeAppSettings(savedSettings);
+        lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
         setPlaybackOrderMode(currentSettings.playbackOrder);
     } catch (error) {
         console.error(error);
@@ -4117,6 +4136,7 @@ settingsController = createSettingsController({
         musicBrainzTagStaleDays: currentSettings.musicBrainzTagStaleDays,
         musicBrainzTagRequestStaggeringEnabled: currentSettings.musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
+        lissajousEnabled: currentSettings.lissajousEnabled,
         minimizeToTrayOnClose: currentSettings.minimizeToTrayOnClose,
         musicBrainzTagWorkerProgress: currentMusicBrainzTagWorkerProgress,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
@@ -4147,6 +4167,7 @@ settingsController = createSettingsController({
         musicBrainzTagStaleDays,
         musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores,
+        lissajousEnabled,
         minimizeToTrayOnClose,
         keyboardShortcuts,
     }): Promise<void> => {
@@ -4186,11 +4207,13 @@ settingsController = createSettingsController({
             musicBrainzTagStaleDays,
             musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores,
+            lissajousEnabled,
             minimizeToTrayOnClose,
             keyboardShortcuts,
         })) as AppSettings;
 
         currentSettings = normalizeAppSettings(savedSettings);
+        lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
         listenBrainzSocialController.handleSettingsChanged();
         setPlaybackOrderMode(currentSettings.playbackOrder);
         if (currentTrackIndex >= 0 && currentTrackIndex < tracks.length) {
@@ -4266,6 +4289,7 @@ settingsController = createSettingsController({
         musicBrainzTagStaleDays,
         musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores,
+        lissajousEnabled,
         minimizeToTrayOnClose,
         keyboardShortcuts,
     }): Promise<AudioOutputDevice[]> => {
@@ -4305,11 +4329,13 @@ settingsController = createSettingsController({
             musicBrainzTagStaleDays,
             musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores,
+            lissajousEnabled,
             minimizeToTrayOnClose,
             keyboardShortcuts,
         })) as AppSettings;
 
         currentSettings = normalizeAppSettings(savedSettings);
+        lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
         listenBrainzSocialController.handleSettingsChanged();
         setPlaybackOrderMode(currentSettings.playbackOrder);
         const outputDevices = await refreshAvailableAudioOutputDevices();

@@ -8,6 +8,8 @@ export function AudioGetReplayGainReleaseDynamicRange(arg1:Array<string>):Promis
 
 export function AudioGetState():Promise<main.AudioPlaybackState>;
 
+export function AudioGetVisualizationFrame(arg1:number):Promise<main.AudioVisualizationFrame>;
+
 export function AudioListOutputDevices():Promise<Array<main.AudioOutputDevice>>;
 
 export function AudioLoadTrack(arg1:string):Promise<main.AudioPlaybackState>;
