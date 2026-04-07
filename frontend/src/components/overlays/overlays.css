@@ -1200,6 +1200,13 @@
     appearance: auto;
 }
 
+.settings-select,
+.settings-select option,
+.settings-select optgroup {
+    background-color: rgba(18, 18, 20, 0.96);
+    color: rgba(255, 255, 255, 0.94);
+}
+
 .settings-audio-device-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -2277,6 +2284,12 @@
     background-repeat: no-repeat;
 }
 
+.playlist-target-select option,
+.playlist-target-select optgroup {
+    background-color: rgba(18, 18, 20, 0.96);
+    color: rgba(255, 255, 255, 0.94);
+}
+
 .playlist-target-select:hover:not(:disabled) {
     background-color: rgba(0, 0, 0, 0.46);
 }
@@ -2431,6 +2444,12 @@
     background-position: calc(100% - 0.9rem) calc(50% - 1px), calc(100% - 0.58rem) calc(50% - 1px);
     background-size: 0.34rem 0.34rem, 0.34rem 0.34rem;
     background-repeat: no-repeat;
+}
+
+.playlist-source option,
+.playlist-source optgroup {
+    background-color: rgba(18, 18, 20, 0.96);
+    color: rgba(255, 255, 255, 0.94);
 }
 
 .playlist-source:hover {
