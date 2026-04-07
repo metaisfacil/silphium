@@ -372,6 +372,7 @@ const createQueueMenuRuntimeContext = (scope: AppRuntimeScope) => ({
     get playlistTargetModalController() {
         return scope.playlistTargetModalControllerRef;
     },
+    listenBrainzSocialController: scope.listenBrainzSocialController,
     playbackSequencingService: scope.playbackSequencingService,
     sidebarQueueDescendantPromptThreshold: scope.sidebarQueueDescendantPromptThreshold,
     closeListenBrainzFeedbackMenu: () => {
