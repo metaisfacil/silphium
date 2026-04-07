@@ -219,6 +219,21 @@ describe('createSettingsController', () => {
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(false);
     });
 
+    it('opens the modal when the trigger button is clicked', async () => {
+        const { controller, elements } = mountSettingsController();
+
+        controller.close();
+        const trigger = document.querySelector('body > button') as HTMLButtonElement | null;
+        expect(trigger).not.toBeNull();
+
+        trigger?.click();
+        await flushPromises();
+
+        expect(elements.settingsModal.hidden).toBe(false);
+        expect(elements.settingsModal.classList.contains('is-visible')).toBe(true);
+        expect(document.activeElement).toBe(elements.settingsFFmpegPath);
+    });
+
     it('fetches Last.fm session key and fills the field', async () => {
         const fetchLastFmSessionKey = vi.fn(async () => 'session-key-from-fetch');
         const { controller, elements } = mountSettingsController({ fetchLastFmSessionKey });
