@@ -193,6 +193,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsSendToActionCommandInput,
         settingsSendToActionCancel,
         settingsFFmpegPath,
+        settingsListenBrainzToken,
         settingsLastFmApiKey,
         settingsLastFmApiSecret,
         settingsLastFmSessionKey,
@@ -397,7 +398,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
 
     settingsTabNetwork.addEventListener('click', () => {
         setActiveTab('network');
-        settingsMusicBrainzServerUrl.focus();
+        settingsListenBrainzToken.focus();
     });
 
     settingsTabDatabase.addEventListener('click', () => {
