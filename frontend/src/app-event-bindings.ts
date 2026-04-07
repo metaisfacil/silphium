@@ -2,8 +2,139 @@ import { BrowserOpenURL, EventsOn, OnFileDrop } from '../wailsjs/runtime/runtime
 import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import type { AppEventBindingsContext } from './app-bootstrap-setup';
 import { openMbLink } from './musicbrainz';
-import type { LibraryScanProgress, LibraryScanResult, MusicBrainzTagWorkerProgress, PlaybackOrderMode } from './types/app-types';
+import type { AudioPlaybackState, LibraryScanProgress, LibraryScanResult, MusicBrainzTagWorkerProgress, PlaybackOrderMode } from './types/app-types';
 import { hasExternalFileDragPayload, isSupportedAudioFilePath } from './utils/main-helpers';
+
+type VolumeControlBindingsContext = {
+    document: Document;
+    volume: HTMLInputElement;
+    volumeBtn: HTMLButtonElement;
+    audioSetVolume: (volumeValue: number) => Promise<AudioPlaybackState>;
+    applyPlaybackState: (state: AudioPlaybackState) => void;
+    handleAudioError: (error: unknown) => void;
+};
+
+const clampUnitVolume = (value: number): number => {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+
+    return Math.min(1, Math.max(0, value));
+};
+
+export const setupVolumeControlBindings = (context: VolumeControlBindingsContext): HTMLElement => {
+    const {
+        document,
+        volume,
+        volumeBtn,
+        audioSetVolume,
+        applyPlaybackState,
+        handleAudioError,
+    } = context;
+
+    const volumeRow = volumeBtn.closest('.volume-wrap') as HTMLElement;
+    const HIDE_DELAY_MS = 500;
+    const WHEEL_STEP = 0.05;
+    let closeTimeout: ReturnType<typeof setTimeout> | undefined;
+    let lastNonZeroVolume = clampUnitVolume(Number(volume.value));
+    if (lastNonZeroVolume <= 0) {
+        lastNonZeroVolume = 0.8;
+    }
+
+    const clearCloseTimeout = (): void => {
+        if (closeTimeout === undefined) {
+            return;
+        }
+
+        clearTimeout(closeTimeout);
+        closeTimeout = undefined;
+    };
+
+    const showVolumePopout = (): void => {
+        clearCloseTimeout();
+        volumeRow.classList.add('open');
+    };
+
+    const queueCloseVolumePopout = (): void => {
+        clearCloseTimeout();
+        closeTimeout = setTimeout(() => {
+            volumeRow.classList.remove('open');
+            closeTimeout = undefined;
+        }, HIDE_DELAY_MS);
+    };
+
+    const setVolume = (value: number): void => {
+        const normalizedValue = clampUnitVolume(value);
+        volume.value = String(normalizedValue);
+        const muted = normalizedValue <= 0;
+        volumeBtn.classList.toggle('is-muted', muted);
+        volumeBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
+        if (normalizedValue > 0) {
+            lastNonZeroVolume = normalizedValue;
+        }
+
+        void (async () => {
+            try {
+                const nextState = await audioSetVolume(normalizedValue);
+                applyPlaybackState(nextState);
+            } catch (error) {
+                handleAudioError(error);
+            }
+        })();
+    };
+
+    const syncVolumeButtonState = (): void => {
+        const normalizedValue = clampUnitVolume(Number(volume.value));
+        const muted = normalizedValue <= 0;
+        volumeBtn.classList.toggle('is-muted', muted);
+        volumeBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
+    };
+
+    volume.addEventListener('input', () => {
+        setVolume(Number(volume.value));
+    });
+
+    syncVolumeButtonState();
+
+    volumeBtn.addEventListener('click', () => {
+        const currentVolume = clampUnitVolume(Number(volume.value));
+        if (currentVolume > 0) {
+            lastNonZeroVolume = currentVolume;
+        }
+
+        setVolume(currentVolume > 0 ? 0 : lastNonZeroVolume);
+    });
+
+    volumeBtn.addEventListener('wheel', (event: WheelEvent) => {
+        event.preventDefault();
+        const direction = event.deltaY < 0 ? 1 : -1;
+        const nextVolume = clampUnitVolume(Number(volume.value) + (direction * WHEEL_STEP));
+        setVolume(nextVolume);
+    }, { passive: false });
+
+    volumeRow.addEventListener('pointerenter', () => {
+        showVolumePopout();
+    });
+
+    volumeRow.addEventListener('pointerleave', () => {
+        queueCloseVolumePopout();
+    });
+
+    volumeRow.addEventListener('focusin', () => {
+        showVolumePopout();
+    });
+
+    volumeRow.addEventListener('focusout', () => {
+        const activeElement = document.activeElement;
+        if (activeElement instanceof Node && volumeRow.contains(activeElement)) {
+            return;
+        }
+
+        queueCloseVolumePopout();
+    });
+
+    return volumeRow;
+};
 
 export const setupAppEventBindings = (context: AppEventBindingsContext): void => {
     const {
@@ -517,19 +648,14 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     });
     seek.addEventListener('blur', () => { context.isSeeking = false; });
 
-    volume.addEventListener('input', () => {
-        void (async () => {
-            try {
-                const nextState = await context.audioSetVolume(Number(volume.value));
-                context.applyPlaybackState(nextState);
-            } catch (error) {
-                context.handleAudioError(error);
-            }
-        })();
+    const volumeRow = setupVolumeControlBindings({
+        document,
+        volume,
+        volumeBtn,
+        audioSetVolume: context.audioSetVolume,
+        applyPlaybackState: context.applyPlaybackState,
+        handleAudioError: context.handleAudioError,
     });
-
-    const volumeRow = volumeBtn.closest('.volume-wrap') as HTMLElement;
-    volumeBtn.addEventListener('click', () => { volumeRow.classList.toggle('open'); });
 
     document.addEventListener('click', (e: MouseEvent) => {
         const target = e.target as Node;
