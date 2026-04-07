@@ -29,6 +29,9 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      - name: Create frontend dist placeholder
+        run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
+
       - name: Run frontend lint
         run: npm run lint
         working-directory: frontend
@@ -79,7 +82,7 @@ jobs:
         working-directory: frontend
 
   build:
-    name: Build (${{ matrix.name }})
+    name: Silphium Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     needs: test
     strategy:
