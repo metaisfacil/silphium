@@ -1,6 +1,7 @@
 import { appendIndexedFilesToScanCollections, clearLibraryRuntimeData, createScanCollections, mapLibraryScanResult } from './services/library-data-service';
 import type {
     AppSettings,
+    AudioOutputDevice,
     AudioPlaybackState,
     ImageLibraryFile,
     LibraryIndexedFilePage,
@@ -13,6 +14,7 @@ import type {
 } from './types/app-types';
 import { updateExplorationButton } from './components/media-controls-exploration';
 import { applyMbLinks } from './musicbrainz';
+import type { LibrarySearchStateSnapshot } from './controllers/library-controller-types';
 import { setTechnicalLabel } from './utils/display-helpers';
 
 export interface AppLibraryLoadRuntimeContext {
@@ -25,7 +27,7 @@ export interface AppLibraryLoadRuntimeContext {
     currentTrackIndex: number;
     currentSettings: AppSettings;
     currentMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
-    availableAudioOutputDevices: Array<{ deviceId: string; name: string }>;
+    availableAudioOutputDevices: AudioOutputDevice[];
     libraryClientFinalizeEstimateMs: number;
     activeLibraryLoadScanResolvedAtMs: number | null;
     fullLibraryScanLoadActive: boolean;
@@ -86,8 +88,8 @@ export interface AppLibraryLoadRuntimeContext {
     getLibraryRootName: () => string;
     getCurrentFolderPath: () => string;
     setCurrentFolderPath: (value: string) => void;
-    getLibrarySearchStateSnapshot: () => { query: string } | null;
-    restoreLibrarySearchState: (snapshot: { query: string } | null) => void;
+    getLibrarySearchStateSnapshot: () => LibrarySearchStateSnapshot | null;
+    restoreLibrarySearchState: (snapshot: LibrarySearchStateSnapshot) => void;
     navigateToFolder: (folderPath: string) => void;
     rebuildLibraryTree: (rootName: string, truncated: boolean, tracks: Track[], textFiles: TextLibraryFile[], imageFiles: ImageLibraryFile[]) => Promise<void>;
     firstTrackIndexFromRandomAlbumFolder: () => number;
@@ -100,7 +102,7 @@ export interface AppLibraryLoadRuntimeContext {
     applyPlayerCardLayout: (layout: PlayerCardLayout) => void;
     getStoredLayout: () => PlayerCardLayout;
     resetListenBrainzFeedbackState: () => void;
-    listAudioOutputDevices: () => Promise<Array<{ deviceId: string; name: string }>>;
+    listAudioOutputDevices: () => Promise<AudioOutputDevice[]>;
     getSettings: () => Promise<AppSettings>;
     setLissajousEnabled: (enabled: boolean) => void;
     applyUiDitheringSetting: () => void;

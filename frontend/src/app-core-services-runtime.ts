@@ -16,6 +16,7 @@ import {
     SubmitListenBrainzRecordingFeedback,
 } from '../wailsjs/go/main/App';
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
+import type { AppCoreServicesRuntimeContext } from './app-runtime-setup';
 import { createListenBrainzController, type ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import { createListenBrainzSocialController } from './controllers/listenbrainz-social-controller';
 import { createLissajousVisualizerController } from './controllers/lissajous-visualizer-controller';
@@ -31,7 +32,7 @@ import { scheduleListenBrainzRequest } from './utils/musicbrainz-request-schedul
 import type { AudioVisualizationFrame, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
 import { firstTagValue, hasActiveSelectionWithin, normalizedTrackNumber } from './utils/display-helpers';
 
-export const createAppCoreServicesRuntime = (context: any) => {
+export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeContext) => {
     const defaultMusicBrainzServerUrl = 'https://musicbrainz.org';
     const defaultListenBrainzServerUrl = 'https://api.listenbrainz.org';
     const defaultLastFmServerUrl = 'https://ws.audioscrobbler.com/2.0';
@@ -356,7 +357,7 @@ export const createAppCoreServicesRuntime = (context: any) => {
                 ? nestedLink
                 : (firstArtistLink instanceof HTMLElement ? firstArtistLink : context.trackArtist),
         );
-        context.openTrackMetaMenu(event.clientX, event.clientY, false, 'none', null, '');
+        context.openTrackMetaMenu(event.clientX, event.clientY, false, null, null, '');
     });
     context.trackTitleInline.addEventListener('click', (event: MouseEvent) => {
         if (shouldBlockTrackMetaModalOpen()) {
@@ -448,7 +449,7 @@ export const createAppCoreServicesRuntime = (context: any) => {
                 ? nestedLink
                 : (firstArtistLink instanceof HTMLElement ? firstArtistLink : context.trackArtistHeader),
         );
-        context.openTrackMetaMenu(event.clientX, event.clientY, false, 'none', null, '');
+        context.openTrackMetaMenu(event.clientX, event.clientY, false, null, null, '');
     });
 
     return {

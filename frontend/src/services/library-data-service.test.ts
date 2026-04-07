@@ -7,14 +7,56 @@ import {
     mapLibraryScanResult,
     mergePlaylistFilesIntoTracks,
 } from './library-data-service';
+import type { LibraryIndexedFile, LibraryScanResult, Track } from '../types/app-types';
 
-const createIndexedFile = (path: string, name: string, overrides: Record<string, unknown> = {}) => ({
+const createIndexedFile = (path: string, name: string, overrides: Partial<LibraryIndexedFile> = {}): LibraryIndexedFile => ({
     path,
     name,
     relativePath: `Library/${name}`,
     folderPath: 'Library',
     rootPath: '/music',
     rootName: 'Library',
+    ...overrides,
+});
+
+const createScanResult = (overrides: Partial<LibraryScanResult> = {}): LibraryScanResult => ({
+    rootPath: '',
+    rootName: '',
+    trackFiles: [],
+    textFiles: [],
+    imageFiles: [],
+    coverPathByFolder: {},
+    totalEntries: 0,
+    trackCount: 0,
+    textFileCount: 0,
+    imageFileCount: 0,
+    truncated: false,
+    entryLimit: 0,
+    ...overrides,
+});
+
+const createTrack = (overrides: Partial<Track> = {}): Track => ({
+    title: 'Track 1',
+    name: 'Track 1',
+    path: '/music/track-1.flac',
+    relativePath: 'Library/track-1.flac',
+    folderPath: 'Library',
+    rootPath: '/music',
+    rootName: 'Library',
+    displayTitle: 'Track 1',
+    displayAlbum: 'Album',
+    displayArtist: 'Artist',
+    displayTrackNumber: '',
+    displayTrackTotal: '',
+    displayTechnical: '',
+    displayLyrics: '',
+    tagsResolved: true,
+    mbMetadataResolved: false,
+    technicalDetails: {},
+    allFileTags: {},
+    mbIds: {},
+    artistMbids: [],
+    mbArtistCredits: [],
     ...overrides,
 });
 
@@ -36,11 +78,11 @@ describe('library data service', () => {
     });
 
     it('creates scan collections and maps indexed files into the right buckets', async () => {
-        const scanCollections = createScanCollections({
+        const scanCollections = createScanCollections(createScanResult({
             coverPathByFolder: { Library: '/music/cover.jpg' },
-        } as any);
+        }));
 
-        expect(createScanCollections({} as any).coverPathEntries).toEqual([]);
+        expect(createScanCollections(createScanResult()).coverPathEntries).toEqual([]);
 
         expect(scanCollections.coverPathEntries).toEqual([['Library', '/music/cover.jpg']]);
         expect(scanCollections.tracks).toEqual([]);
@@ -49,17 +91,17 @@ describe('library data service', () => {
 
         await appendIndexedFilesToScanCollections(scanCollections, 'track', Array.from({ length: 400 }, (_, index) => (
             createIndexedFile(`/music/track-${index}.flac`, `track-${index}.flac`)
-        )) as any);
+        )));
         await appendIndexedFilesToScanCollections(scanCollections, 'text-file', Array.from({ length: 400 }, (_, index) => (
             index === 0
                 ? createIndexedFile(`/music/readme-${index}.txt`, `readme-${index}.txt`, { rootPath: undefined, rootName: undefined })
                 : createIndexedFile(`/music/readme-${index}.txt`, `readme-${index}.txt`)
-        )) as any);
+        )));
         await appendIndexedFilesToScanCollections(scanCollections, 'image-file', Array.from({ length: 400 }, (_, index) => (
             index === 0
                 ? createIndexedFile(`/music/cover-${index}.jpg`, `cover-${index}.jpg`, { rootPath: undefined, rootName: undefined })
                 : createIndexedFile(`/music/cover-${index}.jpg`, `cover-${index}.jpg`)
-        )) as any);
+        )));
 
         expect(scanCollections.tracks).toHaveLength(400);
         expect(scanCollections.tracks[0]).toEqual(expect.objectContaining({
@@ -73,50 +115,26 @@ describe('library data service', () => {
     });
 
     it('maps a full scan result into collections', async () => {
-        const scanCollections = await mapLibraryScanResult({
+        const scanCollections = await mapLibraryScanResult(createScanResult({
             coverPathByFolder: { Library: '/music/cover.jpg' },
             trackFiles: [createIndexedFile('/music/track.flac', 'track.flac')],
             textFiles: [createIndexedFile('/music/readme.txt', 'readme.txt')],
             imageFiles: [createIndexedFile('/music/cover.jpg', 'cover.jpg')],
-        } as any);
+        }));
 
         expect(scanCollections.coverPathEntries).toEqual([['Library', '/music/cover.jpg']]);
         expect(scanCollections.tracks).toHaveLength(1);
         expect(scanCollections.textFiles).toHaveLength(1);
         expect(scanCollections.imageFiles).toHaveLength(1);
 
-        const emptyCollections = await mapLibraryScanResult({} as any);
+        const emptyCollections = await mapLibraryScanResult(createScanResult());
         expect(emptyCollections.tracks).toEqual([]);
         expect(emptyCollections.textFiles).toEqual([]);
         expect(emptyCollections.imageFiles).toEqual([]);
     });
 
     it('merges playlist files into tracks while preserving existing indexes and yielding between batches', async () => {
-        const tracks = [
-            {
-                title: 'Track 1',
-                name: 'Track 1',
-                path: '/music/track-1.flac',
-                relativePath: 'Library/track-1.flac',
-                folderPath: 'Library',
-                rootPath: '/music',
-                rootName: 'Library',
-                displayTitle: 'Track 1',
-                displayAlbum: 'Album',
-                displayArtist: 'Artist',
-                displayTrackNumber: '',
-                displayTrackTotal: '',
-                displayTechnical: '',
-                displayLyrics: '',
-                tagsResolved: true,
-                mbMetadataResolved: false,
-                technicalDetails: {},
-                allFileTags: {},
-                mbIds: {},
-                artistMbids: [],
-                mbArtistCredits: [],
-            },
-        ];
+        const tracks = [createTrack()];
 
         const playlistFiles = Array.from({ length: 201 }, (_, index) => (
             index === 0
@@ -131,7 +149,7 @@ describe('library data service', () => {
                 : createIndexedFile(`/music/new-track-${index}.flac`, `new-track-${index}.flac`)
         ));
 
-        const merged = await mergePlaylistFilesIntoTracks(tracks as any, playlistFiles as any);
+        const merged = await mergePlaylistFilesIntoTracks(tracks, playlistFiles);
 
         expect(merged.trackIndexes[0]).toBe(0);
         expect(merged.tracks).toHaveLength(201);

@@ -10,7 +10,8 @@ import {
     ScanConfiguredLibraryFolders,
 } from '../wailsjs/go/main/App';
 import { WindowHide, WindowIsMinimised } from '../wailsjs/runtime/runtime';
-import { createMediaSessionController } from './controllers/media-session-controller';
+import type { AppPlaybackControlsRuntimeContext } from './app-runtime-setup';
+import { createMediaSessionController, type ExternalPlaybackAction } from './controllers/media-session-controller';
 import type { AudioOutputDevice, AudioPlaybackState, LibraryScanResult, Track } from './types/app-types';
 import {
     describeErrorForLog,
@@ -23,7 +24,7 @@ import {
     shortcutBindingUsesCode,
 } from './utils/shortcut-bindings';
 
-export const createAppPlaybackControlsRuntime = (context: any) => {
+export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRuntimeContext) => {
     const refreshAvailableAudioOutputDevices = async (): Promise<AudioOutputDevice[]> => {
         const outputDevices = await AudioListOutputDevices() as AudioOutputDevice[];
         context.availableAudioOutputDevices = Array.isArray(outputDevices) ? outputDevices : [];
@@ -296,7 +297,7 @@ export const createAppPlaybackControlsRuntime = (context: any) => {
         mediaSessionController.updatePositionState();
     };
 
-    const dispatchExternalPlaybackAction = (action: any): void => {
+    const dispatchExternalPlaybackAction = (action: ExternalPlaybackAction): void => {
         mediaSessionController.dispatchExternalPlaybackAction(action);
     };
 

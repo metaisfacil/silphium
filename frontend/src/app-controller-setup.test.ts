@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { defaultAppSettings } from './utils/settings-normalization';
+import type { AppControllerSetupContext } from './app-bootstrap-setup';
 
 const {
     createArtistInfoControllerMock,
@@ -203,7 +204,7 @@ const createContext = () => {
         openTextFileModal: vi.fn(async () => undefined),
         openSidebarQueueMenu: vi.fn(),
         closeSidebarQueueMenu: vi.fn(),
-    } as any;
+    };
 };
 
 describe('app-controller-setup', () => {
@@ -233,7 +234,7 @@ describe('app-controller-setup', () => {
         createLibraryControllerMock.mockReturnValue(libraryController);
 
         const context = createContext();
-        const controllers = setupAppControllers(context);
+        const controllers = setupAppControllers(context as unknown as AppControllerSetupContext);
 
         const settingsConfig = createSettingsControllerMock.mock.calls[0]?.[0];
         const playlistConfig = createPlaylistControllerMock.mock.calls[0]?.[0];

@@ -4,8 +4,12 @@ import { createAppModalRuntime } from './app-modal-runtime';
 import { createAppNowPlayingRuntime } from './app-now-playing-runtime';
 import { createAppPlaybackControlsRuntime } from './app-playback-controls-runtime';
 import { createAppQueueMenuRuntime } from './app-queue-menu-runtime';
+import type { AppRuntimeScope } from './app-runtime-scope';
+import type { AudioPlaybackState, CustomSendToActionScope, ImageLibraryFile, LibraryIndexedFilePage, MusicBrainzEntityType, MusicBrainzTagWorkerProgress, TextLibraryFile, Track } from './types/app-types';
+import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
+import type { LibrarySearchStateSnapshot } from './controllers/library-controller-types';
 
-export const setupCoreServicesRuntime = (scope: any) => createAppCoreServicesRuntime({
+const createCoreServicesRuntimeContext = (scope: AppRuntimeScope) => ({
     app: scope.app,
     get currentSettings() {
         return scope.currentSettings;
@@ -16,7 +20,7 @@ export const setupCoreServicesRuntime = (scope: any) => createAppCoreServicesRun
     get currentTrackIndex() {
         return scope.currentTrackIndex;
     },
-    releaseDepthForTrack: (track: any) => scope.releaseDepthForTrack(track),
+    releaseDepthForTrack: (track: Pick<Track, 'rootPath'>) => scope.releaseDepthForTrack(track),
     get tagRequestVersion() {
         return scope.tagRequestVersion;
     },
@@ -54,18 +58,22 @@ export const setupCoreServicesRuntime = (scope: any) => createAppCoreServicesRun
     trackReleaseAlbum: scope.trackReleaseAlbum,
     trackReleaseLabel: scope.trackReleaseLabel,
     trackArtistHeader: scope.trackArtistHeader,
-    openMusicBrainzEntityForCurrentTrack: async (entityType: any) => {
+    openMusicBrainzEntityForCurrentTrack: async (entityType: MusicBrainzEntityType) => {
         await scope.openMusicBrainzEntityForCurrentTrack(entityType);
     },
     setTrackMetaMenuTarget: (value: HTMLElement) => {
         scope.trackMetaMenuTarget = value;
     },
-    openTrackMetaMenu: (clientX: number, clientY: number, includeCopyActions: boolean, actionScope: any, actionKind: any, actionPath: string) => {
+    openTrackMetaMenu: (clientX: number, clientY: number, includeCopyActions: boolean, actionScope: CustomSendToActionScope | null, actionKind: 'track' | 'album' | null, actionPath: string) => {
         scope.openTrackMetaMenu(clientX, clientY, includeCopyActions, actionScope, actionKind, actionPath);
     },
 });
 
-export const setupNowPlayingRuntime = (scope: any) => createAppNowPlayingRuntime({
+export type AppCoreServicesRuntimeContext = ReturnType<typeof createCoreServicesRuntimeContext>;
+
+export const setupCoreServicesRuntime = (scope: AppRuntimeScope) => createAppCoreServicesRuntime(createCoreServicesRuntimeContext(scope));
+
+const createNowPlayingRuntimeContext = (scope: AppRuntimeScope) => ({
     get pendingNowPlayingCoverRefreshHandle() {
         return scope.pendingNowPlayingCoverRefreshHandle;
     },
@@ -211,7 +219,7 @@ export const setupNowPlayingRuntime = (scope: any) => createAppNowPlayingRuntime
     trackGenreInline: scope.trackGenreInline,
     trackArtistHeader: scope.trackArtistHeader,
     trackMetadataService: scope.trackMetadataService,
-    resolveCoverForTrack: async (track: any) => await scope.resolveCoverForTrack(track),
+    resolveCoverForTrack: async (track: Track) => await scope.resolveCoverForTrack(track),
     coverArtBackground: scope.coverArtBackground,
     coverArt: scope.coverArt,
     setBackgroundCover: (coverSrc?: string) => {
@@ -228,7 +236,11 @@ export const setupNowPlayingRuntime = (scope: any) => createAppNowPlayingRuntime
     coverArtService: scope.coverArtService,
 });
 
-export const setupQueueMenuRuntime = (scope: any) => createAppQueueMenuRuntime({
+export type AppNowPlayingRuntimeContext = ReturnType<typeof createNowPlayingRuntimeContext>;
+
+export const setupNowPlayingRuntime = (scope: AppRuntimeScope) => createAppNowPlayingRuntime(createNowPlayingRuntimeContext(scope));
+
+const createQueueMenuRuntimeContext = (scope: AppRuntimeScope) => ({
     get currentSettings() {
         return scope.currentSettings;
     },
@@ -370,7 +382,7 @@ export const setupQueueMenuRuntime = (scope: any) => createAppQueueMenuRuntime({
     ensureTrackTagsResolved: async (index: number) => {
         await scope.ensureTrackTagsResolved(index);
     },
-    submitListenBrainzFeedbackForTrack: async (trackIndex: number, score: any) => {
+    submitListenBrainzFeedbackForTrack: async (trackIndex: number, score: ListenBrainzFeedbackScore) => {
         await scope.submitListenBrainzFeedbackForTrack(trackIndex, score);
     },
     openErrorModal: (title: string, message: string) => {
@@ -380,7 +392,7 @@ export const setupQueueMenuRuntime = (scope: any) => createAppQueueMenuRuntime({
     loadTrack: async (index: number, allowMissingTrackRecovery = true, replayGainSequenceOverrideIndexes?: number[], manualTrackSelection = false) => {
         await scope.loadTrack(index, allowMissingTrackRecovery, replayGainSequenceOverrideIndexes, manualTrackSelection);
     },
-    queueGaplessNextTrack: async (stateOverride?: any, sequenceOverrideIndexes?: number[]) => {
+    queueGaplessNextTrack: async (stateOverride?: AudioPlaybackState, sequenceOverrideIndexes?: number[]) => {
         await scope.queueGaplessNextTrack(stateOverride, sequenceOverrideIndexes);
     },
     playCurrentTrack: async () => {
@@ -388,7 +400,11 @@ export const setupQueueMenuRuntime = (scope: any) => createAppQueueMenuRuntime({
     },
 });
 
-export const setupModalRuntime = (scope: any) => createAppModalRuntime({
+export type AppQueueMenuRuntimeContext = ReturnType<typeof createQueueMenuRuntimeContext>;
+
+export const setupQueueMenuRuntime = (scope: AppRuntimeScope) => createAppQueueMenuRuntime(createQueueMenuRuntimeContext(scope));
+
+const createModalRuntimeContext = (scope: AppRuntimeScope) => ({
     get artistInfoController() {
         return scope.artistInfoControllerRef;
     },
@@ -474,7 +490,11 @@ export const setupModalRuntime = (scope: any) => createAppModalRuntime({
     technicalInfoModalTransitionMs: scope.technicalInfoModalTransitionMs,
 });
 
-export const setupLibraryLoadRuntime = (scope: any) => createAppLibraryLoadRuntime({
+export type AppModalRuntimeContext = ReturnType<typeof createModalRuntimeContext>;
+
+export const setupModalRuntime = (scope: AppRuntimeScope) => createAppModalRuntime(createModalRuntimeContext(scope));
+
+export const setupLibraryLoadRuntime = (scope: AppRuntimeScope) => createAppLibraryLoadRuntime({
     libraryIndexedFilePageSize: scope.libraryIndexedFilePageSize,
     selectedLibraryRootLabel: scope.selectedLibraryRootLabel,
     get objectUrls() {
@@ -644,13 +664,13 @@ export const setupLibraryLoadRuntime = (scope: any) => createAppLibraryLoadRunti
         scope.libraryControllerRef.setCurrentFolderPath(value);
     },
     getLibrarySearchStateSnapshot: () => scope.libraryControllerRef.getLibrarySearchStateSnapshot(),
-    restoreLibrarySearchState: (snapshot: any) => {
+    restoreLibrarySearchState: (snapshot: LibrarySearchStateSnapshot) => {
         scope.libraryControllerRef.restoreLibrarySearchState(snapshot);
     },
     navigateToFolder: (folderPath: string) => {
         scope.libraryControllerRef.navigateToFolder(folderPath);
     },
-    rebuildLibraryTree: (rootName: string, truncated: boolean, nextTracks: any[], nextTextFiles: any[], nextImageFiles: any[]) => {
+    rebuildLibraryTree: (rootName: string, truncated: boolean, nextTracks: Track[], nextTextFiles: TextLibraryFile[], nextImageFiles: ImageLibraryFile[]) => {
         return scope.libraryControllerRef.rebuildLibraryTree(rootName, truncated, nextTracks, nextTextFiles, nextImageFiles);
     },
     firstTrackIndexFromRandomAlbumFolder: () => scope.libraryControllerRef.firstTrackIndexFromRandomAlbumFolder(),
@@ -677,7 +697,7 @@ export const setupLibraryLoadRuntime = (scope: any) => createAppLibraryLoadRunti
         scope.listenBrainzSocialController.handleSettingsChanged();
     },
     getMusicBrainzTagWorkerProgress: async () => await scope.getMusicBrainzTagWorkerProgress(),
-    setMusicBrainzTagWorkerProgress: (value: any) => {
+    setMusicBrainzTagWorkerProgress: (value: MusicBrainzTagWorkerProgress) => {
         scope.settingsControllerRef.setMusicBrainzTagWorkerProgress(value);
     },
     setPlaybackOrderMode: scope.setPlaybackOrderMode,
@@ -695,12 +715,12 @@ export const setupLibraryLoadRuntime = (scope: any) => createAppLibraryLoadRunti
         scope.coverArtService.setFolderCoverPath(folder, coverPath);
     },
     logRescan: scope.logRescan,
-    loadIndexedFilePage: async (kind: any, offset: number, limit: number) => {
+    loadIndexedFilePage: async (kind: LibraryIndexedFilePage['kind'], offset: number, limit: number) => {
         return await scope.loadIndexedFilePage(kind, offset, limit);
     },
 });
 
-export const setupPlaybackControlsRuntime = (scope: any) => createAppPlaybackControlsRuntime({
+const createPlaybackControlsRuntimeContext = (scope: AppRuntimeScope) => ({
     get availableAudioOutputDevices() {
         return scope.availableAudioOutputDevices;
     },
@@ -800,3 +820,7 @@ export const setupPlaybackControlsRuntime = (scope: any) => createAppPlaybackCon
     listenBrainzSocialController: scope.listenBrainzSocialController,
     settingsController: () => scope.settingsControllerRef,
 });
+
+export type AppPlaybackControlsRuntimeContext = ReturnType<typeof createPlaybackControlsRuntimeContext>;
+
+export const setupPlaybackControlsRuntime = (scope: AppRuntimeScope) => createAppPlaybackControlsRuntime(createPlaybackControlsRuntimeContext(scope));

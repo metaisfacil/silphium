@@ -17,6 +17,7 @@ vi.mock('./app-playback-controls-runtime', () => ({
 }));
 
 import { setupLibraryLoadRuntime, setupPlaybackControlsRuntime } from './app-runtime-setup';
+import type { AppRuntimeScope } from './app-runtime-scope';
 
 const createScope = () => {
     const libraryControllerRef = {
@@ -164,7 +165,7 @@ const createScope = () => {
         trackNavigationChain: Promise.resolve(),
         coverArt: Object.assign(document.createElement('img'), { src: '/cover.png' }),
         librarySearch: document.createElement('input'),
-    } as any;
+    };
 };
 
 describe('app-runtime-setup wrappers', () => {
@@ -174,7 +175,7 @@ describe('app-runtime-setup wrappers', () => {
 
     it('wires library-load runtime callbacks through live scope accessors', async () => {
         const scope = createScope();
-        const runtime = setupLibraryLoadRuntime(scope);
+        const runtime = setupLibraryLoadRuntime(scope as unknown as AppRuntimeScope);
         const context = createAppLibraryLoadRuntimeMock.mock.calls[0]?.[0];
 
         expect(runtime).toEqual({ context });
@@ -198,7 +199,7 @@ describe('app-runtime-setup wrappers', () => {
 
     it('wires playback-controls runtime callbacks and mutable state through scope', async () => {
         const scope = createScope();
-        const runtime = setupPlaybackControlsRuntime(scope);
+        const runtime = setupPlaybackControlsRuntime(scope as unknown as AppRuntimeScope);
         const context = createAppPlaybackControlsRuntimeMock.mock.calls[0]?.[0];
 
         expect(runtime).toEqual({ context });

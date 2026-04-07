@@ -9,6 +9,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
 }));
 
 import { createAppModalRuntime } from './app-modal-runtime';
+import type { AppModalRuntimeContext } from './app-runtime-setup';
 
 const createContext = () => ({
     artistInfoController: {
@@ -67,7 +68,7 @@ const createContext = () => ({
     technicalInfoContent: document.createElement('div'),
     technicalInfoModalHideTimer: undefined,
     technicalInfoModalTransitionMs: 180,
-} as any);
+});
 
 describe('createAppModalRuntime', () => {
     afterEach(() => {
@@ -77,7 +78,7 @@ describe('createAppModalRuntime', () => {
 
     it('swaps the visible background layer and clears both layers when cover art is removed', () => {
         const context = createContext();
-        const runtime = createAppModalRuntime(context);
+        const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
 
         runtime.setBackgroundCover('/art/cover.jpg');
 
@@ -95,7 +96,7 @@ describe('createAppModalRuntime', () => {
 
     it('loads text file content into the modal and shows a fallback on read failure', async () => {
         const context = createContext();
-        const runtime = createAppModalRuntime(context);
+        const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
         readTextFileMock.mockResolvedValueOnce('Track notes');
@@ -130,7 +131,7 @@ describe('createAppModalRuntime', () => {
     it('opens the release gallery when cover art comes from a release image file', () => {
         const context = createContext();
         context.coverArt.classList.add('is-visible');
-        const runtime = createAppModalRuntime(context);
+        const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
 
         runtime.openCoverImageModal();
 
@@ -144,7 +145,7 @@ describe('createAppModalRuntime', () => {
         const context = createContext();
         context.coverArt.classList.add('is-visible');
         context.coverArtService.getResolvedSourceForTrack.mockReturnValue('embedded');
-        const runtime = createAppModalRuntime(context);
+        const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
 
         runtime.openCoverImageModal();
 

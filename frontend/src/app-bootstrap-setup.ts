@@ -1,7 +1,9 @@
 import { setupAppControllers } from './app-controller-setup';
 import { setupAppEventBindings } from './app-event-bindings';
+import type { AppRuntimeScope } from './app-runtime-scope';
+import type { AppSettings, AudioPlaybackState, MusicBrainzTagWorkerProgress, TextLibraryFile, Track } from './types/app-types';
 
-export const setupControllersFromScope = (scope: any) => setupAppControllers({
+const createControllerSetupContextFromScope = (scope: AppRuntimeScope) => ({
     librarySettings: scope.librarySettings,
     settingsElements: scope.settingsElements,
     isWindowsRuntime: scope.isWindowsRuntime,
@@ -51,7 +53,7 @@ export const setupControllersFromScope = (scope: any) => setupAppControllers({
     },
     validateConfiguredFFmpegPath: scope.validateConfiguredFFmpegPath,
     missingFFmpegMessage: scope.missingFFmpegMessage,
-    saveSettings: async (settings: any) => await scope.saveSettingsBackend(settings),
+    saveSettings: async (settings: AppSettings) => await scope.saveSettingsBackend(settings),
     selectLibraryFolder: scope.selectLibraryFolder,
     selectPlaylistFile: scope.selectPlaylistFile,
     getPlaybackOrderMode: () => scope.playbackSequencingService.getPlaybackOrderMode(),
@@ -76,7 +78,7 @@ export const setupControllersFromScope = (scope: any) => setupAppControllers({
     },
     isPlaybackBackendReady: () => scope.playbackStateService.isBackendReady(),
     audioQueueNextTrack: async (currentPath: string, nextPath: string) => await scope.audioQueueNextTrack(currentPath, nextPath),
-    queueGaplessNextTrack: async (stateOverride?: any, sequenceOverrideIndexes?: number[]) => {
+    queueGaplessNextTrack: async (stateOverride?: AudioPlaybackState, sequenceOverrideIndexes?: number[]) => {
         await scope.queueGaplessNextTrack(stateOverride, sequenceOverrideIndexes);
     },
     refreshNowPlayingLabel: scope.refreshNowPlayingLabel,
@@ -127,8 +129,8 @@ export const setupControllersFromScope = (scope: any) => setupAppControllers({
         await scope.ensureTrackTagsResolved(index);
     },
     trackIndexForPath: scope.trackIndexForPath,
-    resolveCoverForTrack: async (track: any) => await scope.resolveCoverForTrack(track),
-    getCachedMediaArtwork: (track: any) => scope.coverArtService.getCachedMediaArtwork(track),
+    resolveCoverForTrack: async (track: Track) => await scope.resolveCoverForTrack(track),
+    getCachedMediaArtwork: (track: Track) => scope.coverArtService.getCachedMediaArtwork(track),
     getCoverArtSrc: () => scope.coverArt.classList.contains('is-visible') && scope.coverArt.src ? scope.coverArt.src : undefined,
     closeOtherMenus: () => {
         scope.closePlayOrderMenu();
@@ -161,8 +163,8 @@ export const setupControllersFromScope = (scope: any) => setupAppControllers({
     isFolderImmediateDescendantsEnumerated: scope.isFolderImmediateDescendantsEnumerated,
     searchLibrary: scope.searchLibrary,
     resolveTrackIndex: scope.ensureTrackIndexForPath,
-    resolveTextFileIndex: scope.textFileIndexByPath,
-    resolveImageFileIndex: scope.imageFileIndexByPath,
+    resolveTextFileIndex: scope.textFileIndexForPath,
+    resolveImageFileIndex: scope.imageFileIndexForPath,
     get fullLibraryScanLoadActive() {
         return scope.fullLibraryScanLoadActive;
     },
@@ -176,15 +178,18 @@ export const setupControllersFromScope = (scope: any) => setupAppControllers({
         scope.suppressAutoSelectAfterFullLibraryScan = value;
     },
     ensureTrackIndexForPath: scope.ensureTrackIndexForPath,
-    openTextFileModal: async (textFile: any) => {
+    openTextFileModal: async (textFile: TextLibraryFile) => {
         await scope.openTextFileModal(textFile);
     },
     openSidebarQueueMenu: scope.openSidebarQueueMenu,
     closeSidebarQueueMenu: scope.closeSidebarQueueMenu,
 });
 
-export const bindEventHandlersFromScope = (scope: any): void => {
-    setupAppEventBindings({
+export type AppControllerSetupContext = ReturnType<typeof createControllerSetupContextFromScope>;
+
+export const setupControllersFromScope = (scope: AppRuntimeScope) => setupAppControllers(createControllerSetupContextFromScope(scope));
+
+const createEventBindingsContextFromScope = (scope: AppRuntimeScope) => ({
         window: scope.window,
         document: scope.document,
         coverArt: scope.coverArt,
@@ -324,7 +329,7 @@ export const bindEventHandlersFromScope = (scope: any): void => {
         handleLibraryScanUpdatedEvent: scope.handleLibraryScanUpdatedEvent,
         updateLibraryLoadingEtaFromProgress: scope.updateLibraryLoadingEtaFromProgress,
         normalizeMusicBrainzTagWorkerProgress: scope.normalizeMusicBrainzTagWorkerProgress,
-        setMusicBrainzTagWorkerProgress: (value: any) => {
+        setMusicBrainzTagWorkerProgress: (value: MusicBrainzTagWorkerProgress) => {
             scope.settingsControllerRef.setMusicBrainzTagWorkerProgress(value);
         },
         dispatchExternalPlaybackAction: scope.dispatchExternalPlaybackAction,
@@ -344,6 +349,12 @@ export const bindEventHandlersFromScope = (scope: any): void => {
         set currentMusicBrainzTagWorkerProgress(value) {
             scope.currentMusicBrainzTagWorkerProgress = value;
         },
+        get isSeeking() {
+            return scope.isSeeking;
+        },
+        set isSeeking(value) {
+            scope.isSeeking = value;
+        },
         currentTimeLabel: scope.currentTimeLabel,
         formatTime: scope.formatTime,
         audioSeek: async (seconds: number) => await scope.audioSeek(seconds),
@@ -352,4 +363,9 @@ export const bindEventHandlersFromScope = (scope: any): void => {
         handleAudioError: scope.handleAudioError,
         mediaSessionController: scope.mediaSessionController,
     });
+
+export type AppEventBindingsContext = ReturnType<typeof createEventBindingsContextFromScope>;
+
+export const bindEventHandlersFromScope = (scope: AppRuntimeScope): void => {
+    setupAppEventBindings(createEventBindingsContextFromScope(scope));
 };

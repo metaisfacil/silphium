@@ -56,7 +56,7 @@ describe('settings normalization', () => {
         expect(normalizeCustomSendToActions([
             { title: ' Open ', scope: 'track', commandTemplate: '  cmd {path} ' },
             { title: 'open', scope: 'track', commandTemplate: 'cmd {path}' },
-            {} as any,
+            {},
             { title: '', scope: 'track', commandTemplate: 'ignored' },
             { title: 'Missing Scope', scope: 'unsupported', commandTemplate: 'ignored' },
             { title: 'Missing Command', scope: 'folder', commandTemplate: '   ' },

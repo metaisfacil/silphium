@@ -8,8 +8,9 @@ import {
 import { applyMbLinks } from './musicbrainz';
 import { updateExplorationButton } from './components/media-controls-exploration';
 import { renderPlayPauseIcon } from './components/media-controls';
+import type { AppNowPlayingRuntimeContext } from './app-runtime-setup';
 import { createAppReleaseRuntime } from './app-release-runtime';
-import type { AppLibraryFolder, AudioPlaybackState, TextLibraryFile, Track } from './types/app-types';
+import type { AppLibraryFolder, AudioPlaybackState, ImageLibraryFile, TextLibraryFile, Track } from './types/app-types';
 import {
     asReleaseDepth,
     buildLibraryRootNameByPath,
@@ -30,7 +31,7 @@ import {
     setTechnicalLabel,
 } from './utils/display-helpers';
 
-export const createAppNowPlayingRuntime = (context: any) => {
+export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext) => {
     const scheduleNowPlayingCoverRefresh = (): void => {
         if (context.pendingNowPlayingCoverRefreshHandle !== null) {
             window.clearTimeout(context.pendingNowPlayingCoverRefreshHandle);
@@ -69,7 +70,7 @@ export const createAppNowPlayingRuntime = (context: any) => {
 
     const rebuildImageFilePathIndex = (): void => {
         context.imageFileIndexByPath.clear();
-        context.imageFiles.forEach((imageFile: any, index: number) => {
+        context.imageFiles.forEach((imageFile: ImageLibraryFile, index: number) => {
             context.imageFileIndexByPath.set(imageFile.path.toLowerCase(), index);
         });
     };
@@ -295,7 +296,7 @@ export const createAppNowPlayingRuntime = (context: any) => {
             return cached;
         }
 
-        const foundIndex = context.imageFiles.findIndex((imageFile: any) => imageFile.path.toLowerCase() === normalizedPath);
+        const foundIndex = context.imageFiles.findIndex((imageFile: ImageLibraryFile) => imageFile.path.toLowerCase() === normalizedPath);
         if (foundIndex >= 0) {
             context.imageFileIndexByPath.set(normalizedPath, foundIndex);
         }

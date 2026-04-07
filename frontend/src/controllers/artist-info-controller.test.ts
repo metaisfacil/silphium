@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createArtistInfoController } from './artist-info-controller';
-import type { ArtistDetails } from '../types/app-types';
+import type { ArtistDetails, Track } from '../types/app-types';
 
-const createTrack = (artistMbids: string[] = ['artist-id']) => ({
+const createTrack = (artistMbids: string[] = ['artist-id']): Track => ({
     title: 'Track',
     name: 'Track',
     path: '/music/track.flac',
@@ -64,7 +64,7 @@ describe('artist-info-controller', () => {
         const elements = createElements();
         const controller = createArtistInfoController({
             elements,
-            getTracks: () => [createTrack()] as any,
+            getTracks: (): Track[] => [createTrack()],
             getCurrentTrackIndex: () => 0,
             getRequestVersion: () => 1,
             lookupArtistByMBID: vi.fn(async () => createArtistDetails({ found: true })),
@@ -102,7 +102,7 @@ describe('artist-info-controller', () => {
         const openUrl = vi.fn();
         const controller = createArtistInfoController({
             elements,
-            getTracks: () => [createTrack()] as any,
+            getTracks: (): Track[] => [createTrack()],
             getCurrentTrackIndex: () => 0,
             getRequestVersion: () => 2,
             lookupArtistByMBID,
@@ -165,7 +165,7 @@ describe('artist-info-controller', () => {
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
         const controller = createArtistInfoController({
             elements,
-            getTracks: () => [createTrack([]), createTrack(['artist-id'])] as any,
+            getTracks: (): Track[] => [createTrack([]), createTrack(['artist-id'])],
             getCurrentTrackIndex: () => currentTrackIndex,
             getRequestVersion: () => requestVersion,
             lookupArtistByMBID,

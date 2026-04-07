@@ -270,7 +270,7 @@ const createScopeAccessor = <T>(getter: () => T, setter?: (value: T) => void) =>
         : { configurable: true, enumerable: true, get: getter }
 );
 
-const runtimeScope: any = Object.create(shell, {
+const runtimeScope = Object.create(shell, {
     currentSettings: createScopeAccessor(() => currentSettings, (value) => {
         currentSettings = value;
     }),

@@ -1,4 +1,5 @@
 import { ReadTextFile } from '../wailsjs/go/main/App';
+import type { AppModalRuntimeContext } from './app-runtime-setup';
 import { renderTechnicalInfoContent } from './utils/main-helpers';
 import {
     lookupMusicBrainzEntity,
@@ -7,7 +8,7 @@ import {
 } from './utils/musicbrainz-entity-helpers';
 import type { MusicBrainzEntityType, TextLibraryFile } from './types/app-types';
 
-export const createAppModalRuntime = (context: any) => {
+export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
     const resetArtistInfoPanel = (): void => {
         context.artistInfoController.reset();
     };

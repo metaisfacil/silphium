@@ -17,6 +17,7 @@ vi.mock('./app-event-bindings', () => ({
 }));
 
 import { bindEventHandlersFromScope, setupControllersFromScope } from './app-bootstrap-setup';
+import type { AppRuntimeScope } from './app-runtime-scope';
 
 const createScope = () => {
     const coverArt = document.createElement('img');
@@ -273,7 +274,7 @@ const createScope = () => {
         audioSetVolume: vi.fn(async () => undefined),
         handleAudioError: vi.fn(),
         mediaSessionController: { sync: vi.fn() },
-    } as any;
+    };
 };
 
 describe('app-bootstrap-setup wrappers', () => {
@@ -283,7 +284,7 @@ describe('app-bootstrap-setup wrappers', () => {
 
     it('maps scope-backed controller setup callbacks and mutable state', async () => {
         const scope = createScope();
-        const runtime = setupControllersFromScope(scope);
+        const runtime = setupControllersFromScope(scope as unknown as AppRuntimeScope);
         const context = setupAppControllersMock.mock.calls[0]?.[0];
 
         expect(runtime).toEqual({ context });
@@ -349,7 +350,7 @@ describe('app-bootstrap-setup wrappers', () => {
     it('maps event binding callbacks and live getters from scope', async () => {
         const scope = createScope();
 
-        bindEventHandlersFromScope(scope);
+        bindEventHandlersFromScope(scope as unknown as AppRuntimeScope);
         const context = setupAppEventBindingsMock.mock.calls[0]?.[0];
 
         expect(context.window).toBe(window);

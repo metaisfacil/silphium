@@ -1,13 +1,15 @@
 import { createArtistInfoController } from './controllers/artist-info-controller';
 import { createImageModalController } from './controllers/image-modal-controller';
 import { createLibraryController } from './controllers/library-controller';
-import { createPlaylistController } from './controllers/playlist-controller';
+import { createPlaylistController, type PlaylistController, type PlaylistTrackChosenContext } from './controllers/playlist-controller';
 import { createPlaylistTargetModalController } from './controllers/playlist-target-modal-controller';
 import { createShareController } from './controllers/share-controller';
+import type { AppControllerSetupContext } from './app-bootstrap-setup';
 import { setupSettingsController } from './app-settings-controller-setup';
+import type { AppSettings, AudioPlaybackState, Track } from './types/app-types';
 
-export const setupAppControllers = (context: any) => {
-    let playlistController: any;
+export const setupAppControllers = (context: AppControllerSetupContext) => {
+    let playlistController: PlaylistController | undefined;
 
     const settingsController = setupSettingsController({
         trigger: context.librarySettings,
@@ -53,7 +55,7 @@ export const setupAppControllers = (context: any) => {
         },
         validateConfiguredFFmpegPath: context.validateConfiguredFFmpegPath,
         missingFFmpegMessage: context.missingFFmpegMessage,
-        saveSettings: async (settings: any) => {
+        saveSettings: async (settings: AppSettings) => {
             return await context.saveSettings(settings);
         },
         selectLibraryFolder: context.selectLibraryFolder,
@@ -76,7 +78,7 @@ export const setupAppControllers = (context: any) => {
         audioQueueNextTrack: async (currentPath: string, nextPath: string) => {
             return await context.audioQueueNextTrack(currentPath, nextPath);
         },
-        queueGaplessNextTrack: async (stateOverride?: any, sequenceOverrideIndexes?: number[]) => {
+        queueGaplessNextTrack: async (stateOverride?: AudioPlaybackState, sequenceOverrideIndexes?: number[]) => {
             await context.queueGaplessNextTrack(stateOverride, sequenceOverrideIndexes);
         },
         refreshNowPlayingLabel: context.refreshNowPlayingLabel,
@@ -132,7 +134,7 @@ export const setupAppControllers = (context: any) => {
         savePlaylistData: (playlistPath: string, trackPaths: string[]) => context.savePlaylistData(playlistPath, trackPaths),
         appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => context.appendTracksToPlaylistData(playlistPath, trackPaths),
         getFavoritePlaylists: () => context.currentSettings.favoritePlaylists,
-        onTrackChosen: async (index: number, selectionContext: any) => {
+        onTrackChosen: async (index: number, selectionContext: PlaylistTrackChosenContext) => {
             const manualTrackSelection = selectionContext.userInitiated && selectionContext.source !== 'queue';
             await context.loadTrack(index, true, undefined, manualTrackSelection);
             await context.playCurrentTrack();
@@ -158,10 +160,10 @@ export const setupAppControllers = (context: any) => {
         },
         trackIndexForPath: context.trackIndexForPath,
         getTrack: (index: number) => context.tracks[index],
-        resolveCoverForTrack: async (track: any) => {
+        resolveCoverForTrack: async (track: Track) => {
             return await context.resolveCoverForTrack(track);
         },
-        getCachedMediaArtwork: (track: any) => context.getCachedMediaArtwork(track),
+        getCachedMediaArtwork: (track: Track) => context.getCachedMediaArtwork(track),
         getCoverArtSrc: context.getCoverArtSrc,
         closeOtherMenus: context.closeOtherMenus,
         selectShareImageSaveFile: context.selectShareImageSaveFile,

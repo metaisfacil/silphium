@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { AppSettings, PlaybackOrderMode } from './types/app-types';
+import type { AppSettings, PlaybackOrderMode, Track } from './types/app-types';
 import { createPlaybackOrderPlaylistRuntime } from './app-playback-order-playlist-runtime';
 
 const {
@@ -82,6 +82,31 @@ const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     ...overrides,
 });
 
+const createTrack = (overrides: Partial<Track> = {}): Track => ({
+    title: 'Track 1',
+    name: 'Track 1',
+    path: '/music/track-1.flac',
+    relativePath: 'Library/track-1.flac',
+    folderPath: 'Library',
+    rootPath: '/music',
+    rootName: 'Library',
+    displayTitle: 'Track 1',
+    displayAlbum: 'Album',
+    displayArtist: 'Artist',
+    displayTrackNumber: '',
+    displayTrackTotal: '',
+    displayTechnical: '',
+    displayLyrics: '',
+    tagsResolved: true,
+    mbMetadataResolved: false,
+    technicalDetails: {},
+    allFileTags: {},
+    mbIds: {},
+    artistMbids: [],
+    mbArtistCredits: [],
+    ...overrides,
+});
+
 describe('createPlaybackOrderPlaylistRuntime', () => {
     afterEach(() => {
         vi.clearAllMocks();
@@ -96,7 +121,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             currentSettings: createSettings(),
             playbackSequencingService: {
                 setPlaybackOrderMode,
-                getPlaybackOrderMode: vi.fn(() => 'shuffle-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-library'),
             },
             playlistController: {
                 clearEditableQueue: vi.fn(),
@@ -131,7 +156,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         const context = {
             currentSettings: createSettings(),
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn(() => 'shuffle-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-library'),
                 setPlaybackOrderMode: vi.fn(() => true),
             },
             playlistController: {
@@ -168,15 +193,24 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             trackFiles: [{ path: '/music/new-track.flac' }],
         });
         const mergedTracks = [
-            { path: '/music/existing.flac' },
-            { path: '/music/new-track.flac' },
+            createTrack({ path: '/music/existing.flac', name: 'Existing', title: 'Existing', relativePath: 'Library/existing.flac' }),
+            createTrack({ path: '/music/new-track.flac', name: 'New Track', title: 'New Track', relativePath: 'Library/new-track.flac' }),
         ];
         mergePlaylistFilesIntoTracksMock.mockResolvedValue({
             tracks: mergedTracks,
             trackIndexes: [1, 0],
         });
         const context = {
-            tracks: [{ path: '/music/existing.flac' }],
+            currentSettings: createSettings(),
+            tracks: [createTrack({ path: '/music/existing.flac', name: 'Existing', title: 'Existing', relativePath: 'Library/existing.flac' })],
+            playbackSequencingService: {
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
+            },
+            playlistController: {
+                clearEditableQueue: vi.fn(),
+            },
+            updatePlayOrderMenuState: vi.fn(),
             rebuildTrackPathIndex: vi.fn(),
         };
 
@@ -187,7 +221,10 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             trackIndexes: [1, 0],
         });
         expect(loadPlaylistFileMock).toHaveBeenCalledWith('/playlists/road-trip.m3u8');
-        expect(mergePlaylistFilesIntoTracksMock).toHaveBeenCalledWith([{ path: '/music/existing.flac' }], [{ path: '/music/new-track.flac' }]);
+        expect(mergePlaylistFilesIntoTracksMock).toHaveBeenCalledWith(
+            [createTrack({ path: '/music/existing.flac', name: 'Existing', title: 'Existing', relativePath: 'Library/existing.flac' })],
+            [{ path: '/music/new-track.flac' }],
+        );
         expect(context.tracks).toBe(mergedTracks);
         expect(context.rebuildTrackPathIndex).toHaveBeenCalledTimes(1);
     });

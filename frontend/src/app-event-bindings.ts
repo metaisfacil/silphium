@@ -1,10 +1,11 @@
 import { BrowserOpenURL, EventsOn, OnFileDrop } from '../wailsjs/runtime/runtime';
 import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
+import type { AppEventBindingsContext } from './app-bootstrap-setup';
 import { openMbLink } from './musicbrainz';
 import type { LibraryScanProgress, LibraryScanResult, MusicBrainzTagWorkerProgress, PlaybackOrderMode } from './types/app-types';
 import { hasExternalFileDragPayload, isSupportedAudioFilePath } from './utils/main-helpers';
 
-export const setupAppEventBindings = (context: any): void => {
+export const setupAppEventBindings = (context: AppEventBindingsContext): void => {
     const {
         window,
         document,
@@ -285,12 +286,22 @@ export const setupAppEventBindings = (context: any): void => {
 
     sidebarQueueLove.addEventListener('click', () => {
         closeSidebarQueueMenu();
-        void submitSidebarQueueFeedback(sidebarQueueFeedbackTrackIndex(), 1 as ListenBrainzFeedbackScore);
+        const trackIndex = sidebarQueueFeedbackTrackIndex();
+        if (trackIndex === null) {
+            return;
+        }
+
+        void submitSidebarQueueFeedback(trackIndex, 1 as ListenBrainzFeedbackScore);
     });
 
     sidebarQueueHate.addEventListener('click', () => {
         closeSidebarQueueMenu();
-        void submitSidebarQueueFeedback(sidebarQueueFeedbackTrackIndex(), -1 as ListenBrainzFeedbackScore);
+        const trackIndex = sidebarQueueFeedbackTrackIndex();
+        if (trackIndex === null) {
+            return;
+        }
+
+        void submitSidebarQueueFeedback(trackIndex, -1 as ListenBrainzFeedbackScore);
     });
 
     sidebarQueueEnd.addEventListener('click', () => {

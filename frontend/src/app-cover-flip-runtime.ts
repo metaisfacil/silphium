@@ -1,4 +1,10 @@
-export const createCoverFlipRuntime = (context: any) => {
+type CoverFlipRuntimeContext = {
+    coverFrame: HTMLElement;
+    coverFlipped: boolean;
+    setCoverFlipped: (flipped: boolean) => void;
+};
+
+export const createCoverFlipRuntime = (context: CoverFlipRuntimeContext) => {
     const coverFlipSuppressWindowMs = 320;
     let suppressCoverContextMenuUntil = 0;
     let suppressCoverFrontClickUntil = 0;

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { setupLibraryEventHandlers, type LibraryEventDeps } from './library-controller-events';
+import type { LibraryControllerOptions } from './library-controller-types';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -28,14 +29,23 @@ const createDeps = () => {
     let librarySearchActive = false;
     const expandedSearchFolders = new Set<string>();
 
-    const deps: LibraryEventDeps = {
-        options: {
+    const options: LibraryControllerOptions = {
             sidebarToggle,
+            app: document.createElement('div'),
+            librarySidebar: document.createElement('div'),
             libraryBack,
             libraryPath,
             librarySearch,
             libraryBrowser,
+            libraryScanYieldIndicator: document.createElement('span'),
+            getTracks: () => [],
+            getTextFiles: () => [],
+            getImageFiles: () => [],
+            getCurrentTrackIndex: () => -1,
+            loadFolderPage: vi.fn(async () => ({ folderPath: '', offset: 0, limit: 0, totalEntries: 0, entries: [] })),
+            resolveLibraryFolderForAbsolutePath: vi.fn(async () => ''),
             isFolderImmediateDescendantsEnumerated: vi.fn(async () => true),
+            searchLibrary: vi.fn(async () => ({ query: '', offset: 0, limit: 0, totalEntries: 0, entries: [] })),
             resolveTrackIndex: vi.fn(() => -1),
             resolveTextFileIndex: vi.fn(() => -1),
             resolveImageFileIndex: vi.fn(() => -1),
@@ -45,7 +55,11 @@ const createDeps = () => {
             onImageFileChosen: vi.fn(),
             onQueueRequested: vi.fn(),
             onFolderQueueRequested: vi.fn(),
-        } as any,
+            onSidebarClosed: vi.fn(),
+        };
+
+    const deps: LibraryEventDeps = {
+        options,
         getActiveSearchTreeRoot: vi.fn(() => null),
         getExpandedSearchFolders: () => expandedSearchFolders,
         getHoveredBrowserEntryKey: vi.fn(() => null),

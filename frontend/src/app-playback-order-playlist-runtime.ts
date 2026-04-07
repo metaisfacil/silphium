@@ -3,9 +3,27 @@ import { main as WailsModels } from '../wailsjs/go/models';
 import type { LoadedPlaylistData } from './controllers/playlist-controller';
 import { mergePlaylistFilesIntoTracks } from './services/library-data-service';
 import { normalizeAppSettings } from './utils/settings-normalization';
-import type { AppSettings, PlaybackOrderMode, PlaylistLoadResult } from './types/app-types';
+import type { AppSettings, PlaybackOrderMode, PlaylistLoadResult, Track } from './types/app-types';
 
-export const createPlaybackOrderPlaylistRuntime = (context: any) => {
+type PlaybackOrderPlaylistRuntimeContext = {
+    currentSettings: AppSettings;
+    tracks?: Track[];
+    playlistController: {
+        clearEditableQueue: () => void;
+    };
+    playbackSequencingService: {
+        setPlaybackOrderMode: (mode: PlaybackOrderMode) => boolean;
+        getPlaybackOrderMode: () => PlaybackOrderMode;
+    };
+    updatePlayOrderMenuState: () => void;
+    lissajousVisualizerController?: {
+        setEnabled: (enabled: boolean) => void;
+    };
+    applyUiDitheringSetting?: () => void;
+    rebuildTrackPathIndex?: () => void;
+};
+
+export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylistRuntimeContext) => {
     const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
         const changed = context.playbackSequencingService.setPlaybackOrderMode(nextMode);
         if (!changed) {
@@ -50,8 +68,8 @@ export const createPlaybackOrderPlaylistRuntime = (context: any) => {
             })) as AppSettings;
 
             context.currentSettings = normalizeAppSettings(savedSettings);
-            context.lissajousVisualizerController.setEnabled(context.currentSettings.lissajousEnabled);
-            context.applyUiDitheringSetting();
+            context.lissajousVisualizerController?.setEnabled(context.currentSettings.lissajousEnabled);
+            context.applyUiDitheringSetting?.();
             setPlaybackOrderMode(context.currentSettings.playbackOrder);
         } catch (error) {
             console.error(error);
@@ -60,9 +78,9 @@ export const createPlaybackOrderPlaylistRuntime = (context: any) => {
 
     const loadPlaylistData = async (playlistPath: string): Promise<LoadedPlaylistData | null> => {
         const loaded = await LoadPlaylistFile(playlistPath) as PlaylistLoadResult;
-        const mergeResult = await mergePlaylistFilesIntoTracks(context.tracks, loaded.trackFiles || []);
+        const mergeResult = await mergePlaylistFilesIntoTracks(context.tracks || [], loaded.trackFiles || []);
         context.tracks = mergeResult.tracks;
-        context.rebuildTrackPathIndex();
+        context.rebuildTrackPathIndex?.();
 
         return {
             name: loaded.name || '',

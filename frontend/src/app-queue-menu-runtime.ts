@@ -1,5 +1,6 @@
 import { ClipboardSetText } from '../wailsjs/runtime/runtime';
 import { OpenFolderInFileBrowser, ResolveLibraryFolderForPath, RunCustomSendToAction, GetLibraryFolderTrackCount, GetLibraryFolderTrackPaths } from '../wailsjs/go/main/App';
+import type { AppQueueMenuRuntimeContext } from './app-runtime-setup';
 import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import type { CustomSendToAction, CustomSendToActionScope, PlaybackOrderMode } from './types/app-types';
 import { cleanSidebarQueueSelectionLabel, renderSendToButtons } from './utils/display-helpers';
@@ -12,7 +13,7 @@ export type SidebarQueueSelectionContext = {
     trackIndexesScopedToSelection: boolean;
 };
 
-export const createAppQueueMenuRuntime = (context: any) => {
+export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) => {
     const closePlayOrderMenu = (): void => {
         context.playOrderMenu.hidden = true;
     };

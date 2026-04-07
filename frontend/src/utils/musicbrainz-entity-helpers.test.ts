@@ -38,8 +38,9 @@ import {
     renderMusicBrainzEntityContent,
     setMusicBrainzRequestLogServerResolver,
 } from './musicbrainz-entity-helpers';
+import type { MusicBrainzEntityInfo, Track } from '../types/app-types';
 
-const createTrack = () => ({
+const createTrack = (): Track => ({
     title: 'Track',
     name: 'Track',
     path: '/music/track.flac',
@@ -123,10 +124,10 @@ describe('musicbrainz entity helpers', () => {
         const track = createTrack();
         lookupExplorationMock.mockResolvedValueOnce({ found: true, nodes: [{ id: 'artist-id' }], edges: [], warnings: [], title: 'Graph', summary: 'Summary' });
         scheduleMusicBrainzRequestMock.mockImplementationOnce(async (factory) => await factory());
-        expect(await lookupMusicBrainzExploration(track as any, 'req-1')).toEqual({ found: true, nodes: [{ id: 'artist-id' }], edges: [], warnings: [], title: 'Graph', summary: 'Summary' });
+        expect(await lookupMusicBrainzExploration(track, 'req-1')).toEqual({ found: true, nodes: [{ id: 'artist-id' }], edges: [], warnings: [], title: 'Graph', summary: 'Summary' });
 
         scheduleMusicBrainzRequestMock.mockRejectedValueOnce(new Error('exploration failed'));
-        expect(await lookupMusicBrainzExploration(track as any, 'req-2')).toEqual({
+        expect(await lookupMusicBrainzExploration(track, 'req-2')).toEqual({
             found: false,
             title: 'MusicBrainz exploration',
             summary: 'No MusicBrainz exploration data found.',
@@ -135,7 +136,7 @@ describe('musicbrainz entity helpers', () => {
             warnings: [],
         });
 
-        expect(await lookupMusicBrainzExploration({ ...track, mbIds: {}, artistMbids: [], mbArtistCredits: [] } as any, 'req-3')).toEqual({
+        expect(await lookupMusicBrainzExploration({ ...track, mbIds: {}, artistMbids: [], mbArtistCredits: [] }, 'req-3')).toEqual({
             found: false,
             title: 'MusicBrainz exploration',
             summary: 'No MusicBrainz exploration data found.',
@@ -149,14 +150,14 @@ describe('musicbrainz entity helpers', () => {
     it('resolves track entity mbids and favicon urls', () => {
         const track = createTrack();
 
-        expect(mbidForTrackEntity(track as any, 'recording')).toBe('recording-id');
-        expect(mbidForTrackEntity({ ...track, mbIds: { ...track.mbIds, recordingId: '' } } as any, 'recording')).toBe('');
-        expect(mbidForTrackEntity(track as any, 'release')).toBe('release-id');
-        expect(mbidForTrackEntity({ ...track, mbIds: { ...track.mbIds, releaseId: '' } } as any, 'release')).toBe('');
-        expect(mbidForTrackEntity(track as any, 'label')).toBe('label-id');
-        expect(mbidForTrackEntity({ ...track, mbIds: { ...track.mbIds, labelId: '' } } as any, 'label')).toBe('');
-        expect(mbidForTrackEntity({ ...track, mbIds: {}, artistMbids: ['artist-two'] } as any, 'artist')).toBe('artist-two');
-        expect(mbidForTrackEntity({ ...track, mbIds: {}, artistMbids: [] } as any, 'artist')).toBe('');
+        expect(mbidForTrackEntity(track, 'recording')).toBe('recording-id');
+        expect(mbidForTrackEntity({ ...track, mbIds: { ...track.mbIds, recordingId: '' } }, 'recording')).toBe('');
+        expect(mbidForTrackEntity(track, 'release')).toBe('release-id');
+        expect(mbidForTrackEntity({ ...track, mbIds: { ...track.mbIds, releaseId: '' } }, 'release')).toBe('');
+        expect(mbidForTrackEntity(track, 'label')).toBe('label-id');
+        expect(mbidForTrackEntity({ ...track, mbIds: { ...track.mbIds, labelId: '' } }, 'label')).toBe('');
+        expect(mbidForTrackEntity({ ...track, mbIds: {}, artistMbids: ['artist-two'] }, 'artist')).toBe('artist-two');
+        expect(mbidForTrackEntity({ ...track, mbIds: {}, artistMbids: [] }, 'artist')).toBe('');
         expect(faviconUrlForResource('https://example.com/page')).toBe('https://example.com/favicon.ico');
         expect(faviconUrlForResource('not a url')).toBeUndefined();
     });
@@ -170,7 +171,7 @@ describe('musicbrainz entity helpers', () => {
             mbIds: { recordingId: '', releaseId: '', artistId: '', labelId: '' },
             artistMbids: [' artist-one '],
             mbArtistCredits: [{ name: 'Artist', artistId: '   ', joinPhrase: '' }],
-        } as any, 'req-blank-credit');
+        }, 'req-blank-credit');
 
         expect(lookupExplorationMock).toHaveBeenCalledWith('', '', ['artist-one'], '', 'req-blank-credit');
     });
@@ -179,7 +180,7 @@ describe('musicbrainz entity helpers', () => {
         const title = document.createElement('h2');
         const content = document.createElement('div');
 
-        renderMusicBrainzEntityContent({
+        const entityWithDetails: MusicBrainzEntityInfo = {
             found: true,
             entityType: 'artist',
             mbid: 'artist-id',
@@ -193,7 +194,9 @@ describe('musicbrainz entity helpers', () => {
                 { type: 'Broken', resource: 'not a url' },
             ],
             rawJson: '{"name":"Artist"}',
-        } as any, title, content);
+        };
+
+        renderMusicBrainzEntityContent(entityWithDetails, title, content);
 
         expect(title.textContent).toBe('MusicBrainz artist info');
         expect(content.querySelector('.mb-entity-fact-label')?.textContent).toBe('Country');
@@ -213,7 +216,7 @@ describe('musicbrainz entity helpers', () => {
         const title = document.createElement('h2');
         const content = document.createElement('div');
 
-        renderMusicBrainzEntityContent({
+        const emptyEntity: MusicBrainzEntityInfo = {
             found: false,
             entityType: 'label',
             mbid: 'label-id',
@@ -224,7 +227,9 @@ describe('musicbrainz entity helpers', () => {
             tags: [],
             urls: [],
             rawJson: '',
-        } as any, title, content);
+        };
+
+        renderMusicBrainzEntityContent(emptyEntity, title, content);
 
         expect(title.textContent).toBe('MusicBrainz label info');
         expect(content.querySelector('.mb-entity-empty')?.textContent).toBe('None available.');
@@ -235,7 +240,7 @@ describe('musicbrainz entity helpers', () => {
         const title = document.createElement('h2');
         const content = document.createElement('div');
 
-        renderMusicBrainzEntityContent({
+        const tagsOnlyEntity: MusicBrainzEntityInfo = {
             found: true,
             entityType: 'artist',
             mbid: 'artist-id',
@@ -246,7 +251,9 @@ describe('musicbrainz entity helpers', () => {
             tags: ['ambient'],
             urls: [],
             rawJson: '{}',
-        } as any, title, content);
+        };
+
+        renderMusicBrainzEntityContent(tagsOnlyEntity, title, content);
 
         expect(content.querySelector('.mb-entity-facts')).toBeNull();
         expect(content.querySelectorAll('.mb-entity-section-title')[0]?.textContent).toBe('Tags / genres');
@@ -256,9 +263,9 @@ describe('musicbrainz entity helpers', () => {
         const title = document.createElement('h2');
         const content = document.createElement('div');
 
-        renderMusicBrainzEntityContent({
+        const fallbackEntity: MusicBrainzEntityInfo = {
             found: true,
-            entityType: '' as any,
+            entityType: '',
             mbid: 'entity-id',
             title: '',
             subtitle: '',
@@ -267,7 +274,9 @@ describe('musicbrainz entity helpers', () => {
             tags: [],
             urls: [{ type: '', resource: 'https://example.com/link' }],
             rawJson: '{}',
-        } as any, title, content);
+        };
+
+        renderMusicBrainzEntityContent(fallbackEntity, title, content);
 
         expect(title.textContent).toBe('MusicBrainz entity info');
         expect((content.querySelector('.artist-link-btn') as HTMLButtonElement).title).toBe('Link: https://example.com/link');
