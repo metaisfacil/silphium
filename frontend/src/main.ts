@@ -296,7 +296,7 @@ const runtimeScope = Object.create(shell, {
     technicalInfoModalHideTimer: createScopeAccessor(() => technicalInfoModalHideTimer, (value) => { technicalInfoModalHideTimer = value; }),
     aboutModalHideTimer: createScopeAccessor(() => aboutModalHideTimer, (value) => { aboutModalHideTimer = value; }),
     errorModalHideTimer: createScopeAccessor(() => errorModalHideTimer, (value) => { errorModalHideTimer = value; }),
-    isSeeking: createScopeAccessor(() => isSeeking),
+    isSeeking: createScopeAccessor(() => isSeeking, (value) => { isSeeking = value; }),
     playbackMutationVersion: createScopeAccessor(() => playbackMutationVersion, (value) => { playbackMutationVersion = value; }),
     playPauseToggleInFlight: createScopeAccessor(() => playPauseToggleInFlight, (value) => { playPauseToggleInFlight = value; }),
     trackNavigationChain: createScopeAccessor(() => trackNavigationChain, (value) => { trackNavigationChain = value; }),

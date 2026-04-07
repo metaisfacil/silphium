@@ -319,4 +319,21 @@ describe('main entrypoint runtime scope', () => {
         expect(scope?.completeStartupIfReady).toBeTypeOf('function');
         await expect(scope?.completeStartupIfReady?.()).resolves.toBeUndefined();
     });
+
+    it('allows updating seek interaction state through the runtime scope', async () => {
+        await import('./main');
+
+        const scope = testState.getControllerScope() as {
+            isSeeking?: boolean;
+        } | null;
+
+        expect(scope).not.toBeNull();
+        expect(scope?.isSeeking).toBe(false);
+
+        if (scope) {
+            scope.isSeeking = true;
+        }
+
+        expect(scope?.isSeeking).toBe(true);
+    });
 });
