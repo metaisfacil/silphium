@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,9 @@ const (
 	audioSampleRate    = 44100
 	audioChannelCount  = 2
 	audioBytesPerFrame = audioChannelCount * 2
+	minVisualizationFrameCount = 64
+	maxVisualizationFrameCount = 512
+	visualizationWindowFactor  = 6
 )
 
 var audioBytesPerSecond = audioSampleRate * audioBytesPerFrame
@@ -33,6 +37,18 @@ type AudioPlaybackState struct {
 	Volume      float64 `json:"volume"`
 	SourcePath  string  `json:"sourcePath"`
 	EndEventID  uint64  `json:"endEventId"`
+}
+
+// AudioVisualizationFrame contains a lightweight stereo PCM window for frontend visualizations.
+type AudioVisualizationFrame struct {
+	Loaded       bool    `json:"loaded"`
+	Playing      bool    `json:"playing"`
+	SourcePath   string  `json:"sourcePath"`
+	SampleRate   int     `json:"sampleRate"`
+	ChannelCount int     `json:"channelCount"`
+	FrameCount   int     `json:"frameCount"`
+	Peak         float64 `json:"peak"`
+	Samples      []int16 `json:"samples"`
 }
 
 // AudioOutputDevice describes an available audio output target for playback.
@@ -966,6 +982,133 @@ func (b *AudioBackend) State() AudioPlaybackState {
 
 	b.syncPlaybackLocked()
 	return b.snapshotLocked()
+}
+
+func normalizeVisualizationFrameCount(frameCount int) int {
+	if frameCount < minVisualizationFrameCount {
+		return minVisualizationFrameCount
+	}
+	if frameCount > maxVisualizationFrameCount {
+		return maxVisualizationFrameCount
+	}
+	return frameCount
+}
+
+// VisualizationFrame returns a decimated stereo sample window around the current playback position.
+func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFrame {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	b.syncPlaybackLocked()
+	state := b.snapshotLocked()
+	if !state.Loaded {
+		return AudioVisualizationFrame{
+			Loaded:       false,
+			Playing:      false,
+			SampleRate:   audioSampleRate,
+			ChannelCount: audioChannelCount,
+			Samples:      []int16{},
+		}
+	}
+
+	activeSegment, segmentOffset, ok := b.activeSegmentLocked()
+	if !ok || len(activeSegment.PCMData) < audioBytesPerFrame {
+		return AudioVisualizationFrame{
+			Loaded:       state.Loaded,
+			Playing:      state.Playing,
+			SourcePath:   state.SourcePath,
+			SampleRate:   audioSampleRate,
+			ChannelCount: audioChannelCount,
+			Samples:      []int16{},
+		}
+	}
+
+	normalizedFrameCount := normalizeVisualizationFrameCount(frameCount)
+	totalFrames := len(activeSegment.PCMData) / audioBytesPerFrame
+	if totalFrames <= 0 {
+		return AudioVisualizationFrame{
+			Loaded:       state.Loaded,
+			Playing:      state.Playing,
+			SourcePath:   activeSegment.SourcePath,
+			SampleRate:   audioSampleRate,
+			ChannelCount: audioChannelCount,
+			Samples:      []int16{},
+		}
+	}
+
+	actualFrameCount := normalizedFrameCount
+	if totalFrames < actualFrameCount {
+		actualFrameCount = totalFrames
+	}
+
+	windowFrames := normalizedFrameCount * visualizationWindowFactor
+	if windowFrames < actualFrameCount {
+		windowFrames = actualFrameCount
+	}
+	if windowFrames > totalFrames {
+		windowFrames = totalFrames
+	}
+
+	currentFrame := int(segmentOffset / int64(audioBytesPerFrame))
+	endFrame := currentFrame
+	if endFrame <= 0 {
+		endFrame = windowFrames
+	}
+	if endFrame > totalFrames {
+		endFrame = totalFrames
+	}
+
+	startFrame := endFrame - windowFrames
+	if startFrame < 0 {
+		startFrame = 0
+	}
+
+	availableFrames := endFrame - startFrame
+	if availableFrames <= 0 {
+		startFrame = 0
+		availableFrames = totalFrames
+		endFrame = totalFrames
+	}
+
+	stride := 0.0
+	if actualFrameCount > 1 && availableFrames > 1 {
+		stride = float64(availableFrames-1) / float64(actualFrameCount-1)
+	}
+
+	samples := make([]int16, actualFrameCount*audioChannelCount)
+	peak := 0.0
+	for index := 0; index < actualFrameCount; index++ {
+		sourceFrame := startFrame
+		if stride > 0 {
+			sourceFrame = startFrame + int(math.Round(float64(index)*stride))
+		}
+		if sourceFrame >= endFrame {
+			sourceFrame = endFrame - 1
+		}
+		if sourceFrame < 0 {
+			sourceFrame = 0
+		}
+
+		byteOffset := sourceFrame * audioBytesPerFrame
+		left := int16(binary.LittleEndian.Uint16(activeSegment.PCMData[byteOffset : byteOffset+2]))
+		right := int16(binary.LittleEndian.Uint16(activeSegment.PCMData[byteOffset+2 : byteOffset+4]))
+		samples[index*2] = left
+		samples[index*2+1] = right
+
+		peak = math.Max(peak, math.Abs(float64(left)))
+		peak = math.Max(peak, math.Abs(float64(right)))
+	}
+
+	return AudioVisualizationFrame{
+		Loaded:       state.Loaded,
+		Playing:      state.Playing,
+		SourcePath:   activeSegment.SourcePath,
+		SampleRate:   audioSampleRate,
+		ChannelCount: audioChannelCount,
+		FrameCount:   actualFrameCount,
+		Peak:         peak / 32768.0,
+		Samples:      samples,
+	}
 }
 
 func (b *AudioBackend) seekLocked(seconds float64) error {

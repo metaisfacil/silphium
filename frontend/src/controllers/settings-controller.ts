@@ -39,6 +39,7 @@ export type SettingsFormValues = {
     musicBrainzTagStaleDays: number;
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
+    lissajousEnabled: boolean;
     minimizeToTrayOnClose: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
@@ -197,7 +198,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagWorkerProgressRemaining,
         settingsMusicBrainzTagWorkerProgressStatus,
         settingsPlayerCardLayout,
+        settingsCoverArtPriorityAccordionToggle,
+        settingsCoverArtPriorityAccordionPanel,
         settingsCoverArtPriorityList,
+        settingsLissajousEnabled,
         settingsMinimizeToTrayField,
         settingsMinimizeToTrayOnClose,
         settingsShortcutPlayPauseToggle,
@@ -219,6 +223,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let settingsStatusFadeTimer: number | undefined;
     let settingsLibraryDepthStatusFadeTimer: number | undefined;
     let shortcutAccordionHideTimer: number | undefined;
+    let coverArtPriorityAccordionHideTimer: number | undefined;
 
     let favoritePlaylists: string[] = [];
     let selectedFavoritePlaylistIndex = -1;
@@ -318,42 +323,86 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     const resolvePrimaryTab = (tab: SettingsTab): SettingsPrimaryTab => (tab === 'shortcuts' ? 'ui' : tab);
 
-    const scrollShortcutAccordionIntoView = (): void => {
-        const accordion = settingsShortcutAccordionToggle.closest('.settings-accordion');
-        const target = accordion instanceof HTMLElement ? accordion : settingsShortcutAccordionPanel;
+    const scrollAccordionIntoView = (toggle: HTMLButtonElement, panel: HTMLDivElement): void => {
+        const accordion = toggle.closest('.settings-accordion');
+        const target = accordion instanceof HTMLElement ? accordion : panel;
         target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     };
 
-    const clearShortcutAccordionHideTimer = (): void => {
-        if (shortcutAccordionHideTimer !== undefined) {
-            window.clearTimeout(shortcutAccordionHideTimer);
-            shortcutAccordionHideTimer = undefined;
+    const scrollShortcutAccordionIntoView = (): void => {
+        scrollAccordionIntoView(settingsShortcutAccordionToggle, settingsShortcutAccordionPanel);
+    };
+
+    const scrollCoverArtPriorityAccordionIntoView = (): void => {
+        scrollAccordionIntoView(settingsCoverArtPriorityAccordionToggle, settingsCoverArtPriorityAccordionPanel);
+    };
+
+    const clearAccordionHideTimer = (timer: number | undefined, setTimer: (nextTimer: number | undefined) => void): void => {
+        if (timer !== undefined) {
+            window.clearTimeout(timer);
+            setTimer(undefined);
         }
     };
 
-    const setShortcutAccordionExpanded = (expanded: boolean, animate = true): void => {
-        clearShortcutAccordionHideTimer();
-        settingsShortcutAccordionToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    const setAccordionExpanded = (
+        toggle: HTMLButtonElement,
+        panel: HTMLDivElement,
+        expanded: boolean,
+        animate: boolean,
+        hideTimer: number | undefined,
+        setHideTimer: (nextTimer: number | undefined) => void,
+    ): void => {
+        clearAccordionHideTimer(hideTimer, setHideTimer);
+        toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        const accordion = toggle.closest('.settings-accordion');
+        const wrapper = accordion instanceof HTMLElement ? accordion : null;
 
         if (!animate) {
-            settingsPanelUi.classList.toggle('is-shortcuts-expanded', expanded);
-            settingsShortcutAccordionPanel.hidden = !expanded;
+            wrapper?.classList.toggle('is-expanded', expanded);
+            panel.hidden = !expanded;
             return;
         }
 
         if (expanded) {
-            settingsShortcutAccordionPanel.hidden = false;
+            panel.hidden = false;
             window.requestAnimationFrame(() => {
-                settingsPanelUi.classList.add('is-shortcuts-expanded');
+                wrapper?.classList.add('is-expanded');
             });
             return;
         }
 
-        settingsPanelUi.classList.remove('is-shortcuts-expanded');
-        shortcutAccordionHideTimer = window.setTimeout(() => {
-            settingsShortcutAccordionPanel.hidden = true;
-            shortcutAccordionHideTimer = undefined;
+        wrapper?.classList.remove('is-expanded');
+        const nextHideTimer = window.setTimeout(() => {
+            panel.hidden = true;
+            setHideTimer(undefined);
         }, settingsShortcutAccordionTransitionMs);
+        setHideTimer(nextHideTimer);
+    };
+
+    const setShortcutAccordionExpanded = (expanded: boolean, animate = true): void => {
+        setAccordionExpanded(
+            settingsShortcutAccordionToggle,
+            settingsShortcutAccordionPanel,
+            expanded,
+            animate,
+            shortcutAccordionHideTimer,
+            (nextTimer) => {
+                shortcutAccordionHideTimer = nextTimer;
+            },
+        );
+    };
+
+    const setCoverArtPriorityAccordionExpanded = (expanded: boolean, animate = true): void => {
+        setAccordionExpanded(
+            settingsCoverArtPriorityAccordionToggle,
+            settingsCoverArtPriorityAccordionPanel,
+            expanded,
+            animate,
+            coverArtPriorityAccordionHideTimer,
+            (nextTimer) => {
+                coverArtPriorityAccordionHideTimer = nextTimer;
+            },
+        );
     };
 
     const normalizeMusicBrainzTagWorkerCores = (value: string): number => {
@@ -582,6 +631,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         musicBrainzTagStaleDays: normalizeMusicBrainzTagStaleDays(settingsMusicBrainzTagStaleDays.value),
         musicBrainzTagRequestStaggeringEnabled: settingsMusicBrainzTagRequestStaggeringEnabled.checked,
         musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
+        lissajousEnabled: settingsLissajousEnabled.checked,
         minimizeToTrayOnClose: settingsMinimizeToTrayOnClose.checked,
         keyboardShortcuts: getShortcutValues(),
     });
@@ -1293,6 +1343,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     bindShortcutCaptureInput(settingsShortcutOpenSettings);
 
     setShortcutAccordionExpanded(false, false);
+    setCoverArtPriorityAccordionExpanded(false, false);
     renderMusicBrainzTagWorkerProgress(musicBrainzTagWorkerProgress);
     refreshLastFmSessionFetchButton();
 
@@ -1478,6 +1529,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagStaleDays.value = String(values.musicBrainzTagStaleDays);
         settingsMusicBrainzTagRequestStaggeringEnabled.checked = !!values.musicBrainzTagRequestStaggeringEnabled;
         settingsMusicBrainzTagWorkerCores.value = values.musicBrainzTagWorkerCores > 0 ? String(values.musicBrainzTagWorkerCores) : '';
+        settingsLissajousEnabled.checked = values.lissajousEnabled !== false;
         settingsMinimizeToTrayOnClose.checked = !!values.minimizeToTrayOnClose;
         refreshMusicBrainzTagWorkerControls();
         renderMusicBrainzTagWorkerProgress(values.musicBrainzTagWorkerProgress);
@@ -1506,6 +1558,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const primaryTab = resolvePrimaryTab(initialTab);
         const shortcutsRequested = initialTab === 'shortcuts';
         setShortcutAccordionExpanded(shortcutsRequested, false);
+        setCoverArtPriorityAccordionExpanded(false, false);
         setActiveTab(initialTab);
         settingsModal.hidden = false;
         window.requestAnimationFrame(() => {
@@ -1746,6 +1799,16 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         if (shouldExpand) {
             window.requestAnimationFrame(() => {
                 scrollShortcutAccordionIntoView();
+            });
+        }
+    });
+
+    settingsCoverArtPriorityAccordionToggle.addEventListener('click', () => {
+        const shouldExpand = settingsCoverArtPriorityAccordionPanel.hidden !== false;
+        setCoverArtPriorityAccordionExpanded(shouldExpand);
+        if (shouldExpand) {
+            window.requestAnimationFrame(() => {
+                scrollCoverArtPriorityAccordionIntoView();
             });
         }
     });

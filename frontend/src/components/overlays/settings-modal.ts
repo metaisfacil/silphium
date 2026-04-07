@@ -77,7 +77,10 @@ export type SettingsModalElements = {
     settingsMusicBrainzTagWorkerProgressRemaining: HTMLParagraphElement;
     settingsMusicBrainzTagWorkerProgressStatus: HTMLParagraphElement;
     settingsPlayerCardLayout: HTMLSelectElement;
+    settingsCoverArtPriorityAccordionToggle: HTMLButtonElement;
+    settingsCoverArtPriorityAccordionPanel: HTMLDivElement;
     settingsCoverArtPriorityList: HTMLUListElement;
+    settingsLissajousEnabled: HTMLInputElement;
     settingsMinimizeToTrayField: HTMLDivElement;
     settingsMinimizeToTrayOnClose: HTMLInputElement;
     settingsShortcutPlayPauseToggle: HTMLInputElement;
@@ -292,10 +295,19 @@ export const renderSettingsModal = (): string => `
                             <option value="release">Release-focused — Artist, cover, label &amp; year</option>
                         </select>
                     </div>
-                    <div class="settings-field">
-                        <label class="settings-label" for="settings-cover-art-priority-list">Cover art source priority</label>
-                        <p class="settings-hint">Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.</p>
-                        <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-lissajous-enabled">
+                            <input id="settings-lissajous-enabled" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Show lissajous visualizer</span>
+                        </label>
+                        <p class="settings-hint">Draws the animated background behind the player card while audio is loaded.<br>Disabling this will reduce Silphium's GPU burden.</p>
+                    </div>
+                    <div class="settings-accordion">
+                        <button id="settings-cover-art-priority-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-cover-art-priority-accordion-panel">Cover art source priority</button>
+                        <div id="settings-cover-art-priority-accordion-panel" class="settings-accordion-panel" hidden>
+                            <p class="settings-hint">Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.</p>
+                            <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
+                        </div>
                     </div>
                     <div class="settings-accordion">
                         <button id="settings-shortcut-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-shortcut-accordion-panel">Keyboard shortcuts</button>
@@ -475,7 +487,10 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsMusicBrainzTagWorkerProgressRemaining: root.querySelector('#settings-musicbrainz-tag-worker-progress-remaining') as HTMLParagraphElement,
     settingsMusicBrainzTagWorkerProgressStatus: root.querySelector('#settings-musicbrainz-tag-worker-progress-status') as HTMLParagraphElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
+    settingsCoverArtPriorityAccordionToggle: root.querySelector('#settings-cover-art-priority-accordion-toggle') as HTMLButtonElement,
+    settingsCoverArtPriorityAccordionPanel: root.querySelector('#settings-cover-art-priority-accordion-panel') as HTMLDivElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,
+    settingsLissajousEnabled: root.querySelector('#settings-lissajous-enabled') as HTMLInputElement,
     settingsMinimizeToTrayField: root.querySelector('#settings-minimize-to-tray-field') as HTMLDivElement,
     settingsMinimizeToTrayOnClose: root.querySelector('#settings-minimize-to-tray-on-close') as HTMLInputElement,
     settingsShortcutPlayPauseToggle: root.querySelector('#settings-shortcut-play-pause') as HTMLInputElement,
