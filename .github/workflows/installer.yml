@@ -54,13 +54,11 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Ensure embedded asset placeholders
+      - name: Ensure embedded frontend placeholder
         shell: bash
         run: |
           mkdir -p frontend/dist
           touch frontend/dist/.gitkeep
-          mkdir -p build/windows
-          touch build/windows/icon.ico
 
       - name: Build frontend
         run: npm run build
@@ -74,30 +72,6 @@ jobs:
           else
             echo "APP_VERSION=$(git log -1 --format=%cd-%h --date=format:%Y%m%d --abbrev=6)" >> "$GITHUB_ENV"
           fi
-
-      - name: Generate Windows icon asset
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $iconPath = "build/windows/icon.ico"
-          New-Item -ItemType Directory -Force -Path (Split-Path $iconPath) | Out-Null
-
-          Add-Type -AssemblyName System.Drawing
-          $bitmap = New-Object System.Drawing.Bitmap 256, 256
-          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-          $graphics.Clear([System.Drawing.Color]::FromArgb(255, 16, 16, 18))
-          $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 255, 214, 102))
-          $graphics.FillEllipse($brush, 32, 32, 192, 192)
-
-          $hIcon = $bitmap.GetHicon()
-          $icon = [System.Drawing.Icon]::FromHandle($hIcon)
-          $stream = New-Object System.IO.FileStream($iconPath, [System.IO.FileMode]::Create)
-          $icon.Save($stream)
-          $stream.Close()
-
-          $graphics.Dispose()
-          $brush.Dispose()
-          $bitmap.Dispose()
 
       - name: Build Windows NSIS installer
         if: runner.os == 'Windows'

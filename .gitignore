@@ -6,9 +6,8 @@
 /build/appicon.png
 build/appicon.png
 appicon.png
-/build/windows/icon.ico
-build/windows/icon.ico
 icon.ico
+!build/windows/icon.ico
 /build/darwin/iconfile.icns
 build/darwin/iconfile.icns
 *.exe
