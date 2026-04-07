@@ -248,6 +248,38 @@ describe('createListenBrainzSocialController', () => {
         expect(socialFeedStatus.textContent).toBe('');
     });
 
+    it('does not show no-followed empty state while loading', async () => {
+        let resolveFollowingUsers: (value: string[]) => void = () => undefined;
+        let resolveFollowingFeed: (value: ListenBrainzSocialEvent[]) => void = () => undefined;
+        const fetchFollowingUsers = vi.fn(async () => await new Promise<string[]>((resolve) => {
+            resolveFollowingUsers = resolve;
+        }));
+        const fetchFollowingFeed = vi.fn(async () => await new Promise<ListenBrainzSocialEvent[]>((resolve) => {
+            resolveFollowingFeed = resolve;
+        }));
+        const { sidebarSectionOptionSocial, socialFeedList, socialFeedStatus } = mountController({
+            fetchFollowingUsers,
+            fetchFollowingFeed,
+        });
+
+        sidebarSectionOptionSocial.click();
+        await flushPromises();
+
+        expect(fetchFollowingUsers).toHaveBeenCalledTimes(1);
+        expect(fetchFollowingFeed).toHaveBeenCalledTimes(1);
+        expect(socialFeedStatus.textContent).toBe('Loading...');
+        expect(socialFeedList.textContent || '').not.toContain('No followed users yet');
+
+        resolveFollowingUsers([]);
+        resolveFollowingFeed([]);
+        await flushPromises();
+
+        await vi.waitFor(() => {
+            expect(socialFeedStatus.textContent).toBe('');
+        });
+        expect(socialFeedList.textContent).toContain('No followed users yet');
+    });
+
     it('animates the feed when new scrobbles arrive', async () => {
         let nextEvents = [createEvent()];
         const fetchFollowingFeed = vi.fn(async () => nextEvents);

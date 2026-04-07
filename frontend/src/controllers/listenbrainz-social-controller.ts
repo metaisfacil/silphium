@@ -238,6 +238,10 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
 
     const renderEvents = (): string => {
         if (socialEvents.length === 0) {
+            if (refreshInFlight) {
+                return '';
+            }
+
             if (!options.hasAnyProviderConfigured()) {
                 return renderEmptyState(
                     'Social account required',
@@ -401,7 +405,6 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
 
         activeSection = 'social';
         setSectionMenuOpen(false);
-        render();
         animateSectionSwitch();
         void refreshSocialFeed(false);
         scheduleNextPoll();
