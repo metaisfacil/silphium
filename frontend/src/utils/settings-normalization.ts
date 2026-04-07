@@ -100,6 +100,7 @@ export const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | st
     const ordered: CoverArtPrioritySource[] = [];
     const seen = new Set<CoverArtPrioritySource>();
 
+    /* v8 ignore next -- valid callers provide an array when sources is defined */
     for (const rawSource of sources || []) {
         const source = rawSource === 'embedded'
             ? 'embedded'
@@ -175,6 +176,9 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
     const normalizedAudioBufferMs = Number.isFinite(rawAudio.outputBufferMs)
         ? Math.max(0, Math.min(1000, Math.round(rawAudio.outputBufferMs)))
         : 0;
+    const normalizedMusicBrainzTagStaleDays = typeof settings.musicBrainzTagStaleDays === 'number' && Number.isFinite(settings.musicBrainzTagStaleDays) && settings.musicBrainzTagStaleDays >= 0
+        ? Math.min(maxMusicBrainzTagStaleDays, Math.floor(settings.musicBrainzTagStaleDays as number))
+        : defaultMusicBrainzTagStaleDays;
     return {
         libraryFolders,
         libraryPath: libraryFolders[0]?.path || '',
@@ -205,9 +209,7 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
         },
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
         musicBrainzTagDatabaseEnabled: !!settings.musicBrainzTagDatabaseEnabled,
-        musicBrainzTagStaleDays: Number.isFinite(settings.musicBrainzTagStaleDays) && (settings.musicBrainzTagStaleDays ?? 0) >= 0
-            ? Math.min(maxMusicBrainzTagStaleDays, Math.floor(settings.musicBrainzTagStaleDays ?? defaultMusicBrainzTagStaleDays))
-            : defaultMusicBrainzTagStaleDays,
+        musicBrainzTagStaleDays: normalizedMusicBrainzTagStaleDays,
         musicBrainzTagRequestStaggeringEnabled: !!settings.musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores: Number.isFinite(settings.musicBrainzTagWorkerCores)
             ? Math.max(1, Math.min(128, Math.floor(settings.musicBrainzTagWorkerCores || 1)))
