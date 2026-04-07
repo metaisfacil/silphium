@@ -21,6 +21,8 @@ build/darwin/iconfile.icns
 /frontend/.npm/
 /frontend/npm-debug.log*
 /frontend/package.json.md5
+/frontend/wasm/**/target/
+/frontend/wasm/**/target/**
 
 # ---- Development ----
 /.vscode/
