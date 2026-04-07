@@ -286,7 +286,7 @@ func TestTrackTagWorkerAndBlobNoMetadataBranches(t *testing.T) {
 		t.Fatalf("ReadTrackTags(empty normalized paths) = %#v, want empty result", results)
 	}
 
-	readTaglibTags = func(path string) (map[string][]string, error) {
+	readTaglibTags = func(_ string) (map[string][]string, error) {
 		return map[string][]string{"TITLE": {"Worker Title"}}, nil
 	}
 	results = app.ReadTrackTags([]string{fixture.trackOne})
@@ -300,7 +300,7 @@ func TestTrackTagWorkerAndBlobNoMetadataBranches(t *testing.T) {
 		t.Fatalf("ReadTrackTags(directory only) = %#v, want empty result", results)
 	}
 
-	readTaglibTags = func(path string) (map[string][]string, error) {
+	readTaglibTags = func(_ string) (map[string][]string, error) {
 		return map[string][]string{}, nil
 	}
 	blobResults := app.ReadTrackTagsFromBlobs([]TrackBlob{{

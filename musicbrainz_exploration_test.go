@@ -80,7 +80,7 @@ func TestLookupMusicBrainzExploration(t *testing.T) {
 	t.Cleanup(func() {
 		runtimeEventsEmit = originalRuntimeEventsEmit
 	})
-	runtimeEventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
 		if eventName != musicBrainzExplorationProgressEvent || len(optionalData) == 0 {
 			return
 		}

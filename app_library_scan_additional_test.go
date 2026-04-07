@@ -234,7 +234,7 @@ func TestScanLibraryFoldersProgressLearningAndCoverTieBreak(t *testing.T) {
 	writeTestFile(t, coverAlpha, "albumart a")
 
 	progressEvents := make(chan LibraryScanProgress, 32)
-	runtimeEventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
 		if eventName != libraryScanProgressEvent || len(optionalData) == 0 {
 			return
 		}

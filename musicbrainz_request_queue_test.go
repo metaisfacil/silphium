@@ -86,7 +86,7 @@ func TestMusicBrainzRequestQueueAndFetchHelpers(t *testing.T) {
 		t.Fatalf("fetchMusicBrainzPayload() = (%#v, %t), want parsed payload", payload, ok)
 	}
 
-	badJSONServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	badJSONServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte(`not-json`))
 	}))
 	defer badJSONServer.Close()
@@ -98,7 +98,7 @@ func TestMusicBrainzRequestQueueAndFetchHelpers(t *testing.T) {
 		t.Fatal("fetchMusicBrainzHTTPRequest(invalid URL) = true, want false")
 	}
 
-	statusServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	statusServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusTeapot)
 	}))
 	defer statusServer.Close()
@@ -123,7 +123,7 @@ func TestMusicBrainzRequestQueueRateLimitAndHTTPErrorBranches(t *testing.T) {
 
 	var arrivalsMu sync.Mutex
 	arrivals := make([]time.Time, 0, 2)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		arrivalsMu.Lock()
 		arrivals = append(arrivals, time.Now())
 		arrivalsMu.Unlock()

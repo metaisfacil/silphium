@@ -57,7 +57,7 @@ func TestReadTrackTechnicalMetadataAndTagsWithTaglibSeams(t *testing.T) {
 	trackPath := filepath.Join(t.TempDir(), "track.flac")
 	writeTestFile(t, trackPath, "fake-track")
 
-	readTaglibProperties = func(path string) (taglib.Properties, error) {
+	readTaglibProperties = func(_ string) (taglib.Properties, error) {
 		return taglib.Properties{
 			Length:     3 * time.Second,
 			Channels:   2,
@@ -79,7 +79,7 @@ func TestReadTrackTechnicalMetadataAndTagsWithTaglibSeams(t *testing.T) {
 		t.Fatalf("readTrackTechnicalMetadata() = %#v, want tag-derived fallback metadata", metadata)
 	}
 
-	readTaglibTags = func(path string) (map[string][]string, error) {
+	readTaglibTags = func(_ string) (map[string][]string, error) {
 		return map[string][]string{
 			"TITLE":                 {"Song"},
 			"ARTIST":                {"Artist"},
@@ -97,7 +97,7 @@ func TestReadTrackTechnicalMetadataAndTagsWithTaglibSeams(t *testing.T) {
 		t.Fatalf("readTrackTagsForPath() = (%#v, %t), want populated tags and technical metadata", tags, ok)
 	}
 
-	readTaglibTags = func(path string) (map[string][]string, error) {
+	readTaglibTags = func(_ string) (map[string][]string, error) {
 		return nil, errors.New("tag read failed")
 	}
 	if tags, ok := readTrackTagsForPath(trackPath, ""); ok || tags.Title != "" || tags.Container != "" || tags.Codec != "" {
@@ -113,7 +113,7 @@ func TestReadTrackTagsFromBlobsWithTaglibSeams(t *testing.T) {
 		readTaglibProperties = originalReadTaglibProperties
 	})
 
-	readTaglibTags = func(path string) (map[string][]string, error) {
+	readTaglibTags = func(_ string) (map[string][]string, error) {
 		return map[string][]string{
 			"TITLE":                 {"Blob Song"},
 			"ARTIST":                {"Blob Artist"},
@@ -122,7 +122,7 @@ func TestReadTrackTagsFromBlobsWithTaglibSeams(t *testing.T) {
 			"MUSICBRAINZ_ARTISTID":  {"11111111-1111-4111-8111-111111111111"},
 		}, nil
 	}
-	readTaglibProperties = func(path string) (taglib.Properties, error) {
+	readTaglibProperties = func(_ string) (taglib.Properties, error) {
 		return taglib.Properties{Length: 2 * time.Second, Channels: 2, SampleRate: 44100, Bitrate: 320}, nil
 	}
 
@@ -181,7 +181,7 @@ func TestReadTrackTechnicalMetadataFFProbeMergeAndNoMetadataBranch(t *testing.T)
 		t.Fatal("readTrackTechnicalMetadataFromFFProbe(command error) = true, want false")
 	}
 
-	readTaglibTags = func(path string) (map[string][]string, error) {
+	readTaglibTags = func(_ string) (map[string][]string, error) {
 		return map[string][]string{}, nil
 	}
 	missingPath := filepath.Join(helperDir, "track")

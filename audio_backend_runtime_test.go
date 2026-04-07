@@ -52,7 +52,7 @@ func TestOTOAdapters(t *testing.T) {
 	contextClosed := false
 	contextErr := errors.New("context failed")
 	contextAdapter := &otoContextAdapter{
-		newPlayer: func(source io.Reader) audioOutputPlayer { return playerAdapter },
+		newPlayer: func(_ io.Reader) audioOutputPlayer { return playerAdapter },
 		err:       func() error { return contextErr },
 		close: func() error {
 			contextClosed = true
@@ -95,7 +95,7 @@ func (p *fakeAudioPlayer) Err() error {
 	return p.err
 }
 
-func (p *fakeAudioPlayer) Seek(offset int64, whence int) (int64, error) {
+func (p *fakeAudioPlayer) Seek(offset int64, _ int) (int64, error) {
 	p.seekCalls++
 	if p.seekErr != nil {
 		return 0, p.seekErr
@@ -110,7 +110,7 @@ type fakeAudioContext struct {
 	closeErr error
 }
 
-func (c *fakeAudioContext) NewPlayer(source io.Reader) audioOutputPlayer {
+func (c *fakeAudioContext) NewPlayer(_ io.Reader) audioOutputPlayer {
 	if c.player == nil {
 		c.player = &fakeAudioPlayer{}
 	}
@@ -130,7 +130,7 @@ func useFakeAudioContext(t *testing.T, context audioOutputContext, err error) {
 	t.Helper()
 
 	originalNewAudioOutputContext := newAudioOutputContext
-	newAudioOutputContext = func(options *oto.NewContextOptions) (audioOutputContext, <-chan struct{}, error) {
+	newAudioOutputContext = func(_ *oto.NewContextOptions) (audioOutputContext, <-chan struct{}, error) {
 		ready := make(chan struct{})
 		close(ready)
 		return context, ready, err

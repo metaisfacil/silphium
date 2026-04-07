@@ -51,7 +51,7 @@ func TestMediaKeyWatcherAndEmitter(t *testing.T) {
 		}
 		return 0
 	}
-	runtimeEventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
 		if eventName == mediaKeyEvent && len(optionalData) > 0 {
 			events <- optionalData[0].(string)
 		}

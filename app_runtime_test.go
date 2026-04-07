@@ -12,10 +12,10 @@ func TestAppRuntimeHelpers(t *testing.T) {
 	originalRuntimeWindowHide := runtimeWindowHide
 	emittedEventName := ""
 	windowHidden := false
-	runtimeEventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {
+	runtimeEventsEmit = func(_ context.Context, eventName string, _ ...interface{}) {
 		emittedEventName = eventName
 	}
-	runtimeWindowHide = func(ctx context.Context) {
+	runtimeWindowHide = func(_ context.Context) {
 		windowHidden = true
 	}
 	t.Cleanup(func() {

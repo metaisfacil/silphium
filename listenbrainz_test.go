@@ -60,7 +60,7 @@ func TestSubmitListenBrainz(t *testing.T) {
 
 	t.Run("suppresses duplicate single scrobbles when artist label changes", func(t *testing.T) {
 		requestCount := 0
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			requestCount++
 			writer.WriteHeader(http.StatusOK)
 		}))

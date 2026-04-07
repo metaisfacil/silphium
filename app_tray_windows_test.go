@@ -63,7 +63,7 @@ func TestTrayManagerHelpersAndRefresh(t *testing.T) {
 		onClick = handler
 	}
 	systrayAddSeparator = func() {}
-	systrayAddMenuItem = func(title string, tooltip string) *systray.MenuItem {
+	systrayAddMenuItem = func(title string, _ string) *systray.MenuItem {
 		item := &systray.MenuItem{ClickedCh: make(chan struct{}, 1)}
 		menuItems[title] = item
 		return item
@@ -77,7 +77,7 @@ func TestTrayManagerHelpersAndRefresh(t *testing.T) {
 	runtimeQuit = func(context.Context) {
 		runtimeQuitCalls++
 	}
-	runtimeEventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
 		if eventName == mediaKeyEvent && len(optionalData) > 0 {
 			emittedMu.Lock()
 			emittedActions = append(emittedActions, optionalData[0].(string))

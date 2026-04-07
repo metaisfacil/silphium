@@ -8,7 +8,7 @@ import (
 func TestMusicBrainzTypesAndProgressTracker(t *testing.T) {
 	originalRuntimeEventsEmit := runtimeEventsEmit
 	emitted := make([]MusicBrainzExplorationProgress, 0, 4)
-	runtimeEventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
 		if eventName != musicBrainzExplorationProgressEvent {
 			t.Fatalf("runtimeEventsEmit event = %q, want %q", eventName, musicBrainzExplorationProgressEvent)
 		}
@@ -109,7 +109,7 @@ func TestMusicBrainzTypesAndProgressTracker(t *testing.T) {
 func TestMusicBrainzTypesAdditionalEdgeBranches(t *testing.T) {
 	originalRuntimeEventsEmit := runtimeEventsEmit
 	emitted := make([]MusicBrainzExplorationProgress, 0, 4)
-	runtimeEventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
 		if eventName != musicBrainzExplorationProgressEvent || len(optionalData) != 1 {
 			return
 		}

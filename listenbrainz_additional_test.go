@@ -102,7 +102,7 @@ func TestListenBrainzHelpersAndFeedback(t *testing.T) {
 		t.Fatalf("GetListenBrainzRecordingFeedback(missing) = (%d, %v), want (0, nil)", score, err)
 	}
 
-	errorServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	errorServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusBadRequest)
 		_, _ = writer.Write([]byte(`{"message":"bad request"}`))
 	}))
@@ -211,7 +211,7 @@ func TestSubmitListenBrainzRecordingFeedbackServerError(t *testing.T) {
 }
 
 func TestListenBrainzUserAndFeedbackErrorCases(t *testing.T) {
-	invalidJSONServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	invalidJSONServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte(`not-json`))
 	}))
 	defer invalidJSONServer.Close()
@@ -221,7 +221,7 @@ func TestListenBrainzUserAndFeedbackErrorCases(t *testing.T) {
 		t.Fatalf("listenBrainzUserName(invalid json) = %v, want invalid-validate-token error", err)
 	}
 
-	invalidTokenServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	invalidTokenServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(writer).Encode(map[string]any{"valid": false})
 	}))
 	defer invalidTokenServer.Close()
@@ -230,7 +230,7 @@ func TestListenBrainzUserAndFeedbackErrorCases(t *testing.T) {
 		t.Fatalf("listenBrainzUserName(invalid token) = %v, want invalid-token error", err)
 	}
 
-	missingUserServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	missingUserServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(writer).Encode(map[string]any{"valid": true})
 	}))
 	defer missingUserServer.Close()

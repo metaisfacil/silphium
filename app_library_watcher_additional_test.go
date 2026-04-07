@@ -169,7 +169,7 @@ func TestLibraryWatcherHelpersAndRuntimeEvents(t *testing.T) {
 
 	progressEvents := make(chan LibraryScanProgress, 16)
 	updatedEvents := make(chan LibraryScanResult, 16)
-	runtimeEventsEmit = func(ctx context.Context, eventName string, optionalData ...interface{}) {
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
 		if len(optionalData) == 0 {
 			return
 		}

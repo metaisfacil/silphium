@@ -26,7 +26,7 @@ func TestReadTrackEmbeddedCover(t *testing.T) {
 		t.Fatalf("ReadTrackEmbeddedCover(outside path) = %#v, want empty result", cover)
 	}
 
-	readTaglibImage = func(path string) ([]byte, error) {
+	readTaglibImage = func(_ string) ([]byte, error) {
 		return nil, errors.New("read failed")
 	}
 	if cover := app.ReadTrackEmbeddedCover(trackPath); cover != (EmbeddedCoverArt{}) {
@@ -34,10 +34,10 @@ func TestReadTrackEmbeddedCover(t *testing.T) {
 	}
 
 	pngBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0x00}
-	readTaglibImage = func(path string) ([]byte, error) {
+	readTaglibImage = func(_ string) ([]byte, error) {
 		return pngBytes, nil
 	}
-	readTaglibProperties = func(path string) (taglib.Properties, error) {
+	readTaglibProperties = func(_ string) (taglib.Properties, error) {
 		return taglib.Properties{Images: []taglib.ImageDesc{{MIMEType: " image/png "}}}, nil
 	}
 	if cover := app.ReadTrackEmbeddedCover(trackPath); cover.MimeType != "image/png" || cover.Base64 != base64.StdEncoding.EncodeToString(pngBytes) {
@@ -45,17 +45,17 @@ func TestReadTrackEmbeddedCover(t *testing.T) {
 	}
 
 	textBytes := []byte("plain text")
-	readTaglibImage = func(path string) ([]byte, error) {
+	readTaglibImage = func(_ string) ([]byte, error) {
 		return textBytes, nil
 	}
-	readTaglibProperties = func(path string) (taglib.Properties, error) {
+	readTaglibProperties = func(_ string) (taglib.Properties, error) {
 		return taglib.Properties{Images: []taglib.ImageDesc{{MIMEType: "text/plain"}}}, nil
 	}
 	if cover := app.ReadTrackEmbeddedCover(trackPath); cover.MimeType != "image/jpeg" || cover.Base64 != base64.StdEncoding.EncodeToString(textBytes) {
 		t.Fatalf("ReadTrackEmbeddedCover(fallback mime) = %#v, want JPEG fallback", cover)
 	}
 
-	readTaglibImage = func(path string) ([]byte, error) {
+	readTaglibImage = func(_ string) ([]byte, error) {
 		return nil, nil
 	}
 	if cover := app.ReadTrackEmbeddedCover(trackPath); cover != (EmbeddedCoverArt{}) {

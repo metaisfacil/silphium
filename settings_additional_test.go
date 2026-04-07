@@ -361,7 +361,7 @@ func TestSettingsAdditionalWriteAndPathBranches(t *testing.T) {
 		jsonMarshalIndent = originalJSONMarshalIndent
 	})
 
-	jsonMarshalIndent = func(value interface{}, prefix string, indent string) ([]byte, error) {
+	jsonMarshalIndent = func(_ interface{}, _ string, _ string) ([]byte, error) {
 		return nil, errors.New("marshal failed")
 	}
 	if err := writeAppSettings(filepath.Join(t.TempDir(), appSettingsFileName), AppSettings{}); err == nil || err.Error() != "marshal failed" {

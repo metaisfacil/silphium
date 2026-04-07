@@ -76,7 +76,7 @@ func TestPrepareTrackSegmentAndReplayGainTagFallbacks(t *testing.T) {
 		t.Fatalf("resolveReplayGainInfo(taglib fallback) = %#v, want track-tag info", trackInfo)
 	}
 
-	readTaglibTags = func(path string) (map[string][]string, error) {
+	readTaglibTags = func(_ string) (map[string][]string, error) {
 		return nil, errors.New("tag read failed")
 	}
 	backendWithoutTags := NewAudioBackend()

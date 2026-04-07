@@ -110,7 +110,7 @@ func TestLastFmAPIAndSocialEdgeCases(t *testing.T) {
 		lastFmAPIBaseURL = originalBaseURL
 	})
 
-	fallbackServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	fallbackServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusInternalServerError)
 		_, _ = writer.Write([]byte("server error"))
 	}))
@@ -120,7 +120,7 @@ func TestLastFmAPIAndSocialEdgeCases(t *testing.T) {
 		t.Fatalf("callLastFmAPI(fallback error) = %v, want %q", err, "last.fm request failed with status 500")
 	}
 
-	missingTokenServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	missingTokenServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte(`<lfm status="ok"></lfm>`))
 	}))
 	defer missingTokenServer.Close()
@@ -129,7 +129,7 @@ func TestLastFmAPIAndSocialEdgeCases(t *testing.T) {
 		t.Fatalf("GetLastFmRequestToken(missing token) = %v, want missing-token error", err)
 	}
 
-	missingSessionServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	missingSessionServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		_, _ = writer.Write([]byte(`<lfm status="ok"><session><name>user</name></session></lfm>`))
 	}))
 	defer missingSessionServer.Close()

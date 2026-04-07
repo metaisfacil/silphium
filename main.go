@@ -1,3 +1,4 @@
+// Package main provides the Silphium desktop backend and application entrypoint.
 package main
 
 import (
