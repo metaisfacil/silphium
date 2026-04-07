@@ -288,9 +288,17 @@ describe('main entrypoint runtime scope', () => {
         document.body.innerHTML = '<div id="app"></div>';
 
         class ResizeObserverMock {
-            disconnect(): void {}
-            observe(): void {}
-            unobserve(): void {}
+            disconnect(): void {
+                return undefined;
+            }
+
+            observe(): void {
+                return undefined;
+            }
+
+            unobserve(): void {
+                return undefined;
+            }
         }
 
         vi.stubGlobal('ResizeObserver', ResizeObserverMock);
