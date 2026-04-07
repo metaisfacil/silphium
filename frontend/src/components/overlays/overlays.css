@@ -758,7 +758,7 @@
     overflow: hidden;
 }
 
-#settings-panel-ui.is-shortcuts-expanded .settings-accordion {
+.settings-accordion.is-expanded {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     min-height: 0;
@@ -811,7 +811,7 @@
     transition: max-height 180ms ease, opacity 160ms ease, padding-top 180ms ease, padding-bottom 180ms ease, border-top-color 180ms ease;
 }
 
-#settings-panel-ui.is-shortcuts-expanded .settings-accordion-panel {
+.settings-accordion.is-expanded .settings-accordion-panel {
     max-height: min(24rem, 50vh);
     opacity: 1;
     padding-top: 0.8rem;

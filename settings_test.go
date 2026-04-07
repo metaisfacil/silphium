@@ -258,6 +258,27 @@ func TestNormalizeListenBrainzRequestRateMs(t *testing.T) {
 	}
 }
 
+func TestNormalizeAppSettingsDefaultsLissajousEnabledToTrue(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{})
+	if settings.LissajousEnabled == nil {
+		t.Fatal("LissajousEnabled should be populated")
+	}
+	if !*settings.LissajousEnabled {
+		t.Fatal("LissajousEnabled should default to true")
+	}
+}
+
+func TestNormalizeAppSettingsPreservesDisabledLissajous(t *testing.T) {
+	disabled := false
+	settings := normalizeAppSettings(AppSettings{LissajousEnabled: &disabled})
+	if settings.LissajousEnabled == nil {
+		t.Fatal("LissajousEnabled should be populated")
+	}
+	if *settings.LissajousEnabled {
+		t.Fatal("LissajousEnabled should remain false when explicitly disabled")
+	}
+}
+
 func TestNormalizeAppSettingsRateMs(t *testing.T) {
 	t.Run("public server rate is enforced at minimum 1000ms", func(t *testing.T) {
 		settings := normalizeAppSettings(AppSettings{

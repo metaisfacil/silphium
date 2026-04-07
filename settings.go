@@ -71,6 +71,7 @@ type AppSettings struct {
 	MusicBrainzTagStaleDays                *int                     `json:"musicBrainzTagStaleDays,omitempty"`
 	MusicBrainzTagRequestStaggeringEnabled bool                     `json:"musicBrainzTagRequestStaggeringEnabled,omitempty"`
 	MusicBrainzTagWorkerCores              int                      `json:"musicBrainzTagWorkerCores,omitempty"`
+	LissajousEnabled                       *bool                    `json:"lissajousEnabled,omitempty"`
 	MinimizeToTrayOnClose                  bool                     `json:"minimizeToTrayOnClose,omitempty"`
 	KeyboardShortcuts                      FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
@@ -113,6 +114,11 @@ const scrobbleRuleOperatorGreaterThan = "greater_than"
 var defaultCoverArtPriority = []string{coverArtPriorityFile, coverArtPriorityEmbedded}
 
 func intPointer(value int) *int {
+	pointer := value
+	return &pointer
+}
+
+func boolPointer(value bool) *bool {
 	pointer := value
 	return &pointer
 }
@@ -609,6 +615,10 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	listenBrainzServerURL := normalizeBrainzServerURL(settings.ListenBrainzServerURL)
 	scrobbleFilterMode := normalizeScrobbleFilterMode(settings.ScrobbleFilterMode)
 	scrobbleRules := normalizeScrobbleRules(settings.ScrobbleRules, settings.ScrobbleFolders)
+	lissajousEnabled := true
+	if settings.LissajousEnabled != nil {
+		lissajousEnabled = *settings.LissajousEnabled
+	}
 
 	return AppSettings{
 		LibraryFolders:                         libraryFolders,
@@ -634,6 +644,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		MusicBrainzTagStaleDays:                intPointer(musicBrainzTagStaleDays),
 		MusicBrainzTagRequestStaggeringEnabled: settings.MusicBrainzTagRequestStaggeringEnabled,
 		MusicBrainzTagWorkerCores:              normalizeMusicBrainzTagWorkerCores(settings.MusicBrainzTagWorkerCores),
+		LissajousEnabled:                       boolPointer(lissajousEnabled),
 		MinimizeToTrayOnClose:                  settings.MinimizeToTrayOnClose,
 		KeyboardShortcuts:                      keyboardShortcuts,
 	}

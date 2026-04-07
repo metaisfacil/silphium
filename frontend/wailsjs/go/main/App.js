@@ -14,6 +14,10 @@ export function AudioGetState() {
   return window['go']['main']['App']['AudioGetState']();
 }
 
+export function AudioGetVisualizationFrame(arg1) {
+  return window['go']['main']['App']['AudioGetVisualizationFrame'](arg1);
+}
+
 export function AudioListOutputDevices() {
   return window['go']['main']['App']['AudioListOutputDevices']();
 }

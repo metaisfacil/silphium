@@ -144,6 +144,11 @@ func (a *App) AudioGetState() AudioPlaybackState {
 	return a.audioBackend().State()
 }
 
+// AudioGetVisualizationFrame returns a decimated stereo sample window for frontend visualizations.
+func (a *App) AudioGetVisualizationFrame(frameCount int) AudioVisualizationFrame {
+	return a.audioBackend().VisualizationFrame(frameCount)
+}
+
 // AudioListOutputDevices returns available audio output devices.
 func (a *App) AudioListOutputDevices() []AudioOutputDevice {
 	return a.audioBackend().ListOutputDevices()
