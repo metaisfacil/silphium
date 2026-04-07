@@ -89,6 +89,30 @@ func TestCustomActionHelpers(t *testing.T) {
 	if _, ok := splitCommandLineWindows(`cmd /C "unterminated`); ok {
 		t.Fatal("splitCommandLineWindows(invalid) = true, want false")
 	}
+
+	argv, ok = splitCommandLinePOSIX(`"/tmp/helper tool" "two words"`)
+	if !ok || len(argv) != 2 || argv[0] != "/tmp/helper tool" || argv[1] != "two words" {
+		t.Fatalf("splitCommandLinePOSIX(valid) = (%#v, %t), want two parsed args", argv, ok)
+	}
+	argv, ok = splitCommandLinePOSIX(`helper 'say "hello"'`)
+	if !ok || len(argv) != 2 || argv[1] != `say "hello"` {
+		t.Fatalf("splitCommandLinePOSIX(single quotes) = (%#v, %t), want literal quoted content", argv, ok)
+	}
+	if _, ok := splitCommandLinePOSIX("   "); ok {
+		t.Fatal("splitCommandLinePOSIX(empty) = true, want false")
+	}
+	if _, ok := splitCommandLinePOSIX(`""`); ok {
+		t.Fatal("splitCommandLinePOSIX(empty quoted command) = true, want false")
+	}
+	if _, ok := splitCommandLinePOSIX(`helper "unterminated`); ok {
+		t.Fatal("splitCommandLinePOSIX(invalid) = true, want false")
+	}
+	if !requiresPOSIXShell(`echo "$HOME"`) {
+		t.Fatal("requiresPOSIXShell(env expansion) = false, want true")
+	}
+	if requiresPOSIXShell(`"/tmp/helper tool" "two words"`) {
+		t.Fatal("requiresPOSIXShell(simple direct command) = true, want false")
+	}
 }
 
 func TestRunCustomSendToAction(t *testing.T) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 )
@@ -266,7 +267,8 @@ func normalizeLibraryRelativePath(path string) (string, bool) {
 		return "", true
 	}
 
-	cleaned := filepath.ToSlash(filepath.Clean(strings.ReplaceAll(trimmed, "/", string(filepath.Separator))))
+	normalizedSeparators := strings.ReplaceAll(trimmed, "\\", "/")
+	cleaned := pathpkg.Clean(normalizedSeparators)
 	if cleaned == "." {
 		return "", true
 	}

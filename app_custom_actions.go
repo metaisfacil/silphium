@@ -98,6 +98,7 @@ func trimForLog(output string, maxLength int) string {
 }
 
 var windowsEnvVarPattern = regexp.MustCompile(`%([^%]+)%`)
+var posixShellMetacharacters = "|&;<>$`()[]{}*?~"
 
 func expandWindowsPercentEnvVariables(value string) string {
 	return windowsEnvVarPattern.ReplaceAllStringFunc(value, func(match string) string {
@@ -162,6 +163,145 @@ func splitCommandLineWindows(commandLine string) ([]string, bool) {
 	return parts, true
 }
 
+func splitCommandLinePOSIX(commandLine string) ([]string, bool) {
+	trimmed := strings.TrimSpace(commandLine)
+	if trimmed == "" {
+		return nil, false
+	}
+
+	parts := make([]string, 0, 8)
+	current := strings.Builder{}
+	inSingleQuotes := false
+	inDoubleQuotes := false
+	tokenStarted := false
+
+	runes := []rune(trimmed)
+	for i := 0; i < len(runes); i++ {
+		character := runes[i]
+
+		if inSingleQuotes {
+			if character == '\'' {
+				inSingleQuotes = false
+				continue
+			}
+			current.WriteRune(character)
+			tokenStarted = true
+			continue
+		}
+
+		if inDoubleQuotes {
+			switch character {
+			case '"':
+				inDoubleQuotes = false
+			case '\\':
+				if i+1 < len(runes) {
+					next := runes[i+1]
+					if next == '"' || next == '\\' || next == '$' || next == '`' {
+						current.WriteRune(next)
+						tokenStarted = true
+						i++
+						continue
+					}
+				}
+				current.WriteRune(character)
+				tokenStarted = true
+			default:
+				current.WriteRune(character)
+				tokenStarted = true
+			}
+			continue
+		}
+
+		switch {
+		case unicode.IsSpace(character):
+			if tokenStarted {
+				parts = append(parts, current.String())
+				current.Reset()
+				tokenStarted = false
+			}
+		case character == '\'':
+			inSingleQuotes = true
+			tokenStarted = true
+		case character == '"':
+			inDoubleQuotes = true
+			tokenStarted = true
+		case character == '\\':
+			if i+1 < len(runes) {
+				current.WriteRune(runes[i+1])
+				tokenStarted = true
+				i++
+				continue
+			}
+			current.WriteRune(character)
+			tokenStarted = true
+		default:
+			current.WriteRune(character)
+			tokenStarted = true
+		}
+	}
+
+	if inSingleQuotes || inDoubleQuotes {
+		return nil, false
+	}
+
+	if tokenStarted {
+		parts = append(parts, current.String())
+	}
+
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		return nil, false
+	}
+
+	return parts, true
+}
+
+func requiresPOSIXShell(commandLine string) bool {
+	inSingleQuotes := false
+	inDoubleQuotes := false
+	escaped := false
+
+	for _, character := range commandLine {
+		if escaped {
+			escaped = false
+			continue
+		}
+
+		if inSingleQuotes {
+			if character == '\'' {
+				inSingleQuotes = false
+			}
+			continue
+		}
+
+		if inDoubleQuotes {
+			switch character {
+			case '"':
+				inDoubleQuotes = false
+			case '\\':
+				escaped = true
+			case '$', '`':
+				return true
+			}
+			continue
+		}
+
+		switch character {
+		case '\'':
+			inSingleQuotes = true
+		case '"':
+			inDoubleQuotes = true
+		case '\\':
+			escaped = true
+		default:
+			if strings.ContainsRune(posixShellMetacharacters, character) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // RunCustomSendToAction launches a user-defined command template with {path} replaced by the selected path.
 func (a *App) RunCustomSendToAction(commandTemplate string, targetPath string) bool {
 	trimmedTemplate := strings.TrimSpace(commandTemplate)
@@ -220,8 +360,17 @@ func (a *App) RunCustomSendToAction(commandTemplate string, targetPath string) b
 			command = exec.Command("cmd", "/S", "/C", renderedCommand)
 			a.logRescanEvent("send-to MODE: shell fallback")
 		}
+	} else if !requiresPOSIXShell(renderedCommand) {
+		if argv, ok := splitCommandLinePOSIX(renderedCommand); ok {
+			command = exec.Command(argv[0], argv[1:]...)
+			a.logRescanEvent("send-to MODE: direct")
+		} else {
+			command = exec.Command("sh", "-c", renderedCommand)
+			a.logRescanEvent("send-to MODE: shell fallback")
+		}
 	} else {
 		command = exec.Command("sh", "-c", renderedCommand)
+		a.logRescanEvent("send-to MODE: shell")
 	}
 
 	var stdoutBuffer bytes.Buffer
