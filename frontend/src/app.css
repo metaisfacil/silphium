@@ -444,7 +444,7 @@
     width: 2rem;
     height: 2rem;
     cursor: pointer;
-    transition: background 150ms ease, transform 100ms ease;
+    transition: background 150ms ease;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -461,7 +461,7 @@
 }
 
 .library-back:active:not(:disabled) {
-    transform: scale(0.92);
+    background: rgba(0, 0, 0, 0.26);
 }
 
 .library-back:disabled {
