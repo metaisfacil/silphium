@@ -57,7 +57,7 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
-    transition: background 150ms ease, transform 100ms ease;
+    transition: background 150ms ease;
 }
 
 .sidebar-toggle-icon {
@@ -71,8 +71,13 @@
     background: rgba(0, 0, 0, 0.2);
 }
 
+#app.sidebar-open .sidebar-toggle,
+#app.sidebar-open .sidebar-toggle:hover {
+    background: rgba(0, 0, 0, 0.2);
+}
+
 .sidebar-toggle:active {
-    transform: scale(0.92);
+    background: rgba(0, 0, 0, 0.26);
 }
 
 .sidebar-toggle.is-loading {
@@ -156,14 +161,25 @@
     transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
     background: rgba(16, 16, 18, 0.6);
     backdrop-filter: blur(20px) saturate(0.8);
-    border-right: 1px solid rgba(255, 255, 255, 0.07);
+    border-right: 1px solid rgba(0, 0, 0, 0.32);
     box-shadow: none;
     z-index: 10;
 }
 
+#app.sidebar-open .library-sidebar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -10px;
+    width: 10px;
+    height: 100%;
+    pointer-events: none;
+}
+
 #app.sidebar-open .library-sidebar {
     transform: translateX(0);
-    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.5);
+    border-right-color: rgba(0, 0, 0, 0.4);
+    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.5), 1px 0 0 rgba(0, 0, 0, 0.34);
 }
 
 .library-header {
