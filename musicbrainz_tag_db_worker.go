@@ -1,11 +1,14 @@
 package main
 
 import (
+	"log"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 )
+
+var musicBrainzTagWorkerStopTimeout = 2 * time.Second
 
 func musicBrainzTagEntityRefreshInterval(staleDays int) time.Duration {
 	if staleDays <= 0 {
@@ -618,7 +621,11 @@ func (a *App) stopMusicBrainzTagWorker() {
 	a.musicBrainzTagWorkerDone = nil
 	a.musicBrainzTagWorkerWake = nil
 	close(stopCh)
-	<-doneCh
+	select {
+	case <-doneCh:
+	case <-time.After(musicBrainzTagWorkerStopTimeout):
+		log.Printf("musicbrainz tag worker stop timed out after %s", musicBrainzTagWorkerStopTimeout)
+	}
 	a.persistMusicBrainzTagDatabase(true)
 }
 

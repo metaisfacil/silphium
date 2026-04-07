@@ -131,10 +131,10 @@ func (a *App) shutdown(context.Context) {
 	a.stopSystemTray()
 	a.stopMediaKeyWatcher()
 	a.stopLibraryWatcher()
-	a.stopMusicBrainzTagWorker()
 	if err := a.audioBackend().Close(); err != nil {
 		log.Printf("failed to close audio backend: %v", err)
 	}
+	a.stopMusicBrainzTagWorker()
 }
 
 func (a *App) audioBackend() *AudioBackend {
