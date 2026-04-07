@@ -1,3 +1,4 @@
+// Package main provides the Silphium desktop backend and application entrypoint.
 package main
 
 import (
@@ -10,13 +11,14 @@ import (
 
 //go:embed all:frontend/dist
 var assets embed.FS
+var runWailsApp = wails.Run
 
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 
 	// Create application with options
-	err := wails.Run(&options.App{
+	err := runWailsApp(&options.App{
 		Title:     "Silphium",
 		Width:     580,
 		Height:    825,

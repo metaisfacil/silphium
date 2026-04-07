@@ -19,6 +19,9 @@ func playlistFilePathForWrite(path string) (string, bool) {
 	if cleanPath == "" {
 		return "", false
 	}
+	if pathHasEmbeddedNUL(cleanPath) {
+		return "", false
+	}
 
 	absolutePath, err := filepath.Abs(cleanPath)
 	if err != nil {

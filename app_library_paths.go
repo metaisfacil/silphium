@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 )
@@ -117,6 +118,12 @@ func folderAndRelative(rootPath string, fullPath string) (string, string, bool) 
 		return "", "", false
 	}
 
+	relativePath = filepath.Clean(relativePath)
+	parentPrefix := ".." + string(filepath.Separator)
+	if relativePath == ".." || strings.HasPrefix(relativePath, parentPrefix) {
+		return "", "", false
+	}
+
 	relativePath = filepath.ToSlash(relativePath)
 	folderPath := filepath.ToSlash(filepath.Dir(relativePath))
 	if folderPath == "." {
@@ -149,9 +156,16 @@ func folderAndRelativeForLibraryRoot(root libraryRootConfig, fullPath string) (s
 	return buildVirtualLibraryPath(root.Name, folderPath), buildVirtualLibraryPath(root.Name, relativePath), true
 }
 
+func pathHasEmbeddedNUL(path string) bool {
+	return strings.ContainsRune(path, 0)
+}
+
 func absoluteNormalizedPath(path string) (string, bool) {
 	cleanPath := normalizePath(path)
 	if cleanPath == "" {
+		return "", false
+	}
+	if pathHasEmbeddedNUL(cleanPath) {
 		return "", false
 	}
 
@@ -253,7 +267,8 @@ func normalizeLibraryRelativePath(path string) (string, bool) {
 		return "", true
 	}
 
-	cleaned := filepath.ToSlash(filepath.Clean(strings.ReplaceAll(trimmed, "/", string(filepath.Separator))))
+	normalizedSeparators := strings.ReplaceAll(trimmed, "\\", "/")
+	cleaned := pathpkg.Clean(normalizedSeparators)
 	if cleaned == "." {
 		return "", true
 	}

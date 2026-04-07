@@ -33,6 +33,8 @@ type PlaylistTrackChosenContext = {
     userInitiated: boolean;
 };
 
+export type { PlaylistTrackChosenContext };
+
 type PlaylistControllerOptions = {
     trigger: HTMLButtonElement;
     menu: PlaylistMenuElements;

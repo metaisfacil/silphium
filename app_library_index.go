@@ -171,6 +171,18 @@ func sortPathsCaseInsensitive(paths []string) {
 	})
 }
 
+func collectDiscoveredScanFolders(folderPaths map[string]struct{}, discoveredByParent map[string]map[string]struct{}) {
+	for _, childSet := range discoveredByParent {
+		for childPath := range childSet {
+			if strings.TrimSpace(childPath) == "" {
+				continue
+			}
+
+			folderPaths[childPath] = struct{}{}
+		}
+	}
+}
+
 func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []LibraryIndexedFile, imageFiles []LibraryIndexedFile) libraryDerivedIndexData {
 	folderChildSetByParent := make(map[string]map[string]struct{})
 	folderPaths := map[string]struct{}{}
@@ -400,6 +412,12 @@ func (a *App) buildFolderEntriesFromMapsLocked(normalizedFolderPath string) []Li
 	textEntries := make([]LibraryBrowserEntry, 0)
 	imageEntries := make([]LibraryBrowserEntry, 0)
 
+	if a.scanInProgress && a.scanDiscoveredChildFoldersByParent != nil {
+		for childPath := range a.scanDiscoveredChildFoldersByParent[normalizedFolderPath] {
+			folderEntriesByPath[childPath] = folderBrowserEntry(childPath)
+		}
+	}
+
 	appendEntry := func(indexed LibraryIndexedFile, kind string, destination *[]LibraryBrowserEntry) {
 		if indexed.FolderPath == normalizedFolderPath {
 			*destination = append(*destination, browserEntryFromIndexedFile(kind, indexed))
@@ -480,6 +498,10 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCan
 		if strings.Contains(candidateName, normalizedQuery) || strings.Contains(candidateRelativePath, normalizedQuery) {
 			*destination = append(*destination, browserEntryFromIndexedFile(kind, indexed))
 		}
+	}
+
+	if a.scanInProgress && a.scanDiscoveredChildFoldersByParent != nil {
+		collectDiscoveredScanFolders(folderPaths, a.scanDiscoveredChildFoldersByParent)
 	}
 
 	trackIndex := 0

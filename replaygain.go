@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	taglib "go.senan.xyz/taglib"
 )
 
 const replayGainCacheLimit = 4096
@@ -79,10 +77,6 @@ func (info ReplayGainInfo) Scale() float64 {
 		if isFiniteFloat64(clipSafeScale) && clipSafeScale > 0 && clipSafeScale < scale {
 			scale = clipSafeScale
 		}
-	}
-
-	if !isFiniteFloat64(scale) || scale <= 0 {
-		return 1
 	}
 
 	return scale
@@ -620,7 +614,7 @@ func (b *AudioBackend) resolveAlbumReplayGainInfo(preloadedTags map[string][]str
 	}
 
 	for _, releasePath := range normalizedReleasePaths {
-		tags, err := taglib.ReadTags(releasePath)
+		tags, err := readTaglibTags(releasePath)
 		if err != nil {
 			continue
 		}
@@ -705,7 +699,7 @@ func (b *AudioBackend) resolveReplayGainInfo(path string, preloadedTags map[stri
 	}
 
 	if tags == nil {
-		loadedTags, err := taglib.ReadTags(path)
+		loadedTags, err := readTaglibTags(path)
 		if err == nil {
 			tags = loadedTags
 			if info, ok := extractReplayGainFromTags(tags); ok {

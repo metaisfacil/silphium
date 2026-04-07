@@ -20,6 +20,16 @@ type trayManager struct {
 }
 
 var windowsTray = &trayManager{}
+var systrayRun = systray.Run
+var systrayQuit = systray.Quit
+var systraySetIcon = systray.SetIcon
+var systraySetTooltip = systray.SetTooltip
+var systraySetOnClick = systray.SetOnClick
+var systrayAddMenuItem = systray.AddMenuItem
+var systrayAddSeparator = systray.AddSeparator
+var runtimeWindowShow = runtime.WindowShow
+var runtimeWindowUnminimise = runtime.WindowUnminimise
+var runtimeQuit = runtime.Quit
 
 func (a *App) shouldMinimizeToTrayOnClose() bool {
 	a.ensureSettingsLoaded()
@@ -56,21 +66,21 @@ func (t *trayManager) start(app *App) {
 	t.app = app
 	t.mu.Unlock()
 
-	go systray.Run(func() {
-		systray.SetIcon(trayIconICO)
-		systray.SetTooltip("Silphium")
-		systray.SetOnClick(func() {
+	go systrayRun(func() {
+		systraySetIcon(trayIconICO)
+		systraySetTooltip("Silphium")
+		systraySetOnClick(func() {
 			t.showMainWindow()
 		})
 
-		show := systray.AddMenuItem("Show", "Show Silphium")
-		systray.AddSeparator()
-		playPause := systray.AddMenuItem("Play/Pause", "Toggle playback")
-		stop := systray.AddMenuItem("Stop", "Stop playback")
-		back := systray.AddMenuItem("Back", "Play previous track")
-		forward := systray.AddMenuItem("Forward", "Play next track")
-		systray.AddSeparator()
-		exit := systray.AddMenuItem("Exit", "Exit Silphium")
+		show := systrayAddMenuItem("Show", "Show Silphium")
+		systrayAddSeparator()
+		playPause := systrayAddMenuItem("Play/Pause", "Toggle playback")
+		stop := systrayAddMenuItem("Stop", "Stop playback")
+		back := systrayAddMenuItem("Back", "Play previous track")
+		forward := systrayAddMenuItem("Forward", "Play next track")
+		systrayAddSeparator()
+		exit := systrayAddMenuItem("Exit", "Exit Silphium")
 
 		go t.handleShowMenuItem(show)
 		go t.handlePlaybackMenuItem(playPause, "playpause")
@@ -94,7 +104,7 @@ func (t *trayManager) stop() {
 		return
 	}
 
-	systray.Quit()
+	systrayQuit()
 }
 
 func (t *trayManager) appInstance() *App {
@@ -120,8 +130,8 @@ func (t *trayManager) showMainWindow() {
 		return
 	}
 
-	runtime.WindowShow(app.ctx)
-	runtime.WindowUnminimise(app.ctx)
+	runtimeWindowShow(app.ctx)
+	runtimeWindowUnminimise(app.ctx)
 }
 
 func (t *trayManager) handleShowMenuItem(item *systray.MenuItem) {
@@ -135,11 +145,11 @@ func (t *trayManager) handleExitMenuItem(item *systray.MenuItem) {
 
 	app := t.appInstance()
 	if app == nil {
-		systray.Quit()
+		systrayQuit()
 		return
 	}
 
 	app.quitRequested.Store(true)
-	runtime.Quit(app.ctx)
-	systray.Quit()
+	runtimeQuit(app.ctx)
+	systrayQuit()
 }

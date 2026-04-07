@@ -25,6 +25,8 @@ const mediaKeyEvent = "silphium:media:key"
 
 // AppVersion is set at build time via -ldflags "-X main.AppVersion=...".
 var AppVersion = "dev"
+var runtimeEventsEmit = runtime.EventsEmit
+var runtimeWindowHide = runtime.WindowHide
 
 // App contains runtime state and service dependencies for the Wails backend.
 type App struct {
@@ -37,6 +39,7 @@ type App struct {
 	watchMu                                sync.Mutex
 	libraryWatcher                         *fsnotify.Watcher
 	watchStop                              chan struct{}
+	libraryWatcherGeneration               atomic.Uint64
 	indexMu                                sync.Mutex
 	trackByPath                            map[string]LibraryIndexedFile
 	textByPath                             map[string]LibraryIndexedFile
@@ -79,6 +82,7 @@ type App struct {
 	libraryScan                            LibraryScanResult
 	scanInProgress                         bool
 	scanRemainingImmediateChildrenByFolder map[string]int
+	scanDiscoveredChildFoldersByParent     map[string]map[string]struct{}
 	scanLastTotalEntries                   int
 	scanPreCountMs                         float64
 	scanEntryMs                            float64
@@ -105,7 +109,7 @@ func (a *App) logRescanEvent(message string, args ...interface{}) {
 	logLine := fmt.Sprintf("[%s] %s", timestamp, formattedMessage)
 	log.Println(logLine)
 	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, libraryRescanLogEvent, logLine)
+		runtimeEventsEmit(a.ctx, libraryRescanLogEvent, logLine)
 	}
 }
 
@@ -155,7 +159,7 @@ func (a *App) beforeClose(context.Context) bool {
 		return false
 	}
 
-	runtime.WindowHide(a.ctx)
+	runtimeWindowHide(a.ctx)
 	return true
 }
 

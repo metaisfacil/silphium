@@ -13,6 +13,9 @@ import (
 
 const appSettingsFileName = "silphium.settings.json"
 
+var osExecutable = os.Executable
+var jsonMarshalIndent = json.MarshalIndent
+
 // FocusedKeyboardShortcuts stores the persisted key bindings for focused app commands.
 type FocusedKeyboardShortcuts struct {
 	PlayPauseToggle    string `json:"playPauseToggle"`
@@ -328,8 +331,10 @@ func normalizeScrobbleRuleValue(field string, operator string, value string) str
 			return ""
 		}
 
-		if absolutePath, err := filepath.Abs(normalizedPath); err == nil {
-			normalizedPath = filepath.Clean(absolutePath)
+		if !pathHasEmbeddedNUL(normalizedPath) {
+			if absolutePath, err := filepath.Abs(normalizedPath); err == nil {
+				normalizedPath = filepath.Clean(absolutePath)
+			}
 		}
 
 		return normalizedPath
@@ -388,8 +393,10 @@ func normalizeScrobbleRules(rules []ScrobbleRule, legacyFolders []string) []Scro
 	return normalizedRules
 }
 
+var runtimeNumCPU = runtime.NumCPU
+
 func maxMusicBrainzTagWorkerCores() int {
-	workerCores := runtime.NumCPU()
+	workerCores := runtimeNumCPU()
 	if workerCores < 1 {
 		return 1
 	}
@@ -714,7 +721,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 }
 
 func defaultSettingsPath() string {
-	executablePath, err := os.Executable()
+	executablePath, err := osExecutable()
 	if err != nil {
 		return appSettingsFileName
 	}
@@ -740,7 +747,7 @@ func readAppSettings(path string) (AppSettings, error) {
 }
 
 func writeAppSettings(path string, settings AppSettings) error {
-	rawBytes, err := json.MarshalIndent(settings, "", "  ")
+	rawBytes, err := jsonMarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
 	}

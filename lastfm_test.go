@@ -142,7 +142,7 @@ func TestSubmitLastFm(t *testing.T) {
 	})
 
 	t.Run("returns parsed api errors", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			writer.Header().Set("Content-Type", "text/xml; charset=utf-8")
 			_, _ = writer.Write([]byte("<lfm status=\"failed\"><error code=\"9\">Invalid session key - Please re-authenticate</error></lfm>"))
 		}))
@@ -194,7 +194,7 @@ func TestSubmitLastFm(t *testing.T) {
 
 	t.Run("suppresses duplicate single scrobbles", func(t *testing.T) {
 		requestCount := 0
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			requestCount++
 			writer.Header().Set("Content-Type", "text/xml; charset=utf-8")
 			_, _ = writer.Write([]byte("<lfm status=\"ok\"></lfm>"))

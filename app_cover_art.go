@@ -8,6 +8,9 @@ import (
 	taglib "go.senan.xyz/taglib"
 )
 
+var readTaglibImage = taglib.ReadImage
+var readTaglibProperties = taglib.ReadProperties
+
 // EmbeddedCoverArt contains encoded album art extracted from audio metadata.
 type EmbeddedCoverArt struct {
 	Base64   string `json:"base64"`
@@ -20,7 +23,7 @@ func (a *App) ReadTrackEmbeddedCover(path string) EmbeddedCoverArt {
 		return EmbeddedCoverArt{}
 	}
 
-	imageBytes, err := taglib.ReadImage(path)
+	imageBytes, err := readTaglibImage(path)
 	if err != nil {
 		return EmbeddedCoverArt{}
 	}
@@ -29,7 +32,7 @@ func (a *App) ReadTrackEmbeddedCover(path string) EmbeddedCoverArt {
 	}
 
 	mimeType := ""
-	if properties, err := taglib.ReadProperties(path); err == nil && len(properties.Images) > 0 {
+	if properties, err := readTaglibProperties(path); err == nil && len(properties.Images) > 0 {
 		mimeType = strings.TrimSpace(properties.Images[0].MIMEType)
 	}
 

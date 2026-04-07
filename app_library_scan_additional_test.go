@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func browserEntryNames(entries []LibraryBrowserEntry) []string {
@@ -164,5 +167,201 @@ func TestScanLibraryFoldersClearsIndexWhenNoRootsRemain(t *testing.T) {
 	}
 	if got := app.GetLibraryFolderCoverPath("Main Library/Artist One/Album One"); got != "" {
 		t.Fatalf("GetLibraryFolderCoverPath() after clear = %q, want empty", got)
+	}
+}
+
+func TestScanLibraryFoldersRestartWatcherAndWalkErrorBranches(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	t.Cleanup(func() {
+		app.stopLibraryWatcher()
+	})
+
+	app.scanLibraryFolder(fixture.rootOne, true)
+	waitForLibraryWatcherToStart(t, app)
+
+	cleared := app.scanLibraryFolders(nil, true)
+	if cleared.TotalEntries != 0 || cleared.TrackCount != 0 || cleared.TextFileCount != 0 || cleared.ImageFileCount != 0 {
+		t.Fatalf("scanLibraryFolders(nil, true) = %#v, want cleared index", cleared)
+	}
+	if app.libraryWatcher != nil || app.watchStop != nil {
+		t.Fatal("scanLibraryFolders(nil, true) should stop and clear watcher state")
+	}
+
+	app.indexMu.Lock()
+	activeRootsLen := len(app.activeLibraryRoots)
+	scanInProgress := app.scanInProgress
+	remainingChildren := app.scanRemainingImmediateChildrenByFolder
+	app.indexMu.Unlock()
+	if activeRootsLen != 0 {
+		t.Fatalf("activeLibraryRoots len = %d, want 0 after clearing roots", activeRootsLen)
+	}
+	if scanInProgress || remainingChildren != nil {
+		t.Fatalf("scan state after clear = inProgress:%t remaining:%#v, want false/nil", scanInProgress, remainingChildren)
+	}
+
+	missingRoot := filepath.Join(t.TempDir(), "missing-root")
+	missingScan := app.scanLibraryFolders([]AppLibraryFolder{{Path: missingRoot, Label: "Missing Root", ReleaseDepth: 0}}, false)
+	if missingScan.RootName != "Missing Root" {
+		t.Fatalf("scanLibraryFolders(missing) rootName = %q, want %q", missingScan.RootName, "Missing Root")
+	}
+	if missingScan.RootPath == "" {
+		t.Fatal("scanLibraryFolders(missing) rootPath = empty, want normalized root path")
+	}
+	if missingScan.TotalEntries != 0 || missingScan.TrackCount != 0 || missingScan.TextFileCount != 0 || missingScan.ImageFileCount != 0 {
+		t.Fatalf("scanLibraryFolders(missing) = %#v, want empty counts", missingScan)
+	}
+
+	app.indexMu.Lock()
+	scanInProgress = app.scanInProgress
+	remainingChildren = app.scanRemainingImmediateChildrenByFolder
+	app.indexMu.Unlock()
+	if scanInProgress || remainingChildren != nil {
+		t.Fatalf("scan state after missing root scan = inProgress:%t remaining:%#v, want false/nil", scanInProgress, remainingChildren)
+	}
+}
+
+func TestScanLibraryFoldersProgressLearningAndCoverTieBreak(t *testing.T) {
+	originalRuntimeEventsEmit := runtimeEventsEmit
+	t.Cleanup(func() {
+		runtimeEventsEmit = originalRuntimeEventsEmit
+	})
+
+	fixture := createLibraryTestFixture(t)
+	coverAlpha := filepath.Join(fixture.albumTwoFolder, "albumart-a.jpg")
+	coverZulu := filepath.Join(fixture.albumTwoFolder, "albumart-z.jpg")
+	writeTestFile(t, coverZulu, "albumart z")
+	writeTestFile(t, coverAlpha, "albumart a")
+
+	progressEvents := make(chan LibraryScanProgress, 32)
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
+		if eventName != libraryScanProgressEvent || len(optionalData) == 0 {
+			return
+		}
+
+		payload, ok := optionalData[0].(LibraryScanProgress)
+		if !ok {
+			return
+		}
+
+		progressEvents <- payload
+	}
+
+	app := NewApp()
+	app.ctx = context.Background()
+	app.scanEntryMs = 5
+	app.scanFinalizeMs = 25
+	app.scanWatcherMs = 30
+	app.scanLastTotalEntries = 2
+	app.scanPreCountMs = 10
+	t.Cleanup(func() {
+		app.stopLibraryWatcher()
+	})
+
+	result := app.scanLibraryFolders([]AppLibraryFolder{
+		{Path: fixture.rootOne, Label: "One", ReleaseDepth: 0},
+		{Path: fixture.rootTwo, Label: "Two", ReleaseDepth: 0},
+	}, true)
+	if result.RootName != "Selected folders" {
+		t.Fatalf("scanLibraryFolders(progress) rootName = %q, want %q", result.RootName, "Selected folders")
+	}
+	if result.TotalEntries != 12 || result.TrackCount != 2 || result.TextFileCount != 1 || result.ImageFileCount != 5 {
+		t.Fatalf("scanLibraryFolders(progress) = %#v, want multi-root counts with added covers", result)
+	}
+	waitForLibraryWatcherToStart(t, app)
+	if got := app.GetLibraryFolderCoverPath("Two/Artist Two/Album Two"); got != coverAlpha {
+		t.Fatalf("GetLibraryFolderCoverPath(tie break) = %q, want %q", got, coverAlpha)
+	}
+	if app.scanEntryMs <= 0 || app.scanPreCountMs <= 0 || app.scanFinalizeMs <= 0 || app.scanWatcherMs <= 0 {
+		t.Fatalf(
+			"scan timing state = entry:%f precount:%f finalize:%f watcher:%f, want positive learned values",
+			app.scanEntryMs,
+			app.scanPreCountMs,
+			app.scanFinalizeMs,
+			app.scanWatcherMs,
+		)
+	}
+
+	seenScanning := false
+	seenFinalizing := false
+	seenPositiveETA := false
+	drainDeadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(drainDeadline) {
+		select {
+		case payload := <-progressEvents:
+			if payload.EtaSeconds > 0 {
+				seenPositiveETA = true
+			}
+			switch payload.Phase {
+			case "scanning":
+				seenScanning = true
+			case "finalizing":
+				seenFinalizing = true
+			}
+		default:
+			if seenScanning && seenFinalizing && seenPositiveETA {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	if !seenScanning || !seenFinalizing || !seenPositiveETA {
+		t.Fatalf(
+			"progress phases = scanning:%t finalizing:%t eta:%t, want all true",
+			seenScanning,
+			seenFinalizing,
+			seenPositiveETA,
+		)
+	}
+}
+
+func TestScanLibraryFoldersLargeScanUpdatesLearningMetrics(t *testing.T) {
+	largeRoot := filepath.Join(t.TempDir(), "large-root")
+	albumFolder := filepath.Join(largeRoot, "Artist", "Album")
+	for index := 0; index < 600; index++ {
+		writeTestFile(t, filepath.Join(albumFolder, fmt.Sprintf("%03d Track.flac", index)), "track")
+	}
+	for index := 0; index < 300; index++ {
+		writeTestFile(t, filepath.Join(albumFolder, fmt.Sprintf("%03d Notes.txt", index)), "notes")
+	}
+	for index := 0; index < 300; index++ {
+		writeTestFile(t, filepath.Join(albumFolder, fmt.Sprintf("%03d Image.png", index)), "image")
+	}
+	nonPreferredCover := filepath.Join(albumFolder, "cover.gif")
+	unsupportedFile := filepath.Join(albumFolder, "ignored.bin")
+	writeTestFile(t, nonPreferredCover, "gif")
+	writeTestFile(t, unsupportedFile, "bin")
+
+	app := NewApp()
+	app.scanPreCountMs = 100
+	app.scanEntryMs = 2
+	app.scanFinalizeMs = 20
+
+	result := app.scanLibraryFolders([]AppLibraryFolder{{Path: largeRoot, Label: "Large", ReleaseDepth: 0}}, false)
+	if result.RootName != "Large" {
+		t.Fatalf("scanLibraryFolders(large) rootName = %q, want %q", result.RootName, "Large")
+	}
+	if result.TrackCount != 600 || result.TextFileCount != 300 || result.ImageFileCount != 301 {
+		t.Fatalf("scanLibraryFolders(large) = %#v, want counted audio/text/image files", result)
+	}
+	if result.TotalEntries != 1204 {
+		t.Fatalf("scanLibraryFolders(large) totalEntries = %d, want %d", result.TotalEntries, 1204)
+	}
+	if _, exists := app.trackByPath[normalizePath(unsupportedFile)]; exists {
+		t.Fatalf("scanLibraryFolders(large) should not index unsupported file %q", unsupportedFile)
+	}
+	if _, exists := app.imageByPath[normalizePath(nonPreferredCover)]; !exists {
+		t.Fatalf("scanLibraryFolders(large) should index gif image %q", nonPreferredCover)
+	}
+	if got := app.GetLibraryFolderCoverPath("Large/Artist/Album"); got == nonPreferredCover {
+		t.Fatalf("GetLibraryFolderCoverPath(large) = %q, want a preferred image instead of gif", got)
+	}
+	if app.scanPreCountMs <= 0 || app.scanEntryMs <= 0 || app.scanFinalizeMs <= 0 {
+		t.Fatalf(
+			"large scan learning state = precount:%f entry:%f finalize:%f, want positive metrics",
+			app.scanPreCountMs,
+			app.scanEntryMs,
+			app.scanFinalizeMs,
+		)
 	}
 }
