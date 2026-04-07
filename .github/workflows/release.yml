@@ -60,6 +60,14 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      - name: Ensure embedded asset placeholders
+        shell: bash
+        run: |
+          mkdir -p frontend/dist
+          touch frontend/dist/.gitkeep
+          mkdir -p build/windows
+          touch build/windows/icon.ico
+
       - name: Build frontend
         run: npm run build
         working-directory: frontend

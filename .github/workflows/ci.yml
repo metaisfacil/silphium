@@ -29,8 +29,12 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Create frontend dist placeholder
-        run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
+      - name: Ensure embedded asset placeholders
+        run: |
+          mkdir -p frontend/dist
+          touch frontend/dist/.gitkeep
+          mkdir -p build/windows
+          touch build/windows/icon.ico
 
       - name: Run frontend lint
         run: npm run lint
@@ -60,8 +64,12 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Create frontend dist placeholder
-        run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
+      - name: Ensure embedded asset placeholders
+        run: |
+          mkdir -p frontend/dist
+          touch frontend/dist/.gitkeep
+          mkdir -p build/windows
+          touch build/windows/icon.ico
 
       - name: Run Go tests
         run: go test ./... -count=1 -v
@@ -76,6 +84,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
         working-directory: frontend
+
+      - name: Ensure embedded asset placeholders
+        shell: bash
+        run: |
+          mkdir -p frontend/dist
+          touch frontend/dist/.gitkeep
+          mkdir -p build/windows
+          touch build/windows/icon.ico
 
       - name: Run frontend tests
         run: npm run test
