@@ -5,8 +5,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func musicBrainzTagEntityRefreshInterval(staleDays int) time.Duration {
@@ -25,9 +23,6 @@ func musicBrainzTagStaggeredRefreshCount(totalEntityCount int, staleDays int) in
 	refreshCount := totalEntityCount / staleDays
 	if totalEntityCount%staleDays != 0 {
 		refreshCount++
-	}
-	if refreshCount < 1 {
-		return 1
 	}
 
 	return refreshCount
@@ -326,7 +321,7 @@ func (a *App) setMusicBrainzTagWorkerProgress(progress MusicBrainzTagWorkerProgr
 	a.musicBrainzTagProgressMu.Unlock()
 
 	if changed && a.ctx != nil {
-		runtime.EventsEmit(a.ctx, musicBrainzTagWorkerProgressEvent, progress)
+		runtimeEventsEmit(a.ctx, musicBrainzTagWorkerProgressEvent, progress)
 	}
 }
 
@@ -386,18 +381,12 @@ func (a *App) musicBrainzTagWorkerCount(jobCount int) int {
 	if workerCount > jobCount {
 		workerCount = jobCount
 	}
-	if workerCount < 1 {
-		workerCount = 1
-	}
 
 	return workerCount
 }
 
 func (a *App) musicBrainzTagTrackBatchSize() int {
 	workerCount := a.musicBrainzTagWorkerCount(256)
-	if workerCount <= 0 {
-		return 32
-	}
 
 	batchSize := workerCount * 4
 	if batchSize < 32 {
@@ -472,9 +461,6 @@ func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIn
 	ffprobePath := resolveFFProbePath(a.settings.FFmpegPath)
 	releaseDepthByRootPath := a.musicBrainzTagReleaseDepthByRootPath()
 	workerCount := a.musicBrainzTagWorkerCount(len(paths))
-	if workerCount <= 0 {
-		workerCount = 1
-	}
 
 	jobs := make(chan string, len(paths))
 	results := make(chan musicBrainzTagTrackScanResult, len(paths))

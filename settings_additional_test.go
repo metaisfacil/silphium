@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -16,6 +18,7 @@ func TestIsLocalBrainzServerURL(t *testing.T) {
 		{name: "localhost", url: "http://localhost:5000", want: true},
 		{name: "ipv4 loopback", url: "http://127.0.0.1:5000", want: true},
 		{name: "ipv6 loopback", url: "http://[::1]:5000", want: true},
+		{name: "localhost without scheme", url: "localhost:5000", want: true},
 		{name: "192.168 private range", url: "http://192.168.1.20:5000", want: true},
 		{name: "10.0 private range", url: "http://10.0.4.20:5000", want: true},
 		{name: "other 10.x address", url: "http://10.1.4.20:5000", want: false},
@@ -224,5 +227,149 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 	}
 	if !settings.MusicBrainzTagDatabaseEnabled {
 		t.Fatal("expected MusicBrainzTagDatabaseEnabled to remain enabled")
+	}
+}
+
+func TestSettingsPathAndLoadHelpers(t *testing.T) {
+	originalOSExecutable := osExecutable
+	t.Cleanup(func() {
+		osExecutable = originalOSExecutable
+	})
+
+	tempDir := t.TempDir()
+	defaultExecutablePath := filepath.Join(tempDir, "bin", "silphium.exe")
+	osExecutable = func() (string, error) {
+		return defaultExecutablePath, nil
+	}
+	if got := defaultSettingsPath(); got != filepath.Join(filepath.Dir(defaultExecutablePath), appSettingsFileName) {
+		t.Fatalf("defaultSettingsPath() = %q, want %q", got, filepath.Join(filepath.Dir(defaultExecutablePath), appSettingsFileName))
+	}
+
+	osExecutable = func() (string, error) {
+		return "", errors.New("boom")
+	}
+	if got := defaultSettingsPath(); got != appSettingsFileName {
+		t.Fatalf("defaultSettingsPath(error) = %q, want %q", got, appSettingsFileName)
+	}
+
+	missingPath := filepath.Join(tempDir, "missing.json")
+	settings, err := readAppSettings(missingPath)
+	if err != nil || !reflect.DeepEqual(settings, AppSettings{}) {
+		t.Fatalf("readAppSettings(missing) = (%#v, %v), want empty settings and nil error", settings, err)
+	}
+
+	invalidJSONPath := filepath.Join(tempDir, "invalid.json")
+	writeTestFile(t, invalidJSONPath, "{")
+	if _, err := readAppSettings(invalidJSONPath); err == nil {
+		t.Fatal("readAppSettings(invalid json) error = nil, want error")
+	}
+
+	blockedPath := filepath.Join(tempDir, "blocked")
+	if err := os.MkdirAll(blockedPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", blockedPath, err)
+	}
+	if err := writeAppSettings(blockedPath, AppSettings{}); err == nil {
+		t.Fatal("writeAppSettings(directory path) error = nil, want error")
+	}
+
+	storedSettingsPath := filepath.Join(tempDir, appSettingsFileName)
+	if err := writeAppSettings(storedSettingsPath, AppSettings{LibraryPath: tempDir, ReleaseDepth: 2}); err != nil {
+		t.Fatalf("writeAppSettings(stored) error = %v", err)
+	}
+
+	app := &App{settingsPath: storedSettingsPath}
+	if got := app.ensureSettingsPath(); got != storedSettingsPath {
+		t.Fatalf("ensureSettingsPath(existing) = %q, want %q", got, storedSettingsPath)
+	}
+	app.ensureSettingsLoaded()
+	if !app.settingsLoaded || app.settings.LibraryPath != tempDir || app.settings.ReleaseDepth != 2 {
+		t.Fatalf("ensureSettingsLoaded() = loaded:%t settings:%#v, want stored settings", app.settingsLoaded, app.settings)
+	}
+
+	writeTestFile(t, storedSettingsPath, "{\n  \"libraryPath\": \"ignored\"\n}\n")
+	app.ensureSettingsLoaded()
+	if app.settings.LibraryPath != tempDir {
+		t.Fatalf("ensureSettingsLoaded(second call) library path = %q, want original loaded value", app.settings.LibraryPath)
+	}
+
+	failingApp := &App{settingsPath: invalidJSONPath}
+	failingApp.loadStoredSettings()
+	if !failingApp.settingsLoaded {
+		t.Fatal("loadStoredSettings(error) should still mark settings as loaded")
+	}
+	if !reflect.DeepEqual(failingApp.settings, AppSettings{}) {
+		t.Fatalf("loadStoredSettings(error) settings = %#v, want zero value", failingApp.settings)
+	}
+
+	osExecutable = func() (string, error) {
+		return filepath.Join(tempDir, "resolved", "silphium.exe"), nil
+	}
+	defaultPathApp := &App{}
+	if got := defaultPathApp.ensureSettingsPath(); got != filepath.Join(tempDir, "resolved", appSettingsFileName) {
+		t.Fatalf("ensureSettingsPath(default) = %q, want %q", got, filepath.Join(tempDir, "resolved", appSettingsFileName))
+	}
+
+	failingSaveApp := &App{settingsLoaded: true, settingsPath: blockedPath}
+	if _, err := failingSaveApp.SaveSettings(AppSettings{}); err == nil {
+		t.Fatal("SaveSettings(write error) error = nil, want error")
+	}
+}
+
+func TestSettingsAdditionalNormalizationBranches(t *testing.T) {
+	if got := normalizeScrobbleRuleOperator("bogus", scrobbleRuleFieldTrackArtist); got != defaultScrobbleRuleOperator(scrobbleRuleFieldTrackArtist) {
+		t.Fatalf("normalizeScrobbleRuleOperator(invalid non-track) = %q, want %q", got, defaultScrobbleRuleOperator(scrobbleRuleFieldTrackArtist))
+	}
+	if got := normalizeScrobbleRuleValue(scrobbleRuleFieldGenre, scrobbleRuleOperatorContains, "   "); got != "" {
+		t.Fatalf("normalizeScrobbleRuleValue(empty) = %q, want empty", got)
+	}
+
+	rules := normalizeScrobbleRules([]ScrobbleRule{
+		{Field: "bogus", Operator: scrobbleRuleOperatorContains, Value: "ignored"},
+		{Field: scrobbleRuleFieldGenre, Operator: "bogus", Value: " rock "},
+	}, nil)
+	if !reflect.DeepEqual(rules, []ScrobbleRule{{
+		Field:    scrobbleRuleFieldGenre,
+		Operator: defaultScrobbleRuleOperator(scrobbleRuleFieldGenre),
+		Value:    "rock",
+	}}) {
+		t.Fatalf("normalizeScrobbleRules(additional branches) = %#v, want one normalized genre rule", rules)
+	}
+
+	if got := normalizeCoverArtPriority([]string{}); !reflect.DeepEqual(got, []string{}) {
+		t.Fatalf("normalizeCoverArtPriority(empty slice) = %#v, want empty slice", got)
+	}
+	if isLocalBrainzServerURL("http://:5000") {
+		t.Fatal("isLocalBrainzServerURL(hostless) = true, want false")
+	}
+	if isLocalBrainzServerURL("http://[2001:db8::1]:5000") {
+		t.Fatal("isLocalBrainzServerURL(non-loopback ipv6) = true, want false")
+	}
+
+	tempDir := t.TempDir()
+	blockedPath := filepath.Join(tempDir, "blocked-dir")
+	if err := os.MkdirAll(blockedPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", blockedPath, err)
+	}
+	if _, err := readAppSettings(blockedPath); err == nil {
+		t.Fatal("readAppSettings(directory path) error = nil, want error")
+	}
+}
+
+func TestSettingsAdditionalWriteAndPathBranches(t *testing.T) {
+	originalJSONMarshalIndent := jsonMarshalIndent
+	t.Cleanup(func() {
+		jsonMarshalIndent = originalJSONMarshalIndent
+	})
+
+	jsonMarshalIndent = func(value interface{}, prefix string, indent string) ([]byte, error) {
+		return nil, errors.New("marshal failed")
+	}
+	if err := writeAppSettings(filepath.Join(t.TempDir(), appSettingsFileName), AppSettings{}); err == nil || err.Error() != "marshal failed" {
+		t.Fatalf("writeAppSettings(marshal error) = %v, want marshal failure", err)
+	}
+
+	invalidPath := string([]byte{'M', 'u', 's', 'i', 'c', 0, 'X'})
+	if got, want := normalizeScrobbleRuleValue(scrobbleRuleFieldPath, scrobbleRuleOperatorStartsWith, invalidPath), normalizePath(invalidPath); got != want {
+		t.Fatalf("normalizeScrobbleRuleValue(path abs error) = %q, want %q", got, want)
 	}
 }

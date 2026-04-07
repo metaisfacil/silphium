@@ -91,13 +91,121 @@ func (s *audioPlayerSource) Seek(offset int64, whence int) (int64, error) {
 	return s.backend.seekStream(offset, whence)
 }
 
+type audioOutputPlayer interface {
+	SetVolume(volume float64)
+	Play()
+	Pause()
+	Err() error
+	Seek(offset int64, whence int) (int64, error)
+}
+
+type audioOutputContext interface {
+	NewPlayer(source io.Reader) audioOutputPlayer
+	Err() error
+	Close() error
+}
+
+type otoPlayerAdapter struct {
+	setVolume func(volume float64)
+	play      func()
+	pause     func()
+	err       func() error
+	seek      func(offset int64, whence int) (int64, error)
+}
+
+func (a *otoPlayerAdapter) SetVolume(volume float64) {
+	if a.setVolume != nil {
+		a.setVolume(volume)
+	}
+}
+
+func (a *otoPlayerAdapter) Play() {
+	if a.play != nil {
+		a.play()
+	}
+}
+
+func (a *otoPlayerAdapter) Pause() {
+	if a.pause != nil {
+		a.pause()
+	}
+}
+
+func (a *otoPlayerAdapter) Err() error {
+	if a.err == nil {
+		return nil
+	}
+
+	return a.err()
+}
+
+func (a *otoPlayerAdapter) Seek(offset int64, whence int) (int64, error) {
+	if a.seek == nil {
+		return offset, nil
+	}
+
+	return a.seek(offset, whence)
+}
+
+type otoContextAdapter struct {
+	newPlayer func(source io.Reader) audioOutputPlayer
+	err       func() error
+	close     func() error
+}
+
+func (a *otoContextAdapter) NewPlayer(source io.Reader) audioOutputPlayer {
+	if a.newPlayer == nil {
+		return nil
+	}
+
+	return a.newPlayer(source)
+}
+
+func (a *otoContextAdapter) Err() error {
+	if a.err == nil {
+		return nil
+	}
+
+	return a.err()
+}
+
+func (a *otoContextAdapter) Close() error {
+	if a.close == nil {
+		return nil
+	}
+
+	return a.close()
+}
+
+var newAudioOutputContext = func(options *oto.NewContextOptions) (audioOutputContext, <-chan struct{}, error) {
+	context, ready, err := oto.NewContext(options)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return &otoContextAdapter{
+		newPlayer: func(source io.Reader) audioOutputPlayer {
+			player := context.NewPlayer(source)
+			return &otoPlayerAdapter{
+				setVolume: player.SetVolume,
+				play:      player.Play,
+				pause:     player.Pause,
+				err:       player.Err,
+				seek:      player.Seek,
+			}
+		},
+		err:   context.Err,
+		close: context.Close,
+	}, ready, nil
+}
+
 // AudioBackend manages decoded PCM playback and transport controls.
 type AudioBackend struct {
 	mutex                       sync.Mutex
 	streamCond                  *sync.Cond
 	ffmpegPath                  string
-	context                     *oto.Context
-	player                      *oto.Player
+	context                     audioOutputContext
+	player                      audioOutputPlayer
 	streamSegments              []audioTrackSegment
 	streamReadOffset            int64
 	streamDroppedBytes          int64
@@ -169,13 +277,7 @@ func (b *AudioBackend) effectivePlayerVolumeLocked() float64 {
 	}
 
 	playedLocalBytes := b.currentPlayedLocalBytesLocked()
-	segmentIndex, _, ok := b.segmentForPlaybackOffsetLocked(playedLocalBytes)
-	if !ok || segmentIndex < 0 || segmentIndex >= len(b.streamSegments) {
-		if volume < 0 {
-			return 0
-		}
-		return volume
-	}
+	segmentIndex, _, _ := b.segmentForPlaybackOffsetLocked(playedLocalBytes)
 
 	segment := b.streamSegments[segmentIndex]
 	decodedScale := normalizeReplayGainScale(segment.ReplayGainScale)
@@ -196,7 +298,7 @@ func (b *AudioBackend) effectivePlayerVolumeLocked() float64 {
 	return effectiveVolume
 }
 
-func (b *AudioBackend) flushPlayerBuffer(player *oto.Player) error {
+func (b *AudioBackend) flushPlayerBuffer(player audioOutputPlayer) error {
 	if player == nil {
 		return nil
 	}
@@ -266,23 +368,13 @@ func (b *AudioBackend) Read(p []byte) (int, error) {
 				break
 			}
 
-			if written > 0 {
-				return written, nil
-			}
-
 			b.streamCond.Wait()
 		}
 
-		segmentIndex, segmentOffset, ok := b.segmentForByteOffsetLocked(b.streamReadOffset)
-		if !ok {
-			break
-		}
+		segmentIndex, segmentOffset, _ := b.segmentForByteOffsetLocked(b.streamReadOffset)
 
 		segment := b.streamSegments[segmentIndex]
 		copied := copy(p[written:], segment.PCMData[segmentOffset:])
-		if copied <= 0 {
-			break
-		}
 
 		written += copied
 		b.streamReadOffset += int64(copied)
@@ -350,7 +442,7 @@ func (b *AudioBackend) Initialize() error {
 		return nil
 	}
 
-	context, ready, err := oto.NewContext(&oto.NewContextOptions{
+	context, ready, err := newAudioOutputContext(&oto.NewContextOptions{
 		SampleRate:   audioSampleRate,
 		ChannelCount: audioChannelCount,
 		Format:       oto.FormatSignedInt16LE,
@@ -485,18 +577,8 @@ func (b *AudioBackend) seekLocked(seconds float64) error {
 
 	byteOffset := int64(seconds * float64(audioBytesPerSecond))
 	byteOffset -= byteOffset % int64(audioBytesPerFrame)
-	if byteOffset < 0 {
-		byteOffset = 0
-	}
 	if byteOffset > activeSegment.byteLen() {
 		byteOffset = activeSegment.byteLen()
-	}
-
-	if activeSegmentIndex > 0 {
-		for index := 0; index < activeSegmentIndex; index++ {
-			b.streamSegments[index].PCMData = nil
-		}
-		b.streamSegments = append([]audioTrackSegment(nil), b.streamSegments[activeSegmentIndex:]...)
 	}
 
 	b.streamReadOffset = byteOffset
@@ -574,11 +656,6 @@ func (b *AudioBackend) currentPlayedLocalBytesLocked() int64 {
 	playedLocalBytes := playedGlobalBytes - b.streamDroppedBytes
 	if playedLocalBytes < 0 {
 		return 0
-	}
-
-	totalTimelineBytes := b.totalTimelineBytesLocked()
-	if playedLocalBytes > totalTimelineBytes {
-		return totalTimelineBytes
 	}
 
 	return playedLocalBytes
@@ -716,21 +793,11 @@ func (b *AudioBackend) snapshotLocked() AudioPlaybackState {
 	}
 
 	playedLocalBytes := b.currentPlayedLocalBytesLocked()
-	segmentIndex, segmentOffset, ok := b.segmentForPlaybackOffsetLocked(playedLocalBytes)
-	if !ok {
-		segmentIndex = len(b.streamSegments) - 1
-		segmentOffset = b.streamSegments[segmentIndex].byteLen()
-	}
+	segmentIndex, segmentOffset, _ := b.segmentForPlaybackOffsetLocked(playedLocalBytes)
 
 	activeSegment := b.streamSegments[segmentIndex]
 	currentTime := float64(segmentOffset) / float64(audioBytesPerSecond)
 	duration := activeSegment.durationSeconds()
-	if currentTime < 0 {
-		currentTime = 0
-	}
-	if currentTime > duration {
-		currentTime = duration
-	}
 
 	return AudioPlaybackState{
 		Loaded:      true,

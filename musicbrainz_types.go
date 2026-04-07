@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // MusicBrainzArtistInfo contains enriched artist details returned by MusicBrainz lookup.
@@ -166,7 +164,7 @@ func (t *musicBrainzExplorationProgressTracker) emit(message string, done bool) 
 		t.message = cleanMessage
 	}
 
-	runtime.EventsEmit(t.app.ctx, musicBrainzExplorationProgressEvent, MusicBrainzExplorationProgress{
+	runtimeEventsEmit(t.app.ctx, musicBrainzExplorationProgressEvent, MusicBrainzExplorationProgress{
 		RequestID: t.requestID,
 		Message:   t.message,
 		Current:   t.current,

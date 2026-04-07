@@ -159,7 +159,7 @@ describe('settings normalization', () => {
             keyboardShortcuts: {
                 nextTrack: 'bad+shortcut+value',
             },
-        } as Parameters<typeof normalizeAppSettings>[0] & { scrobbleFolders: string[] });
+        } as unknown as Parameters<typeof normalizeAppSettings>[0] & { scrobbleFolders: string[] });
 
         expect(normalized.libraryFolders).toEqual([{ path: '/music/library', label: 'Main', releaseDepth: 3 }]);
         expect(normalized.scrobbleFilterMode).toBe('blacklist');

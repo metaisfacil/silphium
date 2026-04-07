@@ -11,8 +11,10 @@ import (
 	"unicode"
 )
 
+var shellQuoteGOOS = runtime.GOOS
+
 func shellQuotePath(path string) string {
-	if runtime.GOOS == "windows" {
+	if shellQuoteGOOS == "windows" {
 		return "\"" + strings.ReplaceAll(path, "\"", "\\\"") + "\""
 	}
 
@@ -79,10 +81,6 @@ var windowsEnvVarPattern = regexp.MustCompile(`%([^%]+)%`)
 
 func expandWindowsPercentEnvVariables(value string) string {
 	return windowsEnvVarPattern.ReplaceAllStringFunc(value, func(match string) string {
-		if len(match) < 3 {
-			return match
-		}
-
 		variableName := match[1 : len(match)-1]
 		expandedValue, exists := os.LookupEnv(variableName)
 		if !exists {

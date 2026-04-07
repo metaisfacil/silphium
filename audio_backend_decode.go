@@ -12,6 +12,8 @@ import (
 	"github.com/metaisfacil/oto/v3"
 )
 
+var listAudioOutputDevices = oto.OutputDevices
+
 func backendDisplayName(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "wasapi":
@@ -37,7 +39,7 @@ func backendDisplayName(raw string) string {
 
 // ListOutputDevices returns the audio output devices available on the current platform.
 func (b *AudioBackend) ListOutputDevices() []AudioOutputDevice {
-	devices, err := oto.OutputDevices()
+	devices, err := listAudioOutputDevices()
 	if err != nil || len(devices) == 0 {
 		return []AudioOutputDevice{{
 			ID:        defaultAudioOutputDevice,
@@ -242,8 +244,8 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 		}
 	}
 
-	activeSegment, segmentOffset, ok := b.activeSegmentLocked()
-	if !ok || len(activeSegment.PCMData) < audioBytesPerFrame {
+	activeSegment, segmentOffset, _ := b.activeSegmentLocked()
+	if len(activeSegment.PCMData) < audioBytesPerFrame {
 		return AudioVisualizationFrame{
 			Loaded:       state.Loaded,
 			Playing:      state.Playing,
@@ -256,16 +258,6 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 
 	normalizedFrameCount := normalizeVisualizationFrameCount(frameCount)
 	totalFrames := len(activeSegment.PCMData) / audioBytesPerFrame
-	if totalFrames <= 0 {
-		return AudioVisualizationFrame{
-			Loaded:       state.Loaded,
-			Playing:      state.Playing,
-			SourcePath:   activeSegment.SourcePath,
-			SampleRate:   audioSampleRate,
-			ChannelCount: audioChannelCount,
-			Samples:      []int16{},
-		}
-	}
 
 	actualFrameCount := normalizedFrameCount
 	if totalFrames < actualFrameCount {
@@ -273,9 +265,6 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 	}
 
 	windowFrames := normalizedFrameCount * visualizationWindowFactor
-	if windowFrames < actualFrameCount {
-		windowFrames = actualFrameCount
-	}
 	if windowFrames > totalFrames {
 		windowFrames = totalFrames
 	}
@@ -295,11 +284,6 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 	}
 
 	availableFrames := endFrame - startFrame
-	if availableFrames <= 0 {
-		startFrame = 0
-		availableFrames = totalFrames
-		endFrame = totalFrames
-	}
 
 	stride := 0.0
 	if actualFrameCount > 1 && availableFrames > 1 {
@@ -312,12 +296,6 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 		sourceFrame := startFrame
 		if stride > 0 {
 			sourceFrame = startFrame + int(math.Round(float64(index)*stride))
-		}
-		if sourceFrame >= endFrame {
-			sourceFrame = endFrame - 1
-		}
-		if sourceFrame < 0 {
-			sourceFrame = 0
 		}
 
 		byteOffset := sourceFrame * audioBytesPerFrame

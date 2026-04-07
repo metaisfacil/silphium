@@ -6,8 +6,6 @@ import (
 	"math"
 	"strings"
 	"time"
-
-	taglib "go.senan.xyz/taglib"
 )
 
 func (b *AudioBackend) prepareTrackSegment(path string, replayGainReleasePaths []string) (audioTrackSegment, error) {
@@ -18,7 +16,7 @@ func (b *AudioBackend) prepareTrackSegment(path string, replayGainReleasePaths [
 
 	var tags map[string][]string
 	if gaplessPlayback {
-		loadedTags, err := taglib.ReadTags(path)
+		loadedTags, err := readTaglibTags(path)
 		if err == nil {
 			tags = loadedTags
 		}
@@ -293,11 +291,7 @@ func (b *AudioBackend) Seek(seconds float64) (AudioPlaybackState, error) {
 		return state, errors.New("no track loaded")
 	}
 
-	if err := b.seekLocked(seconds); err != nil {
-		state := b.snapshotLocked()
-		b.mutex.Unlock()
-		return state, err
-	}
+	_ = b.seekLocked(seconds)
 
 	player := b.player
 	shouldResume := b.playing

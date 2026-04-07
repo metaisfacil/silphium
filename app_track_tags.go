@@ -16,6 +16,8 @@ import (
 	taglib "go.senan.xyz/taglib"
 )
 
+var readTaglibTags = taglib.ReadTags
+
 // TrackTags contains resolved textual, technical, and MusicBrainz metadata for a track.
 type TrackTags struct {
 	Artist         string              `json:"artist"`
@@ -439,7 +441,7 @@ func readTrackTechnicalMetadata(path string, tags map[string][]string, ffprobePa
 		}
 	}
 
-	if properties, err := taglib.ReadProperties(path); err == nil {
+	if properties, err := readTaglibProperties(path); err == nil {
 		if metadata.SampleRate == 0 {
 			metadata.SampleRate = int(properties.SampleRate)
 		}
@@ -716,7 +718,7 @@ func (a *App) putTrackTagsCache(path string, signature trackTagsFileSignature, t
 }
 
 func readTrackTagsForPath(path string, ffprobePath string) (TrackTags, bool) {
-	tags, err := taglib.ReadTags(path)
+	tags, err := readTaglibTags(path)
 	if err != nil {
 		return TrackTags{}, false
 	}
@@ -859,7 +861,7 @@ func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 			continue
 		}
 
-		tags, err := taglib.ReadTags(tempPath)
+		tags, err := readTaglibTags(tempPath)
 		if err != nil {
 			_ = os.Remove(tempPath)
 			continue

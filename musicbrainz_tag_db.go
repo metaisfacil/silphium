@@ -246,7 +246,8 @@ func selectMusicBrainzTagRepresentativeTrack(candidates []musicBrainzTagTrackSca
 
 func (a *App) storedMusicBrainzTagTrackRecordsByReleaseFolderLocked() map[string]musicBrainzTagStoredTrackRecord {
 	recordsByReleaseFolder := make(map[string]musicBrainzTagStoredTrackRecord, len(a.musicBrainzTagStore.Tracks))
-	for path, record := range a.musicBrainzTagStore.Tracks {
+	for _, path := range sortedMusicBrainzTagTrackPaths(a.musicBrainzTagStore) {
+		record := a.musicBrainzTagStore.Tracks[path]
 		releaseFolderPath := normalizeMusicBrainzTagFolderPath(record.ReleaseFolderPath)
 		if releaseFolderPath == "" {
 			continue

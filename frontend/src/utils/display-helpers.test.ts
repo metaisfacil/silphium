@@ -104,7 +104,7 @@ describe('display helpers', () => {
             public result: ArrayBuffer = new ArrayBuffer(0);
 
             readAsDataURL(): void {
-                this.onload?.call(this as unknown as FileReader, new ProgressEvent('load'));
+                this.onload?.call(this as unknown as FileReader, new ProgressEvent('load') as ProgressEvent<FileReader>);
             }
         }
 
@@ -124,7 +124,7 @@ describe('display helpers', () => {
             public result: string | null = null;
 
             readAsDataURL(): void {
-                this.onerror?.call(this as unknown as FileReader, new ProgressEvent('error'));
+                this.onerror?.call(this as unknown as FileReader, new ProgressEvent('error') as ProgressEvent<FileReader>);
             }
         }
 
@@ -144,7 +144,7 @@ describe('display helpers', () => {
             public result = 'raw-base64';
 
             readAsDataURL(): void {
-                this.onload?.call(this as unknown as FileReader, new ProgressEvent('load'));
+                this.onload?.call(this as unknown as FileReader, new ProgressEvent('load') as ProgressEvent<FileReader>);
             }
         }
 

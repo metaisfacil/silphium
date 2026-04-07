@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createArtistInfoController } from './artist-info-controller';
+import type { ArtistDetails } from '../types/app-types';
 
 const createTrack = (artistMbids: string[] = ['artist-id']) => ({
     title: 'Track',
@@ -36,6 +37,18 @@ const createElements = () => ({
     artistInfoLinks: document.createElement('div'),
 });
 
+const createArtistDetails = (overrides: Partial<ArtistDetails> = {}): ArtistDetails => ({
+    found: false,
+    mbid: 'artist-id',
+    name: '',
+    type: '',
+    country: '',
+    disambiguation: '',
+    lifeSpan: '',
+    genres: [],
+    ...overrides,
+});
+
 describe('artist-info-controller', () => {
     beforeEach(() => {
         vi.useFakeTimers();
@@ -54,7 +67,7 @@ describe('artist-info-controller', () => {
             getTracks: () => [createTrack()] as any,
             getCurrentTrackIndex: () => 0,
             getRequestVersion: () => 1,
-            lookupArtistByMBID: vi.fn(async () => ({ found: true })),
+            lookupArtistByMBID: vi.fn(async () => createArtistDetails({ found: true })),
             openUrl: vi.fn(),
         });
 
@@ -71,7 +84,7 @@ describe('artist-info-controller', () => {
 
     it('hydrates artist info, groups urls, toggles panels, caches results, and opens links', async () => {
         const elements = createElements();
-        const lookupArtistByMBID = vi.fn(async () => ({
+        const lookupArtistByMBID = vi.fn(async () => createArtistDetails({
             found: true,
             name: 'Artist Name',
             type: 'Person',
@@ -148,7 +161,7 @@ describe('artist-info-controller', () => {
         const elements = createElements();
         let requestVersion = 1;
         let currentTrackIndex = 0;
-        const lookupArtistByMBID = vi.fn(async () => ({ found: false }));
+        const lookupArtistByMBID = vi.fn(async () => createArtistDetails({ found: false }));
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
         const controller = createArtistInfoController({
             elements,
@@ -168,14 +181,14 @@ describe('artist-info-controller', () => {
 
         lookupArtistByMBID.mockImplementationOnce(async () => {
             requestVersion = 2;
-            return { found: true, name: 'Late result', urls: [] };
+            return createArtistDetails({ found: true, name: 'Late result', urls: [] });
         });
         await controller.hydrate(1);
         expect(elements.artistInfoName.textContent).not.toBe('Late result');
 
         lookupArtistByMBID.mockImplementationOnce(async () => {
             currentTrackIndex = 0;
-            return { found: true, name: 'Wrong track', urls: [] };
+            return createArtistDetails({ found: true, name: 'Wrong track', urls: [] });
         });
         await controller.hydrate(1);
         expect(elements.artistInfoName.textContent).not.toBe('Wrong track');

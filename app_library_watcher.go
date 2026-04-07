@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) removePathAndDescendants(path string) {
@@ -316,7 +315,7 @@ func (a *App) startLibraryWatcher(roots []libraryRootConfig, onProgress func()) 
 				if changed && a.ctx != nil {
 					emitStartTime := time.Now()
 					a.logRescanEvent("EventsEmit START: sending scan update event")
-					runtime.EventsEmit(a.ctx, libraryScanUpdatedEvent, scan)
+					runtimeEventsEmit(a.ctx, libraryScanUpdatedEvent, scan)
 					a.logRescanEvent("EventsEmit END: took %.2fms", time.Since(emitStartTime).Seconds()*1000)
 				}
 

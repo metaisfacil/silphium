@@ -25,6 +25,8 @@ const mediaKeyEvent = "silphium:media:key"
 
 // AppVersion is set at build time via -ldflags "-X main.AppVersion=...".
 var AppVersion = "dev"
+var runtimeEventsEmit = runtime.EventsEmit
+var runtimeWindowHide = runtime.WindowHide
 
 // App contains runtime state and service dependencies for the Wails backend.
 type App struct {
@@ -105,7 +107,7 @@ func (a *App) logRescanEvent(message string, args ...interface{}) {
 	logLine := fmt.Sprintf("[%s] %s", timestamp, formattedMessage)
 	log.Println(logLine)
 	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, libraryRescanLogEvent, logLine)
+		runtimeEventsEmit(a.ctx, libraryRescanLogEvent, logLine)
 	}
 }
 
@@ -155,7 +157,7 @@ func (a *App) beforeClose(context.Context) bool {
 		return false
 	}
 
-	runtime.WindowHide(a.ctx)
+	runtimeWindowHide(a.ctx)
 	return true
 }
 

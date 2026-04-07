@@ -117,6 +117,12 @@ func folderAndRelative(rootPath string, fullPath string) (string, string, bool) 
 		return "", "", false
 	}
 
+	relativePath = filepath.Clean(relativePath)
+	parentPrefix := ".." + string(filepath.Separator)
+	if relativePath == ".." || strings.HasPrefix(relativePath, parentPrefix) {
+		return "", "", false
+	}
+
 	relativePath = filepath.ToSlash(relativePath)
 	folderPath := filepath.ToSlash(filepath.Dir(relativePath))
 	if folderPath == "." {

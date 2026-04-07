@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func cloneImmediateChildCountByFolder(input map[string]int) map[string]int {
@@ -141,7 +139,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 			etaSeconds = 1
 		}
 
-		runtime.EventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
+		runtimeEventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
 			RootPath:       result.RootPath,
 			EntriesScanned: countedEntries,
 			TotalEntries:   0,
@@ -382,7 +380,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 			etaSeconds = int(math.Ceil(remainingMs / 1000))
 		}
 
-		runtime.EventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
+		runtimeEventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
 			RootPath:       result.RootPath,
 			EntriesScanned: scannedEntries,
 			TotalEntries:   totalEntries,
@@ -416,7 +414,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		}
 		a.indexMu.Unlock()
 
-		runtime.EventsEmit(a.ctx, libraryScanUpdatedEvent, payload)
+		runtimeEventsEmit(a.ctx, libraryScanUpdatedEvent, payload)
 		lastScanUpdatedEmit = now
 	}
 

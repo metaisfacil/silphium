@@ -14,6 +14,9 @@ type musicBrainzRequestPriority int
 const (
 	musicBrainzRequestPriorityBackground musicBrainzRequestPriority = iota
 	musicBrainzRequestPriorityInteractive
+)
+
+var (
 	// Global backend override for MBZ queue cooldown in milliseconds.
 	// Keep at 0 to use the configured per-request rate limit.
 	musicBrainzRequestCooldownOverrideMs = 0

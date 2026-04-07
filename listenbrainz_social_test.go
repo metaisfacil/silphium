@@ -41,37 +41,54 @@ func TestGetListenBrainzFollowingAndFeed(t *testing.T) {
 			writer.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(writer).Encode(map[string]any{
 				"payload": map[string]any{
-					"count":   1,
+					"count":   2,
 					"user_id": "test-user-id",
-					"events": []map[string]any{{
-						"created":    1710000100,
-						"event_type": "listen",
-						"hidden":     false,
-						"id":         7,
-						"message":    "",
-						"user_name":  "alice",
-						"metadata": map[string]any{
-							"listened_at":     1710000000,
-							"listened_at_iso": "2024-03-09T16:00:00Z",
-							"playing_now":     true,
-							"track_metadata": map[string]any{
-								"artist_name":  "Artist One",
-								"track_name":   "Track One",
-								"release_name": "Album One",
-								"additional_info": map[string]any{
-									"recording_mbid":     "11111111-1111-1111-1111-111111111111",
-									"recording_msid":     "22222222-2222-2222-2222-222222222222",
-									"release_mbid":       "33333333-3333-3333-3333-333333333333",
-									"release_group_mbid": "44444444-4444-4444-4444-444444444444",
-									"artist_mbids":       []string{"55555555-5555-5555-5555-555555555555"},
-									"origin_url":         "https://example.com/track-one",
-									"music_service":      "spotify.com",
-									"music_service_name": "Spotify",
-									"duration_ms":        245000,
+					"events": []map[string]any{
+						{
+							"created":    1710000100,
+							"event_type": "listen",
+							"hidden":     false,
+							"id":         7,
+							"message":    "",
+							"user_name":  "alice",
+							"metadata": map[string]any{
+								"listened_at":     1710000000,
+								"listened_at_iso": "2024-03-09T16:00:00Z",
+								"playing_now":     true,
+								"track_metadata": map[string]any{
+									"artist_name":  "Artist One",
+									"track_name":   "Track One",
+									"release_name": "Album One",
+									"additional_info": map[string]any{
+										"recording_mbid":     "11111111-1111-1111-1111-111111111111",
+										"recording_msid":     "22222222-2222-2222-2222-222222222222",
+										"release_mbid":       "33333333-3333-3333-3333-333333333333",
+										"release_group_mbid": "44444444-4444-4444-4444-444444444444",
+										"artist_mbids":       []string{"55555555-5555-5555-5555-555555555555"},
+										"origin_url":         "https://example.com/track-one",
+										"music_service":      "spotify.com",
+										"music_service_name": "Spotify",
+										"duration_ms":        245000,
+									},
 								},
 							},
 						},
-					}},
+						{
+							"created":    0,
+							"event_type": "listen",
+							"hidden":     false,
+							"id":         8,
+							"message":    "",
+							"user_name":  "",
+							"metadata": map[string]any{
+								"created":        0,
+								"inserted_at":    1710000200,
+								"listened_at":    1710000150,
+								"user_name":      "bob",
+								"track_metadata": map[string]any{"artist_name": "Artist Two", "track_name": "Track Two"},
+							},
+						},
+					},
 				},
 			})
 		default:
@@ -106,8 +123,8 @@ func TestGetListenBrainzFollowingAndFeed(t *testing.T) {
 		t.Fatalf("GetListenBrainzFollowingFeed() error = %v", err)
 	}
 
-	if len(events) != 1 {
-		t.Fatalf("len(GetListenBrainzFollowingFeed()) = %d, want %d", len(events), 1)
+	if len(events) != 2 {
+		t.Fatalf("len(GetListenBrainzFollowingFeed()) = %d, want %d", len(events), 2)
 	}
 
 	event := events[0]
@@ -137,5 +154,13 @@ func TestGetListenBrainzFollowingAndFeed(t *testing.T) {
 	}
 	if event.TrackMetadata.AdditionalInfo.OriginURL != "https://example.com/track-one" {
 		t.Fatalf("event.TrackMetadata.AdditionalInfo.OriginURL = %q, want %q", event.TrackMetadata.AdditionalInfo.OriginURL, "https://example.com/track-one")
+	}
+
+	fallbackEvent := events[1]
+	if fallbackEvent.UserName != "bob" {
+		t.Fatalf("fallbackEvent.UserName = %q, want %q", fallbackEvent.UserName, "bob")
+	}
+	if fallbackEvent.Created != 1710000200 {
+		t.Fatalf("fallbackEvent.Created = %d, want %d", fallbackEvent.Created, 1710000200)
 	}
 }
