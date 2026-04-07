@@ -2,6 +2,13 @@
 
 package main
 
-func (a *App) startMediaKeyWatcher() {}
+func (a *App) startMediaKeyWatcher() {
+	_ = mediaKeyEvent
+	_ = a.mediaKeyWatcherStop
+	_ = a.mediaKeyWatcherDone
+}
 
-func (a *App) stopMediaKeyWatcher() {}
+func (a *App) stopMediaKeyWatcher() {
+	_ = a.mediaKeyWatcherStop
+	_ = a.mediaKeyWatcherDone
+}
