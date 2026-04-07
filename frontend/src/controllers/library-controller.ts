@@ -78,7 +78,7 @@ type LibraryControllerOptions = {
     onTrackPathChosen?: (path: string) => void;
     onTextFileChosen: (index: number) => void;
     onImageFileChosen: (index: number) => void;
-    onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number) => void;
+    onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number, includeFileActions?: boolean, fileActionPath?: string) => void;
     onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string, trackIndexes?: number[]) => void;
     onSidebarClosed: () => void;
 };
@@ -2107,7 +2107,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
             event.preventDefault();
             event.stopPropagation();
-            options.onQueueRequested(event.clientX, event.clientY, [trackIndex], trackIndex);
+            options.onQueueRequested(event.clientX, event.clientY, [trackIndex], trackIndex, true, trackPath);
             return;
         }
 

@@ -20,11 +20,17 @@ const listenBrainzValidateTokenPath = "/1/validate-token"
 const listenBrainzGetFeedbackForRecordingsPath = "/1/feedback/user/%s/get-feedback-for-recordings"
 const listenBrainzFollowingPath = "/1/user/%s/following"
 const listenBrainzFeedEventsFollowingPath = "/1/user/%s/feed/events/listens/following"
+const listenBrainzDuplicateScrobbleWindow = 15 * time.Minute
 
 var listenBrainzFetchMu sync.Mutex
 var nextListenBrainzFetchAt time.Time
 var listenBrainzUserNameCacheMu sync.Mutex
 var listenBrainzUserNameCache = map[string]string{}
+
+type listenBrainzScrobbleDedupEntry struct {
+	seenAt     time.Time
+	listenedAt int64
+}
 
 // ListenBrainzTrackMetadata is the frontend-facing metadata shape for listen submissions.
 type ListenBrainzTrackMetadata struct {
@@ -272,6 +278,62 @@ func (a *App) listenBrainzToken() (string, error) {
 	return token, nil
 }
 
+func listenBrainzScrobbleFingerprint(metadata ListenBrainzTrackMetadata) string {
+	cleanRecordingMBID := strings.ToLower(strings.TrimSpace(metadata.RecordingMBID))
+	if cleanRecordingMBID != "" {
+		return "mbid:" + cleanRecordingMBID
+	}
+
+	cleanTrackName := strings.ToLower(strings.TrimSpace(metadata.TrackName))
+	cleanReleaseName := strings.ToLower(strings.TrimSpace(metadata.ReleaseName))
+
+	return strings.Join([]string{
+		"track:" + cleanTrackName,
+		"release:" + cleanReleaseName,
+	}, "\x1f")
+}
+
+func (a *App) shouldSkipListenBrainzDuplicateScrobble(metadata ListenBrainzTrackMetadata, listenedAt int64) bool {
+	if listenedAt <= 0 {
+		return false
+	}
+
+	cleanTrackName := strings.ToLower(strings.TrimSpace(metadata.TrackName))
+	if cleanTrackName == "" {
+		return false
+	}
+
+	duplicateKey := listenBrainzScrobbleFingerprint(metadata)
+	now := time.Now()
+
+	a.listenBrainzScrobbleMu.Lock()
+	defer a.listenBrainzScrobbleMu.Unlock()
+
+	if a.listenBrainzRecentScrobbles == nil {
+		a.listenBrainzRecentScrobbles = make(map[string]listenBrainzScrobbleDedupEntry)
+	}
+
+	cutoff := now.Add(-listenBrainzDuplicateScrobbleWindow)
+	for key, entry := range a.listenBrainzRecentScrobbles {
+		if entry.seenAt.Before(cutoff) {
+			delete(a.listenBrainzRecentScrobbles, key)
+		}
+	}
+
+	if entry, found := a.listenBrainzRecentScrobbles[duplicateKey]; found && !entry.seenAt.Before(cutoff) {
+		if absInt64(entry.listenedAt-listenedAt) <= int64(listenBrainzDuplicateScrobbleWindow/time.Second) {
+			return true
+		}
+	}
+
+	a.listenBrainzRecentScrobbles[duplicateKey] = listenBrainzScrobbleDedupEntry{
+		seenAt:     now,
+		listenedAt: listenedAt,
+	}
+
+	return false
+}
+
 func (a *App) listenBrainzUserName(token string) (string, error) {
 	listenBrainzUserNameCacheMu.Lock()
 	cachedUserName, hasCachedUserName := listenBrainzUserNameCache[token]
@@ -352,6 +414,9 @@ func (a *App) SubmitListenBrainz(listenType string, metadata ListenBrainzTrackMe
 
 	if normalizedType == "single" && listenedAt <= 0 {
 		listenedAt = time.Now().Unix()
+	}
+	if normalizedType == "single" && a.shouldSkipListenBrainzDuplicateScrobble(metadata, listenedAt) {
+		return nil
 	}
 
 	requestBody := listenBrainzSubmitRequest{

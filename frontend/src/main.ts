@@ -93,6 +93,7 @@ import {
     GetListenBrainzFollowing,
     GetListenBrainzFollowingFeed,
     ResolveLibraryFolderForPath,
+    RunCustomSendToAction,
     GetListenBrainzRecordingFeedback,
     IsLibraryFolderImmediateDescendantsEnumerated,
     GetSettings,
@@ -131,6 +132,8 @@ import type {
     AudioPlaybackState,
     AudioVisualizationFrame,
     CoverArtPrioritySource,
+    CustomSendToAction,
+    CustomSendToActionScope,
     FFmpegPathStatus,
     ImageLibraryFile,
     LibraryFolderPage,
@@ -181,6 +184,8 @@ import {
 
 const app = document.querySelector('#app') as HTMLElement | null;
 const isWindowsRuntime = /windows/i.test(navigator.userAgent);
+const isMacRuntime = /macintosh|mac os x/i.test(navigator.userAgent);
+const isLinuxRuntime = /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent);
 
 if (!app) {
     throw new Error('App container not found');
@@ -290,6 +295,7 @@ let currentSettings: AppSettings = {
     lissajousEnabled: true,
     uiDitheringEnabled: true,
     minimizeToTrayOnClose: false,
+    customSendToActions: [],
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
 
@@ -320,12 +326,17 @@ const normalizeMusicBrainzTagWorkerProgress = (value?: Partial<MusicBrainzTagWor
 let startupInitializationComplete = false;
 let ffmpegConfigurationRequired = false;
 let trackMetaMenuTarget: HTMLElement | null = null;
+let trackMetaMenuActionScope: CustomSendToActionScope | null = null;
+let trackMetaMenuActionPath = '';
 let sidebarQueueTrackIndexes: number[] = [];
 let sidebarQueueFeedbackTrackIndex: number | null = null;
 let sidebarQueueFolderPath = '';
 let sidebarQueueFolderLabel = '';
 let sidebarQueueFolderTarget = false;
 let sidebarQueueTrackIndexesScopedToSelection = false;
+let sidebarQueueFileActionPath = '';
+let sidebarQueueIncludeFileActions = false;
+let sidebarQueueSendToActionScope: CustomSendToActionScope | null = null;
 let queueConfirmResolver: ((confirmed: boolean) => void) | null = null;
 let sharePreviewRequestVersion = 0;
 let sharePreviewSnapshot: {
@@ -343,6 +354,7 @@ const shareModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const sidebarQueueDescendantPromptThreshold = 200;
 const selectedLibraryRootLabel = 'Selected folders';
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
+const defaultCustomSendToActions: CustomSendToAction[] = [];
 const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] | undefined): CoverArtPrioritySource[] => {
     if (sources === undefined) {
         return [...defaultCoverArtPriority];
@@ -372,6 +384,49 @@ const normalizeCoverArtPriority = (sources: CoverArtPrioritySource[] | string[] 
     }
 
     return ordered;
+};
+
+const asCustomSendToActionScope = (value: string): CustomSendToActionScope | null => {
+    if (value === 'track' || value === 'album' || value === 'file' || value === 'folder') {
+        return value;
+    }
+
+    return null;
+};
+
+const normalizeCustomSendToActions = (actions: CustomSendToAction[] | Array<{
+    title?: string;
+    scope?: string;
+    commandTemplate?: string;
+}> | undefined): CustomSendToAction[] => {
+    if (!Array.isArray(actions)) {
+        return [...defaultCustomSendToActions];
+    }
+
+    const deduped = new Set<string>();
+    const normalized: CustomSendToAction[] = [];
+    for (const candidate of actions) {
+        const title = (candidate.title || '').trim();
+        const scope = asCustomSendToActionScope(candidate.scope || '');
+        const commandTemplate = (candidate.commandTemplate || '').trim();
+        if (title === '' || scope === null || commandTemplate === '') {
+            continue;
+        }
+
+        const dedupeKey = `${scope}\n${title.toLowerCase()}\n${commandTemplate.toLowerCase()}`;
+        if (deduped.has(dedupeKey)) {
+            continue;
+        }
+
+        deduped.add(dedupeKey);
+        normalized.push({
+            title,
+            scope,
+            commandTemplate,
+        });
+    }
+
+    return normalized;
 };
 const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
     const libraryFolders = normalizeLibraryFolders(settings.libraryFolders, settings.libraryPath, settings.releaseDepth);
@@ -422,6 +477,7 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
         lissajousEnabled: settings.lissajousEnabled !== false,
         uiDitheringEnabled: settings.uiDitheringEnabled !== false,
         minimizeToTrayOnClose: !!settings.minimizeToTrayOnClose,
+        customSendToActions: normalizeCustomSendToActions(settings.customSendToActions),
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
     };
 };
@@ -871,7 +927,7 @@ trackTitle.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
     trackMetaMenuTarget = trackTitle;
-    openTrackMetaMenu(event.clientX, event.clientY, true, 'file');
+    openTrackMetaMenu(event.clientX, event.clientY, true, 'file', 'track', tracks[currentTrackIndex]?.path || '');
 });
 trackAlbum.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -893,7 +949,7 @@ trackAlbum.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
     trackMetaMenuTarget = trackAlbum;
-    openTrackMetaMenu(event.clientX, event.clientY, false, 'folder');
+    openTrackMetaMenu(event.clientX, event.clientY, false, 'folder', 'album', tracks[currentTrackIndex]?.folderPath || '');
 });
 trackArtist.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -924,7 +980,7 @@ trackArtist.addEventListener('contextmenu', (event) => {
         ? nestedLink
         : (firstArtistLink instanceof HTMLElement ? firstArtistLink : trackArtist);
 
-    openTrackMetaMenu(event.clientX, event.clientY, false, 'none');
+    openTrackMetaMenu(event.clientX, event.clientY, false, 'none', null, '');
 });
 trackTitleInline.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -946,7 +1002,7 @@ trackTitleInline.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
     trackMetaMenuTarget = trackTitleInline;
-    openTrackMetaMenu(event.clientX, event.clientY, true, 'file');
+    openTrackMetaMenu(event.clientX, event.clientY, true, 'file', 'track', tracks[currentTrackIndex]?.path || '');
 });
 trackReleaseAlbum.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -968,7 +1024,7 @@ trackReleaseAlbum.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
     trackMetaMenuTarget = trackReleaseAlbum;
-    openTrackMetaMenu(event.clientX, event.clientY, false, 'folder');
+    openTrackMetaMenu(event.clientX, event.clientY, false, 'folder', 'album', tracks[currentTrackIndex]?.folderPath || '');
 });
 trackReleaseLabel.addEventListener('click', (event) => {
     if (shouldBlockTrackMetaModalOpen()) {
@@ -1015,7 +1071,7 @@ trackArtistHeader.addEventListener('contextmenu', (event) => {
         ? nestedLink
         : (firstArtistLink instanceof HTMLElement ? firstArtistLink : trackArtistHeader);
 
-    openTrackMetaMenu(event.clientX, event.clientY, false, 'none');
+    openTrackMetaMenu(event.clientX, event.clientY, false, 'none', null, '');
 });
 const bgLayerA = document.getElementById('bg-layer-a') as HTMLDivElement;
 const bgLayerB = document.getElementById('bg-layer-b') as HTMLDivElement;
@@ -1048,6 +1104,8 @@ const {
     trackMetaCopyFilePathBtn,
     trackMetaCopyFolderPathBtn,
     trackMetaCopyDivider,
+    trackMetaSendToDivider,
+    trackMetaSendToList,
     trackMetaOpenMbBtn,
     trackMetaParentFolderBtn,
     trackMetaBrowserFolderBtn,
@@ -1058,6 +1116,8 @@ const {
     sidebarQueueAddNext,
     sidebarQueueEnd,
     sidebarQueueAddToPlaylist,
+    sidebarQueueSendToDivider,
+    sidebarQueueSendToList,
     sidebarQueueFeedbackDivider,
     sidebarQueueLove,
     sidebarQueueHate,
@@ -1916,6 +1976,10 @@ const closePlayOrderMenu = (): void => {
 const closeTrackMetaMenu = (): void => {
     trackMetaMenu.hidden = true;
     trackMetaMenuTarget = null;
+    trackMetaMenuActionScope = null;
+    trackMetaMenuActionPath = '';
+    trackMetaSendToList.innerHTML = '';
+    trackMetaSendToDivider.hidden = true;
 };
 
 type SidebarQueueSelectionContext = {
@@ -1952,6 +2016,74 @@ const closeSidebarQueueMenu = (): void => {
     sidebarQueueFolderLabel = '';
     sidebarQueueFolderTarget = false;
     sidebarQueueTrackIndexesScopedToSelection = false;
+    sidebarQueueFileActionPath = '';
+    sidebarQueueIncludeFileActions = false;
+    sidebarQueueSendToActionScope = null;
+    sidebarQueueSendToList.innerHTML = '';
+    sidebarQueueSendToDivider.hidden = true;
+};
+
+const sendToActionsForScope = (scope: CustomSendToActionScope): CustomSendToAction[] => {
+    return currentSettings.customSendToActions.filter((action) => action.scope === scope);
+};
+
+const logSendToFrontend = (message: string): void => {
+    void LogFrontendMessage(`[SEND-TO] ${message}`).catch(() => {
+        // Ignore logging failures so Send-to behavior is never blocked by diagnostics.
+    });
+};
+
+const runCustomSendToAction = async (action: CustomSendToAction, path: string): Promise<void> => {
+    const commandTemplate = action.commandTemplate.trim();
+    const targetPath = path.trim();
+    logSendToFrontend(`launch requested: scope=${action.scope} title=${JSON.stringify(action.title)} target=${JSON.stringify(targetPath)}`);
+    if (commandTemplate === '' || targetPath === '') {
+        logSendToFrontend(`launch aborted before backend call: empty command or target (scope=${action.scope} title=${JSON.stringify(action.title)})`);
+        return;
+    }
+
+    try {
+        const launched = await RunCustomSendToAction(commandTemplate, targetPath);
+        if (!launched) {
+            logSendToFrontend(`backend returned launched=false: scope=${action.scope} title=${JSON.stringify(action.title)} target=${JSON.stringify(targetPath)}`);
+            openErrorModal('Send To Failed', 'Unable to launch the selected action for this path. Check the command template in Settings > Actions.');
+            return;
+        }
+
+        logSendToFrontend(`backend accepted launch: scope=${action.scope} title=${JSON.stringify(action.title)} target=${JSON.stringify(targetPath)}`);
+    } catch (error) {
+        console.error(error);
+        logSendToFrontend(`backend call threw error: scope=${action.scope} title=${JSON.stringify(action.title)} target=${JSON.stringify(targetPath)} error=${String(error)}`);
+        openErrorModal('Send To Failed', 'Unable to launch the selected action for this path. Check the command template in Settings > Actions.');
+    }
+};
+
+const renderSendToButtons = (container: HTMLDivElement, actions: CustomSendToAction[], cssClass: string): void => {
+    container.innerHTML = '';
+    actions.forEach((action, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = cssClass;
+        button.role = 'menuitem';
+        button.textContent = `Send to: ${action.title}`;
+        button.dataset.sendToActionIndex = String(index);
+        container.append(button);
+    });
+};
+
+const resolveFolderSendToTargetPath = (fallbackFolderPath: string, trackIndexes: number[]): string => {
+    for (const trackIndex of trackIndexes) {
+        if (!Number.isInteger(trackIndex) || trackIndex < 0 || trackIndex >= tracks.length) {
+            continue;
+        }
+
+        const trackFolderPath = (tracks[trackIndex].folderPath || '').trim();
+        if (trackFolderPath !== '') {
+            return trackFolderPath;
+        }
+    }
+
+    return fallbackFolderPath;
 };
 
 const openSidebarQueueMenu = (
@@ -1959,6 +2091,8 @@ const openSidebarQueueMenu = (
     clientY: number,
     trackIndexes: number[],
     feedbackTrackIndex?: number,
+    includeFileActions = false,
+    fileActionPath = '',
     folderPath?: string,
     folderLabel?: string,
     folderTarget = false,
@@ -1980,6 +2114,8 @@ const openSidebarQueueMenu = (
     const isFolderTarget = folderTarget || normalizedFolderPath !== '';
     sidebarQueueFolderTarget = isFolderTarget;
     sidebarQueueTrackIndexesScopedToSelection = trackIndexesScopedToSelection;
+    sidebarQueueIncludeFileActions = includeFileActions;
+    sidebarQueueFileActionPath = fileActionPath.trim();
     const canShowFeedbackActions = !isFolderTarget
         && Number.isInteger(feedbackTrackIndex)
         && (feedbackTrackIndex as number) >= 0
@@ -2001,6 +2137,29 @@ const openSidebarQueueMenu = (
     sidebarQueueHate.title = canShowFeedbackActions
         ? (hasListenBrainzToken ? feedbackEnabledTitle : feedbackDisabledTitle)
         : '';
+    let sendToActions: CustomSendToAction[] = [];
+    sidebarQueueSendToActionScope = null;
+    if (isFolderTarget && normalizedFolderPath !== '') {
+        sidebarQueueSendToActionScope = 'folder';
+        sidebarQueueFileActionPath = resolveFolderSendToTargetPath(normalizedFolderPath, trackIndexes);
+        sendToActions = sendToActionsForScope('folder');
+    } else if (sidebarQueueIncludeFileActions && sidebarQueueFileActionPath !== '') {
+        sidebarQueueSendToActionScope = 'file';
+        sendToActions = sendToActionsForScope('file');
+    }
+
+    logSendToFrontend(
+        `menu opened: scope=${sidebarQueueSendToActionScope || 'none'} folderTarget=${String(isFolderTarget)} `
+        + `sourcePath=${JSON.stringify(normalizedFolderPath)} targetPath=${JSON.stringify(sidebarQueueFileActionPath)} actionCount=${sendToActions.length}`,
+    );
+
+    const showSendToActions = sendToActions.length > 0 && sidebarQueueFileActionPath !== '';
+    sidebarQueueSendToDivider.hidden = !showSendToActions;
+    if (showSendToActions) {
+        renderSendToButtons(sidebarQueueSendToList, sendToActions, 'playlist-menu-item');
+    } else {
+        sidebarQueueSendToList.innerHTML = '';
+    }
     sidebarQueueMenu.hidden = false;
 
     const margin = 10;
@@ -2249,6 +2408,8 @@ const openTrackMetaMenu = (
     clientY: number,
     includeFolderAction: boolean,
     copyAction: TrackMetaCopyAction,
+    actionScope: CustomSendToActionScope | null,
+    actionPath: string,
 ): void => {
     if (currentTrackIndex < 0 || currentTrackIndex >= tracks.length) {
         return;
@@ -2261,6 +2422,16 @@ const openTrackMetaMenu = (
     trackMetaCopyDivider.hidden = copyAction === 'none';
     trackMetaParentFolderBtn.hidden = !includeFolderAction;
     trackMetaBrowserFolderBtn.hidden = !includeFolderAction;
+    trackMetaMenuActionScope = actionScope;
+    trackMetaMenuActionPath = actionPath.trim();
+    const scopedActions = actionScope === null ? [] : sendToActionsForScope(actionScope);
+    const showScopedActions = scopedActions.length > 0 && trackMetaMenuActionPath !== '';
+    trackMetaSendToDivider.hidden = !showScopedActions;
+    if (showScopedActions) {
+        renderSendToButtons(trackMetaSendToList, scopedActions, 'track-meta-menu-item');
+    } else {
+        trackMetaSendToList.innerHTML = '';
+    }
     trackMetaMenu.hidden = false;
 
     const margin = 10;
@@ -3824,6 +3995,7 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             lissajousEnabled: currentSettings.lissajousEnabled,
             uiDitheringEnabled: currentSettings.uiDitheringEnabled,
             minimizeToTrayOnClose: currentSettings.minimizeToTrayOnClose,
+            customSendToActions: currentSettings.customSendToActions,
             keyboardShortcuts: currentSettings.keyboardShortcuts,
         })) as AppSettings;
 
@@ -4120,6 +4292,8 @@ settingsController = createSettingsController({
     trigger: librarySettings,
     elements: settingsElements,
     isWindows: isWindowsRuntime,
+    isMac: isMacRuntime,
+    isLinux: isLinuxRuntime,
     getValues: () => ({
         libraryFolders: currentSettings.libraryFolders,
         ffmpegPath: currentSettings.ffmpegPath,
@@ -4148,6 +4322,7 @@ settingsController = createSettingsController({
         lissajousEnabled: currentSettings.lissajousEnabled,
         uiDitheringEnabled: currentSettings.uiDitheringEnabled,
         minimizeToTrayOnClose: currentSettings.minimizeToTrayOnClose,
+        customSendToActions: currentSettings.customSendToActions,
         musicBrainzTagWorkerProgress: currentMusicBrainzTagWorkerProgress,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
     }),
@@ -4180,6 +4355,7 @@ settingsController = createSettingsController({
         lissajousEnabled,
         uiDitheringEnabled,
         minimizeToTrayOnClose,
+        customSendToActions,
         keyboardShortcuts,
     }): Promise<void> => {
         const ffmpegStatus = await validateConfiguredFFmpegPath(ffmpegPath);
@@ -4221,6 +4397,7 @@ settingsController = createSettingsController({
             lissajousEnabled,
             uiDitheringEnabled,
             minimizeToTrayOnClose,
+            customSendToActions,
             keyboardShortcuts,
         })) as AppSettings;
 
@@ -4305,6 +4482,7 @@ settingsController = createSettingsController({
         lissajousEnabled,
         uiDitheringEnabled,
         minimizeToTrayOnClose,
+        customSendToActions,
         keyboardShortcuts,
     }): Promise<AudioOutputDevice[]> => {
         const ffmpegStatus = await validateConfiguredFFmpegPath(ffmpegPath);
@@ -4346,6 +4524,7 @@ settingsController = createSettingsController({
             lissajousEnabled,
             uiDitheringEnabled,
             minimizeToTrayOnClose,
+            customSendToActions,
             keyboardShortcuts,
         })) as AppSettings;
 
@@ -4572,8 +4751,8 @@ libraryController = createLibraryController({
             void imageModalController.openImageFile(imageFile);
         }
     },
-    onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number) => {
-        openSidebarQueueMenu(clientX, clientY, trackIndexes, feedbackTrackIndex);
+    onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number, includeFileActions?: boolean, fileActionPath?: string) => {
+        openSidebarQueueMenu(clientX, clientY, trackIndexes, feedbackTrackIndex, !!includeFileActions, fileActionPath || '');
     },
     onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string, trackIndexes?: number[]) => {
         const normalizedTrackIndexes = (trackIndexes || []).filter((trackIndex) => (
@@ -4585,6 +4764,8 @@ libraryController = createLibraryController({
             clientY,
             normalizedTrackIndexes,
             undefined,
+            false,
+            '',
             folderPath,
             folderLabel,
             true,
@@ -4764,6 +4945,35 @@ sidebarQueueEnd.addEventListener('click', () => {
 
         playlistController.addToQueueEnd(trackIndexes);
     })();
+});
+
+sidebarQueueSendToList.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+        logSendToFrontend('sidebar click ignored: target is not a button');
+        return;
+    }
+
+    const actionIndex = Number(target.dataset.sendToActionIndex);
+    const actionScope = sidebarQueueSendToActionScope;
+    const actionPath = sidebarQueueFileActionPath;
+    if (!Number.isInteger(actionIndex) || actionScope === null || sidebarQueueFileActionPath === '') {
+        logSendToFrontend(
+            `sidebar click ignored: invalid state actionIndex=${String(actionIndex)} scope=${actionScope || 'none'} `
+            + `targetPath=${JSON.stringify(sidebarQueueFileActionPath)}`,
+        );
+        return;
+    }
+
+    const action = sendToActionsForScope(actionScope)[actionIndex];
+    closeSidebarQueueMenu();
+    if (!action) {
+        logSendToFrontend(`sidebar click ignored: missing action for scope=${actionScope} actionIndex=${actionIndex}`);
+        return;
+    }
+
+    logSendToFrontend(`sidebar click launch: scope=${actionScope} actionIndex=${actionIndex} title=${JSON.stringify(action.title)}`);
+    void runCustomSendToAction(action, actionPath);
 });
 
 errorBackdrop.addEventListener('click', () => {
@@ -5001,6 +5211,35 @@ trackMetaOpenMbBtn.addEventListener('click', () => {
     }
 
     openMbLink(target);
+});
+
+trackMetaSendToList.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+        logSendToFrontend('track-meta click ignored: target is not a button');
+        return;
+    }
+
+    const scope = trackMetaMenuActionScope;
+    const actionIndex = Number(target.dataset.sendToActionIndex);
+    const actionPath = trackMetaMenuActionPath;
+    closeTrackMetaMenu();
+    if (scope === null || !Number.isInteger(actionIndex) || actionPath === '') {
+        logSendToFrontend(
+            `track-meta click ignored: invalid state actionIndex=${String(actionIndex)} scope=${scope || 'none'} `
+            + `targetPath=${JSON.stringify(actionPath)}`,
+        );
+        return;
+    }
+
+    const action = sendToActionsForScope(scope)[actionIndex];
+    if (!action) {
+        logSendToFrontend(`track-meta click ignored: missing action for scope=${scope} actionIndex=${actionIndex}`);
+        return;
+    }
+
+    logSendToFrontend(`track-meta click launch: scope=${scope} actionIndex=${actionIndex} title=${JSON.stringify(action.title)}`);
+    void runCustomSendToAction(action, actionPath);
 });
 
 back.addEventListener('click', () => {

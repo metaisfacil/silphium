@@ -2,6 +2,9 @@ export type SettingsModalElements = {
     settingsModal: HTMLDivElement;
     settingsBackdrop: HTMLDivElement;
     settingsClose: HTMLButtonElement;
+    settingsTabs: HTMLDivElement;
+    settingsTabsScrollLeft: HTMLButtonElement;
+    settingsTabsScrollRight: HTMLButtonElement;
     settingsTabGeneral: HTMLButtonElement;
     settingsTabNetwork: HTMLButtonElement;
     settingsTabDatabase: HTMLButtonElement;
@@ -9,6 +12,7 @@ export type SettingsModalElements = {
     settingsTabScrobbling: HTMLButtonElement;
     settingsTabAudio: HTMLButtonElement;
     settingsTabUi: HTMLButtonElement;
+    settingsTabActions: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelNetwork: HTMLDivElement;
     settingsPanelDatabase: HTMLDivElement;
@@ -16,6 +20,7 @@ export type SettingsModalElements = {
     settingsPanelScrobbling: HTMLDivElement;
     settingsPanelAudio: HTMLDivElement;
     settingsPanelUi: HTMLDivElement;
+    settingsPanelActions: HTMLDivElement;
     settingsShortcutAccordionToggle: HTMLButtonElement;
     settingsShortcutAccordionPanel: HTMLDivElement;
     settingsLibraryFolderList: HTMLUListElement;
@@ -28,6 +33,9 @@ export type SettingsModalElements = {
     settingsScrobbleRuleList: HTMLUListElement;
     settingsAddScrobbleRule: HTMLButtonElement;
     settingsRemoveScrobbleRule: HTMLButtonElement;
+    settingsSendToActionList: HTMLUListElement;
+    settingsAddSendToAction: HTMLButtonElement;
+    settingsRemoveSendToAction: HTMLButtonElement;
     settingsForceReload: HTMLButtonElement;
     settingsSave: HTMLButtonElement;
     settingsLibraryDepthModal: HTMLDivElement;
@@ -51,6 +59,16 @@ export type SettingsModalElements = {
     settingsScrobbleRuleStatus: HTMLParagraphElement;
     settingsScrobbleRuleCancel: HTMLButtonElement;
     settingsScrobbleRuleConfirm: HTMLButtonElement;
+    settingsSendToActionModal: HTMLDivElement;
+    settingsSendToActionBackdrop: HTMLDivElement;
+    settingsSendToActionForm: HTMLFormElement;
+    settingsSendToActionTitleInput: HTMLInputElement;
+    settingsSendToActionScopeInput: HTMLSelectElement;
+    settingsSendToActionCommandHint: HTMLParagraphElement;
+    settingsSendToActionCommandInput: HTMLInputElement;
+    settingsSendToActionStatus: HTMLParagraphElement;
+    settingsSendToActionCancel: HTMLButtonElement;
+    settingsSendToActionConfirm: HTMLButtonElement;
     settingsFFmpegPath: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
     settingsLastFmApiKey: HTMLInputElement;
@@ -102,14 +120,19 @@ export const renderSettingsModal = (): string => `
                 <button id="settings-close" class="settings-close" type="button" aria-label="Close settings"><svg class="overlay-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6.4 5.34C6.11 5.05 5.64 5.05 5.34 5.34C5.05 5.64 5.05 6.11 5.34 6.4L10.94 12L5.34 17.6C5.05 17.89 5.05 18.36 5.34 18.66C5.64 18.95 6.11 18.95 6.4 18.66L12 13.06L17.6 18.66C17.89 18.95 18.36 18.95 18.66 18.66C18.95 18.36 18.95 17.89 18.66 17.6L13.06 12L18.66 6.4C18.95 6.11 18.95 5.64 18.66 5.34C18.36 5.05 17.89 5.05 17.6 5.34L12 10.94L6.4 5.34Z"/></svg></button>
             </header>
             <div class="settings-content">
-                <div class="settings-tabs" role="tablist" aria-label="Settings sections">
-                    <button id="settings-tab-general" class="settings-tab is-active" type="button" role="tab" aria-controls="settings-panel-general" aria-selected="true">General</button>
-                    <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
-                    <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
-                    <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
-                    <button id="settings-tab-scrobbling" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-scrobbling" aria-selected="false">Scrobbling</button>
-                    <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Database</button>
-                    <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
+                <div class="settings-tabs-shell">
+                    <button id="settings-tabs-scroll-left" class="settings-tabs-scroll" type="button" aria-label="Scroll settings tabs left" title="Scroll tabs left">&#x2039;</button>
+                    <div id="settings-tabs" class="settings-tabs" role="tablist" aria-label="Settings sections">
+                        <button id="settings-tab-general" class="settings-tab is-active" type="button" role="tab" aria-controls="settings-panel-general" aria-selected="true">General</button>
+                        <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
+                        <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
+                        <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
+                        <button id="settings-tab-scrobbling" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-scrobbling" aria-selected="false">Scrobbling</button>
+                        <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Database</button>
+                        <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
+                        <button id="settings-tab-actions" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-actions" aria-selected="false">Actions</button>
+                    </div>
+                    <button id="settings-tabs-scroll-right" class="settings-tabs-scroll" type="button" aria-label="Scroll settings tabs right" title="Scroll tabs right">&#x203A;</button>
                 </div>
                 <div id="settings-panel-general" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-field">
@@ -350,6 +373,17 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                 </div>
+                <div id="settings-panel-actions" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-actions" hidden>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-send-to-action-list">Send to actions</label>
+                        <p class="settings-hint">Create commands that appear in context menus. Use <code>{path}</code> for selected path and <code>{directory}</code> for its folder.</p>
+                        <ul id="settings-send-to-action-list" class="settings-folder-list" role="listbox" aria-label="Send to actions"></ul>
+                        <div class="settings-list-actions">
+                            <button id="settings-add-send-to-action" class="settings-list-btn" type="button" title="Add send to action" aria-label="Add send to action">+</button>
+                            <button id="settings-remove-send-to-action" class="settings-list-btn" type="button" title="Remove selected send to action" aria-label="Remove selected send to action" disabled>-</button>
+                        </div>
+                    </div>
+                </div>
                 <p id="settings-status" class="settings-status"></p>
                 <div class="settings-actions">
                     <button id="settings-force-reload" class="settings-secondary-btn" type="button">Force reload</button>
@@ -413,6 +447,35 @@ export const renderSettingsModal = (): string => `
                 </div>
             </form>
         </div>
+        <div id="settings-send-to-action-modal" class="settings-submodal" hidden>
+            <div id="settings-send-to-action-backdrop" class="settings-submodal-backdrop"></div>
+            <form id="settings-send-to-action-form" class="settings-subdialog" role="dialog" aria-modal="true" aria-labelledby="settings-send-to-action-title">
+                <p id="settings-send-to-action-title" class="settings-subdialog-title">Add send to action</p>
+                <div class="settings-field">
+                    <label class="settings-label" for="settings-send-to-action-title-input">Action title</label>
+                    <input id="settings-send-to-action-title-input" class="settings-input" type="text" maxlength="120" placeholder="Open in MP3Tag">
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label" for="settings-send-to-action-scope-input">Action scope</label>
+                    <select id="settings-send-to-action-scope-input" class="settings-input settings-select">
+                        <option value="track">Track-level (track title menu)</option>
+                        <option value="album">Album-level (album title menu)</option>
+                        <option value="file">File-level (library browser file menu)</option>
+                        <option value="folder">Folder-level (library browser folder menu)</option>
+                    </select>
+                </div>
+                <div class="settings-field">
+                    <label class="settings-label" for="settings-send-to-action-command-input">Command template</label>
+                    <p id="settings-send-to-action-command-hint" class="settings-hint">Examples:<br><code>%programfiles%\\Mp3tag\\Mp3tag.exe {path}</code><br><code>covit --input {path} --primary-output {directory}\\cover</code></p>
+                    <input id="settings-send-to-action-command-input" class="settings-input" type="text" spellcheck="false" placeholder="%programfiles%\\Mp3tag\\Mp3tag.exe {path}">
+                </div>
+                <p id="settings-send-to-action-status" class="settings-subdialog-status" aria-live="polite"></p>
+                <div class="settings-subdialog-actions">
+                    <button id="settings-send-to-action-cancel" class="settings-secondary-btn" type="button">Cancel</button>
+                    <button id="settings-send-to-action-confirm" class="upload-btn" type="submit">Add action</button>
+                </div>
+            </form>
+        </div>
     </div>
 `;
 
@@ -420,6 +483,9 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsModal: root.querySelector('#settings-modal') as HTMLDivElement,
     settingsBackdrop: root.querySelector('#settings-backdrop') as HTMLDivElement,
     settingsClose: root.querySelector('#settings-close') as HTMLButtonElement,
+    settingsTabs: root.querySelector('#settings-tabs') as HTMLDivElement,
+    settingsTabsScrollLeft: root.querySelector('#settings-tabs-scroll-left') as HTMLButtonElement,
+    settingsTabsScrollRight: root.querySelector('#settings-tabs-scroll-right') as HTMLButtonElement,
     settingsTabGeneral: root.querySelector('#settings-tab-general') as HTMLButtonElement,
     settingsTabNetwork: root.querySelector('#settings-tab-network') as HTMLButtonElement,
     settingsTabDatabase: root.querySelector('#settings-tab-database') as HTMLButtonElement,
@@ -427,6 +493,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsTabScrobbling: root.querySelector('#settings-tab-scrobbling') as HTMLButtonElement,
     settingsTabAudio: root.querySelector('#settings-tab-audio') as HTMLButtonElement,
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
+    settingsTabActions: root.querySelector('#settings-tab-actions') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelNetwork: root.querySelector('#settings-panel-network') as HTMLDivElement,
     settingsPanelDatabase: root.querySelector('#settings-panel-database') as HTMLDivElement,
@@ -434,6 +501,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsPanelScrobbling: root.querySelector('#settings-panel-scrobbling') as HTMLDivElement,
     settingsPanelAudio: root.querySelector('#settings-panel-audio') as HTMLDivElement,
     settingsPanelUi: root.querySelector('#settings-panel-ui') as HTMLDivElement,
+    settingsPanelActions: root.querySelector('#settings-panel-actions') as HTMLDivElement,
     settingsShortcutAccordionToggle: root.querySelector('#settings-shortcut-accordion-toggle') as HTMLButtonElement,
     settingsShortcutAccordionPanel: root.querySelector('#settings-shortcut-accordion-panel') as HTMLDivElement,
     settingsLibraryFolderList: root.querySelector('#settings-library-folder-list') as HTMLUListElement,
@@ -446,6 +514,9 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsScrobbleRuleList: root.querySelector('#settings-scrobble-rule-list') as HTMLUListElement,
     settingsAddScrobbleRule: root.querySelector('#settings-add-scrobble-rule') as HTMLButtonElement,
     settingsRemoveScrobbleRule: root.querySelector('#settings-remove-scrobble-rule') as HTMLButtonElement,
+    settingsSendToActionList: root.querySelector('#settings-send-to-action-list') as HTMLUListElement,
+    settingsAddSendToAction: root.querySelector('#settings-add-send-to-action') as HTMLButtonElement,
+    settingsRemoveSendToAction: root.querySelector('#settings-remove-send-to-action') as HTMLButtonElement,
     settingsForceReload: root.querySelector('#settings-force-reload') as HTMLButtonElement,
     settingsSave: root.querySelector('#settings-save') as HTMLButtonElement,
     settingsLibraryDepthModal: root.querySelector('#settings-library-depth-modal') as HTMLDivElement,
@@ -469,6 +540,16 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsScrobbleRuleStatus: root.querySelector('#settings-scrobble-rule-status') as HTMLParagraphElement,
     settingsScrobbleRuleCancel: root.querySelector('#settings-scrobble-rule-cancel') as HTMLButtonElement,
     settingsScrobbleRuleConfirm: root.querySelector('#settings-scrobble-rule-confirm') as HTMLButtonElement,
+    settingsSendToActionModal: root.querySelector('#settings-send-to-action-modal') as HTMLDivElement,
+    settingsSendToActionBackdrop: root.querySelector('#settings-send-to-action-backdrop') as HTMLDivElement,
+    settingsSendToActionForm: root.querySelector('#settings-send-to-action-form') as HTMLFormElement,
+    settingsSendToActionTitleInput: root.querySelector('#settings-send-to-action-title-input') as HTMLInputElement,
+    settingsSendToActionScopeInput: root.querySelector('#settings-send-to-action-scope-input') as HTMLSelectElement,
+    settingsSendToActionCommandHint: root.querySelector('#settings-send-to-action-command-hint') as HTMLParagraphElement,
+    settingsSendToActionCommandInput: root.querySelector('#settings-send-to-action-command-input') as HTMLInputElement,
+    settingsSendToActionStatus: root.querySelector('#settings-send-to-action-status') as HTMLParagraphElement,
+    settingsSendToActionCancel: root.querySelector('#settings-send-to-action-cancel') as HTMLButtonElement,
+    settingsSendToActionConfirm: root.querySelector('#settings-send-to-action-confirm') as HTMLButtonElement,
     settingsFFmpegPath: root.querySelector('#settings-ffmpeg-path') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsLastFmApiKey: root.querySelector('#settings-lastfm-api-key') as HTMLInputElement,

@@ -1,6 +1,6 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout, ScrobbleFilterMode, ScrobbleRule, ScrobbleRuleField, ScrobbleRuleOperator } from '../types/app-types';
+import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, CustomSendToActionScope, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout, ScrobbleFilterMode, ScrobbleRule, ScrobbleRuleField, ScrobbleRuleOperator } from '../types/app-types';
 import { asReleaseDepth, describeScrobbleRule, libraryFolderPathKey, normalizeLibraryFolderLabel, normalizeLibraryFolders, normalizeScrobbleRules, validateScrobbleRules } from '../utils/main-helpers';
 import { formatShortcutBindingFromKeyboardEvent, normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 
@@ -13,6 +13,12 @@ type ScrobbleRuleDialogValues = {
     field: ScrobbleRuleField;
     operator: ScrobbleRuleOperator;
     value: string;
+};
+
+type SendToActionDialogValues = {
+    title: string;
+    scope: CustomSendToActionScope;
+    commandTemplate: string;
 };
 
 export type SettingsFormValues = {
@@ -42,6 +48,7 @@ export type SettingsFormValues = {
     lissajousEnabled: boolean;
     uiDitheringEnabled: boolean;
     minimizeToTrayOnClose: boolean;
+    customSendToActions: CustomSendToAction[];
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
 
@@ -50,7 +57,7 @@ export type SettingsViewValues = SettingsFormValues & {
     musicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
 };
 
-type SettingsPrimaryTab = 'general' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui';
+type SettingsPrimaryTab = 'general' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui' | 'actions';
 type SettingsTab = SettingsPrimaryTab | 'shortcuts';
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
@@ -114,6 +121,8 @@ type SettingsControllerOptions = {
     getPlayerCardLayout: () => PlayerCardLayout;
     setPlayerCardLayout: (layout: PlayerCardLayout) => void;
     isWindows?: boolean;
+    isMac?: boolean;
+    isLinux?: boolean;
 };
 
 export type SettingsController = ReturnType<typeof createSettingsController>;
@@ -124,6 +133,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsModal,
         settingsBackdrop,
         settingsClose,
+        settingsTabs,
+        settingsTabsScrollLeft,
+        settingsTabsScrollRight,
         settingsTabGeneral,
         settingsTabNetwork,
         settingsTabDatabase,
@@ -131,6 +143,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabScrobbling,
         settingsTabAudio,
         settingsTabUi,
+        settingsTabActions,
         settingsPanelGeneral,
         settingsPanelNetwork,
         settingsPanelDatabase,
@@ -138,6 +151,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsPanelScrobbling,
         settingsPanelAudio,
         settingsPanelUi,
+        settingsPanelActions,
         settingsShortcutAccordionToggle,
         settingsShortcutAccordionPanel,
         settingsLibraryFolderList,
@@ -150,6 +164,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsScrobbleRuleList,
         settingsAddScrobbleRule,
         settingsRemoveScrobbleRule,
+        settingsSendToActionList,
+        settingsAddSendToAction,
+        settingsRemoveSendToAction,
         settingsForceReload,
         settingsSave,
         settingsLibraryDepthModal,
@@ -173,6 +190,16 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsScrobbleRuleStatus,
         settingsScrobbleRuleCancel,
         settingsScrobbleRuleConfirm,
+        settingsSendToActionModal,
+        settingsSendToActionBackdrop,
+        settingsSendToActionForm,
+        settingsSendToActionTitleInput,
+        settingsSendToActionScopeInput,
+        settingsSendToActionCommandHint,
+        settingsSendToActionCommandInput,
+        settingsSendToActionStatus,
+        settingsSendToActionCancel,
+        settingsSendToActionConfirm,
         settingsFFmpegPath,
         settingsListenBrainzToken,
         settingsLastFmApiKey,
@@ -217,11 +244,16 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     const settingsModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     const settingsShortcutAccordionTransitionMs = 180;
+    const settingsTabScrollStepPx = 160;
     const statusFadeDelayMs = 5000;
     const showMinimizeToTrayOption = options.isWindows ?? true;
+    const isWindowsRuntime = options.isWindows ?? false;
+    const isMacRuntime = options.isMac ?? false;
+    const isLinuxRuntime = options.isLinux ?? false;
     let hideTimer: number | undefined;
     let libraryDepthHideTimer: number | undefined;
     let scrobbleRuleHideTimer: number | undefined;
+    let sendToActionHideTimer: number | undefined;
     let settingsStatusFadeTimer: number | undefined;
     let settingsLibraryDepthStatusFadeTimer: number | undefined;
     let shortcutAccordionHideTimer: number | undefined;
@@ -231,6 +263,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let selectedFavoritePlaylistIndex = -1;
     let scrobbleRules: ScrobbleRule[] = [];
     let selectedScrobbleRuleIndex = -1;
+    let customSendToActions: CustomSendToAction[] = [];
+    let selectedCustomSendToActionIndex = -1;
+    let lastCustomSendToActionClickIndex = -1;
+    let lastCustomSendToActionClickAt = Number.NEGATIVE_INFINITY;
     let lastScrobbleRuleClickIndex = -1;
     let lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
     let libraryFolders: AppLibraryFolder[] = [];
@@ -241,6 +277,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let libraryDepthReturnFocusTarget: HTMLElement | null = null;
     let pendingScrobbleRuleResolver: ((value: ScrobbleRuleDialogValues | null) => void) | null = null;
     let scrobbleRuleReturnFocusTarget: HTMLElement | null = null;
+    let pendingSendToActionResolver: ((value: SendToActionDialogValues | null) => void) | null = null;
+    let sendToActionReturnFocusTarget: HTMLElement | null = null;
     let forceReloadInProgress = false;
     let lastFmSessionFetchInProgress = false;
     let forceReloadEtaSeconds: number | null = null;
@@ -266,6 +304,31 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     settingsMinimizeToTrayField.hidden = !showMinimizeToTrayOption;
 
+    const applySendToCommandExamplesForPlatform = () => {
+        if (isWindowsRuntime) {
+            settingsSendToActionCommandHint.innerHTML = 'Examples:<br><code>%programfiles%\\\\Mp3tag\\\\Mp3tag.exe {path}</code><br><code>covit --input {path} --primary-output {directory}\\\\cover</code>';
+            settingsSendToActionCommandInput.placeholder = '%programfiles%\\Mp3tag\\Mp3tag.exe {path}';
+            return;
+        }
+
+        if (isMacRuntime) {
+            settingsSendToActionCommandHint.innerHTML = 'Examples:<br><code>open {path}</code><br><code>covit --input {path} --primary-output {directory}/cover</code>';
+            settingsSendToActionCommandInput.placeholder = 'open {path}';
+            return;
+        }
+
+        if (isLinuxRuntime) {
+            settingsSendToActionCommandHint.innerHTML = 'Examples:<br><code>xdg-open {path}</code><br><code>covit --input {path} --primary-output {directory}/cover</code>';
+            settingsSendToActionCommandInput.placeholder = 'xdg-open {path}';
+            return;
+        }
+
+        settingsSendToActionCommandHint.innerHTML = 'Examples:<br><code>covit --input {path} --primary-output {directory}/cover</code>';
+        settingsSendToActionCommandInput.placeholder = 'covit --input {path}';
+    };
+
+    applySendToCommandExamplesForPlatform();
+
     const scrobbleTextOperatorOptions: Array<{ value: ScrobbleRuleOperator; label: string }> = [
         { value: 'contains', label: 'Contains text' },
         { value: 'equals', label: 'Equals text' },
@@ -288,6 +351,41 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         return Array.from(deduped);
+    };
+
+    const asCustomSendToActionScope = (value: string): CustomSendToActionScope | null => {
+        if (value === 'track' || value === 'album' || value === 'file' || value === 'folder') {
+            return value;
+        }
+
+        return null;
+    };
+
+    const normalizeCustomSendToActions = (items: CustomSendToAction[]): CustomSendToAction[] => {
+        const deduped = new Set<string>();
+        const normalized: CustomSendToAction[] = [];
+        for (const item of items) {
+            const title = item.title.trim();
+            const commandTemplate = item.commandTemplate.trim();
+            const scope = asCustomSendToActionScope(item.scope);
+            if (title === '' || commandTemplate === '' || scope === null) {
+                continue;
+            }
+
+            const dedupeKey = `${scope}\n${title.toLowerCase()}\n${commandTemplate.toLowerCase()}`;
+            if (deduped.has(dedupeKey)) {
+                continue;
+            }
+
+            deduped.add(dedupeKey);
+            normalized.push({
+                title,
+                scope,
+                commandTemplate,
+            });
+        }
+
+        return normalized;
     };
 
     const asScrobbleRuleField = (value: string): ScrobbleRuleField => {
@@ -636,6 +734,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         lissajousEnabled: settingsLissajousEnabled.checked,
         uiDitheringEnabled: settingsUiDitheringEnabled.checked,
         minimizeToTrayOnClose: settingsMinimizeToTrayOnClose.checked,
+        customSendToActions: normalizeCustomSendToActions(customSendToActions).map((action) => ({ ...action })),
         keyboardShortcuts: getShortcutValues(),
     });
 
@@ -698,6 +797,54 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
 
         settingsRemoveScrobbleRule.disabled = selectedScrobbleRuleIndex < 0;
+    };
+
+    const formatCustomActionScopeLabel = (scope: CustomSendToActionScope): string => {
+        if (scope === 'track') {
+            return 'Track';
+        }
+
+        if (scope === 'album') {
+            return 'Album';
+        }
+
+        if (scope === 'folder') {
+            return 'Folder';
+        }
+
+        return 'File';
+    };
+
+    const renderCustomSendToActionList = (): void => {
+        settingsSendToActionList.innerHTML = '';
+
+        if (customSendToActions.length === 0) {
+            settingsSendToActionList.innerHTML = '<li class="settings-folder-empty">No send to actions configured.</li>';
+            settingsRemoveSendToAction.disabled = true;
+            return;
+        }
+
+        customSendToActions.forEach((action, index) => {
+            const item = document.createElement('li');
+            item.className = 'settings-folder-item';
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `settings-folder-item-btn${index === selectedCustomSendToActionIndex ? ' is-selected' : ''}`;
+            button.dataset.sendToActionIndex = String(index);
+            button.title = `${formatCustomActionScopeLabel(action.scope)}: ${action.commandTemplate}\nDouble-click to edit`;
+            button.textContent = `[${formatCustomActionScopeLabel(action.scope)}] ${action.title}`;
+
+            item.append(button);
+            settingsSendToActionList.append(item);
+        });
+
+        settingsRemoveSendToAction.disabled = selectedCustomSendToActionIndex < 0;
+    };
+
+    const setSelectedCustomSendToActionIndex = (nextIndex: number): void => {
+        selectedCustomSendToActionIndex = nextIndex >= 0 && nextIndex < customSendToActions.length ? nextIndex : -1;
+        renderCustomSendToActionList();
     };
 
     const renderLibraryFolderList = (): void => {
@@ -870,6 +1017,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsScrobbleRuleStatus.textContent = message;
     };
 
+    const setSendToActionStatusMessage = (message: string): void => {
+        settingsSendToActionStatus.textContent = message;
+    };
+
     const refreshScrobbleRuleDialogControls = (preferredOperator?: ScrobbleRuleOperator): void => {
         const field = asScrobbleRuleField(settingsScrobbleRuleField.value);
         const options = operatorOptionsForScrobbleRuleField(field);
@@ -993,6 +1144,113 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         return new Promise<ScrobbleRuleDialogValues | null>((resolve) => {
             pendingScrobbleRuleResolver = resolve;
         });
+    };
+
+    const closeSendToActionDialog = (value: SendToActionDialogValues | null, restoreFocus: boolean, immediate = false): void => {
+        if (settingsSendToActionModal.hidden && !settingsSendToActionModal.classList.contains('is-visible')) {
+            return;
+        }
+
+        if (sendToActionHideTimer !== undefined) {
+            window.clearTimeout(sendToActionHideTimer);
+            sendToActionHideTimer = undefined;
+        }
+
+        const resolve = pendingSendToActionResolver;
+        pendingSendToActionResolver = null;
+
+        const focusTarget = sendToActionReturnFocusTarget;
+        sendToActionReturnFocusTarget = null;
+
+        const finalizeDialogClose = (): void => {
+            settingsSendToActionModal.hidden = true;
+            settingsSendToActionModal.classList.remove('is-visible');
+            settingsSendToActionTitleInput.value = '';
+            settingsSendToActionScopeInput.value = 'track';
+            settingsSendToActionCommandInput.value = '';
+            settingsSendToActionConfirm.textContent = 'Add action';
+            const sendToActionDialogTitle = settingsSendToActionForm.querySelector('#settings-send-to-action-title');
+            if (sendToActionDialogTitle instanceof HTMLParagraphElement) {
+                sendToActionDialogTitle.textContent = 'Add send to action';
+            }
+            setSendToActionStatusMessage('');
+            resolve?.(value);
+
+            if (restoreFocus && focusTarget) {
+                window.requestAnimationFrame(() => {
+                    focusTarget.focus();
+                });
+            }
+        };
+
+        if (immediate) {
+            finalizeDialogClose();
+            return;
+        }
+
+        settingsSendToActionModal.classList.remove('is-visible');
+        sendToActionHideTimer = window.setTimeout(() => {
+            sendToActionHideTimer = undefined;
+            finalizeDialogClose();
+        }, settingsModalTransitionMs);
+    };
+
+    const openSendToActionDialog = (
+        initialValues: SendToActionDialogValues,
+        confirmLabel: string,
+        title: string,
+    ): Promise<SendToActionDialogValues | null> => {
+        closeSendToActionDialog(null, false, true);
+
+        settingsSendToActionTitleInput.value = initialValues.title;
+        settingsSendToActionScopeInput.value = initialValues.scope;
+        settingsSendToActionCommandInput.value = initialValues.commandTemplate;
+        settingsSendToActionConfirm.textContent = confirmLabel;
+        const sendToActionDialogTitle = settingsSendToActionForm.querySelector('#settings-send-to-action-title');
+        if (sendToActionDialogTitle instanceof HTMLParagraphElement) {
+            sendToActionDialogTitle.textContent = title;
+        }
+        setSendToActionStatusMessage('');
+        sendToActionReturnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        settingsSendToActionModal.hidden = false;
+        settingsSendToActionModal.classList.remove('is-visible');
+
+        window.requestAnimationFrame(() => {
+            settingsSendToActionModal.classList.add('is-visible');
+            settingsSendToActionTitleInput.focus();
+            settingsSendToActionTitleInput.select();
+        });
+
+        return new Promise<SendToActionDialogValues | null>((resolve) => {
+            pendingSendToActionResolver = resolve;
+        });
+    };
+
+    const editCustomSendToAction = async (index: number): Promise<boolean> => {
+        const action = customSendToActions[index];
+        if (!action) {
+            return false;
+        }
+
+        const nextValues = await openSendToActionDialog({ ...action }, 'Save', 'Edit send to action');
+        if (nextValues === null) {
+            return false;
+        }
+
+        customSendToActions[index] = {
+            title: nextValues.title,
+            scope: nextValues.scope,
+            commandTemplate: nextValues.commandTemplate,
+        };
+        customSendToActions = normalizeCustomSendToActions(customSendToActions);
+        selectedCustomSendToActionIndex = customSendToActions.findIndex((candidate) => (
+            candidate.title === nextValues.title
+                && candidate.scope === nextValues.scope
+                && candidate.commandTemplate === nextValues.commandTemplate
+        ));
+        renderCustomSendToActionList();
+        settingsSendToActionList.focus();
+        return true;
     };
 
     const editScrobbleRule = async (index: number): Promise<boolean> => {
@@ -1193,6 +1451,47 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
     };
 
+    const settingsTabButtons: Record<SettingsPrimaryTab, HTMLButtonElement> = {
+        general: settingsTabGeneral,
+        network: settingsTabNetwork,
+        database: settingsTabDatabase,
+        playlists: settingsTabPlaylists,
+        scrobbling: settingsTabScrobbling,
+        audio: settingsTabAudio,
+        ui: settingsTabUi,
+        actions: settingsTabActions,
+    };
+
+    const updateTabScrollControls = (): void => {
+        const maxScrollLeft = settingsTabs.scrollWidth - settingsTabs.clientWidth;
+        const canScroll = maxScrollLeft > 1;
+        settingsTabsScrollLeft.hidden = !canScroll;
+        settingsTabsScrollRight.hidden = !canScroll;
+        settingsTabsScrollLeft.disabled = !canScroll || settingsTabs.scrollLeft <= 1;
+        settingsTabsScrollRight.disabled = !canScroll || settingsTabs.scrollLeft >= maxScrollLeft - 1;
+    };
+
+    const scrollTabsBy = (offsetPx: number): void => {
+        settingsTabs.scrollBy({ left: offsetPx, behavior: 'smooth' });
+    };
+
+    const ensureTabIsVisible = (tabButton: HTMLButtonElement): void => {
+        const tabLeft = tabButton.offsetLeft;
+        const tabRight = tabLeft + tabButton.offsetWidth;
+        const currentLeft = settingsTabs.scrollLeft;
+        const currentRight = currentLeft + settingsTabs.clientWidth;
+
+        if (tabLeft < currentLeft) {
+            settingsTabs.scrollTo({ left: Math.max(0, tabLeft - 8), behavior: 'smooth' });
+            return;
+        }
+
+        if (tabRight > currentRight) {
+            const nextLeft = tabRight - settingsTabs.clientWidth + 8;
+            settingsTabs.scrollTo({ left: Math.max(0, nextLeft), behavior: 'smooth' });
+        }
+    };
+
     const setActiveTab = (tab: SettingsTab): void => {
         const primaryTab = resolvePrimaryTab(tab);
         const generalActive = primaryTab === 'general';
@@ -1202,6 +1501,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         const scrobblingActive = primaryTab === 'scrobbling';
         const audioActive = primaryTab === 'audio';
         const uiActive = primaryTab === 'ui';
+        const actionsActive = primaryTab === 'actions';
         settingsTabGeneral.classList.toggle('is-active', generalActive);
         settingsTabNetwork.classList.toggle('is-active', networkActive);
         settingsTabDatabase.classList.toggle('is-active', databaseActive);
@@ -1209,6 +1509,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabScrobbling.classList.toggle('is-active', scrobblingActive);
         settingsTabAudio.classList.toggle('is-active', audioActive);
         settingsTabUi.classList.toggle('is-active', uiActive);
+        settingsTabActions.classList.toggle('is-active', actionsActive);
         settingsTabGeneral.setAttribute('aria-selected', generalActive ? 'true' : 'false');
         settingsTabNetwork.setAttribute('aria-selected', networkActive ? 'true' : 'false');
         settingsTabDatabase.setAttribute('aria-selected', databaseActive ? 'true' : 'false');
@@ -1216,6 +1517,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabScrobbling.setAttribute('aria-selected', scrobblingActive ? 'true' : 'false');
         settingsTabAudio.setAttribute('aria-selected', audioActive ? 'true' : 'false');
         settingsTabUi.setAttribute('aria-selected', uiActive ? 'true' : 'false');
+        settingsTabActions.setAttribute('aria-selected', actionsActive ? 'true' : 'false');
         settingsPanelGeneral.hidden = !generalActive;
         settingsPanelNetwork.hidden = !networkActive;
         settingsPanelDatabase.hidden = !databaseActive;
@@ -1223,6 +1525,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsPanelScrobbling.hidden = !scrobblingActive;
         settingsPanelAudio.hidden = !audioActive;
         settingsPanelUi.hidden = !uiActive;
+        settingsPanelActions.hidden = !actionsActive;
+        ensureTabIsVisible(settingsTabButtons[primaryTab]);
     };
 
     const normalizeAudioOutputBufferMs = (rawValue: string): number => {
@@ -1372,6 +1676,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         setScrobbleRuleStatusMessage('');
     });
 
+    settingsSendToActionTitleInput.addEventListener('input', () => {
+        setSendToActionStatusMessage('');
+    });
+
+    settingsSendToActionCommandInput.addEventListener('input', () => {
+        setSendToActionStatusMessage('');
+    });
+
     settingsFFmpegPath.addEventListener('input', () => {
         setSettingsStatusMessage('');
     });
@@ -1402,6 +1714,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     settingsScrobbleRuleCancel.addEventListener('click', () => {
         closeScrobbleRuleDialog(null, true);
+    });
+
+    settingsSendToActionBackdrop.addEventListener('click', () => {
+        closeSendToActionDialog(null, true);
+    });
+
+    settingsSendToActionCancel.addEventListener('click', () => {
+        closeSendToActionDialog(null, true);
     });
 
     settingsLibraryDepthForm.addEventListener('submit', (event) => {
@@ -1471,14 +1791,50 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         closeScrobbleRuleDialog(nextRules[0], false);
     });
 
+    settingsSendToActionForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+
+        const title = settingsSendToActionTitleInput.value.trim();
+        if (title === '') {
+            setSendToActionStatusMessage('Enter a title for the send to action.');
+            settingsSendToActionTitleInput.focus();
+            settingsSendToActionTitleInput.select();
+            return;
+        }
+
+        const scope = asCustomSendToActionScope(settingsSendToActionScopeInput.value);
+        if (scope === null) {
+            setSendToActionStatusMessage('Choose a valid action scope.');
+            settingsSendToActionScopeInput.focus();
+            return;
+        }
+
+        const commandTemplate = settingsSendToActionCommandInput.value.trim();
+        if (commandTemplate === '') {
+            setSendToActionStatusMessage('Enter a command template for the send to action.');
+            settingsSendToActionCommandInput.focus();
+            settingsSendToActionCommandInput.select();
+            return;
+        }
+
+        closeSendToActionDialog({
+            title,
+            scope,
+            commandTemplate,
+        }, false);
+    });
+
     const finalizeClose = (): void => {
         closeLibraryDepthDialog(null, false, true);
         closeScrobbleRuleDialog(null, false, true);
+        closeSendToActionDialog(null, false, true);
         settingsModal.classList.remove('is-visible');
         lastLibraryFolderClickIndex = -1;
         lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
         lastScrobbleRuleClickIndex = -1;
         lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
+        lastCustomSendToActionClickIndex = -1;
+        lastCustomSendToActionClickAt = Number.NEGATIVE_INFINITY;
 
         if (hideTimer !== undefined) {
             window.clearTimeout(hideTimer);
@@ -1540,18 +1896,23 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
         favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
+        customSendToActions = normalizeCustomSendToActions(values.customSendToActions || []);
         coverArtPriority = normalizeCoverArtPriority(values.coverArtPriority);
         coverArtPriorityOrder = normalizeCoverArtPriorityOrder(values.coverArtPriority);
         selectedLibraryFolderIndex = libraryFolders.length > 0 ? 0 : -1;
         selectedFavoritePlaylistIndex = -1;
         selectedScrobbleRuleIndex = -1;
+        selectedCustomSendToActionIndex = -1;
         lastLibraryFolderClickIndex = -1;
         lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
         lastScrobbleRuleClickIndex = -1;
         lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
+        lastCustomSendToActionClickIndex = -1;
+        lastCustomSendToActionClickAt = Number.NEGATIVE_INFINITY;
         renderLibraryFolderList();
         renderFavoritePlaylistList();
         renderScrobbleRuleList();
+        renderCustomSendToActionList();
         renderCoverArtPriorityList();
         if (forceReloadInProgress) {
             refreshForceReloadStatus();
@@ -1567,6 +1928,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsModal.hidden = false;
         window.requestAnimationFrame(() => {
             settingsModal.classList.add('is-visible');
+            updateTabScrollControls();
             if (shortcutsRequested) {
                 scrollShortcutAccordionIntoView();
             }
@@ -1602,6 +1964,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
         if (primaryTab === 'audio') {
             settingsAudioOutputDevice.focus();
+            return;
+        }
+        if (primaryTab === 'actions') {
+            settingsAddSendToAction.focus();
             return;
         }
         if (shortcutsRequested) {
@@ -1706,6 +2072,37 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     settingsTabScrobbling.addEventListener('click', () => {
         setActiveTab('scrobbling');
         settingsScrobbleFilterMode.focus();
+    });
+
+    settingsTabActions.addEventListener('click', () => {
+        setActiveTab('actions');
+        settingsAddSendToAction.focus();
+    });
+
+    settingsTabsScrollLeft.addEventListener('click', () => {
+        scrollTabsBy(-settingsTabScrollStepPx);
+    });
+
+    settingsTabsScrollRight.addEventListener('click', () => {
+        scrollTabsBy(settingsTabScrollStepPx);
+    });
+
+    settingsTabs.addEventListener('wheel', (event) => {
+        const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        if (delta === 0) {
+            return;
+        }
+
+        event.preventDefault();
+        settingsTabs.scrollBy({ left: delta, behavior: 'auto' });
+    }, { passive: false });
+
+    settingsTabs.addEventListener('scroll', () => {
+        updateTabScrollControls();
+    });
+
+    window.addEventListener('resize', () => {
+        updateTabScrollControls();
     });
 
     settingsMusicBrainzTagDatabaseEnabled.addEventListener('change', () => {
@@ -1873,6 +2270,37 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         lastScrobbleRuleClickIndex = -1;
         lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
         void editScrobbleRule(nextIndex);
+    });
+
+    settingsSendToActionList.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const button = target.closest('[data-send-to-action-index]');
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const nextIndex = Number(button.dataset.sendToActionIndex);
+        if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= customSendToActions.length) {
+            return;
+        }
+
+        const isRepeatClick = nextIndex === lastCustomSendToActionClickIndex
+            && event.timeStamp - lastCustomSendToActionClickAt <= libraryFolderRepeatClickWindowMs;
+        lastCustomSendToActionClickIndex = nextIndex;
+        lastCustomSendToActionClickAt = event.timeStamp;
+        setSelectedCustomSendToActionIndex(nextIndex);
+
+        if (!isRepeatClick) {
+            return;
+        }
+
+        lastCustomSendToActionClickIndex = -1;
+        lastCustomSendToActionClickAt = Number.NEGATIVE_INFINITY;
+        void editCustomSendToAction(nextIndex);
     });
 
     settingsLibraryFolderList.addEventListener('click', (event) => {
@@ -2051,6 +2479,31 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         renderScrobbleRuleList();
     });
 
+    settingsAddSendToAction.addEventListener('click', async () => {
+        const nextAction = await openSendToActionDialog({
+            title: '',
+            scope: 'track',
+            commandTemplate: '',
+        }, 'Add action', 'Add send to action');
+        if (nextAction === null) {
+            return;
+        }
+
+        customSendToActions = normalizeCustomSendToActions([...customSendToActions, {
+            title: nextAction.title,
+            scope: nextAction.scope,
+            commandTemplate: nextAction.commandTemplate,
+        }]);
+        selectedCustomSendToActionIndex = customSendToActions.findIndex((candidate) => (
+            candidate.title === nextAction.title
+                && candidate.scope === nextAction.scope
+                && candidate.commandTemplate === nextAction.commandTemplate
+        ));
+        renderCustomSendToActionList();
+        setSettingsStatusMessage('');
+        settingsSendToActionList.focus();
+    });
+
     settingsRemoveFavoritePlaylist.addEventListener('click', () => {
         if (selectedFavoritePlaylistIndex < 0 || selectedFavoritePlaylistIndex >= favoritePlaylists.length) {
             return;
@@ -2069,6 +2522,16 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         scrobbleRules.splice(selectedScrobbleRuleIndex, 1);
         selectedScrobbleRuleIndex = -1;
         renderScrobbleRuleList();
+    });
+
+    settingsRemoveSendToAction.addEventListener('click', () => {
+        if (selectedCustomSendToActionIndex < 0 || selectedCustomSendToActionIndex >= customSendToActions.length) {
+            return;
+        }
+
+        customSendToActions.splice(selectedCustomSendToActionIndex, 1);
+        selectedCustomSendToActionIndex = -1;
+        renderCustomSendToActionList();
     });
 
     settingsSave.addEventListener('click', async () => {
@@ -2143,6 +2606,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         handleEscape: (): boolean => {
             if (settingsModal.hidden) {
                 return false;
+            }
+
+            if (!settingsSendToActionModal.hidden) {
+                closeSendToActionDialog(null, true);
+                return true;
             }
 
             if (!settingsScrobbleRuleModal.hidden) {

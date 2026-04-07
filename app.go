@@ -85,6 +85,8 @@ type App struct {
 	scanFinalizeMs                         float64
 	scanWatcherMs                          float64
 	searchGeneration                       atomic.Uint64
+	listenBrainzScrobbleMu                 sync.Mutex
+	listenBrainzRecentScrobbles            map[string]listenBrainzScrobbleDedupEntry
 	lastFmScrobbleMu                       sync.Mutex
 	lastFmRecentScrobbles                  map[string]lastFmScrobbleDedupEntry
 }

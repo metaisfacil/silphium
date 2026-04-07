@@ -42,8 +42,11 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
     let scrobbleInFlight = createProviderRecord(false);
     let scrobbleSessionStartedAt = 0;
     let activeSessionTrackKey = '';
-    const lastFmSingleDedupWindowSeconds = 15 * 60;
-    const lastFmRecentSingles = new Map<string, number>();
+    const singleDedupWindowSeconds = 15 * 60;
+    const recentSinglesByProvider: Record<ScrobbleProvider, Map<string, number>> = {
+        listenBrainz: new Map<string, number>(),
+        lastFm: new Map<string, number>(),
+    };
 
     const sessionTrackKey = (trackPath: string | undefined): string => {
         return (trackPath || '')
@@ -117,7 +120,7 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
         return Math.min(duration / 2, 240);
     };
 
-    const lastFmSingleDedupKey = (payload: ScrobblePayload): string => {
+    const singleDedupKey = (payload: ScrobblePayload): string => {
         const recordingMbid = (payload.recordingMbid || '').trim().toLowerCase();
         if (recordingMbid !== '') {
             return `mbid:${recordingMbid}`;
@@ -133,29 +136,31 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
         ].join('\x1f');
     };
 
-    const shouldSkipLastFmSingle = (payload: ScrobblePayload, listenedAt: number): boolean => {
+    const shouldSkipProviderSingle = (provider: ScrobbleProvider, payload: ScrobblePayload, listenedAt: number): boolean => {
         if (!Number.isFinite(listenedAt) || listenedAt <= 0) {
             return false;
         }
 
-        const dedupKey = lastFmSingleDedupKey(payload);
+        const dedupKey = singleDedupKey(payload);
         if (dedupKey.replace(/\x1f/g, '') === '') {
             return false;
         }
 
-        const cutoff = listenedAt - lastFmSingleDedupWindowSeconds;
-        for (const [key, previousListenedAt] of lastFmRecentSingles.entries()) {
+        const recentSingles = recentSinglesByProvider[provider];
+
+        const cutoff = listenedAt - singleDedupWindowSeconds;
+        for (const [key, previousListenedAt] of recentSingles.entries()) {
             if (previousListenedAt < cutoff) {
-                lastFmRecentSingles.delete(key);
+                recentSingles.delete(key);
             }
         }
 
-        const previousListenedAt = lastFmRecentSingles.get(dedupKey);
-        if (previousListenedAt !== undefined && Math.abs(previousListenedAt - listenedAt) <= lastFmSingleDedupWindowSeconds) {
+        const previousListenedAt = recentSingles.get(dedupKey);
+        if (previousListenedAt !== undefined && Math.abs(previousListenedAt - listenedAt) <= singleDedupWindowSeconds) {
             return true;
         }
 
-        lastFmRecentSingles.set(dedupKey, listenedAt);
+        recentSingles.set(dedupKey, listenedAt);
         return false;
     };
 
@@ -256,7 +261,7 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
                     continue;
                 }
 
-                if (provider === 'lastFm' && shouldSkipLastFmSingle(payload, listenedAt)) {
+                if (shouldSkipProviderSingle(provider, payload, listenedAt)) {
                     scrobbleSubmittedSessionId[provider] = scrobbleSessionId;
                     continue;
                 }

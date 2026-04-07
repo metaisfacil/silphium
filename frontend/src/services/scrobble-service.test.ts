@@ -198,6 +198,37 @@ describe('createScrobbleService', () => {
         expect(singleCalls).toHaveLength(1);
     });
 
+    it('dedupes ListenBrainz singles when artist label changes but track identity is the same', async () => {
+        const submitListenBrainz = vi.fn<[eventType: 'playing_now' | 'single', payload: unknown, listenedAt: number], Promise<void>>(async () => undefined);
+        const service = createScrobbleService({ submitListenBrainz });
+
+        const state = createPlaybackState({ currentTime: 200, duration: 300 });
+        const romanized = createTrack({
+            displayArtist: 'Masato Kouda',
+            displayTitle: 'コメディックスタイル',
+            displayAlbum: '「魔法戦争」オリジナルサウンドトラック',
+            mbIds: {},
+        });
+        const native = createTrack({
+            displayArtist: '甲田雅人',
+            displayTitle: 'コメディックスタイル',
+            displayAlbum: '「魔法戦争」オリジナルサウンドトラック',
+            mbIds: {},
+        });
+
+        service.startTrackSession(romanized.path);
+        service.maybeSubmit(state, romanized, { listenBrainz: true, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        service.startTrackSession(native.path);
+        service.maybeSubmit(state, native, { listenBrainz: true, lastFm: false });
+
+        const singleCalls = submitListenBrainz.mock.calls.filter((call) => call[0] === 'single');
+        expect(singleCalls).toHaveLength(1);
+    });
+
     it('defers Last.fm now-playing until metadata hydration completes', async () => {
         const submitListenBrainz = vi.fn(async () => undefined);
         const submitLastFm = vi.fn(async () => undefined);

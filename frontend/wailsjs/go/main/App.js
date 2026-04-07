@@ -186,6 +186,10 @@ export function ResolveLibraryFolderForPath(arg1) {
   return window['go']['main']['App']['ResolveLibraryFolderForPath'](arg1);
 }
 
+export function RunCustomSendToAction(arg1, arg2) {
+  return window['go']['main']['App']['RunCustomSendToAction'](arg1, arg2);
+}
+
 export function SavePlaylistFile(arg1, arg2) {
   return window['go']['main']['App']['SavePlaylistFile'](arg1, arg2);
 }

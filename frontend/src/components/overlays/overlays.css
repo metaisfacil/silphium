@@ -650,11 +650,43 @@
     text-align: left;
 }
 
-.settings-tabs {
-    display: inline-flex;
+.settings-tabs-shell {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    flex-wrap: wrap;
     gap: 0.35rem;
+}
+
+.settings-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.settings-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.settings-tabs-scroll {
+    width: 1.55rem;
+    height: 1.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 0.42rem;
+    background: rgba(255, 255, 255, 0.07);
+    color: inherit;
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.settings-tabs-scroll:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
 .settings-tab {
@@ -666,6 +698,8 @@
     font-size: 0.78rem;
     padding: 0.35rem 0.62rem;
     cursor: pointer;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .settings-tab.is-active {

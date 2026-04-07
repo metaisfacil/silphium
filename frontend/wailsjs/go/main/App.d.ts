@@ -94,6 +94,8 @@ export function ReadTrackTagsFromBlobs(arg1:Array<main.TrackBlob>):Promise<Recor
 
 export function ResolveLibraryFolderForPath(arg1:string):Promise<string>;
 
+export function RunCustomSendToAction(arg1:string,arg2:string):Promise<boolean>;
+
 export function SavePlaylistFile(arg1:string,arg2:Array<string>):Promise<boolean>;
 
 export function SaveSettings(arg1:main.AppSettings):Promise<main.AppSettings>;

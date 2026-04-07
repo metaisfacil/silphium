@@ -272,6 +272,14 @@ export type FocusedKeyboardShortcuts = {
     openSettings: string;
 };
 
+export type CustomSendToActionScope = 'track' | 'album' | 'file' | 'folder';
+
+export type CustomSendToAction = {
+    title: string;
+    scope: CustomSendToActionScope;
+    commandTemplate: string;
+};
+
 export type AudioSettings = {
     outputDevice: string;
     outputBufferMs: number;
@@ -337,6 +345,7 @@ export type AppSettings = {
     lissajousEnabled: boolean;
     uiDitheringEnabled: boolean;
     minimizeToTrayOnClose: boolean;
+    customSendToActions: CustomSendToAction[];
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
 

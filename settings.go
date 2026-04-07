@@ -45,6 +45,13 @@ type ScrobbleRule struct {
 	Value    string `json:"value,omitempty"`
 }
 
+// CustomSendToAction describes one user-defined external action for send-to menus.
+type CustomSendToAction struct {
+	Title           string `json:"title"`
+	Scope           string `json:"scope"`
+	CommandTemplate string `json:"commandTemplate"`
+}
+
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
 	LibraryFolders                         []AppLibraryFolder       `json:"libraryFolders,omitempty"`
@@ -74,6 +81,7 @@ type AppSettings struct {
 	LissajousEnabled                       *bool                    `json:"lissajousEnabled,omitempty"`
 	UIDitheringEnabled                     *bool                    `json:"uiDitheringEnabled,omitempty"`
 	MinimizeToTrayOnClose                  bool                     `json:"minimizeToTrayOnClose,omitempty"`
+	CustomSendToActions                    []CustomSendToAction     `json:"customSendToActions,omitempty"`
 	KeyboardShortcuts                      FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
 
@@ -93,6 +101,11 @@ const coverArtPriorityEmbedded = "embedded"
 const coverArtPriorityMusicBrainz = "musicbrainz"
 const defaultAudioOutputDevice = "default"
 const maxAudioOutputBufferMs = 1000
+
+const sendToActionScopeTrack = "track"
+const sendToActionScopeAlbum = "album"
+const sendToActionScopeFile = "file"
+const sendToActionScopeFolder = "folder"
 
 const scrobbleRuleFieldPath = "path"
 const scrobbleRuleFieldAlbumArtist = "albumArtist"
@@ -250,6 +263,48 @@ func normalizeScrobbleRuleOperator(value string, field string) string {
 	default:
 		return defaultScrobbleRuleOperator(field)
 	}
+}
+
+func normalizeSendToActionScope(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case sendToActionScopeTrack:
+		return sendToActionScopeTrack
+	case sendToActionScopeAlbum:
+		return sendToActionScopeAlbum
+	case sendToActionScopeFile:
+		return sendToActionScopeFile
+	case sendToActionScopeFolder:
+		return sendToActionScopeFolder
+	default:
+		return ""
+	}
+}
+
+func normalizeCustomSendToActions(actions []CustomSendToAction) []CustomSendToAction {
+	normalized := make([]CustomSendToAction, 0, len(actions))
+	seen := make(map[string]struct{}, len(actions))
+	for _, candidate := range actions {
+		title := strings.Join(strings.Fields(strings.TrimSpace(candidate.Title)), " ")
+		scope := normalizeSendToActionScope(candidate.Scope)
+		commandTemplate := strings.TrimSpace(candidate.CommandTemplate)
+		if title == "" || scope == "" || commandTemplate == "" {
+			continue
+		}
+
+		key := strings.ToLower(scope + "\n" + title + "\n" + commandTemplate)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+
+		seen[key] = struct{}{}
+		normalized = append(normalized, CustomSendToAction{
+			Title:           title,
+			Scope:           scope,
+			CommandTemplate: commandTemplate,
+		})
+	}
+
+	return normalized
 }
 
 func normalizeScrobbleRuleValue(field string, operator string, value string) string {
@@ -624,6 +679,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	if settings.UIDitheringEnabled != nil {
 		uiDitheringEnabled = *settings.UIDitheringEnabled
 	}
+	customSendToActions := normalizeCustomSendToActions(settings.CustomSendToActions)
 
 	return AppSettings{
 		LibraryFolders:                         libraryFolders,
@@ -652,6 +708,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		LissajousEnabled:                       boolPointer(lissajousEnabled),
 		UIDitheringEnabled:                     boolPointer(uiDitheringEnabled),
 		MinimizeToTrayOnClose:                  settings.MinimizeToTrayOnClose,
+		CustomSendToActions:                    customSendToActions,
 		KeyboardShortcuts:                      keyboardShortcuts,
 	}
 }

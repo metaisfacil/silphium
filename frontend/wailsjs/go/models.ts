@@ -38,6 +38,22 @@ export namespace main {
 	        this.openSettings = source["openSettings"];
 	    }
 	}
+	export class CustomSendToAction {
+	    title: string;
+	    scope: string;
+	    commandTemplate: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CustomSendToAction(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.scope = source["scope"];
+	        this.commandTemplate = source["commandTemplate"];
+	    }
+	}
 	export class AudioSettings {
 	    outputDevice?: string;
 	    outputBufferMs?: number;
@@ -100,6 +116,7 @@ export namespace main {
 	    lissajousEnabled?: boolean;
 	    uiDitheringEnabled?: boolean;
 	    minimizeToTrayOnClose?: boolean;
+	    customSendToActions?: CustomSendToAction[];
 	    keyboardShortcuts: FocusedKeyboardShortcuts;
 	
 	    static createFrom(source: any = {}) {
@@ -135,6 +152,7 @@ export namespace main {
 	        this.lissajousEnabled = source["lissajousEnabled"];
 	        this.uiDitheringEnabled = source["uiDitheringEnabled"];
 	        this.minimizeToTrayOnClose = source["minimizeToTrayOnClose"];
+	        this.customSendToActions = this.convertValues(source["customSendToActions"], CustomSendToAction);
 	        this.keyboardShortcuts = this.convertValues(source["keyboardShortcuts"], FocusedKeyboardShortcuts);
 	    }
 	
@@ -225,6 +243,7 @@ export namespace main {
 	        this.samples = source["samples"];
 	    }
 	}
+	
 	export class EmbeddedCoverArt {
 	    base64: string;
 	    mimeType: string;

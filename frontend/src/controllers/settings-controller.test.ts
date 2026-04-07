@@ -61,6 +61,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     lissajousEnabled: true,
     uiDitheringEnabled: true,
     minimizeToTrayOnClose: false,
+    customSendToActions: [],
     musicBrainzTagWorkerProgress: createMusicBrainzTagWorkerProgress(),
     keyboardShortcuts: createKeyboardShortcuts(),
     audioOutputDevices: createAudioDevices(),

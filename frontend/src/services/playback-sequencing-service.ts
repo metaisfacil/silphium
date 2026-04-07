@@ -255,42 +255,35 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
         }
 
         const scopeKey = currentShuffleScopeKey();
-        let previewHistory = shuffleHistory.slice();
-        let previewCursor = shuffleCursor;
         if (shuffleScopeKey !== scopeKey) {
-            previewHistory = [];
-            previewCursor = -1;
+            shuffleScopeKey = scopeKey;
+            shuffleHistory = [];
+            shuffleCursor = -1;
         }
 
         const currentTrackIndex = options.getCurrentTrackIndex();
-        if (previewCursor < 0) {
-            previewHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
-            previewCursor = 0;
+        if (shuffleCursor < 0) {
+            shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
+            shuffleCursor = 0;
         }
 
-        if (currentTrackIndex >= 0) {
-            const existingPosition = previewHistory.lastIndexOf(currentTrackIndex);
-            if (existingPosition >= 0) {
-                previewCursor = existingPosition;
-            } else if (orderedIndexes.includes(currentTrackIndex)) {
-                previewHistory.push(currentTrackIndex);
-                previewCursor = previewHistory.length - 1;
-            }
-        }
+        syncShuffleCursorToCurrentTrack(orderedIndexes);
 
         if (direction < 0) {
-            if (previewCursor > 0) {
-                return previewHistory[previewCursor - 1];
+            if (shuffleCursor > 0) {
+                return shuffleHistory[shuffleCursor - 1];
             }
 
-            return previewHistory[previewCursor];
+            return shuffleHistory[shuffleCursor];
         }
 
-        if (previewCursor < previewHistory.length - 1) {
-            return previewHistory[previewCursor + 1];
+        // Keep peek deterministic for gapless prequeue: generate and cache one future item if needed.
+        ensureShuffleFutureTracks(1);
+        if (shuffleCursor < shuffleHistory.length - 1) {
+            return shuffleHistory[shuffleCursor + 1];
         }
 
-        return pickRandomTrackIndex(orderedIndexes, previewHistory[previewCursor]);
+        return shuffleHistory[shuffleCursor];
     };
 
     return {
