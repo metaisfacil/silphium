@@ -33,10 +33,11 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+        run: $(go env GOPATH)/bin/golangci-lint run
 
       - name: Install golint
         run: go install golang.org/x/lint/golint@latest
