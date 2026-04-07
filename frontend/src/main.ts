@@ -605,7 +605,10 @@ const initializeSettings = async (): Promise<void> => {
     void refreshListenBrainzFeedbackForCurrentTrack(true);
 };
 
-Object.assign(runtimeScope, { initializeSettings });
+Object.assign(runtimeScope, {
+    completeStartupIfReady,
+    initializeSettings,
+});
 
 Object.assign(runtimeScope, {
     lookupArtistByMBID: (mbid: string) => scheduleMusicBrainzRequest(async () => (
