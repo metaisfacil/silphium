@@ -78,12 +78,16 @@ export const createSettingsTabRuntime = (context: SettingsTabRuntimeContext) => 
 
     const setActiveTab = (tab: SettingsTab): void => {
         const primaryTab = resolvePrimaryTab(tab);
+        const activePanel = context.settingsTabPanels[primaryTab];
         for (const [tabName, button] of Object.entries(context.settingsTabButtons) as [SettingsPrimaryTab, HTMLButtonElement][]) {
             const isActive = tabName === primaryTab;
             button.classList.toggle('is-active', isActive);
             button.setAttribute('aria-selected', isActive ? 'true' : 'false');
             context.settingsTabPanels[tabName].hidden = !isActive;
         }
+
+        // Always start each tab from the top when switching sections.
+        activePanel.scrollTop = 0;
 
         ensureTabIsVisible(context.settingsTabButtons[primaryTab]);
     };

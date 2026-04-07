@@ -111,4 +111,14 @@ describe('bindSettingsControllerEvents', () => {
         expect(context.setActiveTab).toHaveBeenCalledWith('audio');
         expect(document.activeElement).toBe(context.elements.settingsAudioOutputDevice);
     });
+
+    it('focuses the first network field when the network tab is selected', () => {
+        const context = createContext();
+        bindSettingsControllerEvents(context);
+
+        context.elements.settingsTabNetwork.click();
+
+        expect(context.setActiveTab).toHaveBeenCalledWith('network');
+        expect(document.activeElement).toBe(context.elements.settingsListenBrainzToken);
+    });
 });

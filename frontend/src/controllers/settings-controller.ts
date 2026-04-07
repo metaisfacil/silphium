@@ -750,7 +750,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
         if (primaryTab === 'network') {
-            settingsMusicBrainzServerUrl.focus();
+            settingsListenBrainzToken.focus();
             return;
         }
         if (primaryTab === 'database') {

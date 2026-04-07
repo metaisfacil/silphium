@@ -234,6 +234,14 @@ describe('createSettingsController', () => {
         expect(document.activeElement).toBe(elements.settingsFFmpegPath);
     });
 
+    it('focuses the first network field when opened on the network tab', () => {
+        const { controller, elements } = mountSettingsController();
+
+        controller.open('network');
+
+        expect(document.activeElement).toBe(elements.settingsListenBrainzToken);
+    });
+
     it('fetches Last.fm session key and fills the field', async () => {
         const fetchLastFmSessionKey = vi.fn(async () => 'session-key-from-fetch');
         const { controller, elements } = mountSettingsController({ fetchLastFmSessionKey });
