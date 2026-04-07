@@ -153,7 +153,7 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-audio-output-buffer-ms"]')?.textContent).toBe('Audio output buffer (ms)');
         expect(document.querySelector('label[for="settings-player-card-layout"]')?.textContent).toBe('Player card layout');
         expect(document.querySelector('label[for="settings-lissajous-enabled"]')?.textContent?.trim()).toBe('Show lissajous visualizer');
-        expect(document.querySelector('label[for="settings-ui-dithering-enabled"]')?.textContent?.trim()).toBe('Enable translucent dithering');
+        expect(document.querySelector('label[for="settings-ui-dithering-enabled"]')?.textContent?.trim()).toBe('Enable pseudo-dithering');
         expect(document.querySelector('#settings-cover-art-priority-accordion-toggle')?.textContent).toBe('Cover art source priority');
         expect(document.querySelector('#settings-shortcut-accordion-toggle')?.textContent).toBe('Keyboard shortcuts');
         expect(document.querySelector('label[for="settings-shortcut-play-pause"]')?.textContent).toBe('Play/pause toggle');
