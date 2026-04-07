@@ -286,7 +286,6 @@ func TestScanLibraryFoldersProgressLearningAndCoverTieBreak(t *testing.T) {
 		)
 	}
 
-	seenCounting := false
 	seenScanning := false
 	seenFinalizing := false
 	seenPositiveETA := false
@@ -298,24 +297,21 @@ func TestScanLibraryFoldersProgressLearningAndCoverTieBreak(t *testing.T) {
 				seenPositiveETA = true
 			}
 			switch payload.Phase {
-			case "counting":
-				seenCounting = true
 			case "scanning":
 				seenScanning = true
 			case "finalizing":
 				seenFinalizing = true
 			}
 		default:
-			if seenCounting && seenScanning && seenFinalizing && seenPositiveETA {
+			if seenScanning && seenFinalizing && seenPositiveETA {
 				break
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-	if !seenCounting || !seenScanning || !seenFinalizing || !seenPositiveETA {
+	if !seenScanning || !seenFinalizing || !seenPositiveETA {
 		t.Fatalf(
-			"progress phases = counting:%t scanning:%t finalizing:%t eta:%t, want all true",
-			seenCounting,
+			"progress phases = scanning:%t finalizing:%t eta:%t, want all true",
 			seenScanning,
 			seenFinalizing,
 			seenPositiveETA,

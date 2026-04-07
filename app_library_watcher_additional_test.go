@@ -161,7 +161,6 @@ func TestLibraryWatcherHelpersAndRuntimeEvents(t *testing.T) {
 	if scanResult.TotalEntries == 0 {
 		t.Fatalf("scanLibraryFolder() = %#v, want indexed entries", scanResult)
 	}
-	seenCounting := false
 	seenScanning := false
 	seenFinalizing := false
 	deadline := time.Now().Add(500 * time.Millisecond)
@@ -169,8 +168,6 @@ func TestLibraryWatcherHelpersAndRuntimeEvents(t *testing.T) {
 		select {
 		case payload := <-progressEvents:
 			switch payload.Phase {
-			case "counting":
-				seenCounting = true
 			case "scanning":
 				seenScanning = true
 			case "finalizing":
@@ -180,8 +177,8 @@ func TestLibraryWatcherHelpersAndRuntimeEvents(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-	if !seenCounting || !seenScanning || !seenFinalizing {
-		t.Fatalf("scan progress phases = counting:%t scanning:%t finalizing:%t, want all phases", seenCounting, seenScanning, seenFinalizing)
+	if !seenScanning || !seenFinalizing {
+		t.Fatalf("scan progress phases = scanning:%t finalizing:%t, want both phases", seenScanning, seenFinalizing)
 	}
 	seenNonEmptyUpdate := false
 	updateDeadline := time.Now().Add(500 * time.Millisecond)

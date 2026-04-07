@@ -362,6 +362,48 @@ func TestLibraryQueryAdditionalFallbackAndPathBranches(t *testing.T) {
 	}
 }
 
+func TestLibraryQueryFallbackIncludesDiscoveredFoldersDuringScan(t *testing.T) {
+	app, _ := newIndexedLibraryAppForTests(t)
+
+	app.scanInProgress = true
+	app.libraryDerivedIndexDirty = true
+	app.libraryDerivedIndexBuilding = false
+	app.scanDiscoveredChildFoldersByParent = map[string]map[string]struct{}{
+		"": {
+			"Library One": {},
+		},
+		"Library One": {
+			"Library One/Artist Pending": {},
+		},
+		"Library One/Artist Pending": {
+			"Library One/Artist Pending/Album Pending": {},
+		},
+	}
+	app.scanRemainingImmediateChildrenByFolder["Library One/Artist Pending"] = 1
+
+	page := app.GetLibraryFolderPage("Library One", 0, 10)
+	if !hasBrowserEntry(page.Entries, "folder", "Library One/Artist Pending") {
+		t.Fatalf("GetLibraryFolderPage(scan discovered folders) missing pending folder: %#v", page.Entries)
+	}
+
+	search := app.SearchLibrary("pending", 0, 20)
+	if !hasBrowserEntry(search.Entries, "folder", "Library One/Artist Pending") {
+		t.Fatalf("SearchLibrary(scan discovered folders) missing pending artist folder: %#v", search.Entries)
+	}
+	if !hasBrowserEntry(search.Entries, "folder", "Library One/Artist Pending/Album Pending") {
+		t.Fatalf("SearchLibrary(scan discovered folders) missing pending album folder: %#v", search.Entries)
+	}
+
+	if app.IsLibraryFolderImmediateDescendantsEnumerated("Library One/Artist Pending") {
+		t.Fatal("IsLibraryFolderImmediateDescendantsEnumerated(discovered pending) = true, want false")
+	}
+
+	delete(app.scanRemainingImmediateChildrenByFolder, "Library One/Artist Pending")
+	if !app.IsLibraryFolderImmediateDescendantsEnumerated("Library One/Artist Pending") {
+		t.Fatal("IsLibraryFolderImmediateDescendantsEnumerated(discovered ready) = false, want true")
+	}
+}
+
 func TestSearchLibraryCancellationAfterLock(t *testing.T) {
 	app, _ := newIndexedLibraryAppForTests(t)
 
