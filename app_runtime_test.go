@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 func TestAppRuntimeHelpers(t *testing.T) {
@@ -107,5 +108,50 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	}
 	if closeErrorApp.audio.context != nil {
 		t.Fatal("shutdown(close error) should clear the audio context")
+	}
+}
+
+func TestShutdownDoesNotBlockOnMusicBrainzWorkerStop(t *testing.T) {
+	stopCh := make(chan struct{})
+	doneCh := make(chan struct{})
+	app := &App{
+		audio:                    NewAudioBackend(),
+		musicBrainzTagWorkerStop: stopCh,
+		musicBrainzTagWorkerDone: doneCh,
+	}
+	app.audio.context = &fakeAudioContext{}
+
+	originalTimeout := musicBrainzTagWorkerStopTimeout
+	musicBrainzTagWorkerStopTimeout = 10 * time.Millisecond
+	t.Cleanup(func() {
+		musicBrainzTagWorkerStopTimeout = originalTimeout
+	})
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		app.shutdown(context.Background())
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("shutdown() timed out waiting for MusicBrainz worker stop")
+	}
+
+	if !app.quitRequested.Load() {
+		t.Fatal("shutdown() should mark quitRequested")
+	}
+	if app.audio.context != nil {
+		t.Fatal("shutdown() should close and clear the audio context")
+	}
+	if app.musicBrainzTagWorkerStop != nil || app.musicBrainzTagWorkerDone != nil || app.musicBrainzTagWorkerWake != nil {
+		t.Fatal("shutdown() should clear MusicBrainz worker channels")
+	}
+
+	select {
+	case <-stopCh:
+	default:
+		t.Fatal("shutdown() should close the MusicBrainz worker stop channel")
 	}
 }
