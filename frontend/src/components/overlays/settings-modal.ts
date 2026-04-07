@@ -241,7 +241,7 @@ export const renderSettingsModal = (): string => `
                 <div id="settings-panel-scrobbling" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-scrobbling" hidden>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-scrobble-filter-mode">Scrobble mode</label>
-                        <p class="settings-hint">In blacklist mode matching rules block scrobbles. In whitelist mode at least one rule must match before a scrobble is submitted. The same rules apply to every configured scrobble provider.</p>
+                        <p class="settings-hint">In blacklist mode matching rules block scrobbles. In whitelist mode at least one rule must match before a scrobble is submitted. The same rules apply to all scrobble providers.</p>
                         <select id="settings-scrobble-filter-mode" class="settings-input settings-select">
                             <option value="blacklist">Blacklist: scrobble unless a rule matches</option>
                             <option value="whitelist">Whitelist: scrobble only when a rule matches</option>
