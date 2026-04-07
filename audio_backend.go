@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	audioSampleRate    = 44100
-	audioChannelCount  = 2
-	audioBytesPerFrame = audioChannelCount * 2
+	audioSampleRate            = 44100
+	audioChannelCount          = 2
+	audioBytesPerFrame         = audioChannelCount * 2
 	minVisualizationFrameCount = 64
 	maxVisualizationFrameCount = 512
 	visualizationWindowFactor  = 6
