@@ -39,6 +39,7 @@ type App struct {
 	watchMu                                sync.Mutex
 	libraryWatcher                         *fsnotify.Watcher
 	watchStop                              chan struct{}
+	libraryWatcherGeneration               atomic.Uint64
 	indexMu                                sync.Mutex
 	trackByPath                            map[string]LibraryIndexedFile
 	textByPath                             map[string]LibraryIndexedFile

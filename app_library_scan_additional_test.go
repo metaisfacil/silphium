@@ -178,9 +178,7 @@ func TestScanLibraryFoldersRestartWatcherAndWalkErrorBranches(t *testing.T) {
 	})
 
 	app.scanLibraryFolder(fixture.rootOne, true)
-	if app.libraryWatcher == nil {
-		t.Fatal("scanLibraryFolder(restartWatcher) should start the library watcher")
-	}
+	waitForLibraryWatcherToStart(t, app)
 
 	cleared := app.scanLibraryFolders(nil, true)
 	if cleared.TotalEntries != 0 || cleared.TrackCount != 0 || cleared.TextFileCount != 0 || cleared.ImageFileCount != 0 {
@@ -270,9 +268,7 @@ func TestScanLibraryFoldersProgressLearningAndCoverTieBreak(t *testing.T) {
 	if result.TotalEntries != 12 || result.TrackCount != 2 || result.TextFileCount != 1 || result.ImageFileCount != 5 {
 		t.Fatalf("scanLibraryFolders(progress) = %#v, want multi-root counts with added covers", result)
 	}
-	if app.libraryWatcher == nil {
-		t.Fatal("scanLibraryFolders(progress, restartWatcher) should start the library watcher")
-	}
+	waitForLibraryWatcherToStart(t, app)
 	if got := app.GetLibraryFolderCoverPath("Two/Artist Two/Album Two"); got != coverAlpha {
 		t.Fatalf("GetLibraryFolderCoverPath(tie break) = %q, want %q", got, coverAlpha)
 	}

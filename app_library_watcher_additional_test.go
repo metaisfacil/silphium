@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,46 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 )
+
+func waitForLibraryWatcherToStart(t *testing.T, app *App) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		app.watchMu.Lock()
+		watcher := app.libraryWatcher
+		stopCh := app.watchStop
+		app.watchMu.Unlock()
+
+		if watcher != nil && stopCh != nil {
+			return
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatal("library watcher did not start before timeout")
+}
+
+func waitForLibraryWatcherToStop(t *testing.T, app *App) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		app.watchMu.Lock()
+		watcher := app.libraryWatcher
+		stopCh := app.watchStop
+		app.watchMu.Unlock()
+
+		if watcher == nil && stopCh == nil {
+			return
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatal("library watcher did not stop before timeout")
+}
 
 func TestLibraryScanWrappersAndIncrementalUpdates(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
@@ -322,5 +363,37 @@ func TestLibraryWatcherAdditionalEdgeBranches(t *testing.T) {
 	app.indexMu.Unlock()
 	if !exists {
 		t.Fatalf("startLibraryWatcher(directory create) did not index %q", watchTrack)
+	}
+}
+
+func TestAsyncLibraryWatcherStartupDoesNotRestoreStoppedWatcher(t *testing.T) {
+	app := NewApp()
+	t.Cleanup(func() {
+		app.stopLibraryWatcher()
+	})
+
+	asyncRoot := filepath.Join(t.TempDir(), "async-root")
+	for index := 0; index < 400; index++ {
+		if err := os.MkdirAll(filepath.Join(asyncRoot, fmt.Sprintf("dir-%03d", index), "nested"), 0o755); err != nil {
+			t.Fatalf("MkdirAll(async watcher tree) error = %v", err)
+		}
+	}
+
+	app.startLibraryWatcherAsync([]libraryRootConfig{{Path: asyncRoot, Name: "Async"}})
+	app.stopLibraryWatcher()
+	waitForLibraryWatcherToStop(t, app)
+
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		app.watchMu.Lock()
+		watcher := app.libraryWatcher
+		stopCh := app.watchStop
+		app.watchMu.Unlock()
+
+		if watcher != nil || stopCh != nil {
+			t.Fatal("stale asynchronous watcher startup restored watcher state after stop")
+		}
+
+		time.Sleep(20 * time.Millisecond)
 	}
 }

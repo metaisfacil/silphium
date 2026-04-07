@@ -82,6 +82,9 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 	learnedWatcherMs := a.scanWatcherMs
 	learnedTotalEntries := a.scanLastTotalEntries
 	a.indexMu.Unlock()
+	if learnedFinalizeMs > learnedWatcherMs && learnedWatcherMs > 0 {
+		learnedFinalizeMs -= learnedWatcherMs
+	}
 
 	totalEntries := 0
 	listedDirectories := 0
@@ -147,19 +150,12 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 	scanStartedAt = time.Now()
 
 	estimateFinalizationBudgetMs := func(elapsed time.Duration, entriesDone int) float64 {
-		watcherBudget := learnedWatcherMs
-		if restartWatcher && watcherBudget <= 0 {
-			watcherBudget = 8000
-		} else if !restartWatcher {
-			watcherBudget = 0
-		}
-
 		if learnedFinalizeMs > 0 {
-			return learnedFinalizeMs + watcherBudget
+			return learnedFinalizeMs
 		}
 
 		if totalEntries <= 0 {
-			return 4000 + watcherBudget
+			return 4000
 		}
 
 		if entriesDone <= 0 {
@@ -180,7 +176,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 			fallback = 180000
 		}
 
-		return fallback + watcherBudget
+		return fallback
 	}
 
 	estimateTotalEntriesForProgress := func() int {
@@ -552,13 +548,9 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 	sortIndexMs := float64(time.Since(finalizationStartedAt).Milliseconds())
 
 	if restartWatcher {
-		a.indexMu.Lock()
-		firstWatcherLearning := a.scanWatcherMs <= 0
-		a.indexMu.Unlock()
-
 		if sortIndexMs > 0 {
 			a.indexMu.Lock()
-			if a.scanFinalizeMs <= 0 || firstWatcherLearning {
+			if a.scanFinalizeMs <= 0 {
 				a.scanFinalizeMs = sortIndexMs
 			} else {
 				a.scanFinalizeMs = (a.scanFinalizeMs * 0.72) + (sortIndexMs * 0.28)
@@ -566,18 +558,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 			a.indexMu.Unlock()
 		}
 
-		watcherStartedAt := time.Now()
-		a.startLibraryWatcher(roots, func() { emitProgress(false, "finalizing") })
-		watcherMs := float64(time.Since(watcherStartedAt).Milliseconds())
-		if watcherMs > 0 {
-			a.indexMu.Lock()
-			if a.scanWatcherMs <= 0 {
-				a.scanWatcherMs = watcherMs
-			} else {
-				a.scanWatcherMs = (a.scanWatcherMs * 0.72) + (watcherMs * 0.28)
-			}
-			a.indexMu.Unlock()
-		}
+		a.startLibraryWatcherAsync(roots)
 	} else if sortIndexMs > 0 {
 		a.indexMu.Lock()
 		if a.scanFinalizeMs <= 0 {

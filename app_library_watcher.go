@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -194,12 +195,7 @@ func addLibraryWatchesRecursive(watcher *fsnotify.Watcher, rootPath string, onPr
 	})
 }
 
-func (a *App) startLibraryWatcher(roots []libraryRootConfig, onProgress func()) {
-	if len(roots) == 0 {
-		a.stopLibraryWatcher()
-		return
-	}
-
+func collectWatchableLibraryRootPaths(roots []libraryRootConfig) []string {
 	rootPaths := make([]string, 0, len(roots))
 	for _, root := range roots {
 		if strings.TrimSpace(root.Path) == "" {
@@ -213,9 +209,44 @@ func (a *App) startLibraryWatcher(roots []libraryRootConfig, onProgress func()) 
 		rootPaths = append(rootPaths, root.Path)
 	}
 
-	if len(rootPaths) == 0 {
-		a.stopLibraryWatcher()
+	return rootPaths
+}
+
+func (a *App) stopLibraryWatcherReserved(generation uint64) {
+	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
 		return
+	}
+
+	a.watchMu.Lock()
+	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+		a.watchMu.Unlock()
+		return
+	}
+
+	watcher := a.libraryWatcher
+	stopCh := a.watchStop
+	a.libraryWatcher = nil
+	a.watchStop = nil
+	a.watchMu.Unlock()
+
+	if stopCh != nil {
+		close(stopCh)
+	}
+
+	if watcher != nil {
+		_ = watcher.Close()
+	}
+}
+
+func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, onProgress func(), generation uint64) bool {
+	rootPaths := collectWatchableLibraryRootPaths(roots)
+	if len(rootPaths) == 0 {
+		a.stopLibraryWatcherReserved(generation)
+		return false
+	}
+
+	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+		return false
 	}
 
 	a.logRescanEvent("Starting library watcher for %d roots", len(rootPaths))
@@ -223,17 +254,39 @@ func (a *App) startLibraryWatcher(roots []libraryRootConfig, onProgress func()) 
 	watcher, watcherErr := fsnotify.NewWatcher()
 	if watcherErr != nil {
 		a.logRescanEvent("Failed to create filesystem watcher: %v", watcherErr)
-		return
+		return false
 	}
-	a.logRescanEvent("Watcher created, registering all directories")
 
+	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+		_ = watcher.Close()
+		return false
+	}
+
+	a.logRescanEvent("Watcher created, registering all directories")
 	for _, rootPath := range rootPaths {
+		if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+			_ = watcher.Close()
+			return false
+		}
+
 		addLibraryWatchesRecursive(watcher, rootPath, onProgress)
 	}
+
+	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+		_ = watcher.Close()
+		return false
+	}
+
 	a.logRescanEvent("Watcher ready, listening for changes")
 	stopCh := make(chan struct{})
 
 	a.watchMu.Lock()
+	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+		a.watchMu.Unlock()
+		_ = watcher.Close()
+		return false
+	}
+
 	previousWatcher := a.libraryWatcher
 	previousStopCh := a.watchStop
 	a.libraryWatcher = watcher
@@ -329,21 +382,66 @@ func (a *App) startLibraryWatcher(roots []libraryRootConfig, onProgress func()) 
 			}
 		}
 	}(watcher, stopCh)
+
+	return true
+}
+
+func (a *App) startLibraryWatcher(roots []libraryRootConfig, onProgress func()) {
+	if len(roots) == 0 {
+		a.stopLibraryWatcher()
+		return
+	}
+
+	generation := a.libraryWatcherGeneration.Add(1)
+	if !a.startLibraryWatcherReserved(roots, onProgress, generation) {
+		rootCount := len(collectWatchableLibraryRootPaths(roots))
+		if rootCount == 0 {
+			a.logRescanEvent("Library watcher not started: no valid roots")
+		} else {
+			a.logRescanEvent("Library watcher start canceled before activation")
+		}
+	}
+}
+
+func (a *App) startLibraryWatcherAsync(roots []libraryRootConfig) {
+	if len(roots) == 0 {
+		a.stopLibraryWatcher()
+		return
+	}
+
+	rootsCopy := append([]libraryRootConfig(nil), roots...)
+	generation := a.libraryWatcherGeneration.Add(1)
+	a.logRescanEvent("Scheduling asynchronous library watcher startup for %d roots", len(rootsCopy))
+
+	go func(activeRoots []libraryRootConfig, activeGeneration uint64) {
+		startedAt := time.Now()
+		started := a.startLibraryWatcherReserved(activeRoots, nil, activeGeneration)
+		if !started {
+			if a.libraryWatcherGeneration.Load() != activeGeneration {
+				a.logRescanEvent("Asynchronous library watcher startup canceled as stale")
+				return
+			}
+
+			a.logRescanEvent("Asynchronous library watcher startup skipped: %s", fmt.Sprintf("validRoots=%d", len(collectWatchableLibraryRootPaths(activeRoots))))
+			return
+		}
+
+		watcherMs := float64(time.Since(startedAt).Milliseconds())
+		if watcherMs > 0 {
+			a.indexMu.Lock()
+			if a.scanWatcherMs <= 0 {
+				a.scanWatcherMs = watcherMs
+			} else {
+				a.scanWatcherMs = (a.scanWatcherMs * 0.72) + (watcherMs * 0.28)
+			}
+			a.indexMu.Unlock()
+		}
+
+		a.logRescanEvent("Asynchronous library watcher startup END: took %.2fms", watcherMs)
+	}(rootsCopy, generation)
 }
 
 func (a *App) stopLibraryWatcher() {
-	a.watchMu.Lock()
-	watcher := a.libraryWatcher
-	stopCh := a.watchStop
-	a.libraryWatcher = nil
-	a.watchStop = nil
-	a.watchMu.Unlock()
-
-	if stopCh != nil {
-		close(stopCh)
-	}
-
-	if watcher != nil {
-		_ = watcher.Close()
-	}
+	generation := a.libraryWatcherGeneration.Add(1)
+	a.stopLibraryWatcherReserved(generation)
 }
