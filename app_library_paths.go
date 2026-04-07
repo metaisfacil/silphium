@@ -155,9 +155,16 @@ func folderAndRelativeForLibraryRoot(root libraryRootConfig, fullPath string) (s
 	return buildVirtualLibraryPath(root.Name, folderPath), buildVirtualLibraryPath(root.Name, relativePath), true
 }
 
+func pathHasEmbeddedNUL(path string) bool {
+	return strings.ContainsRune(path, 0)
+}
+
 func absoluteNormalizedPath(path string) (string, bool) {
 	cleanPath := normalizePath(path)
 	if cleanPath == "" {
+		return "", false
+	}
+	if pathHasEmbeddedNUL(cleanPath) {
 		return "", false
 	}
 

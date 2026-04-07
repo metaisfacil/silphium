@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -54,11 +55,20 @@ func TestAppRuntimeHelpers(t *testing.T) {
 		t.Fatal("beforeClose(minimize disabled) = true, want false")
 	}
 	app.settings.MinimizeToTrayOnClose = true
-	if !app.beforeClose(context.Background()) {
-		t.Fatal("beforeClose(minimize enabled) = false, want true")
-	}
-	if !windowHidden {
-		t.Fatal("beforeClose(minimize enabled) should hide the window")
+	if runtime.GOOS == "windows" {
+		if !app.beforeClose(context.Background()) {
+			t.Fatal("beforeClose(minimize enabled) = false, want true")
+		}
+		if !windowHidden {
+			t.Fatal("beforeClose(minimize enabled) should hide the window")
+		}
+	} else {
+		if app.beforeClose(context.Background()) {
+			t.Fatal("beforeClose(minimize enabled) = true, want false on non-Windows platforms")
+		}
+		if windowHidden {
+			t.Fatal("beforeClose(minimize enabled) should not hide the window on non-Windows platforms")
+		}
 	}
 
 	app.LogFrontendMessage("hello from frontend")
@@ -74,8 +84,11 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	if !app.settingsLoaded {
 		t.Fatal("startup() should mark settings as loaded")
 	}
-	if app.mediaKeyWatcherStop == nil || app.musicBrainzTagWorkerWake == nil {
-		t.Fatal("startup() should initialize background workers")
+	if app.musicBrainzTagWorkerWake == nil {
+		t.Fatal("startup() should initialize the MusicBrainz background worker")
+	}
+	if runtime.GOOS == "windows" && app.mediaKeyWatcherStop == nil {
+		t.Fatal("startup() should initialize the media key watcher on Windows")
 	}
 
 	app.shutdown(context.Background())

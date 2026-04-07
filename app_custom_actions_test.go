@@ -28,15 +28,18 @@ func TestCustomActionHelpers(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	app := &App{activeLibraryRoots: []libraryRootConfig{{Path: fixture.rootOne, Name: " "}, {Path: fixture.rootOne, Name: "Library"}}}
 
+	originalShellQuoteGOOS := shellQuoteGOOS
+	t.Cleanup(func() {
+		shellQuoteGOOS = originalShellQuoteGOOS
+	})
+	shellQuoteGOOS = "windows"
 	if got := shellQuotePath(`C:\Music\Track "One".flac`); got != `"C:\Music\Track \"One\".flac"` {
 		t.Fatalf("shellQuotePath() = %q, want %q", got, `"C:\Music\Track \"One\".flac"`)
 	}
-	originalShellQuoteGOOS := shellQuoteGOOS
 	shellQuoteGOOS = "linux"
 	if got := shellQuotePath(`/music/O'Brien.flac`); got != `'`+`/music/O'"'"'Brien.flac`+`'` {
 		t.Fatalf("shellQuotePath(posix) = %q, want escaped single-quoted path", got)
 	}
-	shellQuoteGOOS = originalShellQuoteGOOS
 
 	resolvedPath, ok := app.resolveAbsoluteLibraryPathFromVirtualPath("Library/Artist One/Album One/01 Intro.flac")
 	if !ok || resolvedPath != fixture.trackOne {

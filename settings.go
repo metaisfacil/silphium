@@ -331,8 +331,10 @@ func normalizeScrobbleRuleValue(field string, operator string, value string) str
 			return ""
 		}
 
-		if absolutePath, err := filepath.Abs(normalizedPath); err == nil {
-			normalizedPath = filepath.Clean(absolutePath)
+		if !pathHasEmbeddedNUL(normalizedPath) {
+			if absolutePath, err := filepath.Abs(normalizedPath); err == nil {
+				normalizedPath = filepath.Clean(absolutePath)
+			}
 		}
 
 		return normalizedPath

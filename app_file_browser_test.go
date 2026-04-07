@@ -3,6 +3,7 @@ package main
 import (
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -13,8 +14,19 @@ func TestOpenFolderInFileBrowser(t *testing.T) {
 	helperPath := copyCurrentTestBinary(t, helperDir, "sendto-helper.exe")
 	originalOpenFolderInBrowserCommand := openFolderInBrowserCommand
 	defaultCommand := originalOpenFolderInBrowserCommand(`C:\temp`)
-	if got := strings.ToLower(filepath.Base(defaultCommand.Path)); got != "explorer" && got != "explorer.exe" {
-		t.Fatalf("openFolderInBrowserCommand(default) path = %q, want explorer on Windows", defaultCommand.Path)
+	switch got := strings.ToLower(filepath.Base(defaultCommand.Path)); runtime.GOOS {
+	case "windows":
+		if got != "explorer" && got != "explorer.exe" {
+			t.Fatalf("openFolderInBrowserCommand(default) path = %q, want explorer on Windows", defaultCommand.Path)
+		}
+	case "darwin":
+		if got != "open" {
+			t.Fatalf("openFolderInBrowserCommand(default) path = %q, want open on macOS", defaultCommand.Path)
+		}
+	default:
+		if got != "xdg-open" {
+			t.Fatalf("openFolderInBrowserCommand(default) path = %q, want xdg-open on non-Windows platforms", defaultCommand.Path)
+		}
 	}
 	openFolderInBrowserCommand = func(path string) *exec.Cmd {
 		return exec.Command(helperPath, path)

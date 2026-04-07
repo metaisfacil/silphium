@@ -59,6 +59,26 @@ func (a *App) resolveAbsoluteLibraryPathFromVirtualPath(path string) (string, bo
 	return "", false
 }
 
+func (a *App) looksLikeVirtualLibraryPath(path string) bool {
+	normalizedPath, ok := normalizeLibraryRelativePath(path)
+	if !ok || normalizedPath == "" {
+		return false
+	}
+
+	firstSegment := normalizedPath
+	if separator := strings.Index(firstSegment, "/"); separator >= 0 {
+		firstSegment = firstSegment[:separator]
+	}
+
+	for _, root := range a.activeLibraryRoots {
+		if strings.TrimSpace(root.Name) == firstSegment {
+			return true
+		}
+	}
+
+	return false
+}
+
 func targetDirectoryForPath(path string) string {
 	fileInfo, err := os.Stat(path)
 	if err == nil && fileInfo.IsDir() {
@@ -161,7 +181,7 @@ func (a *App) RunCustomSendToAction(commandTemplate string, targetPath string) b
 		if resolvedPath, ok := a.resolveAbsoluteLibraryPathFromVirtualPath(cleanTargetPath); ok {
 			a.logRescanEvent("send-to RESOLVED: virtual path %q -> %q", cleanTargetPath, resolvedPath)
 			cleanTargetPath = resolvedPath
-		} else if strings.Contains(cleanTargetPath, "/") {
+		} else if a.looksLikeVirtualLibraryPath(cleanTargetPath) {
 			a.logRescanEvent("send-to ABORT: unresolved virtual path %q", cleanTargetPath)
 			return false
 		} else if root, ok := a.primaryActiveLibraryRoot(); ok {

@@ -21,7 +21,7 @@ func TestMain(m *testing.M) {
 
 func runSilphiumHelperProcess() bool {
 	switch strings.ToLower(filepath.Base(os.Args[0])) {
-	case "ffmpeg.exe":
+	case "ffmpeg", "ffmpeg.exe":
 		if encoded := os.Getenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64"); encoded != "" {
 			decoded, err := base64.StdEncoding.DecodeString(encoded)
 			if err == nil {
@@ -34,7 +34,7 @@ func runSilphiumHelperProcess() bool {
 			_, _ = io.WriteString(os.Stderr, stderr)
 		}
 		os.Exit(helperProcessExitCode("SILPHIUM_TEST_FFMPEG_EXIT"))
-	case "ffprobe.exe":
+	case "ffprobe", "ffprobe.exe":
 		if stdout := os.Getenv("SILPHIUM_TEST_FFPROBE_JSON"); stdout != "" {
 			_, _ = io.WriteString(os.Stdout, stdout)
 		}
@@ -42,10 +42,10 @@ func runSilphiumHelperProcess() bool {
 			_, _ = io.WriteString(os.Stderr, stderr)
 		}
 		os.Exit(helperProcessExitCode("SILPHIUM_TEST_FFPROBE_EXIT"))
-	case "explorer.exe":
+	case "explorer", "explorer.exe":
 		writeHelperMarkerFile(os.Getenv("SILPHIUM_TEST_EXPLORER_MARKER"), strings.Join(os.Args[1:], "\n"))
 		os.Exit(0)
-	case "sendto-helper.exe":
+	case "sendto-helper", "sendto-helper.exe":
 		writeHelperMarkerFile(os.Getenv("SILPHIUM_TEST_SENDTO_MARKER"), strings.Join(os.Args[1:], "\n"))
 		if stdout := os.Getenv("SILPHIUM_TEST_SENDTO_STDOUT"); stdout != "" {
 			_, _ = io.WriteString(os.Stdout, stdout)
@@ -113,6 +113,10 @@ func copyCurrentTestBinary(t *testing.T, dir string, name string) string {
 
 	if err := target.Close(); err != nil {
 		t.Fatalf("Close(%q) error = %v", targetPath, err)
+	}
+
+	if err := os.Chmod(targetPath, 0o755); err != nil {
+		t.Fatalf("Chmod(%q) error = %v", targetPath, err)
 	}
 
 	return targetPath
