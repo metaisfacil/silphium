@@ -251,6 +251,7 @@ const createEventBindingsContextFromScope = (scope: AppRuntimeScope) => ({
         shareController: scope.shareControllerRef,
         imageModalController: scope.imageModalControllerRef,
         librarySidebar: scope.librarySidebar,
+        librarySearch: scope.librarySearch,
         sidebarToggle: scope.sidebarToggle,
         playerCard: scope.playerCard,
         sidebarQueueMenu: scope.sidebarQueueMenu,

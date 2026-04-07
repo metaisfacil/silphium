@@ -199,6 +199,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         shareController,
         imageModalController,
         librarySidebar,
+        librarySearch,
         sidebarToggle,
         playerCard,
         sidebarQueueMenu,
@@ -286,6 +287,9 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
             event.dataTransfer.dropEffect = 'copy';
         }
     };
+
+    let librarySearchMouseDownActive = false;
+    let suppressSidebarOutsideCloseOnce = false;
 
     window.addEventListener('dragenter', preventBrowserFileDropDefault, { capture: true, passive: false });
     window.addEventListener('dragover', preventBrowserFileDropDefault, { capture: true, passive: false });
@@ -660,6 +664,12 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     document.addEventListener('click', (e: MouseEvent) => {
         const target = e.target as Node;
         const clickPath = e.composedPath();
+        const shouldSuppressSidebarOutsideClose = suppressSidebarOutsideCloseOnce
+            && libraryController.isSidebarOpen()
+            && !clickPath.includes(librarySidebar)
+            && !clickPath.includes(sidebarToggle)
+            && !clickPath.includes(libraryAbout);
+        suppressSidebarOutsideCloseOnce = false;
 
         if (!playOrderMenu.hidden && !playOrderMenu.contains(target)) closePlayOrderMenu();
         if (!trackMetaMenu.hidden && !trackMetaMenu.contains(target)) closeTrackMetaMenu();
@@ -672,6 +682,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         if (handleDocumentClickWithinSettings(target)) return;
         if (musicBrainzEntityModal.contains(target) || sidebarQueueMenu.contains(target) || queueConfirmModal.contains(target) || errorModal.contains(target) || technicalInfoModal.contains(target) || aboutModal.contains(target) || textFileModal.contains(target) || imageModalController.contains(target)) return;
         if (clickPath.includes(trackMetaMenu) || clickPath.includes(listenBrainzFeedbackMenu)) return;
+        if (shouldSuppressSidebarOutsideClose) return;
         if (!libraryController.isSidebarOpen()) return;
         if (clickPath.includes(librarySidebar) || clickPath.includes(sidebarToggle) || clickPath.includes(libraryAbout)) return;
         libraryController.setSidebarOpen(false);
@@ -693,6 +704,35 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         if (!trackMetaMenu.hidden) closeTrackMetaMenu();
         if (!listenBrainzFeedbackMenu.hidden) closeListenBrainzFeedbackMenu();
         playlistController.closeMenu();
+    }, { capture: true });
+
+    document.addEventListener('mousedown', (event: MouseEvent) => {
+        if (event.button !== 0) {
+            librarySearchMouseDownActive = false;
+            return;
+        }
+
+        const clickPath = event.composedPath();
+        librarySearchMouseDownActive = clickPath.includes(librarySearch);
+    }, { capture: true });
+
+    document.addEventListener('mouseup', (event: MouseEvent) => {
+        if (!librarySearchMouseDownActive) {
+            return;
+        }
+
+        librarySearchMouseDownActive = false;
+        if (!libraryController.isSidebarOpen()) {
+            return;
+        }
+
+        const clickPath = event.composedPath();
+        if (clickPath.includes(librarySidebar)) {
+            return;
+        }
+
+        suppressSidebarOutsideCloseOnce = true;
+        event.preventDefault();
     }, { capture: true });
 
     document.addEventListener('pointerdown', () => { unlockMediaSessionAnchorFromUserGesture(); }, { capture: true, passive: true });
