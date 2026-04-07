@@ -48,19 +48,31 @@ describe('setupVolumeControlBindings', () => {
         });
 
         expect(volumeRow.classList.contains('open')).toBe(false);
+        expect(volumeBtn.classList.contains('is-muted')).toBe(false);
+        expect(volumeBtn.getAttribute('aria-label')).toBe('Mute');
 
         volumeBtn.click();
         await flushPromises();
         expect(Number(volume.value)).toBe(0);
+        expect(volumeBtn.classList.contains('is-muted')).toBe(true);
+        expect(volumeBtn.getAttribute('aria-label')).toBe('Unmute');
         expect(volumeRow.classList.contains('open')).toBe(false);
 
         volumeBtn.click();
         await flushPromises();
         expect(Number(volume.value)).toBe(0.8);
+        expect(volumeBtn.classList.contains('is-muted')).toBe(false);
+        expect(volumeBtn.getAttribute('aria-label')).toBe('Mute');
         expect(audioSetVolume).toHaveBeenNthCalledWith(1, 0);
         expect(audioSetVolume).toHaveBeenNthCalledWith(2, 0.8);
         expect(applyPlaybackState).toHaveBeenCalledTimes(2);
         expect(handleAudioError).not.toHaveBeenCalled();
+
+        volume.value = '0';
+        volume.dispatchEvent(new Event('input', { bubbles: true }));
+        await flushPromises();
+        expect(volumeBtn.classList.contains('is-muted')).toBe(true);
+        expect(volumeBtn.getAttribute('aria-label')).toBe('Unmute');
     });
 
     it('keeps popout open while hovered and closes after leaving for about half a second', () => {

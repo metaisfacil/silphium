@@ -2048,6 +2048,28 @@
     height: 100%;
 }
 
+.volume-wrap .control-btn.is-muted {
+    position: relative;
+}
+
+.volume-wrap .control-btn.is-muted .control-icon {
+    opacity: 0.7;
+}
+
+.volume-wrap .control-btn.is-muted::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 1.25rem;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+    transform: translate(-50%, -50%) rotate(-36deg);
+    opacity: 0.95;
+    pointer-events: none;
+}
+
 .volume-wrap .control-btn .control-icon {
     opacity: 0.84;
 }

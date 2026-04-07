@@ -66,6 +66,9 @@ export const setupVolumeControlBindings = (context: VolumeControlBindingsContext
     const setVolume = (value: number): void => {
         const normalizedValue = clampUnitVolume(value);
         volume.value = String(normalizedValue);
+        const muted = normalizedValue <= 0;
+        volumeBtn.classList.toggle('is-muted', muted);
+        volumeBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
         if (normalizedValue > 0) {
             lastNonZeroVolume = normalizedValue;
         }
@@ -80,9 +83,18 @@ export const setupVolumeControlBindings = (context: VolumeControlBindingsContext
         })();
     };
 
+    const syncVolumeButtonState = (): void => {
+        const normalizedValue = clampUnitVolume(Number(volume.value));
+        const muted = normalizedValue <= 0;
+        volumeBtn.classList.toggle('is-muted', muted);
+        volumeBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
+    };
+
     volume.addEventListener('input', () => {
         setVolume(Number(volume.value));
     });
+
+    syncVolumeButtonState();
 
     volumeBtn.addEventListener('click', () => {
         const currentVolume = clampUnitVolume(Number(volume.value));
