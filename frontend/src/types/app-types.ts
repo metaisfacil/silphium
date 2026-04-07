@@ -335,6 +335,7 @@ export type AppSettings = {
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
     lissajousEnabled: boolean;
+    uiDitheringEnabled: boolean;
     minimizeToTrayOnClose: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };

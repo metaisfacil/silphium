@@ -279,6 +279,27 @@ func TestNormalizeAppSettingsPreservesDisabledLissajous(t *testing.T) {
 	}
 }
 
+func TestNormalizeAppSettingsDefaultsUIDitheringEnabledToTrue(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{})
+	if settings.UIDitheringEnabled == nil {
+		t.Fatal("UIDitheringEnabled should be populated")
+	}
+	if !*settings.UIDitheringEnabled {
+		t.Fatal("UIDitheringEnabled should default to true")
+	}
+}
+
+func TestNormalizeAppSettingsPreservesDisabledUIDithering(t *testing.T) {
+	disabled := false
+	settings := normalizeAppSettings(AppSettings{UIDitheringEnabled: &disabled})
+	if settings.UIDitheringEnabled == nil {
+		t.Fatal("UIDitheringEnabled should be populated")
+	}
+	if *settings.UIDitheringEnabled {
+		t.Fatal("UIDitheringEnabled should remain false when explicitly disabled")
+	}
+}
+
 func TestNormalizeAppSettingsRateMs(t *testing.T) {
 	t.Run("public server rate is enforced at minimum 1000ms", func(t *testing.T) {
 		settings := normalizeAppSettings(AppSettings{

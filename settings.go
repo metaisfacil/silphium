@@ -72,6 +72,7 @@ type AppSettings struct {
 	MusicBrainzTagRequestStaggeringEnabled bool                     `json:"musicBrainzTagRequestStaggeringEnabled,omitempty"`
 	MusicBrainzTagWorkerCores              int                      `json:"musicBrainzTagWorkerCores,omitempty"`
 	LissajousEnabled                       *bool                    `json:"lissajousEnabled,omitempty"`
+	UIDitheringEnabled                     *bool                    `json:"uiDitheringEnabled,omitempty"`
 	MinimizeToTrayOnClose                  bool                     `json:"minimizeToTrayOnClose,omitempty"`
 	KeyboardShortcuts                      FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
@@ -619,6 +620,10 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	if settings.LissajousEnabled != nil {
 		lissajousEnabled = *settings.LissajousEnabled
 	}
+	uiDitheringEnabled := true
+	if settings.UIDitheringEnabled != nil {
+		uiDitheringEnabled = *settings.UIDitheringEnabled
+	}
 
 	return AppSettings{
 		LibraryFolders:                         libraryFolders,
@@ -645,6 +650,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		MusicBrainzTagRequestStaggeringEnabled: settings.MusicBrainzTagRequestStaggeringEnabled,
 		MusicBrainzTagWorkerCores:              normalizeMusicBrainzTagWorkerCores(settings.MusicBrainzTagWorkerCores),
 		LissajousEnabled:                       boolPointer(lissajousEnabled),
+		UIDitheringEnabled:                     boolPointer(uiDitheringEnabled),
 		MinimizeToTrayOnClose:                  settings.MinimizeToTrayOnClose,
 		KeyboardShortcuts:                      keyboardShortcuts,
 	}

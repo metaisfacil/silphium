@@ -288,6 +288,7 @@ let currentSettings: AppSettings = {
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 1,
     lissajousEnabled: true,
+    uiDitheringEnabled: true,
     minimizeToTrayOnClose: false,
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
@@ -419,9 +420,14 @@ const normalizeAppSettings = (settings: Partial<AppSettings>): AppSettings => {
             ? Math.max(1, Math.min(128, Math.floor(settings.musicBrainzTagWorkerCores || 1)))
             : 1,
         lissajousEnabled: settings.lissajousEnabled !== false,
+        uiDitheringEnabled: settings.uiDitheringEnabled !== false,
         minimizeToTrayOnClose: !!settings.minimizeToTrayOnClose,
         keyboardShortcuts: normalizeFocusedKeyboardShortcuts(settings.keyboardShortcuts),
     };
+};
+
+const applyUiDitheringSetting = (): void => {
+    app.classList.toggle('ui-dithering-disabled', currentSettings.uiDitheringEnabled === false);
 };
 
 const validateConfiguredFFmpegPath = async (ffmpegPath: string): Promise<FFmpegPathStatus> => await ValidateFFmpegPath(ffmpegPath) as FFmpegPathStatus;
@@ -3329,6 +3335,7 @@ const initializeSettings = async (): Promise<void> => {
         const settings = await GetSettings() as AppSettings;
         currentSettings = normalizeAppSettings(settings);
         lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
+        applyUiDitheringSetting();
         listenBrainzSocialController.handleSettingsChanged();
         currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(
             await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
@@ -3815,12 +3822,14 @@ const savePlaybackOrderSetting = async (): Promise<void> => {
             musicBrainzTagRequestStaggeringEnabled: currentSettings.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
             lissajousEnabled: currentSettings.lissajousEnabled,
+            uiDitheringEnabled: currentSettings.uiDitheringEnabled,
             minimizeToTrayOnClose: currentSettings.minimizeToTrayOnClose,
             keyboardShortcuts: currentSettings.keyboardShortcuts,
         })) as AppSettings;
 
         currentSettings = normalizeAppSettings(savedSettings);
         lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
+        applyUiDitheringSetting();
         setPlaybackOrderMode(currentSettings.playbackOrder);
     } catch (error) {
         console.error(error);
@@ -4137,6 +4146,7 @@ settingsController = createSettingsController({
         musicBrainzTagRequestStaggeringEnabled: currentSettings.musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores: currentSettings.musicBrainzTagWorkerCores,
         lissajousEnabled: currentSettings.lissajousEnabled,
+        uiDitheringEnabled: currentSettings.uiDitheringEnabled,
         minimizeToTrayOnClose: currentSettings.minimizeToTrayOnClose,
         musicBrainzTagWorkerProgress: currentMusicBrainzTagWorkerProgress,
         keyboardShortcuts: currentSettings.keyboardShortcuts,
@@ -4168,6 +4178,7 @@ settingsController = createSettingsController({
         musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores,
         lissajousEnabled,
+        uiDitheringEnabled,
         minimizeToTrayOnClose,
         keyboardShortcuts,
     }): Promise<void> => {
@@ -4208,12 +4219,14 @@ settingsController = createSettingsController({
             musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores,
             lissajousEnabled,
+            uiDitheringEnabled,
             minimizeToTrayOnClose,
             keyboardShortcuts,
         })) as AppSettings;
 
         currentSettings = normalizeAppSettings(savedSettings);
         lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
+        applyUiDitheringSetting();
         listenBrainzSocialController.handleSettingsChanged();
         setPlaybackOrderMode(currentSettings.playbackOrder);
         if (currentTrackIndex >= 0 && currentTrackIndex < tracks.length) {
@@ -4290,6 +4303,7 @@ settingsController = createSettingsController({
         musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores,
         lissajousEnabled,
+        uiDitheringEnabled,
         minimizeToTrayOnClose,
         keyboardShortcuts,
     }): Promise<AudioOutputDevice[]> => {
@@ -4330,12 +4344,14 @@ settingsController = createSettingsController({
             musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores,
             lissajousEnabled,
+            uiDitheringEnabled,
             minimizeToTrayOnClose,
             keyboardShortcuts,
         })) as AppSettings;
 
         currentSettings = normalizeAppSettings(savedSettings);
         lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
+        applyUiDitheringSetting();
         listenBrainzSocialController.handleSettingsChanged();
         setPlaybackOrderMode(currentSettings.playbackOrder);
         const outputDevices = await refreshAvailableAudioOutputDevices();

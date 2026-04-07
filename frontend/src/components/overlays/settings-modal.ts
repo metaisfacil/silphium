@@ -81,6 +81,7 @@ export type SettingsModalElements = {
     settingsCoverArtPriorityAccordionPanel: HTMLDivElement;
     settingsCoverArtPriorityList: HTMLUListElement;
     settingsLissajousEnabled: HTMLInputElement;
+    settingsUiDitheringEnabled: HTMLInputElement;
     settingsMinimizeToTrayField: HTMLDivElement;
     settingsMinimizeToTrayOnClose: HTMLInputElement;
     settingsShortcutPlayPauseToggle: HTMLInputElement;
@@ -302,6 +303,13 @@ export const renderSettingsModal = (): string => `
                         </label>
                         <p class="settings-hint">Draws the animated background behind the player card while audio is loaded.<br>Disabling this will reduce Silphium's GPU burden.</p>
                     </div>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-ui-dithering-enabled">
+                            <input id="settings-ui-dithering-enabled" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Enable pseudo-dithering</span>
+                        </label>
+                        <p class="settings-hint">Applies subtle noise to blurred translucent layers to reduce banding on 8-bit displays.</p>
+                    </div>
                     <div class="settings-accordion">
                         <button id="settings-cover-art-priority-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-cover-art-priority-accordion-panel">Cover art source priority</button>
                         <div id="settings-cover-art-priority-accordion-panel" class="settings-accordion-panel" hidden>
@@ -491,6 +499,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsCoverArtPriorityAccordionPanel: root.querySelector('#settings-cover-art-priority-accordion-panel') as HTMLDivElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,
     settingsLissajousEnabled: root.querySelector('#settings-lissajous-enabled') as HTMLInputElement,
+    settingsUiDitheringEnabled: root.querySelector('#settings-ui-dithering-enabled') as HTMLInputElement,
     settingsMinimizeToTrayField: root.querySelector('#settings-minimize-to-tray-field') as HTMLDivElement,
     settingsMinimizeToTrayOnClose: root.querySelector('#settings-minimize-to-tray-on-close') as HTMLInputElement,
     settingsShortcutPlayPauseToggle: root.querySelector('#settings-shortcut-play-pause') as HTMLInputElement,

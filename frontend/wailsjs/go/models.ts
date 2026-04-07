@@ -98,6 +98,7 @@ export namespace main {
 	    musicBrainzTagRequestStaggeringEnabled?: boolean;
 	    musicBrainzTagWorkerCores?: number;
 	    lissajousEnabled?: boolean;
+	    uiDitheringEnabled?: boolean;
 	    minimizeToTrayOnClose?: boolean;
 	    keyboardShortcuts: FocusedKeyboardShortcuts;
 	
@@ -132,6 +133,7 @@ export namespace main {
 	        this.musicBrainzTagRequestStaggeringEnabled = source["musicBrainzTagRequestStaggeringEnabled"];
 	        this.musicBrainzTagWorkerCores = source["musicBrainzTagWorkerCores"];
 	        this.lissajousEnabled = source["lissajousEnabled"];
+	        this.uiDitheringEnabled = source["uiDitheringEnabled"];
 	        this.minimizeToTrayOnClose = source["minimizeToTrayOnClose"];
 	        this.keyboardShortcuts = this.convertValues(source["keyboardShortcuts"], FocusedKeyboardShortcuts);
 	    }

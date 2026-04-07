@@ -40,6 +40,7 @@ export type SettingsFormValues = {
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
     lissajousEnabled: boolean;
+    uiDitheringEnabled: boolean;
     minimizeToTrayOnClose: boolean;
     keyboardShortcuts: FocusedKeyboardShortcuts;
 };
@@ -202,6 +203,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsCoverArtPriorityAccordionPanel,
         settingsCoverArtPriorityList,
         settingsLissajousEnabled,
+        settingsUiDitheringEnabled,
         settingsMinimizeToTrayField,
         settingsMinimizeToTrayOnClose,
         settingsShortcutPlayPauseToggle,
@@ -632,6 +634,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         musicBrainzTagRequestStaggeringEnabled: settingsMusicBrainzTagRequestStaggeringEnabled.checked,
         musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
         lissajousEnabled: settingsLissajousEnabled.checked,
+        uiDitheringEnabled: settingsUiDitheringEnabled.checked,
         minimizeToTrayOnClose: settingsMinimizeToTrayOnClose.checked,
         keyboardShortcuts: getShortcutValues(),
     });
@@ -1530,6 +1533,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagRequestStaggeringEnabled.checked = !!values.musicBrainzTagRequestStaggeringEnabled;
         settingsMusicBrainzTagWorkerCores.value = values.musicBrainzTagWorkerCores > 0 ? String(values.musicBrainzTagWorkerCores) : '';
         settingsLissajousEnabled.checked = values.lissajousEnabled !== false;
+        settingsUiDitheringEnabled.checked = values.uiDitheringEnabled !== false;
         settingsMinimizeToTrayOnClose.checked = !!values.minimizeToTrayOnClose;
         refreshMusicBrainzTagWorkerControls();
         renderMusicBrainzTagWorkerProgress(values.musicBrainzTagWorkerProgress);
