@@ -384,11 +384,11 @@ Object.assign(runtimeScope, {
         artistInfoSummary: shell.artistInfoSummary,
         artistInfoLinks: shell.artistInfoLinks,
     },
-    saveSettingsBackend: async (settings: unknown): Promise<AppSettings> => await SaveSettings(settings as Parameters<typeof SaveSettings>[0]) as AppSettings,
+    saveSettingsBackend: async (settings: unknown): Promise<AppSettings> => await SaveSettings(settings as Parameters<typeof SaveSettings>[0]) as unknown as AppSettings,
     scanConfiguredLibraryFoldersBackend: async (): Promise<LibraryScanResult> => await ScanConfiguredLibraryFolders() as LibraryScanResult,
     audioStop: async (): Promise<AudioPlaybackState> => await AudioStop() as AudioPlaybackState,
     listAudioOutputDevices: async (): Promise<AudioOutputDevice[]> => await AudioListOutputDevices() as AudioOutputDevice[],
-    getSettings: async (): Promise<AppSettings> => await GetSettings() as AppSettings,
+    getSettings: async (): Promise<AppSettings> => await GetSettings() as unknown as AppSettings,
     getMusicBrainzTagWorkerProgress: async (): Promise<MusicBrainzTagWorkerProgress> => await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
     getAppVersion: async (): Promise<string> => await GetAppVersion(),
     loadIndexedFilePage: async (kind: string, offset: number, limit: number): Promise<LibraryIndexedFilePage> => await GetLibraryIndexedFilePage(kind, offset, limit) as LibraryIndexedFilePage,
@@ -588,7 +588,7 @@ const initializeSettings = async (): Promise<void> => {
     try {
         await refreshAvailableAudioOutputDevices();
 
-        const settings = await GetSettings() as AppSettings;
+        const settings = await GetSettings() as unknown as AppSettings;
         currentSettings = normalizeAppSettings(settings);
         visualizerController.setMode(currentSettings.visualizerMode);
         visualizerController.setEqualizerPosition(currentSettings.equalizerPosition);

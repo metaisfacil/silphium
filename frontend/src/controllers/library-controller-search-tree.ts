@@ -5,6 +5,7 @@ import { compareLibraryLabels } from './library-controller-dom-helpers';
 export const createSearchTreeNode = (name: string, path: string): SearchTreeNode => ({
     name,
     path,
+    musicBrainzTaggedAlbumDir: false,
     folders: [],
     trackEntries: [],
     textFileEntries: [],
@@ -50,7 +51,8 @@ export const buildSearchTree = (entries: LibraryBrowserEntry[], rootName: string
 
     for (const entry of entries) {
         if (entry.kind === 'folder') {
-            ensureNode(entry.path);
+            const folderNode = ensureNode(entry.path);
+            folderNode.musicBrainzTaggedAlbumDir = folderNode.musicBrainzTaggedAlbumDir || !!entry.musicBrainzTaggedAlbumDir;
             continue;
         }
 

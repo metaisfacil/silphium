@@ -24,6 +24,47 @@ func folderPathForLog(folderPath string) string {
 	return folderPath
 }
 
+func (a *App) annotateMusicBrainzTaggedAlbumFolders(entries []LibraryBrowserEntry) {
+	if len(entries) == 0 || !a.musicBrainzTagDatabaseEnabled() {
+		return
+	}
+
+	a.musicBrainzTagMu.Lock()
+	defer a.musicBrainzTagMu.Unlock()
+	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+
+	if len(a.musicBrainzTagReleaseFoldersByID) == 0 {
+		return
+	}
+
+	taggedAlbumFolders := make(map[string]struct{})
+	for _, folderPathsByID := range a.musicBrainzTagReleaseFoldersByID {
+		for folderPath := range folderPathsByID {
+			normalizedFolderPath := normalizeMusicBrainzTagFolderPath(folderPath)
+			if normalizedFolderPath == "" {
+				continue
+			}
+
+			taggedAlbumFolders[strings.ToLower(normalizedFolderPath)] = struct{}{}
+		}
+	}
+
+	for index := range entries {
+		entry := &entries[index]
+		if entry.Kind != "folder" {
+			continue
+		}
+
+		normalizedEntryPath := normalizeMusicBrainzTagFolderPath(entry.Path)
+		if normalizedEntryPath == "" {
+			continue
+		}
+
+		_, tagged := taggedAlbumFolders[strings.ToLower(normalizedEntryPath)]
+		entry.MusicBrainzTaggedAlbumDir = tagged
+	}
+}
+
 func (a *App) resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPath string) string {
 	normalizedFolderPath, ok := normalizeLibraryRelativePath(virtualFolderPath)
 	if !ok {
@@ -215,6 +256,7 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 	}
 
 	pagedEntries := copyPagedLibraryEntries(entries, offset, limit)
+	a.annotateMusicBrainzTaggedAlbumFolders(pagedEntries)
 	result := LibraryFolderPage{
 		FolderPath:   normalizedFolderPath,
 		Offset:       offset,
@@ -327,6 +369,7 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 	}
 
 	pagedEntries := copyPagedLibraryEntries(entries, offset, limit)
+	a.annotateMusicBrainzTaggedAlbumFolders(pagedEntries)
 
 	result := LibrarySearchPage{
 		Query:        query,

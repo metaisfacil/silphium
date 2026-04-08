@@ -17,6 +17,7 @@ export interface SettingsControllerStatusRuntimeContext {
     settingsListenBrainzServerUrl: HTMLInputElement;
     settingsListenBrainzRequestRateMs: HTMLInputElement;
     settingsMusicBrainzTagDatabaseEnabled: HTMLInputElement;
+    settingsHighlightMusicBrainzTaggedAlbumFolders: HTMLInputElement;
     settingsMusicBrainzTagStaleDays: HTMLInputElement;
     settingsMusicBrainzTagRequestStaggeringEnabled: HTMLInputElement;
     settingsMusicBrainzTagWorkerCores: HTMLInputElement;
@@ -154,6 +155,7 @@ export const createSettingsControllerStatusRuntime = (context: SettingsControlle
 
     const refreshMusicBrainzTagWorkerControls = (): void => {
         const disabled = !context.settingsMusicBrainzTagDatabaseEnabled.checked;
+        context.settingsHighlightMusicBrainzTaggedAlbumFolders.disabled = disabled;
         context.settingsMusicBrainzTagStaleDays.disabled = disabled;
         context.settingsMusicBrainzTagRequestStaggeringEnabled.disabled = disabled;
         context.settingsMusicBrainzTagWorkerCores.disabled = disabled;

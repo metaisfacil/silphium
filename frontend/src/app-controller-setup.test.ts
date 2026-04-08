@@ -267,6 +267,7 @@ describe('app-controller-setup', () => {
             replayGainEnabled: true,
             preferMusicBrainzMetadata: false,
             musicBrainzTagDatabaseEnabled: false,
+            highlightMusicBrainzTaggedAlbumFolders: false,
             musicBrainzTagStaleDays: 30,
             musicBrainzTagRequestStaggeringEnabled: false,
             musicBrainzTagWorkerCores: 2,

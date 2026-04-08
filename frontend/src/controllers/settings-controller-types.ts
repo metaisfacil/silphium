@@ -39,6 +39,7 @@ export type SettingsFormValues = {
     replayGainEnabled: boolean;
     preferMusicBrainzMetadata: boolean;
     musicBrainzTagDatabaseEnabled: boolean;
+    highlightMusicBrainzTaggedAlbumFolders: boolean;
     musicBrainzTagStaleDays: number;
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;

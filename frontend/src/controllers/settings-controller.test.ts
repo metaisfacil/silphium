@@ -55,6 +55,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     replayGainEnabled: false,
     preferMusicBrainzMetadata: true,
     musicBrainzTagDatabaseEnabled: true,
+    highlightMusicBrainzTaggedAlbumFolders: false,
     musicBrainzTagStaleDays: 30,
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 4,

@@ -54,6 +54,7 @@ const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     },
     preferMusicBrainzMetadata: true,
     musicBrainzTagDatabaseEnabled: true,
+    highlightMusicBrainzTaggedAlbumFolders: false,
     musicBrainzTagStaleDays: 30,
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 4,

@@ -18,7 +18,7 @@ import type {
 } from './library-controller-types';
 
 export interface LibraryControllerSearchContext {
-    options: Pick<LibraryControllerOptions, 'getCurrentTrackIndex' | 'resolveTrackIndex' | 'searchLibrary'>;
+    options: Pick<LibraryControllerOptions, 'getCurrentTrackIndex' | 'resolveTrackIndex' | 'searchLibrary' | 'getHighlightMusicBrainzTaggedAlbumFolders'>;
     expandedSearchFolders: Set<string>;
     getActiveSearchResult: () => SearchResultState | null;
     setActiveSearchResult: (value: SearchResultState | null) => void;
@@ -58,7 +58,13 @@ export const createLibraryControllerSearchRuntime = (context: LibraryControllerS
                 button.classList.add('is-hovered');
             }
 
-            setSearchFolderButtonExpanded(button, folder.name, hasChildren, isExpanded);
+            setSearchFolderButtonExpanded(
+                button,
+                folder.name,
+                hasChildren,
+                isExpanded,
+                folder.musicBrainzTaggedAlbumDir && context.options.getHighlightMusicBrainzTaggedAlbumFolders(),
+            );
             folderItem.append(button);
 
             if (hasChildren && isExpanded) {

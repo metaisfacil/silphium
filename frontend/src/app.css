@@ -934,6 +934,10 @@
     display: block;
 }
 
+.library-entry-icon.folder.musicbrainz-tagged-album {
+    color: #eec48e;
+}
+
 .library-entry-label {
     min-width: 0;
     overflow: hidden;

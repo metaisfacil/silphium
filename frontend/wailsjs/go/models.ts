@@ -110,6 +110,7 @@ export namespace main {
 	    audio?: AudioSettings;
 	    preferMusicBrainzMetadata: boolean;
 	    musicBrainzTagDatabaseEnabled?: boolean;
+	    highlightMusicBrainzTaggedAlbumFolders?: boolean;
 	    musicBrainzTagStaleDays?: number;
 	    musicBrainzTagRequestStaggeringEnabled?: boolean;
 	    musicBrainzTagWorkerCores?: number;
@@ -148,6 +149,7 @@ export namespace main {
 	        this.audio = this.convertValues(source["audio"], AudioSettings);
 	        this.preferMusicBrainzMetadata = source["preferMusicBrainzMetadata"];
 	        this.musicBrainzTagDatabaseEnabled = source["musicBrainzTagDatabaseEnabled"];
+	        this.highlightMusicBrainzTaggedAlbumFolders = source["highlightMusicBrainzTaggedAlbumFolders"];
 	        this.musicBrainzTagStaleDays = source["musicBrainzTagStaleDays"];
 	        this.musicBrainzTagRequestStaggeringEnabled = source["musicBrainzTagRequestStaggeringEnabled"];
 	        this.musicBrainzTagWorkerCores = source["musicBrainzTagWorkerCores"];
@@ -313,6 +315,7 @@ export namespace main {
 	    path: string;
 	    folderPath: string;
 	    relativePath: string;
+	    musicBrainzTaggedAlbumDir?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new LibraryBrowserEntry(source);
@@ -325,6 +328,7 @@ export namespace main {
 	        this.path = source["path"];
 	        this.folderPath = source["folderPath"];
 	        this.relativePath = source["relativePath"];
+	        this.musicBrainzTaggedAlbumDir = source["musicBrainzTaggedAlbumDir"];
 	    }
 	}
 	export class LibraryFolderPage {

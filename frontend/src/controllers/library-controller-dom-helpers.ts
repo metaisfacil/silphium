@@ -63,9 +63,15 @@ export const compareLibraryLabels = (left: string, right: string): number => {
     });
 };
 
-export const createLibraryIconElement = (kind: 'folder' | 'track' | 'text-file' | 'image-file'): HTMLSpanElement => {
+export const createLibraryIconElement = (
+    kind: 'folder' | 'track' | 'text-file' | 'image-file',
+    highlightMusicBrainzTaggedAlbumFolder = false,
+): HTMLSpanElement => {
     const icon = document.createElement('span');
     icon.className = `library-entry-icon ${kind}`;
+    if (kind === 'folder' && highlightMusicBrainzTaggedAlbumFolder) {
+        icon.classList.add('musicbrainz-tagged-album');
+    }
 
     if (kind === 'folder') {
         icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M3 6.5C3 5.12 4.12 4 5.5 4H9.09C9.75 4 10.37 4.26 10.83 4.72L12.11 6H18.5C19.88 6 21 7.12 21 8.5V17.5C21 18.88 19.88 20 18.5 20H5.5C4.12 20 3 18.88 3 17.5V6.5Z"/></svg>';
@@ -91,6 +97,9 @@ export const setLibraryEntryButtonContent = (
     kind: 'folder' | 'track' | 'text-file' | 'image-file',
     label: string,
     prefix?: string,
+    options?: {
+        highlightMusicBrainzTaggedAlbumFolder?: boolean;
+    },
 ): void => {
     button.textContent = '';
 
@@ -101,7 +110,7 @@ export const setLibraryEntryButtonContent = (
         button.append(prefixSpan);
     }
 
-    button.append(createLibraryIconElement(kind));
+    button.append(createLibraryIconElement(kind, !!options?.highlightMusicBrainzTaggedAlbumFolder));
 
     const labelSpan = document.createElement('span');
     labelSpan.className = 'library-entry-label';
@@ -161,12 +170,14 @@ export const setSearchFolderButtonExpanded = (
     folderName: string,
     expandable: boolean,
     expanded: boolean,
+    highlightMusicBrainzTaggedAlbumFolder = false,
 ): void => {
     setLibraryEntryButtonContent(
         button,
         'folder',
         folderName,
         expandable ? (expanded ? '▾' : '▸') : '•',
+        { highlightMusicBrainzTaggedAlbumFolder },
     );
 
     button.classList.toggle('is-leaf', !expandable);
@@ -214,7 +225,8 @@ export const areEntriesEquivalent = (left: LibraryBrowserEntry, right: LibraryBr
         && left.path === right.path
         && left.name === right.name
         && left.folderPath === right.folderPath
-        && left.relativePath === right.relativePath;
+        && left.relativePath === right.relativePath
+        && !!left.musicBrainzTaggedAlbumDir === !!right.musicBrainzTaggedAlbumDir;
 };
 
 export const areEntryPagesEquivalent = (left: LibraryBrowserEntry[], right: LibraryBrowserEntry[]): boolean => {

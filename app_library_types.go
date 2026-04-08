@@ -39,11 +39,12 @@ type LibraryScanProgress struct {
 
 // LibraryBrowserEntry is a single server-side sidebar/search result row.
 type LibraryBrowserEntry struct {
-	Kind         string `json:"kind"`
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	FolderPath   string `json:"folderPath"`
-	RelativePath string `json:"relativePath"`
+	Kind                      string `json:"kind"`
+	Name                      string `json:"name"`
+	Path                      string `json:"path"`
+	FolderPath                string `json:"folderPath"`
+	RelativePath              string `json:"relativePath"`
+	MusicBrainzTaggedAlbumDir bool   `json:"musicBrainzTaggedAlbumDir,omitempty"`
 }
 
 // LibraryFolderPage contains one paginated folder view from the backend.

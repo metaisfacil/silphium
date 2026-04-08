@@ -85,6 +85,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         replayGainEnabled: boolean;
         preferMusicBrainzMetadata: boolean;
         musicBrainzTagDatabaseEnabled: boolean;
+        highlightMusicBrainzTaggedAlbumFolders: boolean;
         musicBrainzTagStaleDays: number;
         musicBrainzTagRequestStaggeringEnabled: boolean;
         musicBrainzTagWorkerCores: number;
@@ -129,6 +130,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             },
             preferMusicBrainzMetadata: values.preferMusicBrainzMetadata,
             musicBrainzTagDatabaseEnabled: values.musicBrainzTagDatabaseEnabled,
+            highlightMusicBrainzTaggedAlbumFolders: values.highlightMusicBrainzTaggedAlbumFolders,
             musicBrainzTagStaleDays: values.musicBrainzTagStaleDays,
             musicBrainzTagRequestStaggeringEnabled: values.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: values.musicBrainzTagWorkerCores,
@@ -202,6 +204,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             audioOutputDevices: context.availableAudioOutputDevices,
             preferMusicBrainzMetadata: context.currentSettings.preferMusicBrainzMetadata,
             musicBrainzTagDatabaseEnabled: context.currentSettings.musicBrainzTagDatabaseEnabled,
+            highlightMusicBrainzTaggedAlbumFolders: context.currentSettings.highlightMusicBrainzTaggedAlbumFolders,
             musicBrainzTagStaleDays: context.currentSettings.musicBrainzTagStaleDays,
             musicBrainzTagRequestStaggeringEnabled: context.currentSettings.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: context.currentSettings.musicBrainzTagWorkerCores,

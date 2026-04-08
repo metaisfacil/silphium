@@ -27,6 +27,7 @@ export type PaneState = {
 export type SearchTreeNode = {
     name: string;
     path: string;
+    musicBrainzTaggedAlbumDir: boolean;
     folders: SearchTreeNode[];
     trackEntries: LibraryBrowserEntry[];
     textFileEntries: LibraryBrowserEntry[];
@@ -70,6 +71,7 @@ export type LibraryControllerOptions = {
     resolveLibraryFolderForAbsolutePath: (path: string) => Promise<string>;
     isFolderImmediateDescendantsEnumerated: (folderPath: string) => Promise<boolean>;
     searchLibrary: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
+    getHighlightMusicBrainzTaggedAlbumFolders: () => boolean;
     resolveTrackIndex: (path: string) => number;
     resolveTextFileIndex: (path: string) => number;
     resolveImageFileIndex: (path: string) => number;

@@ -170,6 +170,7 @@ const mountLibraryController = (overrides?: {
         resolveLibraryFolderForAbsolutePath: vi.fn(async () => ''),
         isFolderImmediateDescendantsEnumerated: vi.fn(async () => true),
         searchLibrary,
+        getHighlightMusicBrainzTaggedAlbumFolders: () => false,
         resolveTrackIndex: (path: string) => tracks.findIndex((track) => track.path === path),
         resolveTextFileIndex: () => -1,
         resolveImageFileIndex: () => -1,
