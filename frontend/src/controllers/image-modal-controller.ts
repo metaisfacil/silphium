@@ -54,6 +54,74 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     let imageModalPanStartY = 0;
     let imageModalResizeCleanupTimer: number | undefined;
     let imageModalResizeTransitionEndHandler: ((event: TransitionEvent) => void) | undefined;
+    let imageModalSkipNextResizeAnimation = false;
+
+    const resetImageModalEnterAnimation = (): void => {
+        imageFileDialog.style.setProperty('--image-modal-enter-x', '0px');
+        imageFileDialog.style.setProperty('--image-modal-enter-y', '8px');
+        imageFileDialog.style.setProperty('--image-modal-enter-scale', '0.985');
+        imageFileDialog.style.setProperty('--image-modal-origin-x', '50%');
+        imageFileDialog.style.setProperty('--image-modal-origin-y', '50%');
+    };
+
+    const resolveVisualRect = (element: HTMLElement): DOMRect | undefined => {
+        const bounds = element.getBoundingClientRect();
+        if (bounds.width <= 0 || bounds.height <= 0) {
+            return undefined;
+        }
+
+        if (!(element instanceof HTMLImageElement)) {
+            return bounds;
+        }
+
+        const naturalWidth = element.naturalWidth;
+        const naturalHeight = element.naturalHeight;
+        if (naturalWidth <= 0 || naturalHeight <= 0) {
+            return bounds;
+        }
+
+        const widthScale = bounds.width / naturalWidth;
+        const heightScale = bounds.height / naturalHeight;
+        const fitScale = Math.min(widthScale, heightScale);
+        const renderedWidth = naturalWidth * fitScale;
+        const renderedHeight = naturalHeight * fitScale;
+        const x = bounds.left + (bounds.width - renderedWidth) / 2;
+        const y = bounds.top + (bounds.height - renderedHeight) / 2;
+
+        return new DOMRect(x, y, renderedWidth, renderedHeight);
+    };
+
+    const prepareImageModalEnterAnimation = (originElement?: HTMLElement): void => {
+        if (!originElement) {
+            resetImageModalEnterAnimation();
+            return;
+        }
+
+        const targetBounds = imageFileDialog.getBoundingClientRect();
+        const originBounds = resolveVisualRect(originElement);
+        if (!originBounds || targetBounds.width <= 0 || targetBounds.height <= 0) {
+            resetImageModalEnterAnimation();
+            return;
+        }
+
+        const originCenterX = originBounds.left + (originBounds.width / 2);
+        const originCenterY = originBounds.top + (originBounds.height / 2);
+        const deltaX = originCenterX - (targetBounds.left + (targetBounds.width / 2));
+        const deltaY = originCenterY - (targetBounds.top + (targetBounds.height / 2));
+        const scale = Math.min(originBounds.width / targetBounds.width, originBounds.height / targetBounds.height);
+        const clampedScale = Number.isFinite(scale) ? Math.min(1, Math.max(0.05, scale)) : 0.985;
+        const translationDamping = 0.42;
+        const dampedDeltaX = deltaX * translationDamping;
+        const dampedDeltaY = deltaY * translationDamping;
+        const originXPercent = Math.min(100, Math.max(0, ((originCenterX - targetBounds.left) / targetBounds.width) * 100));
+        const originYPercent = Math.min(100, Math.max(0, ((originCenterY - targetBounds.top) / targetBounds.height) * 100));
+
+        imageFileDialog.style.setProperty('--image-modal-enter-x', `${Math.round(dampedDeltaX)}px`);
+        imageFileDialog.style.setProperty('--image-modal-enter-y', `${Math.round(dampedDeltaY)}px`);
+        imageFileDialog.style.setProperty('--image-modal-enter-scale', clampedScale.toFixed(4));
+        imageFileDialog.style.setProperty('--image-modal-origin-x', `${originXPercent.toFixed(2)}%`);
+        imageFileDialog.style.setProperty('--image-modal-origin-y', `${originYPercent.toFixed(2)}%`);
+    };
 
     const clearImageModalDialogResize = (): void => {
         if (imageModalResizeCleanupTimer !== undefined) {
@@ -69,7 +137,40 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageFileDialog.classList.remove('is-resizing');
         imageFileDialog.style.width = '';
         imageFileDialog.style.height = '';
-        imageFileContent.style.width = '';
+    };
+
+    const syncImageModalContentViewportSize = (): void => {
+        const source = imageFilePreview.getAttribute('src');
+        if (!source) {
+            imageFileContent.style.width = '';
+            imageFileContent.style.height = '';
+            return;
+        }
+
+        const naturalWidth = imageFilePreview.naturalWidth || imageFilePreview.width;
+        const naturalHeight = imageFilePreview.naturalHeight || imageFilePreview.height;
+        if (naturalWidth <= 0 || naturalHeight <= 0) {
+            return;
+        }
+
+        const dialogInset = 8;
+        const toolsHeight = imageFileTools.getBoundingClientRect().height;
+        const thumbsHeight = imageFileThumbs.hidden ? 0 : imageFileThumbs.getBoundingClientRect().height;
+        const availableWidth = Math.max(1, window.innerWidth - dialogInset);
+        const availableHeight = Math.max(1, window.innerHeight - dialogInset - toolsHeight - thumbsHeight);
+
+        const radians = (imageModalRotation * Math.PI) / 180;
+        const cosTheta = Math.abs(Math.cos(radians));
+        const sinTheta = Math.abs(Math.sin(radians));
+        const rotatedBoundsWidth = (naturalWidth * cosTheta) + (naturalHeight * sinTheta);
+        const rotatedBoundsHeight = (naturalWidth * sinTheta) + (naturalHeight * cosTheta);
+        if (rotatedBoundsWidth <= 0 || rotatedBoundsHeight <= 0) {
+            return;
+        }
+
+        const fitScale = Math.min(availableWidth / rotatedBoundsWidth, availableHeight / rotatedBoundsHeight);
+        imageFileContent.style.width = `${Math.max(1, Math.round(rotatedBoundsWidth * fitScale))}px`;
+        imageFileContent.style.height = `${Math.max(1, Math.round(rotatedBoundsHeight * fitScale))}px`;
     };
 
     const animateImageModalDialogResize = (): void => {
@@ -86,7 +187,6 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
         imageFileDialog.style.width = '';
         imageFileDialog.style.height = '';
-        imageFileContent.style.width = '';
 
         const targetRect = imageFileDialog.getBoundingClientRect();
         const targetWidth = Math.ceil(targetRect.width);
@@ -103,10 +203,8 @@ export const createImageModalController = (options: ImageModalControllerOptions)
             return;
         }
 
-        const targetContentWidth = Math.ceil(imageFileContent.getBoundingClientRect().width);
         clearImageModalDialogResize();
         imageFileDialog.classList.add('is-resizing');
-        imageFileContent.style.width = `${targetContentWidth}px`;
         imageFileDialog.style.width = `${startWidth}px`;
         imageFileDialog.style.height = `${startHeight}px`;
         void imageFileDialog.offsetWidth;
@@ -190,8 +288,13 @@ export const createImageModalController = (options: ImageModalControllerOptions)
             }
 
             imageFilePreview.src = source;
+            syncImageModalContentViewportSize();
             applyImageModalTransform();
-            animateImageModalDialogResize();
+            if (imageModalSkipNextResizeAnimation) {
+                imageModalSkipNextResizeAnimation = false;
+            } else {
+                animateImageModalDialogResize();
+            }
         } catch (error) {
             if (loadToken === imageModalLoadToken) {
                 imageFilePreview.removeAttribute('src');
@@ -295,6 +398,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         if (imageModalZoom <= 1) {
             imageModalPanX = 0;
             imageModalPanY = 0;
+            syncImageModalContentViewportSize();
         }
         applyImageModalTransform();
     };
@@ -314,6 +418,9 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
     const setImageModalRotation = (degrees: number): void => {
         imageModalRotation = ((degrees % 360) + 360) % 360;
+        if (imageModalZoom <= 1) {
+            syncImageModalContentViewportSize();
+        }
         applyImageModalTransform();
     };
 
@@ -457,11 +564,12 @@ export const createImageModalController = (options: ImageModalControllerOptions)
             imageFileThumbsViewport.hidden = true;
             imageFileThumbsPrev.hidden = true;
             imageFileThumbsNext.hidden = true;
+            imageFileModal.classList.remove('is-single-preview');
             imageModalHideTimer = undefined;
         }, imageModalTransitionMs);
     };
 
-    const openGallery = async (gallery: ImageLibraryFile[], selectedIndex: number): Promise<void> => {
+    const openGallery = async (gallery: ImageLibraryFile[], selectedIndex: number, originElement?: HTMLElement): Promise<void> => {
         if (imageModalHideTimer !== undefined) {
             window.clearTimeout(imageModalHideTimer);
             imageModalHideTimer = undefined;
@@ -477,9 +585,12 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
         imageFileThumbs.hidden = false;
         imageFileThumbsViewport.hidden = false;
+        imageFileModal.classList.remove('is-single-preview');
         imageFilePreview.removeAttribute('src');
+        imageModalSkipNextResizeAnimation = true;
         imageFileModal.hidden = false;
         window.requestAnimationFrame(() => {
+            prepareImageModalEnterAnimation(originElement);
             imageFileModal.classList.add('is-visible');
         });
 
@@ -505,7 +616,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         }
     };
 
-    const openPreview = async (source: string, title?: string): Promise<void> => {
+    const openPreview = async (source: string, title?: string, originElement?: HTMLElement): Promise<void> => {
         if (imageModalHideTimer !== undefined) {
             window.clearTimeout(imageModalHideTimer);
             imageModalHideTimer = undefined;
@@ -523,14 +634,17 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageFileThumbsViewport.hidden = true;
         imageFileThumbsPrev.hidden = true;
         imageFileThumbsNext.hidden = true;
+        imageFileModal.classList.add('is-single-preview');
         const loadToken = ++imageModalLoadToken;
         setImageModalLoadingState(true);
         imageFilePreview.removeAttribute('src');
         imageFilePreview.title = title || '';
         imageFilePreview.setAttribute('aria-label', title || 'Image preview');
 
+        imageModalSkipNextResizeAnimation = true;
         imageFileModal.hidden = false;
         window.requestAnimationFrame(() => {
+            prepareImageModalEnterAnimation(originElement);
             imageFileModal.classList.add('is-visible');
         });
 
@@ -657,6 +771,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
             return;
         }
 
+        syncImageModalContentViewportSize();
         applyImageModalTransform();
     });
 

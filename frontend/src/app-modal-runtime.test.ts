@@ -137,7 +137,7 @@ describe('createAppModalRuntime', () => {
 
         expect(context.imageModalController.openGallery).toHaveBeenCalledWith([
             { path: '/music/Artist/Album/front.jpg' },
-        ], 0);
+        ], 0, context.coverArt);
         expect(context.imageModalController.openPreview).not.toHaveBeenCalled();
     });
 
@@ -152,6 +152,7 @@ describe('createAppModalRuntime', () => {
         expect(context.imageModalController.openPreview).toHaveBeenCalledWith(
             context.coverArt.src,
             '/music/Artist/Album/track.flac',
+            context.coverArt,
         );
         expect(context.imageModalController.openGallery).not.toHaveBeenCalled();
     });

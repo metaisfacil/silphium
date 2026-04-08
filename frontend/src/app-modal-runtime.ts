@@ -79,7 +79,7 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
 
         const activeTrack = context.tracks[context.currentTrackIndex];
         if (!activeTrack) {
-            context.imageModalController.openPreview(context.coverArt.src, context.coverArt.src);
+            context.imageModalController.openPreview(context.coverArt.src, context.coverArt.src, context.coverArt);
             return;
         }
 
@@ -88,24 +88,25 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
             context.imageModalController.openPreview(
                 context.coverArt.src,
                 context.coverArtService.getMusicBrainzCoverUrlForTrack(activeTrack) || context.coverArt.src,
+                context.coverArt,
             );
             return;
         }
 
         if (source === 'embedded') {
-            context.imageModalController.openPreview(context.coverArt.src, activeTrack.path || context.coverArt.src);
+            context.imageModalController.openPreview(context.coverArt.src, activeTrack.path || context.coverArt.src, context.coverArt);
             return;
         }
 
         const gallery = context.collectReleaseImageFiles(activeTrack);
         if (gallery.length === 0) {
-            context.imageModalController.openPreview(context.coverArt.src, context.coverArt.src);
+            context.imageModalController.openPreview(context.coverArt.src, context.coverArt.src, context.coverArt);
             return;
         }
 
         const coverPath = context.coverArtService.getFolderCoverPath(activeTrack.folderPath || '');
         const selectedIndex = context.indexOfImageByPath(gallery, coverPath);
-        void context.imageModalController.openGallery(gallery, selectedIndex >= 0 ? selectedIndex : 0);
+        void context.imageModalController.openGallery(gallery, selectedIndex >= 0 ? selectedIndex : 0, context.coverArt);
     };
 
     const closeAboutModal = (): void => {
