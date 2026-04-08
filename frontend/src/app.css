@@ -1035,7 +1035,7 @@
 .player-visualizer-canvas:not([data-visualizer-mode="equalizer"]).is-visualizer-active,
 .player-visualizer-canvas[data-visualizer-mode="lissajous"].is-active,
 .player-visualizer-canvas[data-visualizer-mode="lissajous"].is-visualizer-active {
-    opacity: 0.39;
+    opacity: 0.79;
     transform: translate(-50%, -64.8%) rotate(45deg) scale(4.7);
 }
 
