@@ -46,6 +46,7 @@ const createDeps = () => {
             resolveLibraryFolderForAbsolutePath: vi.fn(async () => ''),
             isFolderImmediateDescendantsEnumerated: vi.fn(async () => true),
             searchLibrary: vi.fn(async () => ({ query: '', offset: 0, limit: 0, totalEntries: 0, entries: [] })),
+            getHighlightMusicBrainzTaggedAlbumFolders: () => false,
             resolveTrackIndex: vi.fn(() => -1),
             resolveTextFileIndex: vi.fn(() => -1),
             resolveImageFileIndex: vi.fn(() => -1),

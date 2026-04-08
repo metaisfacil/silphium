@@ -337,7 +337,11 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             button.classList.add('is-hovered');
         }
 
-        setLibraryEntryButtonContent(button, entry.kind, entryLabel(entry, source));
+        setLibraryEntryButtonContent(button, entry.kind, entryLabel(entry, source), undefined, {
+            highlightMusicBrainzTaggedAlbumFolder: entry.kind === 'folder'
+                && !!entry.musicBrainzTaggedAlbumDir
+                && options.getHighlightMusicBrainzTaggedAlbumFolders(),
+        });
         row.append(button);
         return row;
     };

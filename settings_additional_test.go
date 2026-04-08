@@ -175,6 +175,7 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 		KeyboardShortcuts:                      FocusedKeyboardShortcuts{NextTrack: "J"},
 		PreferMusicBrainzMetadata:              true,
 		MusicBrainzTagDatabaseEnabled:          true,
+		HighlightMusicBrainzTaggedAlbumFolders: true,
 	}
 
 	if err := writeAppSettings(settingsPath, rawSettings); err != nil {
@@ -227,6 +228,9 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 	}
 	if !settings.MusicBrainzTagDatabaseEnabled {
 		t.Fatal("expected MusicBrainzTagDatabaseEnabled to remain enabled")
+	}
+	if !settings.HighlightMusicBrainzTaggedAlbumFolders {
+		t.Fatal("expected HighlightMusicBrainzTaggedAlbumFolders to remain enabled")
 	}
 }
 

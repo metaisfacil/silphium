@@ -214,6 +214,10 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         searchLibrary: async (query: string, offset: number, limit: number) => {
             return await context.searchLibrary(query, offset, limit);
         },
+        getHighlightMusicBrainzTaggedAlbumFolders: () => (
+            context.currentSettings.musicBrainzTagDatabaseEnabled
+                && context.currentSettings.highlightMusicBrainzTaggedAlbumFolders
+        ),
         resolveTrackIndex: context.resolveTrackIndex,
         resolveTextFileIndex: context.resolveTextFileIndex,
         resolveImageFileIndex: context.resolveImageFileIndex,

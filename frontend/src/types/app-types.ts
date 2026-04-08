@@ -188,6 +188,7 @@ export type LibraryBrowserEntry = {
     path: string;
     folderPath: string;
     relativePath: string;
+    musicBrainzTaggedAlbumDir?: boolean;
 };
 
 export type LibraryFolderPage = {
@@ -343,6 +344,7 @@ export type AppSettings = {
     audio: AudioSettings;
     preferMusicBrainzMetadata: boolean;
     musicBrainzTagDatabaseEnabled: boolean;
+    highlightMusicBrainzTaggedAlbumFolders: boolean;
     musicBrainzTagStaleDays: number;
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;

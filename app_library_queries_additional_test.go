@@ -310,6 +310,27 @@ func TestLibraryQueryFallbackPagingAndMusicBrainzTagSearch(t *testing.T) {
 		t.Fatalf("SearchLibrary(mbtag) missing track %q: %#v", fixture.trackOne, tagSearch.Entries)
 	}
 
+	albumFolderTagged := false
+	artistFolderTagged := false
+	for _, entry := range tagSearch.Entries {
+		if entry.Kind != "folder" {
+			continue
+		}
+
+		if entry.Path == "Library One/Artist One/Album One" {
+			albumFolderTagged = entry.MusicBrainzTaggedAlbumDir
+		}
+		if entry.Path == "Library One/Artist One" {
+			artistFolderTagged = entry.MusicBrainzTaggedAlbumDir
+		}
+	}
+	if !albumFolderTagged {
+		t.Fatalf("SearchLibrary(mbtag) album folder tag highlight = false, want true: %#v", tagSearch.Entries)
+	}
+	if artistFolderTagged {
+		t.Fatalf("SearchLibrary(mbtag) artist folder tag highlight = true, want false: %#v", tagSearch.Entries)
+	}
+
 	emptyTagSearch := app.SearchLibrary("mbtag:", 0, 20)
 	if emptyTagSearch.TotalEntries != 0 || len(emptyTagSearch.Entries) != 0 {
 		t.Fatalf("SearchLibrary(empty mbtag) = %#v, want empty search results", emptyTagSearch)

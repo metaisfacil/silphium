@@ -135,6 +135,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsReplayGain,
         settingsPreferMusicBrainzMetadata,
         settingsMusicBrainzTagDatabaseEnabled,
+        settingsHighlightMusicBrainzTaggedAlbumFolders,
         settingsMusicBrainzTagStaleDays,
         settingsMusicBrainzTagRequestStaggeringEnabled,
         settingsMusicBrainzTagWorkerCores,
@@ -339,6 +340,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsListenBrainzServerUrl,
         settingsListenBrainzRequestRateMs,
         settingsMusicBrainzTagDatabaseEnabled,
+        settingsHighlightMusicBrainzTaggedAlbumFolders,
         settingsMusicBrainzTagStaleDays,
         settingsMusicBrainzTagRequestStaggeringEnabled,
         settingsMusicBrainzTagWorkerCores,
@@ -544,6 +546,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         replayGainEnabled: settingsReplayGain.checked,
         preferMusicBrainzMetadata: settingsPreferMusicBrainzMetadata.checked,
         musicBrainzTagDatabaseEnabled: settingsMusicBrainzTagDatabaseEnabled.checked,
+        highlightMusicBrainzTaggedAlbumFolders: settingsHighlightMusicBrainzTaggedAlbumFolders.checked,
         musicBrainzTagStaleDays: normalizeMusicBrainzTagStaleDays(settingsMusicBrainzTagStaleDays.value),
         musicBrainzTagRequestStaggeringEnabled: settingsMusicBrainzTagRequestStaggeringEnabled.checked,
         musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
@@ -704,6 +707,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsReplayGain.checked = !!values.replayGainEnabled;
         settingsPreferMusicBrainzMetadata.checked = !!values.preferMusicBrainzMetadata;
         settingsMusicBrainzTagDatabaseEnabled.checked = !!values.musicBrainzTagDatabaseEnabled;
+        settingsHighlightMusicBrainzTaggedAlbumFolders.checked = !!values.highlightMusicBrainzTaggedAlbumFolders;
         settingsMusicBrainzTagStaleDays.value = String(values.musicBrainzTagStaleDays);
         settingsMusicBrainzTagRequestStaggeringEnabled.checked = !!values.musicBrainzTagRequestStaggeringEnabled;
         settingsMusicBrainzTagWorkerCores.value = values.musicBrainzTagWorkerCores > 0 ? String(values.musicBrainzTagWorkerCores) : '';

@@ -86,6 +86,7 @@ export type SettingsModalElements = {
     settingsReplayGain: HTMLInputElement;
     settingsPreferMusicBrainzMetadata: HTMLInputElement;
     settingsMusicBrainzTagDatabaseEnabled: HTMLInputElement;
+    settingsHighlightMusicBrainzTaggedAlbumFolders: HTMLInputElement;
     settingsMusicBrainzTagStaleDays: HTMLInputElement;
     settingsMusicBrainzTagRequestStaggeringEnabled: HTMLInputElement;
     settingsMusicBrainzTagWorkerCores: HTMLInputElement;
@@ -223,6 +224,17 @@ export const renderSettingsModal = (): string => `
                         </label>
                         <p class="settings-hint">Builds a background MusicBrainz tag index for <code>mbtag:</code> library searches. Direct user lookups still take priority over the background worker.</p>
                     </div>
+                    <div class="settings-field settings-worker-progress-field">
+                        <div class="settings-worker-progress-header">
+                            <span class="settings-label">Metadata worker progress</span>
+                            <span id="settings-musicbrainz-tag-worker-progress-value" class="settings-worker-progress-value">0%</span>
+                        </div>
+                        <div id="settings-musicbrainz-tag-worker-progress-bar" class="settings-worker-progress-bar" role="progressbar" aria-label="Metadata worker progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete">
+                            <span id="settings-musicbrainz-tag-worker-progress-fill" class="settings-worker-progress-fill"></span>
+                        </div>
+                        <p id="settings-musicbrainz-tag-worker-progress-remaining" class="settings-hint">0 entities processed • 0 entities still to look up.</p>
+                        <p id="settings-musicbrainz-tag-worker-progress-status" class="settings-hint settings-worker-progress-status">MusicBrainz tag worker idle.</p>
+                    </div>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-musicbrainz-tag-stale-days">Metadata stale after</label>
                         <p class="settings-hint">Default is 30 days. Set 0 to never automatically refetch cached MusicBrainz metadata.</p>
@@ -238,21 +250,17 @@ export const renderSettingsModal = (): string => `
                         </label>
                         <p class="settings-hint">Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.</p>
                     </div>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-highlight-musicbrainz-tagged-album-folders">
+                            <input id="settings-highlight-musicbrainz-tagged-album-folders" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Highlight MusicBrainz-tagged album folders</span>
+                        </label>
+                        <p class="settings-hint">When enabled, album folders tagged with MusicBrainz IDs use a subtle orange folder icon in the library browser.</p>
+                    </div>
                     <div class="settings-field">
                         <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz tag worker cores</label>
                         <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.</p>
                         <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
-                    </div>
-                    <div class="settings-field settings-worker-progress-field">
-                        <div class="settings-worker-progress-header">
-                            <span class="settings-label">Metadata worker progress</span>
-                            <span id="settings-musicbrainz-tag-worker-progress-value" class="settings-worker-progress-value">0%</span>
-                        </div>
-                        <div id="settings-musicbrainz-tag-worker-progress-bar" class="settings-worker-progress-bar" role="progressbar" aria-label="Metadata worker progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete">
-                            <span id="settings-musicbrainz-tag-worker-progress-fill" class="settings-worker-progress-fill"></span>
-                        </div>
-                        <p id="settings-musicbrainz-tag-worker-progress-remaining" class="settings-hint">0 entities processed • 0 entities still to look up.</p>
-                        <p id="settings-musicbrainz-tag-worker-progress-status" class="settings-hint settings-worker-progress-status">MusicBrainz tag worker idle.</p>
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
@@ -590,6 +598,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsReplayGain: root.querySelector('#settings-replaygain') as HTMLInputElement,
     settingsPreferMusicBrainzMetadata: root.querySelector('#settings-prefer-musicbrainz-metadata') as HTMLInputElement,
     settingsMusicBrainzTagDatabaseEnabled: root.querySelector('#settings-musicbrainz-tag-database-enabled') as HTMLInputElement,
+    settingsHighlightMusicBrainzTaggedAlbumFolders: root.querySelector('#settings-highlight-musicbrainz-tagged-album-folders') as HTMLInputElement,
     settingsMusicBrainzTagStaleDays: root.querySelector('#settings-musicbrainz-tag-stale-days') as HTMLInputElement,
     settingsMusicBrainzTagRequestStaggeringEnabled: root.querySelector('#settings-musicbrainz-tag-request-staggering-enabled') as HTMLInputElement,
     settingsMusicBrainzTagWorkerCores: root.querySelector('#settings-musicbrainz-tag-worker-cores') as HTMLInputElement,

@@ -96,6 +96,7 @@ describe('settings normalization', () => {
             },
             preferMusicBrainzMetadata: true,
             musicBrainzTagDatabaseEnabled: true,
+            highlightMusicBrainzTaggedAlbumFolders: true,
             musicBrainzTagStaleDays: 999999,
             musicBrainzTagRequestStaggeringEnabled: true,
             musicBrainzTagWorkerCores: 999,
@@ -134,6 +135,7 @@ describe('settings normalization', () => {
         });
         expect(normalized.preferMusicBrainzMetadata).toBe(true);
         expect(normalized.musicBrainzTagDatabaseEnabled).toBe(true);
+        expect(normalized.highlightMusicBrainzTaggedAlbumFolders).toBe(true);
         expect(normalized.musicBrainzTagStaleDays).toBe(maxMusicBrainzTagStaleDays);
         expect(normalized.musicBrainzTagRequestStaggeringEnabled).toBe(true);
         expect(normalized.musicBrainzTagWorkerCores).toBe(128);

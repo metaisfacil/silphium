@@ -58,6 +58,7 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
                 audio: context.currentSettings.audio,
                 preferMusicBrainzMetadata: context.currentSettings.preferMusicBrainzMetadata,
                 musicBrainzTagDatabaseEnabled: context.currentSettings.musicBrainzTagDatabaseEnabled,
+                highlightMusicBrainzTaggedAlbumFolders: context.currentSettings.highlightMusicBrainzTaggedAlbumFolders,
                 musicBrainzTagStaleDays: context.currentSettings.musicBrainzTagStaleDays,
                 musicBrainzTagRequestStaggeringEnabled: context.currentSettings.musicBrainzTagRequestStaggeringEnabled,
                 musicBrainzTagWorkerCores: context.currentSettings.musicBrainzTagWorkerCores,
@@ -68,7 +69,7 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
                 minimizeToTrayOnClose: context.currentSettings.minimizeToTrayOnClose,
                 customSendToActions: context.currentSettings.customSendToActions,
                 keyboardShortcuts: context.currentSettings.keyboardShortcuts,
-            } as Parameters<typeof SaveSettings>[0]) as AppSettings;
+            } as unknown as Parameters<typeof SaveSettings>[0]) as unknown as Partial<AppSettings>;
 
             context.currentSettings = normalizeAppSettings(savedSettings);
             context.visualizerController?.setMode?.(context.currentSettings.visualizerMode);

@@ -78,6 +78,7 @@ type AppSettings struct {
 	Audio                                  AudioSettings            `json:"audio,omitempty"`
 	PreferMusicBrainzMetadata              bool                     `json:"preferMusicBrainzMetadata"`
 	MusicBrainzTagDatabaseEnabled          bool                     `json:"musicBrainzTagDatabaseEnabled,omitempty"`
+	HighlightMusicBrainzTaggedAlbumFolders bool                     `json:"highlightMusicBrainzTaggedAlbumFolders,omitempty"`
 	MusicBrainzTagStaleDays                *int                     `json:"musicBrainzTagStaleDays,omitempty"`
 	MusicBrainzTagRequestStaggeringEnabled bool                     `json:"musicBrainzTagRequestStaggeringEnabled,omitempty"`
 	MusicBrainzTagWorkerCores              int                      `json:"musicBrainzTagWorkerCores,omitempty"`
@@ -737,6 +738,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		Audio:                                  audio,
 		PreferMusicBrainzMetadata:              preferMusicBrainzMetadata,
 		MusicBrainzTagDatabaseEnabled:          settings.MusicBrainzTagDatabaseEnabled,
+		HighlightMusicBrainzTaggedAlbumFolders: settings.HighlightMusicBrainzTaggedAlbumFolders,
 		MusicBrainzTagStaleDays:                intPointer(musicBrainzTagStaleDays),
 		MusicBrainzTagRequestStaggeringEnabled: settings.MusicBrainzTagRequestStaggeringEnabled,
 		MusicBrainzTagWorkerCores:              normalizeMusicBrainzTagWorkerCores(settings.MusicBrainzTagWorkerCores),

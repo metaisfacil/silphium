@@ -59,6 +59,7 @@ export const defaultAppSettings: AppSettings = {
     },
     preferMusicBrainzMetadata: false,
     musicBrainzTagDatabaseEnabled: false,
+    highlightMusicBrainzTaggedAlbumFolders: false,
     musicBrainzTagStaleDays: defaultMusicBrainzTagStaleDays,
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 1,
@@ -221,6 +222,7 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
         },
         preferMusicBrainzMetadata: !!settings.preferMusicBrainzMetadata,
         musicBrainzTagDatabaseEnabled: !!settings.musicBrainzTagDatabaseEnabled,
+        highlightMusicBrainzTaggedAlbumFolders: !!settings.highlightMusicBrainzTaggedAlbumFolders,
         musicBrainzTagStaleDays: normalizedMusicBrainzTagStaleDays,
         musicBrainzTagRequestStaggeringEnabled: !!settings.musicBrainzTagRequestStaggeringEnabled,
         musicBrainzTagWorkerCores: Number.isFinite(settings.musicBrainzTagWorkerCores)
