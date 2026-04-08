@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"strings"
 	"time"
@@ -276,6 +277,23 @@ func (b *AudioBackend) Stop() (AudioPlaybackState, error) {
 
 	logAudioEvent("Stop state=%s", summary)
 	return state, nil
+}
+
+// stopWithoutInitialize unloads playback state even when backend initialization is unavailable.
+func (b *AudioBackend) stopWithoutInitialize() AudioPlaybackState {
+	b.mutex.Lock()
+	player := b.player
+	b.unloadTrackLocked()
+	state := b.snapshotLocked()
+	summary := b.stateSummaryLocked()
+	b.mutex.Unlock()
+
+	if err := b.flushPlayerBuffer(player); err != nil {
+		log.Printf("failed to resync audio buffer while forcing stop: %v", err)
+	}
+
+	logAudioEvent("Stop state=%s", summary)
+	return state
 }
 
 // Seek updates playback position in seconds.

@@ -179,6 +179,7 @@ func (a *App) DisposeFrontendSessionState() {
 	if state.Loaded || state.Playing {
 		if _, err := a.audioBackend().Stop(); err != nil {
 			log.Printf("failed to stop audio backend while disposing frontend session: %v", err)
+			a.audioBackend().stopWithoutInitialize()
 		}
 	}
 }
