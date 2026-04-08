@@ -20,18 +20,8 @@ describe('installHmrFullReset', () => {
     });
 
     it('disposes backend state and reloads once after the first hot update notification', async () => {
-        let beforeUpdateCallback: (() => void) | null = null;
-        let beforeUnloadCallback: (() => void) | null = null;
-        const on = vi.fn((event: 'vite:beforeUpdate', callback: () => void) => {
-            if (event === 'vite:beforeUpdate') {
-                beforeUpdateCallback = callback;
-            }
-        });
-        const addEventListener = vi.fn((event: 'beforeunload', callback: () => void) => {
-            if (event === 'beforeunload') {
-                beforeUnloadCallback = callback;
-            }
-        });
+        const on = vi.fn();
+        const addEventListener = vi.fn();
         const reload = vi.fn();
         const disposeFrontendSessionState = vi.fn(async () => undefined);
 
@@ -58,16 +48,18 @@ describe('installHmrFullReset', () => {
 
         expect(on).toHaveBeenCalledTimes(1);
         expect(on).toHaveBeenCalledWith('vite:beforeUpdate', expect.any(Function));
-        expect(beforeUpdateCallback).not.toBeNull();
-        expect(beforeUnloadCallback).not.toBeNull();
+        const beforeUpdateCallback = on.mock.calls[0]?.[1];
+        const beforeUnloadCallback = addEventListener.mock.calls[0]?.[1];
+        expect(beforeUpdateCallback).toEqual(expect.any(Function));
+        expect(beforeUnloadCallback).toEqual(expect.any(Function));
 
-        beforeUpdateCallback?.();
-        beforeUpdateCallback?.();
+        (beforeUpdateCallback as () => void)();
+        (beforeUpdateCallback as () => void)();
 
         await Promise.resolve();
         await Promise.resolve();
 
-        beforeUnloadCallback?.();
+        (beforeUnloadCallback as () => void)();
         await Promise.resolve();
 
         await vi.waitFor(() => {
