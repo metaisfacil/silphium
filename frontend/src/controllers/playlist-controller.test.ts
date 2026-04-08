@@ -117,7 +117,8 @@ describe('createPlaylistController', () => {
         expect(loaded).toBe(true);
         expect(elements.playlistModal.hidden).toBe(false);
         expect(elements.playlistSource.value).toBe('playlist');
-        expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 1], currentPosition: 0 });
+        expect(controller.getSequenceOverride()).toBeNull();
+        expect(onTrackChosen).not.toHaveBeenCalled();
 
         const playlistTrackButton = elements.playlistList.querySelector('[data-playlist-track-index="1"]') as HTMLButtonElement | null;
         expect(playlistTrackButton).not.toBeNull();
@@ -135,7 +136,7 @@ describe('createPlaylistController', () => {
     });
 
     it('switches to a favorite playlist from the source selector and resets back to the queue state', async () => {
-        const { controller, elements, loadPlaylistData } = mountPlaylistController();
+        const { controller, elements, loadPlaylistData, onTrackChosen } = mountPlaylistController();
 
         controller.openModal();
 
@@ -148,6 +149,7 @@ describe('createPlaylistController', () => {
 
         expect(loadPlaylistData).toHaveBeenCalledWith('/playlists/favorite.m3u8');
         expect(elements.playlistSource.value).toBe('favorite:0');
+        expect(onTrackChosen).not.toHaveBeenCalled();
 
         const firstFavoriteTrackButton = elements.playlistList.querySelector('[data-playlist-track-index]') as HTMLButtonElement | null;
         expect(firstFavoriteTrackButton?.dataset.playlistTrackIndex).toBe('1');
@@ -181,7 +183,7 @@ describe('createPlaylistController', () => {
             '/music/track-0.flac',
             '/music/track-2.flac',
         ]);
-        expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 1, 0, 2], currentPosition: 0 });
+        expect(controller.getSequenceOverride()).toBeNull();
     });
 
     it('loads empty playlists without forcing playback and keeps them available as targets', async () => {
@@ -219,12 +221,13 @@ describe('createPlaylistController', () => {
         await expect(controller.openPlaylistTarget()).resolves.toEqual({ path: '/playlists/empty.m3u8', label: 'empty.m3u8' });
     });
 
-    it('switches playback source back to queue for external track playback', async () => {
+    it('keeps playback queue sequencing while viewing an external playlist', async () => {
         const { controller } = mountPlaylistController();
 
         const loaded = await controller.loadPlaylistByPath('/playlists/demo.m3u8');
         expect(loaded).toBe(true);
-        expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 1], currentPosition: 0 });
+        expect(controller.getSequenceOverride()).toBeNull();
+        expect(controller.getNextTrackIndex(1)).toBe(1);
 
         controller.activatePlaybackQueueSource();
 

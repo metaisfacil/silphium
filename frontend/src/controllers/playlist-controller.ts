@@ -196,17 +196,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         loadedPlaylistPath = normalizedPath;
         editableQueueTrackIndexes = null;
         selectedSource = 'playlist';
-        playbackSource = loadedPlaylist.trackIndexes.length > 0 ? 'playlist' : 'queue';
+        playbackSource = 'queue';
         selectedFavoriteIndex = null;
         dragFromPosition = null;
         options.onExternalPlaylistLoaded();
         hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
-        if (loadedPlaylist.trackIndexes.length > 0) {
-            await options.onTrackChosen(loadedPlaylist.trackIndexes[0], {
-                source: 'playlist',
-                userInitiated: false,
-            });
-        }
 
         renderPlaylist();
         openModal();
@@ -778,7 +772,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         loadedPlaylistName = loadedPlaylist.name || '';
         loadedPlaylistPath = playlistPath;
         selectedSource = 'playlist';
-        playbackSource = loadedPlaylist.trackIndexes.length > 0 ? 'playlist' : 'queue';
+        playbackSource = 'queue';
         dragFromPosition = null;
         hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
         renderPlaylist();
