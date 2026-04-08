@@ -1030,7 +1030,7 @@
 .player-lissajous-canvas.is-active,
 .player-lissajous-canvas.is-visualizer-active {
     opacity: 0.20;
-    transform: translate(-50%, -50%) rotate(-45deg) scale(5);
+    transform: translate(-50%, -66.6%) rotate(45deg) scale(5);
 }
 
 .lyrics-panel {
