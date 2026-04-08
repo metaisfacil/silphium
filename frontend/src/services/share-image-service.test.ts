@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { deriveShareImageAccentPalette } from './share-image-service';
+import { deriveShareImageAccentPalette, renderShareImagePreview } from './share-image-service';
 
 describe('share image accents', () => {
     it('returns default accents when no cover image exists', () => {
@@ -56,5 +56,79 @@ describe('share image accents', () => {
         expect(palette.secondary).not.toBe('#ff9a73');
 
         createElementSpy.mockRestore();
+    });
+});
+
+describe('share image preview cover rendering', () => {
+    it('uses a blurred cover-fit background plus contained foreground for non-square covers', () => {
+        const drawImage = vi.fn();
+        const context = {
+            clearRect: vi.fn(),
+            createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+            createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+            beginPath: vi.fn(),
+            moveTo: vi.fn(),
+            arcTo: vi.fn(),
+            closePath: vi.fn(),
+            clip: vi.fn(),
+            fillRect: vi.fn(),
+            fill: vi.fn(),
+            stroke: vi.fn(),
+            fillText: vi.fn(),
+            save: vi.fn(),
+            restore: vi.fn(),
+            measureText: vi.fn((text: string) => ({ width: text.length * 8 })),
+            drawImage,
+            set fillStyle(_value: string | CanvasGradient | CanvasPattern) { void _value; },
+            set strokeStyle(_value: string | CanvasGradient | CanvasPattern) { void _value; },
+            set lineWidth(_value: number) { void _value; },
+            set filter(_value: string) { void _value; },
+            set font(_value: string) { void _value; },
+            set textAlign(_value: CanvasTextAlign) { void _value; },
+            set textBaseline(_value: CanvasTextBaseline) { void _value; },
+            set shadowColor(_value: string) { void _value; },
+            set shadowBlur(_value: number) { void _value; },
+            set shadowOffsetY(_value: number) { void _value; },
+        } as unknown as CanvasRenderingContext2D;
+
+        const canvas = {
+            width: 0,
+            height: 0,
+            getContext: vi.fn(() => context),
+        } as unknown as HTMLCanvasElement;
+
+        const coverImage = {
+            width: 320,
+            height: 180,
+        } as unknown as CanvasImageSource;
+
+        renderShareImagePreview(canvas, {
+            title: 'Track',
+            album: 'Album',
+            artist: 'Artist',
+            comment: '',
+            coverImage,
+        });
+
+        const blurredBackgroundCall = drawImage.mock.calls.find((call) => {
+            const [source, x, y, width, height] = call;
+            return source === coverImage
+            && Number(x) < 34
+                && Math.abs(Number(y) - 30) < 0.001
+            && Number(width) > 194
+                && Math.abs(Number(height) - 194) < 0.001;
+        });
+        expect(blurredBackgroundCall).toBeDefined();
+
+        const containCall = drawImage.mock.calls.find((call) => {
+            const [source, x, y, width, height] = call;
+            return source === coverImage
+                && Number(x) >= 33.99
+                && Number(y) >= 29.99
+                && Number(width) <= 194.01
+                && Number(height) > 0
+                && Number(height) < 194;
+        });
+        expect(containCall).toBeDefined();
     });
 });

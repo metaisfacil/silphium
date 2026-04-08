@@ -481,16 +481,6 @@ const drawCoverBlock = (ctx: CanvasRenderingContext2D, coverImage: CanvasImageSo
     const coverSize = 194;
     const coverRadius = 24;
 
-    if (coverImage) {
-        ctx.save();
-        ctx.globalAlpha = 0.18;
-        ctx.filter = 'blur(28px) saturate(1.08)';
-        drawRoundedRect(ctx, -8, 16, 244, 244, 36);
-        ctx.clip();
-        drawImageCover(ctx, coverImage, -8, 16, 244, 244);
-        ctx.restore();
-    }
-
     ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.38)';
     ctx.shadowBlur = 28;
@@ -504,6 +494,15 @@ const drawCoverBlock = (ctx: CanvasRenderingContext2D, coverImage: CanvasImageSo
         ctx.save();
         drawRoundedRect(ctx, coverX, coverY, coverSize, coverSize, coverRadius);
         ctx.clip();
+
+        // Match player-card behavior: a blurred cover-fit backdrop fills letterboxing/pillarboxing.
+        ctx.filter = 'blur(10px) brightness(0.9) saturate(0.9)';
+        drawImageCover(ctx, coverImage, coverX, coverY, coverSize, coverSize);
+        ctx.filter = 'none';
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        ctx.fillRect(coverX, coverY, coverSize, coverSize);
+
         drawImageContain(ctx, coverImage, coverX, coverY, coverSize, coverSize);
         ctx.restore();
         return;
