@@ -80,17 +80,26 @@ const fitTextWithEllipsis = (ctx: CanvasRenderingContext2D, text: string, maxWid
     return `${next}...`;
 };
 
-const wrapTextLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] => {
+type WrappedTextResult = {
+    lines: string[];
+    truncated: boolean;
+};
+
+const wrapTextLinesDetailed = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): WrappedTextResult => {
     const paragraphs = text
         .split(/\r?\n/)
         .map((paragraph) => normalizeWhitespace(paragraph))
         .filter((paragraph) => paragraph !== '');
 
     if (paragraphs.length === 0) {
-        return [];
+        return {
+            lines: [],
+            truncated: false,
+        };
     }
 
     const lines: string[] = [];
+    let truncated = false;
     for (const paragraph of paragraphs) {
         const words = paragraph.split(' ');
         let currentLine = '';
@@ -106,22 +115,40 @@ const wrapTextLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: nu
                 lines.push(currentLine);
                 if (lines.length === maxLines) {
                     lines[maxLines - 1] = fitTextWithEllipsis(ctx, `${lines[maxLines - 1]} ${word}`.trim(), maxWidth);
-                    return lines;
+                    truncated = true;
+                    return {
+                        lines,
+                        truncated,
+                    };
                 }
             }
 
             currentLine = fitTextWithEllipsis(ctx, word, maxWidth);
+            if (currentLine !== word) {
+                truncated = true;
+            }
         }
 
         if (currentLine) {
             lines.push(currentLine);
             if (lines.length === maxLines) {
-                return lines;
+                continue;
             }
         }
     }
 
-    return lines.slice(0, maxLines);
+    if (lines.length > maxLines) {
+        truncated = true;
+    }
+
+    return {
+        lines: lines.slice(0, maxLines),
+        truncated,
+    };
+};
+
+const wrapTextLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] => {
+    return wrapTextLinesDetailed(ctx, text, maxWidth, maxLines).lines;
 };
 
 const fillCanvasBackground = (ctx: CanvasRenderingContext2D, accents: ShareImageAccentPalette): void => {
@@ -308,34 +335,126 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
 
     drawLabel(ctx, 'Now playing', textX, 42);
 
+    const trackTitle = normalizeWhitespace(data.title) || 'Unknown Title';
+    const trackArtist = normalizeWhitespace(data.artist) || 'Unknown Artist';
+    const trackAlbum = normalizeWhitespace(data.album) || 'Unknown Album';
+
+    const textFieldConfigs = [
+        {
+            text: trackTitle,
+            baseSize: 31,
+            maxReduction: 5,
+            maxLines: 3,
+            font: (size: number) => `700 ${size}px "Nunito", "Segoe UI", sans-serif`,
+        },
+        {
+            text: trackArtist,
+            baseSize: 23,
+            maxReduction: 5,
+            maxLines: 1,
+            font: (size: number) => `600 ${size}px "Nunito", "Segoe UI", sans-serif`,
+        },
+        {
+            text: trackAlbum,
+            baseSize: 18,
+            maxReduction: 5,
+            maxLines: 2,
+            font: (size: number) => `500 ${size}px "Nunito", "Segoe UI", sans-serif`,
+        },
+    ];
+
+    const metadataStartY = 68;
+    const commentTopY = 228;
+    const metadataBottomPadding = 8;
+    const metadataHeightBudget = commentTopY - metadataStartY - metadataBottomPadding;
+    const maxSharedReduction = Math.min(...textFieldConfigs.map((field) => field.maxReduction));
+
+    let sharedReduction = maxSharedReduction;
+    let bestWithNoTruncation: number | undefined;
+    let bestThatFitsVertically: number | undefined;
+    for (let reduction = 0; reduction <= maxSharedReduction; reduction += 1) {
+        const titleFontSize = textFieldConfigs[0].baseSize - reduction;
+        const artistFontSize = textFieldConfigs[1].baseSize - reduction;
+        const albumFontSize = textFieldConfigs[2].baseSize - reduction;
+
+        const titleLineHeight = 34 - reduction;
+        const artistLineHeight = 27 - reduction;
+        const albumLineHeight = 22 - reduction;
+
+        const titleGap = Math.max(4, 10 - reduction);
+        const artistGap = Math.max(3, 8 - reduction);
+
+        ctx.font = textFieldConfigs[0].font(titleFontSize);
+        const titleLayout = wrapTextLinesDetailed(ctx, trackTitle, textWidth, textFieldConfigs[0].maxLines);
+        ctx.font = textFieldConfigs[1].font(artistFontSize);
+        const artistLayout = wrapTextLinesDetailed(ctx, trackArtist, textWidth, textFieldConfigs[1].maxLines);
+        ctx.font = textFieldConfigs[2].font(albumFontSize);
+        const albumLayout = wrapTextLinesDetailed(ctx, trackAlbum, textWidth, textFieldConfigs[2].maxLines);
+
+        const metadataHeight = (titleLayout.lines.length * titleLineHeight)
+            + titleGap
+            + (artistLayout.lines.length * artistLineHeight)
+            + artistGap
+            + (albumLayout.lines.length * albumLineHeight);
+        const hasTruncation = titleLayout.truncated || artistLayout.truncated || albumLayout.truncated;
+        const fitsVertically = metadataHeight <= metadataHeightBudget;
+
+        if (fitsVertically && bestThatFitsVertically === undefined) {
+            bestThatFitsVertically = reduction;
+        }
+
+        if (fitsVertically && !hasTruncation) {
+            bestWithNoTruncation = reduction;
+            break;
+        }
+
+        sharedReduction = reduction;
+    }
+
+    if (bestWithNoTruncation !== undefined) {
+        sharedReduction = bestWithNoTruncation;
+    } else if (bestThatFitsVertically !== undefined) {
+        sharedReduction = bestThatFitsVertically;
+    }
+
+    const titleFontSize = textFieldConfigs[0].baseSize - sharedReduction;
+    const artistFontSize = textFieldConfigs[1].baseSize - sharedReduction;
+    const albumFontSize = textFieldConfigs[2].baseSize - sharedReduction;
+
+    const titleLineHeight = 34 - sharedReduction;
+    const artistLineHeight = 27 - sharedReduction;
+    const albumLineHeight = 22 - sharedReduction;
+    const titleGap = Math.max(4, 10 - sharedReduction);
+    const artistGap = Math.max(3, 8 - sharedReduction);
+
     ctx.save();
     ctx.fillStyle = '#f7f4ef';
     ctx.textBaseline = 'top';
 
-    ctx.font = '700 31px "Nunito", "Segoe UI", sans-serif';
-    const titleLines = wrapTextLines(ctx, normalizeWhitespace(data.title) || 'Unknown Title', textWidth, 3);
-    let cursorY = 68;
+    ctx.font = textFieldConfigs[0].font(titleFontSize);
+    const titleLines = wrapTextLines(ctx, trackTitle, textWidth, 3);
+    let cursorY = metadataStartY;
     for (const line of titleLines) {
         ctx.fillText(line, textX, cursorY);
-        cursorY += 34;
+        cursorY += titleLineHeight;
     }
 
-    cursorY += 10;
+    cursorY += titleGap;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-    ctx.font = '600 23px "Nunito", "Segoe UI", sans-serif';
-    const artistLines = wrapTextLines(ctx, normalizeWhitespace(data.artist) || 'Unknown Artist', textWidth, 2);
+    ctx.font = textFieldConfigs[1].font(artistFontSize);
+    const artistLines = wrapTextLines(ctx, trackArtist, textWidth, 1);
     for (const line of artistLines) {
         ctx.fillText(line, textX, cursorY);
-        cursorY += 27;
+        cursorY += artistLineHeight;
     }
 
-    cursorY += 8;
+    cursorY += artistGap;
     ctx.fillStyle = 'rgba(214, 223, 236, 0.78)';
-    ctx.font = '500 18px "Nunito", "Segoe UI", sans-serif';
-    const albumLines = wrapTextLines(ctx, normalizeWhitespace(data.album) || 'Unknown Album', textWidth, 2);
+    ctx.font = textFieldConfigs[2].font(albumFontSize);
+    const albumLines = wrapTextLines(ctx, trackAlbum, textWidth, 2);
     for (const line of albumLines) {
         ctx.fillText(line, textX, cursorY);
-        cursorY += 22;
+        cursorY += albumLineHeight;
     }
     ctx.restore();
 
