@@ -261,4 +261,20 @@ describe('share image preview text fitting', () => {
         const lowestMetadataY = Math.max(...metadataDraws.map((call) => call.y));
         expect(lowestMetadataY).toBeLessThan(220);
     });
+
+    it('wraps long Japanese titles without spaces before using ellipsis', () => {
+        const { canvas, drawCalls } = createTextContext();
+
+        renderShareImagePreview(canvas, {
+            title: 'バブリー革命~ばんばんバブル~バブリー革命~ばんばんバブル~',
+            album: 'Album',
+            artist: 'Artist',
+            comment: '',
+        });
+
+        const titleLines = drawCalls.filter((call) => call.font.startsWith('700 '));
+        expect(titleLines.length).toBeGreaterThan(1);
+        expect(titleLines.some((line) => line.text.includes('...'))).toBe(false);
+        expect(titleLines.slice(0, -1).some((line) => line.text.endsWith('~'))).toBe(true);
+    });
 });

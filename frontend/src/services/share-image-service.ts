@@ -80,6 +80,59 @@ const fitTextWithEllipsis = (ctx: CanvasRenderingContext2D, text: string, maxWid
     return `${next}...`;
 };
 
+const splitTokenByWidth = (ctx: CanvasRenderingContext2D, token: string, maxWidth: number): string[] => {
+    const graphemes = Array.from(token);
+    if (graphemes.length === 0) {
+        return [];
+    }
+
+    const preferredBreakCharacters = new Set(['~', '〜', '・', '/', '／', '-', '—', '–', ':', '：']);
+    const chunks: string[] = [];
+    let remaining = graphemes;
+
+    while (remaining.length > 0) {
+        let current = '';
+        let overflowIndex = -1;
+        let lastPreferredBreak = -1;
+
+        for (let index = 0; index < remaining.length; index += 1) {
+            const grapheme = remaining[index];
+            const candidate = `${current}${grapheme}`;
+            if (current !== '' && ctx.measureText(candidate).width > maxWidth) {
+                overflowIndex = index;
+                break;
+            }
+
+            current = candidate;
+            if (preferredBreakCharacters.has(grapheme)) {
+                lastPreferredBreak = index + 1;
+            }
+        }
+
+        if (overflowIndex === -1) {
+            chunks.push(current);
+            break;
+        }
+
+        if (lastPreferredBreak > 0) {
+            chunks.push(remaining.slice(0, lastPreferredBreak).join(''));
+            remaining = remaining.slice(lastPreferredBreak);
+            continue;
+        }
+
+        if (current !== '') {
+            chunks.push(current);
+            remaining = remaining.slice(overflowIndex);
+            continue;
+        }
+
+        chunks.push(remaining[0]);
+        remaining = remaining.slice(1);
+    }
+
+    return chunks;
+};
+
 type WrappedTextResult = {
     lines: string[];
     truncated: boolean;
@@ -105,27 +158,58 @@ const wrapTextLinesDetailed = (ctx: CanvasRenderingContext2D, text: string, maxW
         let currentLine = '';
 
         for (const word of words) {
-            const candidate = currentLine ? `${currentLine} ${word}` : word;
-            if (ctx.measureText(candidate).width <= maxWidth) {
-                currentLine = candidate;
-                continue;
-            }
-
-            if (currentLine) {
-                lines.push(currentLine);
-                if (lines.length === maxLines) {
-                    lines[maxLines - 1] = fitTextWithEllipsis(ctx, `${lines[maxLines - 1]} ${word}`.trim(), maxWidth);
-                    truncated = true;
-                    return {
-                        lines,
-                        truncated,
-                    };
+            let remaining = word;
+            let tokenNeedsSpace = currentLine !== '';
+            while (remaining !== '') {
+                const candidate = tokenNeedsSpace ? `${currentLine} ${remaining}` : `${currentLine}${remaining}`;
+                if (ctx.measureText(candidate).width <= maxWidth) {
+                    currentLine = candidate;
+                    remaining = '';
+                    break;
                 }
-            }
 
-            currentLine = fitTextWithEllipsis(ctx, word, maxWidth);
-            if (currentLine !== word) {
-                truncated = true;
+                if (currentLine !== '') {
+                    lines.push(currentLine);
+                    if (lines.length === maxLines) {
+                        const overflowText = tokenNeedsSpace ? `${lines[maxLines - 1]} ${remaining}`.trim() : `${lines[maxLines - 1]}${remaining}`;
+                        lines[maxLines - 1] = fitTextWithEllipsis(ctx, overflowText, maxWidth);
+                        truncated = true;
+                        return {
+                            lines,
+                            truncated,
+                        };
+                    }
+
+                    currentLine = '';
+                    tokenNeedsSpace = false;
+                    continue;
+                }
+
+                const segments = splitTokenByWidth(ctx, remaining, maxWidth);
+                if (segments.length <= 1) {
+                    currentLine = fitTextWithEllipsis(ctx, remaining, maxWidth);
+                    if (currentLine !== remaining) {
+                        truncated = true;
+                    }
+                    remaining = '';
+                    break;
+                }
+
+                for (let index = 0; index < segments.length - 1; index += 1) {
+                    lines.push(segments[index]);
+                    if (lines.length === maxLines) {
+                        const tail = segments.slice(index + 1).join('');
+                        lines[maxLines - 1] = fitTextWithEllipsis(ctx, `${lines[maxLines - 1]}${tail}`, maxWidth);
+                        truncated = true;
+                        return {
+                            lines,
+                            truncated,
+                        };
+                    }
+                }
+
+                currentLine = segments[segments.length - 1];
+                remaining = '';
             }
         }
 
