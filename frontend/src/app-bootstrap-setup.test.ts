@@ -58,8 +58,9 @@ const createScope = () => {
             getPlaybackOrderMode: vi.fn(() => 'ordered-library'),
             getPlaybackOrderLabel: vi.fn(() => 'Ordered library'),
         },
-        lissajousVisualizerController: {
+        visualizerController: {
             setEnabled: vi.fn(),
+            setMode: vi.fn(),
         },
         applyUiDitheringSetting: vi.fn(),
         socialController: {
@@ -338,7 +339,8 @@ describe('app-bootstrap-setup wrappers', () => {
         expect(scope.tracks).toEqual([{ path: '/music/updated.flac' }]);
         expect(scope.ffmpegConfigurationRequired).toBe(true);
         expect(scope.saveSettingsBackend).toHaveBeenCalledWith({ libraryPath: '/music' });
-        expect(scope.lissajousVisualizerController.setEnabled).not.toHaveBeenCalled();
+        expect(scope.visualizerController.setEnabled).not.toHaveBeenCalled();
+        expect(scope.visualizerController.setMode).not.toHaveBeenCalled();
         expect(scope.playbackStateService.setBackendReady).toHaveBeenCalledWith(false);
         expect(scope.closePlayOrderMenu).toHaveBeenCalledTimes(1);
         expect(scope.closeTrackMetaMenu).toHaveBeenCalledTimes(1);

@@ -1,10 +1,9 @@
 import {
     canvasToPngBlob,
-    deriveShareImageAccentPalette,
     loadShareCanvasImage,
     renderShareImagePreview,
-    type ShareImageAccentPalette,
 } from '../services/share-image-service';
+import { deriveShareImageAccentPalette, type ShareImageAccentPalette } from '../utils/cover-accent-palette';
 import { buildShareImageDefaultFilename, blobToBase64 } from '../utils/display-helpers';
 import type { Track } from '../types/app-types';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';

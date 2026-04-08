@@ -58,7 +58,13 @@ const createControllerSetupContextFromScope = (scope: AppRuntimeScope) => ({
     selectPlaylistFile: scope.selectPlaylistFile,
     getPlaybackOrderMode: () => scope.playbackSequencingService.getPlaybackOrderMode(),
     setLissajousEnabled: (enabled: boolean) => {
-        scope.lissajousVisualizerController.setEnabled(enabled);
+        scope.visualizerController.setEnabled(enabled);
+    },
+    setVisualizerMode: (mode: AppSettings['visualizerMode']) => {
+        scope.visualizerController.setMode(mode);
+    },
+    setEqualizerPosition: (position: AppSettings['equalizerPosition']) => {
+        scope.visualizerController.setEqualizerPosition(position);
     },
     applyUiDitheringSetting: scope.applyUiDitheringSetting,
     handleSocialSettingsChanged: () => {

@@ -566,7 +566,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         context.updateMediaSessionMetadata();
         context.updateMediaSessionPlaybackState();
         context.updateMediaSessionPositionState();
-        context.lissajousVisualizerController.setPlaybackState(nextState);
+        context.visualizerController.setPlaybackState(nextState);
         void queueGaplessNextTrack(nextState);
         void refreshReplayGainReleaseDynamicRangeIndicator();
 
@@ -610,7 +610,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             applyPlaybackState(initialState);
             context.volume.value = String(initialState.volume);
             startPlaybackPolling();
-            context.lissajousVisualizerController.start();
+            context.visualizerController.start();
         } catch (error) {
             context.playbackStateService.setBackendReady(false);
             handleAudioError(error);

@@ -181,14 +181,14 @@ func TestAudioBackendDecodeAdditionalCoverageBranches(t *testing.T) {
 
 	emptyBackend := NewAudioBackend()
 	emptyFrame := emptyBackend.VisualizationFrame(minVisualizationFrameCount)
-	if emptyFrame.Loaded || emptyFrame.Playing || emptyFrame.FrameCount != 0 || len(emptyFrame.Samples) != 0 {
+	if emptyFrame.Loaded || emptyFrame.Playing || emptyFrame.FrameCount != 0 || len(emptyFrame.Samples) != 0 || emptyFrame.SampleStride != 1 {
 		t.Fatalf("VisualizationFrame(unloaded) = %#v, want unloaded empty frame", emptyFrame)
 	}
 
 	shortBackend := NewAudioBackend()
 	shortBackend.streamSegments = []audioTrackSegment{{SourcePath: "short.flac", PCMData: []byte{1, 2}}}
 	shortFrame := shortBackend.VisualizationFrame(minVisualizationFrameCount)
-	if !shortFrame.Loaded || shortFrame.SourcePath != "short.flac" || len(shortFrame.Samples) != 0 {
+	if !shortFrame.Loaded || shortFrame.SourcePath != "short.flac" || len(shortFrame.Samples) != 0 || shortFrame.SampleStride != 1 {
 		t.Fatalf("VisualizationFrame(short pcm) = %#v, want loaded empty frame", shortFrame)
 	}
 
@@ -198,10 +198,27 @@ func TestAudioBackendDecodeAdditionalCoverageBranches(t *testing.T) {
 		PCMData:    encodeStereoPCM([][2]int16{{100, -100}, {200, -200}, {300, -300}}),
 	}}
 	frame := startBackend.VisualizationFrame(2)
-	if !frame.Loaded || frame.FrameCount != 3 || len(frame.Samples) != 6 {
+	if !frame.Loaded || frame.FrameCount != 3 || len(frame.Samples) != 6 || frame.SampleStride != 1 {
 		t.Fatalf("VisualizationFrame(start of track) = %#v, want three emitted frames", frame)
 	}
 	if frame.Samples[0] != 100 || frame.Samples[1] != -100 || frame.Samples[4] != 300 || frame.Samples[5] != -300 {
 		t.Fatalf("VisualizationFrame(start of track) samples = %#v, want first and last frame preserved", frame.Samples)
+	}
+
+	decimatedBackend := NewAudioBackend()
+	frames := make([][2]int16, 512)
+	for index := range frames {
+		value := int16(index % 32768)
+		frames[index] = [2]int16{value, -value}
+	}
+	decimatedBackend.streamSegments = []audioTrackSegment{{
+		SourcePath: "decimated.flac",
+		PCMData:    encodeStereoPCM(frames),
+	}}
+	decimatedBackend.streamReadOffset = int64(len(decimatedBackend.streamSegments[0].PCMData))
+	decimatedBackend.playbackBaseBytes = decimatedBackend.streamReadOffset
+	decimatedFrame := decimatedBackend.VisualizationFrame(minVisualizationFrameCount)
+	if decimatedFrame.SampleStride <= 6 {
+		t.Fatalf("VisualizationFrame(decimated) sample stride = %.4f, want > 6", decimatedFrame.SampleStride)
 	}
 }

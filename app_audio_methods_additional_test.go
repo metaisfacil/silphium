@@ -121,7 +121,7 @@ func TestAppAudioMethodsAndWrappers(t *testing.T) {
 	if got := app.AudioGetState(); !got.Loaded {
 		t.Fatalf("AudioGetState() = %#v, want loaded state", got)
 	}
-	if frame := app.AudioGetVisualizationFrame(4); !frame.Loaded || frame.ChannelCount != audioChannelCount || frame.FrameCount < 4 {
+	if frame := app.AudioGetVisualizationFrame(4); !frame.Loaded || frame.ChannelCount != audioChannelCount || frame.FrameCount < 4 || frame.SampleStride <= 0 {
 		t.Fatalf("AudioGetVisualizationFrame() = %#v, want loaded stereo frame metadata", frame)
 	}
 

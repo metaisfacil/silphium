@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { deriveShareImageAccentPalette, renderShareImagePreview } from './share-image-service';
+import { deriveShareImageAccentPalette } from '../utils/cover-accent-palette';
+import { renderShareImagePreview } from './share-image-service';
 
 describe('share image accents', () => {
     it('returns default accents when no cover image exists', () => {

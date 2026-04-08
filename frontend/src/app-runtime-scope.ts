@@ -1,7 +1,7 @@
 import type { getAppShellElements } from './app-shell';
 import type { ArtistDetails } from './types/app-types';
 import type { ArtistInfoController, createArtistInfoController } from './controllers/artist-info-controller';
-import type { createLissajousVisualizerController } from './controllers/lissajous-visualizer-controller';
+import type { createVisualizerController } from './controllers/visualizer-controller';
 import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import type { createListenBrainzSocialController } from './controllers/listenbrainz-social-controller';
 import type { SidebarController } from './controllers/sidebar-controller';
@@ -48,7 +48,7 @@ type PlaybackSequencingService = ReturnType<typeof createPlaybackSequencingServi
 type PlaybackStateService = ReturnType<typeof createPlaybackStateService>;
 type ScrobbleService = ReturnType<typeof createScrobbleService>;
 type TrackMetadataService = ReturnType<typeof createTrackMetadataService>;
-type LissajousVisualizerController = ReturnType<typeof createLissajousVisualizerController>;
+type VisualizerController = ReturnType<typeof createVisualizerController>;
 type ListenBrainzSocialController = ReturnType<typeof createListenBrainzSocialController>;
 type MediaSessionController = ReturnType<typeof createMediaSessionController>;
 
@@ -294,7 +294,7 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     playbackSequencingService: PlaybackSequencingService;
     scrobbleService: ScrobbleService;
     trackMetadataService: TrackMetadataService;
-    lissajousVisualizerController: LissajousVisualizerController;
+    visualizerController: VisualizerController;
     sidebarController: SidebarController;
     socialController: ListenBrainzSocialController;
     mediaSessionController: MediaSessionController;

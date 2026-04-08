@@ -1,6 +1,5 @@
 import { createSettingsController, type SettingsController } from './controllers/settings-controller';
 import type { SettingsModalElements } from './components/overlays';
-import { main as WailsModels } from '../wailsjs/go/models';
 import type {
     AppLibraryFolder,
     AppSettings,
@@ -31,8 +30,10 @@ export interface AppSettingsControllerSetupContext {
     saveSettings: (settings: AppSettings) => Promise<AppSettings>;
     selectLibraryFolder: () => Promise<string>;
     selectPlaylistFile: () => Promise<string>;
-    getPlaybackOrderMode: () => string;
+    getPlaybackOrderMode: () => AppSettings['playbackOrder'];
     setLissajousEnabled: (enabled: boolean) => void;
+    setVisualizerMode: (mode: AppSettings['visualizerMode']) => void;
+    setEqualizerPosition: (position: AppSettings['equalizerPosition']) => void;
     applyUiDitheringSetting: () => void;
     handleSocialSettingsChanged: () => void;
     setPlaybackOrderMode: (mode: AppSettings['playbackOrder']) => void;
@@ -88,6 +89,8 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         musicBrainzTagRequestStaggeringEnabled: boolean;
         musicBrainzTagWorkerCores: number;
         lissajousEnabled: boolean;
+        visualizerMode: AppSettings['visualizerMode'];
+        equalizerPosition: AppSettings['equalizerPosition'];
         uiDitheringEnabled: boolean;
         minimizeToTrayOnClose: boolean;
         customSendToActions: AppSettings['customSendToActions'];
@@ -100,7 +103,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
 
         const normalizedLibraryFolders = normalizeLibraryFolders(values.libraryFolders);
         const primaryLibraryFolder = normalizedLibraryFolders[0];
-        const savedSettings = await context.saveSettings(WailsModels.AppSettings.createFrom({
+        const savedSettings = await context.saveSettings({
             libraryFolders: normalizedLibraryFolders,
             libraryPath: primaryLibraryFolder?.path || '',
             ffmpegPath: values.ffmpegPath,
@@ -130,13 +133,17 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             musicBrainzTagRequestStaggeringEnabled: values.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: values.musicBrainzTagWorkerCores,
             lissajousEnabled: values.lissajousEnabled,
+            visualizerMode: values.visualizerMode,
+            equalizerPosition: values.equalizerPosition,
             uiDitheringEnabled: values.uiDitheringEnabled,
             minimizeToTrayOnClose: values.minimizeToTrayOnClose,
             customSendToActions: values.customSendToActions,
             keyboardShortcuts: values.keyboardShortcuts,
-        }) as AppSettings);
+        });
 
         context.currentSettings = normalizeAppSettings(savedSettings);
+        context.setVisualizerMode(context.currentSettings.visualizerMode);
+        context.setEqualizerPosition(context.currentSettings.equalizerPosition);
         context.setLissajousEnabled(context.currentSettings.lissajousEnabled);
         context.applyUiDitheringSetting();
         context.handleSocialSettingsChanged();
@@ -199,6 +206,8 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             musicBrainzTagRequestStaggeringEnabled: context.currentSettings.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: context.currentSettings.musicBrainzTagWorkerCores,
             lissajousEnabled: context.currentSettings.lissajousEnabled,
+            visualizerMode: context.currentSettings.visualizerMode,
+            equalizerPosition: context.currentSettings.equalizerPosition,
             uiDitheringEnabled: context.currentSettings.uiDitheringEnabled,
             minimizeToTrayOnClose: context.currentSettings.minimizeToTrayOnClose,
             customSendToActions: context.currentSettings.customSendToActions,

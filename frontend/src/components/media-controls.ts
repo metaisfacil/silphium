@@ -2,7 +2,7 @@ export type MediaControlsElements = {
     playerShell: HTMLElement;
     playerLane: HTMLDivElement;
     playerCard: HTMLElement;
-  playerLissajousCanvas: HTMLCanvasElement;
+  playerVisualizerCanvas: HTMLCanvasElement;
     trackTitle: HTMLParagraphElement;
     trackAlbum: HTMLParagraphElement;
     trackPosition: HTMLSpanElement;
@@ -70,8 +70,8 @@ export const renderPlayPauseIcon = (state: 'play' | 'pause'): string =>
 export const renderMediaControls = (): string => `
     <main class="player-shell">
       <div id="player-lane" class="player-lane">
-      <canvas id="player-lissajous" class="player-lissajous-canvas" aria-hidden="true"></canvas>
       <section id="player-card" class="player-card">
+        <canvas id="player-visualizer" class="player-visualizer-canvas" aria-hidden="true"></canvas>
         <p id="track-artist-header" class="track-artist-header"></p>
         <div id="cover-frame" class="cover-frame" role="button" tabindex="0" aria-label="Flip cover art">
           <div id="cover-flipper" class="cover-flipper">
@@ -150,7 +150,7 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     playerShell: root.querySelector('.player-shell') as HTMLElement,
     playerLane: root.querySelector('#player-lane') as HTMLDivElement,
     playerCard: root.querySelector('#player-card') as HTMLElement,
-  playerLissajousCanvas: root.querySelector('#player-lissajous') as HTMLCanvasElement,
+  playerVisualizerCanvas: root.querySelector('#player-visualizer') as HTMLCanvasElement,
     trackTitle: root.querySelector('#track-title') as HTMLParagraphElement,
     trackAlbum: root.querySelector('#track-album') as HTMLParagraphElement,
     trackPosition: root.querySelector('#track-position') as HTMLSpanElement,

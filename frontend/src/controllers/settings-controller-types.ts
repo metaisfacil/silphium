@@ -1,5 +1,5 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
-import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, CustomSendToActionScope, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout, ScrobbleFilterMode, ScrobbleRule, ScrobbleRuleField, ScrobbleRuleOperator } from '../types/app-types';
+import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, CustomSendToActionScope, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout, PlayerEqualizerPosition, PlayerVisualizerMode, ScrobbleFilterMode, ScrobbleRule, ScrobbleRuleField, ScrobbleRuleOperator } from '../types/app-types';
 
 export type LibraryFolderDialogValues = {
     label: string;
@@ -43,6 +43,8 @@ export type SettingsFormValues = {
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
     lissajousEnabled: boolean;
+    visualizerMode: PlayerVisualizerMode;
+    equalizerPosition: PlayerEqualizerPosition;
     uiDitheringEnabled: boolean;
     minimizeToTrayOnClose: boolean;
     customSendToActions: CustomSendToAction[];

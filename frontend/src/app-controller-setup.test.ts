@@ -11,7 +11,6 @@ const {
     createPlaylistTargetModalControllerMock,
     createShareControllerMock,
     createSettingsControllerMock,
-    createFromAppSettingsMock,
 } = vi.hoisted(() => ({
     createArtistInfoControllerMock: vi.fn(),
     createImageModalControllerMock: vi.fn(),
@@ -20,7 +19,6 @@ const {
     createPlaylistTargetModalControllerMock: vi.fn(),
     createShareControllerMock: vi.fn(),
     createSettingsControllerMock: vi.fn(),
-    createFromAppSettingsMock: vi.fn((value) => value),
 }));
 
 vi.mock('./controllers/artist-info-controller', () => ({
@@ -49,14 +47,6 @@ vi.mock('./controllers/share-controller', () => ({
 
 vi.mock('./controllers/settings-controller', () => ({
     createSettingsController: createSettingsControllerMock,
-}));
-
-vi.mock('../wailsjs/go/models', () => ({
-    main: {
-        AppSettings: {
-            createFrom: createFromAppSettingsMock,
-        },
-    },
 }));
 
 import { setupAppControllers } from './app-controller-setup';
@@ -129,6 +119,8 @@ const createContext = () => {
         selectPlaylistFile: vi.fn(async () => '/playlists/favorites.m3u'),
         getPlaybackOrderMode: vi.fn(() => 'shuffle-library'),
         setLissajousEnabled: vi.fn(),
+        setVisualizerMode: vi.fn(),
+        setEqualizerPosition: vi.fn(),
         applyUiDitheringSetting: vi.fn(),
         handleSocialSettingsChanged: vi.fn(),
         setPlaybackOrderMode: vi.fn(),
@@ -279,6 +271,8 @@ describe('app-controller-setup', () => {
             musicBrainzTagRequestStaggeringEnabled: false,
             musicBrainzTagWorkerCores: 2,
             lissajousEnabled: true,
+            visualizerMode: 'equalizer',
+            equalizerPosition: 'top',
             uiDitheringEnabled: true,
             minimizeToTrayOnClose: false,
             customSendToActions: [],
@@ -361,9 +355,10 @@ describe('app-controller-setup', () => {
         libraryConfig.onSidebarClosed();
 
         expect(context.validateConfiguredFFmpegPath).toHaveBeenCalled();
-        expect(createFromAppSettingsMock).toHaveBeenCalled();
         expect(context.saveSettings).toHaveBeenCalled();
         expect(context.setLissajousEnabled).toHaveBeenCalledWith(true);
+        expect(context.setVisualizerMode).toHaveBeenCalledWith('equalizer');
+        expect(context.setEqualizerPosition).toHaveBeenCalledWith('top');
         expect(context.applyUiDitheringSetting).toHaveBeenCalled();
         expect(context.handleSocialSettingsChanged).toHaveBeenCalled();
         expect(context.setPlaybackOrderMode).toHaveBeenCalledWith('shuffle-library');

@@ -4,13 +4,11 @@ import type { AppSettings, PlaybackOrderMode, Track } from './types/app-types';
 import { createPlaybackOrderPlaylistRuntime } from './app-playback-order-playlist-runtime';
 
 const {
-    createFromMock,
     loadPlaylistFileMock,
     mergePlaylistFilesIntoTracksMock,
     normalizeAppSettingsMock,
     saveSettingsMock,
 } = vi.hoisted(() => ({
-    createFromMock: vi.fn((value) => value),
     loadPlaylistFileMock: vi.fn(),
     mergePlaylistFilesIntoTracksMock: vi.fn(),
     normalizeAppSettingsMock: vi.fn((value) => value),
@@ -20,14 +18,6 @@ const {
 vi.mock('../wailsjs/go/main/App', () => ({
     LoadPlaylistFile: loadPlaylistFileMock,
     SaveSettings: saveSettingsMock,
-}));
-
-vi.mock('../wailsjs/go/models', () => ({
-    main: {
-        AppSettings: {
-            createFrom: createFromMock,
-        },
-    },
 }));
 
 vi.mock('./services/library-data-service', () => ({
@@ -68,6 +58,8 @@ const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 4,
     lissajousEnabled: true,
+    visualizerMode: 'lissajous',
+    equalizerPosition: 'bottom',
     uiDitheringEnabled: true,
     minimizeToTrayOnClose: false,
     customSendToActions: [],
@@ -148,6 +140,8 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         const normalizedSettings = createSettings({
             playbackOrder: 'shuffle-library',
             lissajousEnabled: false,
+            visualizerMode: 'equalizer',
+            equalizerPosition: 'top',
             uiDitheringEnabled: false,
         });
         saveSettingsMock.mockResolvedValue(normalizedSettings);
@@ -163,8 +157,10 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
                 clearEditableQueue: vi.fn(),
             },
             updatePlayOrderMenuState: vi.fn(),
-            lissajousVisualizerController: {
+            visualizerController: {
                 setEnabled: vi.fn(),
+                setMode: vi.fn(),
+                setEqualizerPosition: vi.fn(),
             },
             applyUiDitheringSetting: vi.fn(),
         };
@@ -173,15 +169,18 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
 
         await runtime.savePlaybackOrderSetting();
 
-        expect(createFromMock).toHaveBeenCalledWith(expect.objectContaining({
+        expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({
             playbackOrder: 'shuffle-library',
             releaseDepth: 2,
             libraryFolders: context.currentSettings.libraryFolders,
+            visualizerMode: 'lissajous',
         }));
         expect(saveSettingsMock).toHaveBeenCalledTimes(1);
         expect(normalizeAppSettingsMock).toHaveBeenCalledWith(normalizedSettings);
         expect(context.currentSettings).toBe(normalizedSettings);
-        expect(context.lissajousVisualizerController.setEnabled).toHaveBeenCalledWith(false);
+        expect(context.visualizerController.setMode).toHaveBeenCalledWith('equalizer');
+        expect(context.visualizerController.setEqualizerPosition).toHaveBeenCalledWith('top');
+        expect(context.visualizerController.setEnabled).toHaveBeenCalledWith(false);
         expect(context.applyUiDitheringSetting).toHaveBeenCalledTimes(1);
         expect(context.playlistController.clearEditableQueue).toHaveBeenCalledTimes(1);
         expect(context.updatePlayOrderMenuState).toHaveBeenCalledTimes(1);
