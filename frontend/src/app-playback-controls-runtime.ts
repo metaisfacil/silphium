@@ -370,7 +370,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
                 context.libraryController().setSidebarOpen(true);
             }
 
-            context.listenBrainzSocialController.showLibrary();
+            context.sidebarController.showLibrary();
             window.requestAnimationFrame(() => {
                 context.librarySearch.focus();
             });

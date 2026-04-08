@@ -372,6 +372,8 @@ const createQueueMenuRuntimeContext = (scope: AppRuntimeScope) => ({
     get playlistTargetModalController() {
         return scope.playlistTargetModalControllerRef;
     },
+    sidebarController: scope.sidebarController,
+    socialController: scope.socialController,
     playbackSequencingService: scope.playbackSequencingService,
     sidebarQueueDescendantPromptThreshold: scope.sidebarQueueDescendantPromptThreshold,
     closeListenBrainzFeedbackMenu: () => {
@@ -693,8 +695,8 @@ export const setupLibraryLoadRuntime = (scope: AppRuntimeScope) => createAppLibr
         scope.lissajousVisualizerController.setEnabled(enabled);
     },
     applyUiDitheringSetting: scope.applyUiDitheringSetting,
-    handleListenBrainzSocialSettingsChanged: () => {
-        scope.listenBrainzSocialController.handleSettingsChanged();
+    handleSocialSettingsChanged: () => {
+        scope.socialController.handleSettingsChanged();
     },
     getMusicBrainzTagWorkerProgress: async () => await scope.getMusicBrainzTagWorkerProgress(),
     setMusicBrainzTagWorkerProgress: (value: MusicBrainzTagWorkerProgress) => {
@@ -817,7 +819,8 @@ const createPlaybackControlsRuntimeContext = (scope: AppRuntimeScope) => ({
     },
     coverArt: scope.coverArt,
     librarySearch: scope.librarySearch,
-    listenBrainzSocialController: scope.listenBrainzSocialController,
+    sidebarController: scope.sidebarController,
+    socialController: scope.socialController,
     settingsController: () => scope.settingsControllerRef,
 });
 

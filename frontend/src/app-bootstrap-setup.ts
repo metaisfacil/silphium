@@ -61,8 +61,8 @@ const createControllerSetupContextFromScope = (scope: AppRuntimeScope) => ({
         scope.lissajousVisualizerController.setEnabled(enabled);
     },
     applyUiDitheringSetting: scope.applyUiDitheringSetting,
-    handleListenBrainzSocialSettingsChanged: () => {
-        scope.listenBrainzSocialController.handleSettingsChanged();
+    handleSocialSettingsChanged: () => {
+        scope.socialController.handleSettingsChanged();
     },
     setPlaybackOrderMode: scope.setPlaybackOrderMode,
     applyCoverArtForTrack: async (index: number) => {

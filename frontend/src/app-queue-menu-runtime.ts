@@ -450,6 +450,7 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         }
 
         const targetFolderPath = context.tracks[context.currentTrackIndex].folderPath || '';
+        context.sidebarController.showLibrary();
         context.libraryController.setSidebarAutoFolderPath(targetFolderPath);
 
         if (!context.libraryController.isSidebarOpen()) {

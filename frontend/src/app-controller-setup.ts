@@ -63,7 +63,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         getPlaybackOrderMode: context.getPlaybackOrderMode,
         setLissajousEnabled: context.setLissajousEnabled,
         applyUiDitheringSetting: context.applyUiDitheringSetting,
-        handleListenBrainzSocialSettingsChanged: context.handleListenBrainzSocialSettingsChanged,
+        handleSocialSettingsChanged: context.handleSocialSettingsChanged,
         setPlaybackOrderMode: context.setPlaybackOrderMode,
         applyCoverArtForTrack: async (index: number) => {
             await context.applyCoverArtForTrack(index);

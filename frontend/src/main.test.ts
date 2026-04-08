@@ -173,7 +173,7 @@ vi.mock('./app-runtime-setup', () => ({
         defaultMusicBrainzServerUrl: 'https://musicbrainz.org',
         getStoredLayout: testState.getStoredLayout,
         lissajousVisualizerController: { setEnabled: testState.setLissajousEnabled },
-        listenBrainzSocialController: { handleSettingsChanged: testState.handleSettingsChanged },
+        socialController: { handleSettingsChanged: testState.handleSettingsChanged },
         playbackSequencingService: {
             getPlaybackOrderLabel: vi.fn(() => 'Ordered'),
             getPlaybackOrderMode: vi.fn(() => 'ordered-library'),
