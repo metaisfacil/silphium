@@ -1,4 +1,10 @@
-import { canvasToPngBlob, loadShareCanvasImage, renderShareImagePreview } from '../services/share-image-service';
+import {
+    canvasToPngBlob,
+    deriveShareImageAccentPalette,
+    loadShareCanvasImage,
+    renderShareImagePreview,
+    type ShareImageAccentPalette,
+} from '../services/share-image-service';
 import { buildShareImageDefaultFilename, blobToBase64 } from '../utils/display-helpers';
 import type { Track } from '../types/app-types';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
@@ -56,6 +62,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
         artist: string;
         trackPath: string;
         coverImage?: ImageBitmap;
+        accents: ShareImageAccentPalette;
     } | null = null;
 
     const clearSharePreviewSnapshot = (): void => {
@@ -104,6 +111,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
             artist: sharePreviewSnapshot.artist,
             comment: shareCommentInput.value,
             coverImage: sharePreviewSnapshot.coverImage,
+            accents: sharePreviewSnapshot.accents,
         });
     };
 
@@ -177,6 +185,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
                 coverImage?.close();
                 return;
             }
+            const accents = deriveShareImageAccentPalette(coverImage);
 
             sharePreviewSnapshot = {
                 title: track.displayTitle || track.title || track.name || 'Unknown Title',
@@ -184,6 +193,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
                 artist: track.displayArtist || 'Unknown Artist',
                 trackPath: track.path,
                 coverImage,
+                accents,
             };
             renderSharePreviewSnapshot();
             setShareStatus('');

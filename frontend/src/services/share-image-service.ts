@@ -4,10 +4,43 @@ export type ShareImagePreviewData = {
     artist: string;
     comment: string;
     coverImage?: CanvasImageSource;
+    accents?: ShareImageAccentPalette;
+};
+
+export type ShareImageAccentPalette = {
+    primary: string;
+    secondary: string;
 };
 
 const shareImageWidth = 600;
 const shareImageHeight = 350;
+const coverPaletteSampleSize = 48;
+const defaultShareImageAccents: ShareImageAccentPalette = {
+    primary: '#68b4ff',
+    secondary: '#ff9a73',
+};
+
+type RgbColor = {
+    r: number;
+    g: number;
+    b: number;
+};
+
+type HslColor = {
+    h: number;
+    s: number;
+    l: number;
+};
+
+type QuantizedColorBucket = {
+    count: number;
+    sumR: number;
+    sumG: number;
+    sumB: number;
+    sumS: number;
+    sumL: number;
+    sumH: number;
+};
 
 const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void => {
     const cappedRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
@@ -21,6 +54,129 @@ const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, wi
 };
 
 const normalizeWhitespace = (text: string): string => text.replace(/\s+/g, ' ').trim();
+
+const clampUnit = (value: number): number => Math.min(1, Math.max(0, value));
+
+const clampColorByte = (value: number): number => Math.min(255, Math.max(0, Math.round(value)));
+
+const rgbToHex = (color: RgbColor): string => {
+    const toHex = (channel: number): string => channel.toString(16).padStart(2, '0');
+    return `#${toHex(clampColorByte(color.r))}${toHex(clampColorByte(color.g))}${toHex(clampColorByte(color.b))}`;
+};
+
+const rgbToCss = (color: RgbColor, alpha: number): string => `rgba(${clampColorByte(color.r)}, ${clampColorByte(color.g)}, ${clampColorByte(color.b)}, ${clampUnit(alpha)})`;
+
+const mixRgb = (first: RgbColor, second: RgbColor, ratio: number): RgbColor => {
+    const t = clampUnit(ratio);
+    return {
+        r: first.r + (second.r - first.r) * t,
+        g: first.g + (second.g - first.g) * t,
+        b: first.b + (second.b - first.b) * t,
+    };
+};
+
+const rgbToHsl = (color: RgbColor): HslColor => {
+    const r = clampUnit(color.r / 255);
+    const g = clampUnit(color.g / 255);
+    const b = clampUnit(color.b / 255);
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    const lightness = (max + min) / 2;
+
+    if (delta === 0) {
+        return { h: 0, s: 0, l: lightness };
+    }
+
+    const saturation = delta / (1 - Math.abs((2 * lightness) - 1));
+    let hue = 0;
+    if (max === r) {
+        hue = ((g - b) / delta) % 6;
+    } else if (max === g) {
+        hue = ((b - r) / delta) + 2;
+    } else {
+        hue = ((r - g) / delta) + 4;
+    }
+
+    return {
+        h: ((hue * 60) + 360) % 360,
+        s: clampUnit(saturation),
+        l: clampUnit(lightness),
+    };
+};
+
+const hslToRgb = (color: HslColor): RgbColor => {
+    const hue = ((color.h % 360) + 360) % 360;
+    const saturation = clampUnit(color.s);
+    const lightness = clampUnit(color.l);
+
+    if (saturation === 0) {
+        const gray = clampColorByte(lightness * 255);
+        return { r: gray, g: gray, b: gray };
+    }
+
+    const chroma = (1 - Math.abs((2 * lightness) - 1)) * saturation;
+    const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const m = lightness - (chroma / 2);
+
+    let rPrime = 0;
+    let gPrime = 0;
+    let bPrime = 0;
+
+    if (hue < 60) {
+        rPrime = chroma;
+        gPrime = x;
+    } else if (hue < 120) {
+        rPrime = x;
+        gPrime = chroma;
+    } else if (hue < 180) {
+        gPrime = chroma;
+        bPrime = x;
+    } else if (hue < 240) {
+        gPrime = x;
+        bPrime = chroma;
+    } else if (hue < 300) {
+        rPrime = x;
+        bPrime = chroma;
+    } else {
+        rPrime = chroma;
+        bPrime = x;
+    }
+
+    return {
+        r: (rPrime + m) * 255,
+        g: (gPrime + m) * 255,
+        b: (bPrime + m) * 255,
+    };
+};
+
+const parseHexColor = (value: string): RgbColor => {
+    const match = /^#([0-9a-fA-F]{6})$/.exec(value.trim());
+    if (!match) {
+        return { r: 0, g: 0, b: 0 };
+    }
+
+    const intColor = Number.parseInt(match[1], 16);
+    return {
+        r: (intColor >> 16) & 255,
+        g: (intColor >> 8) & 255,
+        b: intColor & 255,
+    };
+};
+
+const enforceAccentRange = (color: RgbColor, targetLightness: number): RgbColor => {
+    const hsl = rgbToHsl(color);
+    return hslToRgb({
+        h: hsl.h,
+        s: Math.max(0.34, hsl.s),
+        l: clampUnit((hsl.l * 0.5) + (targetLightness * 0.5)),
+    });
+};
+
+const hueDistance = (a: number, b: number): number => {
+    const diff = Math.abs(a - b) % 360;
+    return Math.min(diff, 360 - diff) / 180;
+};
 
 const fitTextWithEllipsis = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string => {
     const trimmed = text.trim();
@@ -80,25 +236,167 @@ const wrapTextLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: nu
     return lines.slice(0, maxLines);
 };
 
-const fillCanvasBackground = (ctx: CanvasRenderingContext2D): void => {
+const fillCanvasBackground = (ctx: CanvasRenderingContext2D, accents: ShareImageAccentPalette): void => {
+    const primary = parseHexColor(accents.primary);
+    const secondary = parseHexColor(accents.secondary);
+    const deepBase = { r: 18, g: 21, b: 29 };
+
+    const gradientStart = mixRgb(deepBase, primary, 0.3);
+    const gradientMid = mixRgb(deepBase, mixRgb(primary, secondary, 0.36), 0.34);
+    const gradientEnd = mixRgb(deepBase, secondary, 0.28);
+
     const gradient = ctx.createLinearGradient(0, 0, shareImageWidth, shareImageHeight);
-    gradient.addColorStop(0, '#12151d');
-    gradient.addColorStop(0.55, '#1a1f2b');
-    gradient.addColorStop(1, '#21181f');
+    gradient.addColorStop(0, rgbToHex(gradientStart));
+    gradient.addColorStop(0.55, rgbToHex(gradientMid));
+    gradient.addColorStop(1, rgbToHex(gradientEnd));
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, shareImageWidth, shareImageHeight);
 
     const glowA = ctx.createRadialGradient(110, 64, 0, 110, 64, 210);
-    glowA.addColorStop(0, 'rgba(104, 180, 255, 0.28)');
-    glowA.addColorStop(1, 'rgba(104, 180, 255, 0)');
+    glowA.addColorStop(0, rgbToCss(primary, 0.28));
+    glowA.addColorStop(1, rgbToCss(primary, 0));
     ctx.fillStyle = glowA;
     ctx.fillRect(0, 0, shareImageWidth, shareImageHeight);
 
     const glowB = ctx.createRadialGradient(510, 280, 0, 510, 280, 240);
-    glowB.addColorStop(0, 'rgba(255, 154, 115, 0.2)');
-    glowB.addColorStop(1, 'rgba(255, 154, 115, 0)');
+    glowB.addColorStop(0, rgbToCss(secondary, 0.2));
+    glowB.addColorStop(1, rgbToCss(secondary, 0));
     ctx.fillStyle = glowB;
     ctx.fillRect(0, 0, shareImageWidth, shareImageHeight);
+};
+
+const quantizeColors = (source: Uint8ClampedArray): QuantizedColorBucket[] => {
+    const buckets = new Map<string, QuantizedColorBucket>();
+
+    for (let index = 0; index < source.length; index += 4) {
+        const alpha = source[index + 3] / 255;
+        if (alpha < 0.15) {
+            continue;
+        }
+
+        const r = source[index];
+        const g = source[index + 1];
+        const b = source[index + 2];
+        const hsl = rgbToHsl({ r, g, b });
+        const key = `${r >> 4}-${g >> 4}-${b >> 4}`;
+        const bucket = buckets.get(key) || {
+            count: 0,
+            sumR: 0,
+            sumG: 0,
+            sumB: 0,
+            sumS: 0,
+            sumL: 0,
+            sumH: 0,
+        };
+
+        bucket.count += alpha;
+        bucket.sumR += r * alpha;
+        bucket.sumG += g * alpha;
+        bucket.sumB += b * alpha;
+        bucket.sumS += hsl.s * alpha;
+        bucket.sumL += hsl.l * alpha;
+        bucket.sumH += hsl.h * alpha;
+        buckets.set(key, bucket);
+    }
+
+    return Array.from(buckets.values())
+        .filter((bucket) => bucket.count > 0)
+        .sort((a, b) => b.count - a.count);
+};
+
+const averageBucketColor = (bucket: QuantizedColorBucket): { rgb: RgbColor; hsl: HslColor; score: number } => {
+    const count = Math.max(1, bucket.count);
+    const avgColor = {
+        r: bucket.sumR / count,
+        g: bucket.sumG / count,
+        b: bucket.sumB / count,
+    };
+    const avgHsl = {
+        h: bucket.sumH / count,
+        s: bucket.sumS / count,
+        l: bucket.sumL / count,
+    };
+    const balancedLightness = 1 - Math.abs(avgHsl.l - 0.5);
+    const score = count * (0.55 + (avgHsl.s * 1.15)) * (0.7 + (balancedLightness * 0.5));
+    return {
+        rgb: avgColor,
+        hsl: avgHsl,
+        score,
+    };
+};
+
+const sampleCoverArtPixels = (coverImage: CanvasImageSource): Uint8ClampedArray | undefined => {
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = coverPaletteSampleSize;
+    sampleCanvas.height = coverPaletteSampleSize;
+
+    const context = sampleCanvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+        return undefined;
+    }
+
+    context.clearRect(0, 0, coverPaletteSampleSize, coverPaletteSampleSize);
+    drawImageCover(context, coverImage, 0, 0, coverPaletteSampleSize, coverPaletteSampleSize);
+    const imageData = context.getImageData(0, 0, coverPaletteSampleSize, coverPaletteSampleSize);
+    return imageData.data;
+};
+
+export const deriveShareImageAccentPalette = (coverImage: CanvasImageSource | undefined): ShareImageAccentPalette => {
+    if (!coverImage) {
+        return defaultShareImageAccents;
+    }
+
+    try {
+        const sampledPixels = sampleCoverArtPixels(coverImage);
+        if (!sampledPixels || sampledPixels.length === 0) {
+            return defaultShareImageAccents;
+        }
+
+        const buckets = quantizeColors(sampledPixels);
+        if (buckets.length === 0) {
+            return defaultShareImageAccents;
+        }
+
+        const analyzed = buckets
+            .map((bucket) => averageBucketColor(bucket))
+            .sort((a, b) => b.score - a.score);
+        const primaryColor = analyzed[0];
+        if (!primaryColor) {
+            return defaultShareImageAccents;
+        }
+
+        const secondaryColor = analyzed
+            .slice(1)
+            .map((candidate) => {
+                const hueGap = hueDistance(primaryColor.hsl.h, candidate.hsl.h);
+                const lightnessGap = Math.abs(primaryColor.hsl.l - candidate.hsl.l);
+                const saturationGap = Math.abs(primaryColor.hsl.s - candidate.hsl.s);
+                const separation = (hueGap * 0.65) + (lightnessGap * 0.25) + (saturationGap * 0.1);
+                return {
+                    candidate,
+                    rank: candidate.score * (0.85 + separation),
+                    separation,
+                };
+            })
+            .filter((entry) => entry.separation >= 0.12)
+            .sort((a, b) => b.rank - a.rank)[0]?.candidate;
+
+        const primaryAccent = enforceAccentRange(primaryColor.rgb, 0.56);
+        const secondaryAccent = secondaryColor
+            ? enforceAccentRange(secondaryColor.rgb, 0.62)
+            : hslToRgb({
+                h: (primaryColor.hsl.h + 34) % 360,
+                s: Math.max(0.38, primaryColor.hsl.s * 0.82),
+                l: clampUnit(primaryColor.hsl.l * 0.9 + 0.2),
+            });
+
+        return {
+            primary: rgbToHex(primaryAccent),
+            secondary: rgbToHex(secondaryAccent),
+        };
+    } catch {
+        return defaultShareImageAccents;
+    }
 };
 
 const getCanvasImageSourceSize = (source: CanvasImageSource): { width: number; height: number } | undefined => {
@@ -249,7 +547,7 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
 
     const ctx = context;
     ctx.clearRect(0, 0, shareImageWidth, shareImageHeight);
-    fillCanvasBackground(ctx);
+    fillCanvasBackground(ctx, data.accents || defaultShareImageAccents);
     drawCoverBlock(ctx, data.coverImage);
 
     const textX = 262;
