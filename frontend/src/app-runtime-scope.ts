@@ -4,6 +4,7 @@ import type { ArtistInfoController, createArtistInfoController } from './control
 import type { createLissajousVisualizerController } from './controllers/lissajous-visualizer-controller';
 import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import type { createListenBrainzSocialController } from './controllers/listenbrainz-social-controller';
+import type { SidebarController } from './controllers/sidebar-controller';
 import type { ExternalPlaybackAction, createMediaSessionController } from './controllers/media-session-controller';
 import type { ImageModalController } from './controllers/image-modal-controller';
 import type { LibraryController } from './controllers/library-controller';
@@ -294,6 +295,7 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     scrobbleService: ScrobbleService;
     trackMetadataService: TrackMetadataService;
     lissajousVisualizerController: LissajousVisualizerController;
-    listenBrainzSocialController: ListenBrainzSocialController;
+    sidebarController: SidebarController;
+    socialController: ListenBrainzSocialController;
     mediaSessionController: MediaSessionController;
 }

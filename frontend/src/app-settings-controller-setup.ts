@@ -34,7 +34,7 @@ export interface AppSettingsControllerSetupContext {
     getPlaybackOrderMode: () => string;
     setLissajousEnabled: (enabled: boolean) => void;
     applyUiDitheringSetting: () => void;
-    handleListenBrainzSocialSettingsChanged: () => void;
+    handleSocialSettingsChanged: () => void;
     setPlaybackOrderMode: (mode: AppSettings['playbackOrder']) => void;
     applyCoverArtForTrack: (index: number) => Promise<void>;
     refreshPlaylistFavorites: () => void;
@@ -139,7 +139,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         context.currentSettings = normalizeAppSettings(savedSettings);
         context.setLissajousEnabled(context.currentSettings.lissajousEnabled);
         context.applyUiDitheringSetting();
-        context.handleListenBrainzSocialSettingsChanged();
+        context.handleSocialSettingsChanged();
         context.setPlaybackOrderMode(context.currentSettings.playbackOrder);
         if (context.currentTrackIndex >= 0 && context.currentTrackIndex < context.tracks.length) {
             void context.applyCoverArtForTrack(context.currentTrackIndex);

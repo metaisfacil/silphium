@@ -106,7 +106,7 @@ export interface AppLibraryLoadRuntimeContext {
     getSettings: () => Promise<AppSettings>;
     setLissajousEnabled: (enabled: boolean) => void;
     applyUiDitheringSetting: () => void;
-    handleListenBrainzSocialSettingsChanged: () => void;
+    handleSocialSettingsChanged: () => void;
     getMusicBrainzTagWorkerProgress: () => Promise<MusicBrainzTagWorkerProgress>;
     setMusicBrainzTagWorkerProgress: (value: MusicBrainzTagWorkerProgress) => void;
     setPlaybackOrderMode: (mode: AppSettings['playbackOrder']) => void;

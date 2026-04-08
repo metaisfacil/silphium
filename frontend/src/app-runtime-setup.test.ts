@@ -138,7 +138,7 @@ const createScope = () => {
             setEnabled: vi.fn(),
         },
         applyUiDitheringSetting: vi.fn(),
-        listenBrainzSocialController: {
+        socialController: {
             handleSettingsChanged: vi.fn(),
             showLibrary: vi.fn(),
         },

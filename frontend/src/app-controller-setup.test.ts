@@ -130,7 +130,7 @@ const createContext = () => {
         getPlaybackOrderMode: vi.fn(() => 'shuffle-library'),
         setLissajousEnabled: vi.fn(),
         applyUiDitheringSetting: vi.fn(),
-        handleListenBrainzSocialSettingsChanged: vi.fn(),
+        handleSocialSettingsChanged: vi.fn(),
         setPlaybackOrderMode: vi.fn(),
         applyCoverArtForTrack: vi.fn(async () => undefined),
         resetShuffleHistory: vi.fn(),
@@ -365,7 +365,7 @@ describe('app-controller-setup', () => {
         expect(context.saveSettings).toHaveBeenCalled();
         expect(context.setLissajousEnabled).toHaveBeenCalledWith(true);
         expect(context.applyUiDitheringSetting).toHaveBeenCalled();
-        expect(context.handleListenBrainzSocialSettingsChanged).toHaveBeenCalled();
+        expect(context.handleSocialSettingsChanged).toHaveBeenCalled();
         expect(context.setPlaybackOrderMode).toHaveBeenCalledWith('shuffle-library');
         expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
         expect(playlistController.refreshFavorites).toHaveBeenCalled();

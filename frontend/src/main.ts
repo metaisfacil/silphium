@@ -441,7 +441,7 @@ const {
     applyPlayerCardLayout,
     defaultMusicBrainzServerUrl,
     lissajousVisualizerController,
-    listenBrainzSocialController,
+    socialController,
     playbackSequencingService,
     playbackStateService,
     refreshListenBrainzFeedbackForCurrentTrack,
@@ -589,7 +589,7 @@ const initializeSettings = async (): Promise<void> => {
         currentSettings = normalizeAppSettings(settings);
         lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
         applyUiDitheringSetting();
-        listenBrainzSocialController.handleSettingsChanged();
+        socialController.handleSettingsChanged();
         currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(
             await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
         );

@@ -19,6 +19,7 @@ import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 import type { AppCoreServicesRuntimeContext } from './app-runtime-setup';
 import { createListenBrainzController, type ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import { createListenBrainzSocialController } from './controllers/listenbrainz-social-controller';
+import { createSidebarController } from './controllers/sidebar-controller';
 import { createLissajousVisualizerController } from './controllers/lissajous-visualizer-controller';
 import { createCoverArtService } from './services/cover-art-service';
 import { createPlaybackSequencingService } from './services/playback-sequencing-service';
@@ -168,7 +169,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         await listenBrainzController.submitFeedbackForTrack(trackIndex, score);
     };
 
-    const listenBrainzSocialController = createListenBrainzSocialController({
+    const socialController = createListenBrainzSocialController({
         elements: {
             sidebarToggle: context.sidebarToggle,
             sidebarSectionTrigger: context.sidebarSectionTrigger,
@@ -238,6 +239,15 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
             void BrowserOpenURL(profileUrl);
         },
+    });
+    const sidebarController = createSidebarController({
+        showLibrary: () => {
+            socialController.showLibrary();
+        },
+        showSocial: () => {
+            socialController.showSocial();
+        },
+        isSocialActive: () => socialController.isSocialActive(),
     });
 
     const openMbOnCtrlClick = (event: MouseEvent, target: HTMLElement): void => {
@@ -464,7 +474,8 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         hasListenBrainzScrobbling,
         lissajousVisualizerController,
         listenBrainzController,
-        listenBrainzSocialController,
+        sidebarController,
+        socialController,
         playbackSequencingService,
         playbackStateService,
         refreshListenBrainzFeedbackForCurrentTrack,
