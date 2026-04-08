@@ -74,6 +74,12 @@ cd frontend
 npm run test:coverage
 ```
 
+Run full local validation matching CI gates (lint, tests, frontend build/typecheck):
+
+```bash
+npm run validate:ci
+```
+
 Build frontend only:
 
 ```bash

@@ -3,9 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "lint:frontend": "npm --prefix frontend run lint",
+    "lint:backend:golangci": "go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run --timeout=5m",
+    "lint:backend:golint": "go run golang.org/x/lint/golint@latest ./...",
+    "lint:all": "npm run lint:frontend && npm run lint:backend:golangci && npm run lint:backend:golint",
     "test:backend": "go test ./...",
     "test:frontend": "npm --prefix frontend test -- --run",
     "test:frontend:coverage": "npm --prefix frontend run test:coverage",
-    "test:all": "npm run test:backend && npm run test:frontend"
+    "test:all": "npm run test:backend && npm run test:frontend",
+    "build:frontend": "npm --prefix frontend run build",
+    "validate:ci": "npm run lint:all && npm run test:all && npm run build:frontend"
   }
 }
