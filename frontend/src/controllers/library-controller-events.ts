@@ -223,6 +223,8 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
             const index = options.resolveTextFileIndex(textFilePath);
             if (index >= 0) {
                 options.onTextFileChosen(index);
+            } else if (options.onTextFilePathChosen) {
+                options.onTextFilePathChosen(textFilePath);
             }
             return;
         }
@@ -232,6 +234,8 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
             const index = options.resolveImageFileIndex(imageFilePath);
             if (index >= 0) {
                 options.onImageFileChosen(index);
+            } else if (options.onImageFilePathChosen) {
+                options.onImageFilePathChosen(imageFilePath);
             }
         }
     });

@@ -770,7 +770,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     playerCardResizeObserver.observe(playerCard);
 
     EventsOn('silphium:library:rescan-log', (logLine: string) => { console.log(logLine); });
-    EventsOn('silphium:library:scan-updated', (scanResult: LibraryScanResult) => { handleLibraryScanUpdatedEvent(scanResult); });
+    EventsOn('silphium:library:scan-updated', (scanResult: LibraryScanResult) => { void handleLibraryScanUpdatedEvent(scanResult); });
     EventsOn('silphium:library:scan-progress', (scanProgress: LibraryScanProgress) => { updateLibraryLoadingEtaFromProgress(scanProgress); });
     EventsOn('silphium:musicbrainz:tag-worker-progress', (progress: MusicBrainzTagWorkerProgress) => {
         context.currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(progress);

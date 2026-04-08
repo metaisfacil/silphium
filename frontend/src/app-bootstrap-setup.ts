@@ -184,6 +184,8 @@ const createControllerSetupContextFromScope = (scope: AppRuntimeScope) => ({
         scope.suppressAutoSelectAfterFullLibraryScan = value;
     },
     ensureTrackIndexForPath: scope.ensureTrackIndexForPath,
+    ensureTextFileIndexForPath: scope.ensureTextFileIndexForPath || scope.textFileIndexForPath,
+    ensureImageFileIndexForPath: scope.ensureImageFileIndexForPath || scope.imageFileIndexForPath,
     openTextFileModal: async (textFile: TextLibraryFile) => {
         await scope.openTextFileModal(textFile);
     },

@@ -48,7 +48,7 @@ func (a *App) isLibraryDerivedIndexReadyLocked() bool {
 }
 
 func (a *App) maybeStartLibraryDerivedIndexRebuildLocked() {
-	if a.scanInProgress || !a.libraryDerivedIndexDirty || a.libraryDerivedIndexBuilding {
+	if a.scanInProgress || a.libraryFileHydrationPending || !a.libraryDerivedIndexDirty || a.libraryDerivedIndexBuilding {
 		return
 	}
 

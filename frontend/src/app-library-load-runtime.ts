@@ -113,6 +113,7 @@ export interface AppLibraryLoadRuntimeContext {
     completeStartupIfReady: () => Promise<void>;
     refreshListenBrainzFeedbackForCurrentTrack: (force?: boolean) => Promise<void>;
     getAppVersion: () => Promise<string>;
+    ensureTrackIndexForPath?: (path: string) => number;
     rebuildTrackPathIndex: () => void;
     rebuildTextFilePathIndex: () => void;
     rebuildImageFilePathIndex: () => void;
@@ -122,7 +123,31 @@ export interface AppLibraryLoadRuntimeContext {
 }
 
 export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContext) => {
+    let deferredHydrationPending = false;
+    let deferredHydrationLoadInFlight = false;
+
+    const hasDeferredHydrationWork = (scanResult: LibraryScanResult): boolean => {
+        if (!scanResult.deferredFiles) {
+            return false;
+        }
+
+        return (scanResult.trackCount || 0) > 0
+            || (scanResult.textFileCount || 0) > 0
+            || (scanResult.imageFileCount || 0) > 0;
+    };
+
+    const finishActiveLibraryLoad = (): void => {
+        deferredHydrationPending = false;
+        deferredHydrationLoadInFlight = false;
+        context.finishLibraryLoadTracking();
+        context.setLibraryLoading(false);
+        context.fullLibraryScanLoadActive = false;
+        context.suppressAutoSelectAfterFullLibraryScan = false;
+    };
+
     const clearLibrarySelection = async (): Promise<void> => {
+        deferredHydrationPending = false;
+        deferredHydrationLoadInFlight = false;
         context.closeSidebarQueueMenu();
         context.closeListenBrainzFeedbackMenu();
         context.closeMusicBrainzEntityModal();
@@ -213,6 +238,10 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
     const hasConfiguredLibraryFolders = (): boolean => context.currentSettings.libraryFolders.length > 0;
 
     const loadPagedScanCollections = async (scanResult: LibraryScanResult) => {
+        if (scanResult.deferredFiles) {
+            return createScanCollections(scanResult);
+        }
+
         const hasCompleteLibraryPayload = (() => {
             const trackCount = Math.max(scanResult.trackCount || 0, (scanResult.trackFiles || []).length);
             const textFileCount = Math.max(scanResult.textFileCount || 0, (scanResult.textFiles || []).length);
@@ -351,6 +380,10 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
                 ? context.tracks.findIndex((candidate) => candidate.path.toLowerCase() === normalizedSourcePath)
                 : -1;
 
+            if (context.currentTrackIndex < 0 && normalizedSourcePath && context.ensureTrackIndexForPath) {
+                context.currentTrackIndex = context.ensureTrackIndexForPath(playbackStateBeforeScanSwap.sourcePath);
+            }
+
             if (context.currentTrackIndex >= 0) {
                 if (previouslyPlayingTrack && previouslyPlayingTrack.path.toLowerCase() === context.tracks[context.currentTrackIndex].path.toLowerCase()) {
                     context.tracks[context.currentTrackIndex] = {
@@ -393,7 +426,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         );
         context.logRescan('  - rebuilt library tree: %.2fms', performance.now() - stepTime);
 
-        if (context.tracks.length === 0) {
+        if (context.tracks.length === 0 && (scanResult.trackCount || 0) === 0) {
             context.logRescan('loadLibraryScan: no tracks found');
             context.closeListenBrainzFeedbackMenu();
             context.currentTrackIndex = -1;
@@ -455,7 +488,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
                 && playbackStateAfterScanSwap.playing
                 && playbackStateAfterScanSwap.sourcePath.trim() !== '';
 
-            if (options?.autoSelectStartingTrack !== false && !context.suppressAutoSelectAfterFullLibraryScan && !hasActivePlaybackAfterScanSwap) {
+            if (context.tracks.length > 0 && options?.autoSelectStartingTrack !== false && !context.suppressAutoSelectAfterFullLibraryScan && !hasActivePlaybackAfterScanSwap) {
                 const startingTrackIndex = context.firstTrackIndexFromRandomAlbumFolder();
                 void context.loadTrack(startingTrackIndex);
             }
@@ -472,12 +505,15 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             return;
         }
 
+        deferredHydrationPending = false;
+        deferredHydrationLoadInFlight = false;
         context.fullLibraryScanLoadActive = true;
         context.suppressAutoSelectAfterFullLibraryScan = false;
         context.beginLibraryLoadTracking();
         context.setLibraryLoading(true);
         context.setLibraryLoadingEtaSeconds(null);
         context.setLibraryLoadingStatusLabel('');
+        let keepLoadingForDeferredHydration = false;
         try {
             context.setLibraryPathMessage(context.currentSettings.libraryFolders.length > 1 ? 'Scanning library folders…' : 'Scanning folder…');
             const scanResult = await context.scanConfiguredLibraryFoldersBackend();
@@ -488,20 +524,42 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
                 context.setForceReloadEtaSeconds(finalizeEtaSeconds);
             }
             await loadLibraryScan(scanResult);
+            keepLoadingForDeferredHydration = hasDeferredHydrationWork(scanResult);
+            deferredHydrationPending = keepLoadingForDeferredHydration;
         } finally {
-            context.finishLibraryLoadTracking();
-            context.setLibraryLoading(false);
-            context.fullLibraryScanLoadActive = false;
-            context.suppressAutoSelectAfterFullLibraryScan = false;
+            if (!keepLoadingForDeferredHydration) {
+                finishActiveLibraryLoad();
+            }
         }
     };
 
-    const handleLibraryScanUpdatedEvent = (scanResult: LibraryScanResult): void => {
+    const handleLibraryScanUpdatedEvent = async (scanResult: LibraryScanResult): Promise<void> => {
         const startTime = performance.now();
         context.logRescan('handleLibraryScanUpdatedEvent START: %d tracks, %d text, %d images',
             scanResult.trackCount, scanResult.textFileCount, scanResult.imageFileCount);
 
         if (!hasConfiguredLibraryFolders() || !scanResult) {
+            return;
+        }
+
+        if (deferredHydrationPending && !scanResult.deferredFiles && !deferredHydrationLoadInFlight) {
+            deferredHydrationLoadInFlight = true;
+            try {
+                context.markLibraryScanResolved();
+                context.setLibraryLoadingStatusLabel('');
+                if (context.libraryClientFinalizeEstimateMs > 0) {
+                    const finalizeEtaSeconds = Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000));
+                    context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
+                    context.setForceReloadEtaSeconds(finalizeEtaSeconds);
+                }
+                await loadLibraryScan(scanResult);
+            } catch (error) {
+                console.error(error);
+            } finally {
+                finishActiveLibraryLoad();
+            }
+
+            context.logRescan('handleLibraryScanUpdatedEvent END: took %.2fms (hydration complete)', performance.now() - startTime);
             return;
         }
 

@@ -1,0 +1,195 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { createAppLibraryLoadRuntime } from './app-library-load-runtime';
+import type { LibraryIndexedFile, LibraryIndexedFilePage, LibraryScanResult } from './types/app-types';
+
+const createScanResult = (overrides: Partial<LibraryScanResult> = {}): LibraryScanResult => ({
+    rootPath: 'C:/Library',
+    rootName: 'Library',
+    trackFiles: [],
+    textFiles: [],
+    imageFiles: [],
+    deferredFiles: false,
+    coverPathByFolder: {},
+    totalEntries: 0,
+    trackCount: 0,
+    textFileCount: 0,
+    imageFileCount: 0,
+    truncated: false,
+    entryLimit: 0,
+    ...overrides,
+});
+
+const emptyIndexedFilePage = (kind: LibraryIndexedFilePage['kind']): LibraryIndexedFilePage => ({
+    kind,
+    offset: 0,
+    limit: 1000,
+    totalEntries: 0,
+    entries: [],
+});
+
+const createContext = (quickScanResult: LibraryScanResult, trackEntry: LibraryIndexedFile) => ({
+    libraryIndexedFilePageSize: 1000,
+    selectedLibraryRootLabel: 'Library',
+    objectUrls: [],
+    tracks: [],
+    textFiles: [],
+    imageFiles: [],
+    currentTrackIndex: -1,
+    currentSettings: {
+        libraryFolders: [{ path: 'C:/Library', label: 'Library', releaseDepth: 0 }],
+        playbackOrder: 'ordered-library',
+    },
+    currentMusicBrainzTagWorkerProgress: { enabled: false, active: false, progress: 0, pendingTrackScans: 0, totalTrackScans: 0, completedTrackScans: 0, pendingEntityLookups: 0, totalEntityLookups: 0, completedEntityLookups: 0 },
+    availableAudioOutputDevices: [],
+    libraryClientFinalizeEstimateMs: 2000,
+    activeLibraryLoadScanResolvedAtMs: null,
+    fullLibraryScanLoadActive: false,
+    suppressAutoSelectAfterFullLibraryScan: false,
+    trackIndexByPath: new Map<string, number>(),
+    textFileIndexByPath: new Map<string, number>(),
+    imageFileIndexByPath: new Map<string, number>(),
+    trackTitle: document.createElement('div'),
+    trackAlbum: document.createElement('div'),
+    trackPosition: document.createElement('div'),
+    trackArtist: document.createElement('div'),
+    trackTechnical: document.createElement('button'),
+    trackTechnicalAlt: document.createElement('button'),
+    trackArtistHeader: document.createElement('div'),
+    trackReleaseAlbum: document.createElement('div'),
+    trackReleaseLabel: document.createElement('div'),
+    trackReleaseCat: document.createElement('div'),
+    trackReleaseYear: document.createElement('div'),
+    trackTitleInline: document.createElement('div'),
+    trackGenreInline: document.createElement('div'),
+    lyricsContent: document.createElement('div'),
+    playerLane: document.createElement('div'),
+    lyricsPanel: document.createElement('div'),
+    coverArt: document.createElement('img'),
+    coverArtBackground: document.createElement('img'),
+    aboutVersion: document.createElement('div'),
+    closeSidebarQueueMenu: vi.fn(),
+    closeListenBrainzFeedbackMenu: vi.fn(),
+    closeMusicBrainzEntityModal: vi.fn(),
+    closeTechnicalInfoModal: vi.fn(),
+    clearReplayGainReleaseDynamicRangeCache: vi.fn(),
+    audioStop: vi.fn(async () => ({ loaded: false, playing: false, sourcePath: '', volume: 0.8, currentTimeSeconds: 0, durationSeconds: 0, endedEventId: 0 })),
+    applyPlaybackState: vi.fn(),
+    handleAudioError: vi.fn(),
+    clearCoverArtCache: vi.fn(),
+    clearArtistInfoCache: vi.fn(),
+    clearImageModalCache: vi.fn(),
+    resetLibraryState: vi.fn(),
+    resetPlaylistState: vi.fn(),
+    resetScrobbleState: vi.fn(),
+    resetShuffleHistory: vi.fn(),
+    setBackgroundCover: vi.fn(),
+    setCoverFlipped: vi.fn(),
+    resetArtistInfoPanel: vi.fn(),
+    renderLibraryFolder: vi.fn(),
+    updateMediaSessionMetadata: vi.fn(),
+    beginLibraryLoadTracking: vi.fn(),
+    markLibraryScanResolved: vi.fn(),
+    finishLibraryLoadTracking: vi.fn(),
+    scanConfiguredLibraryFoldersBackend: vi.fn(async () => quickScanResult),
+    setLibraryLoading: vi.fn(),
+    setLibraryLoadingEtaSeconds: vi.fn(),
+    setLibraryLoadingStatusLabel: vi.fn(),
+    setLibraryPathMessage: vi.fn(),
+    setForceReloadEtaSeconds: vi.fn(),
+    setLibraryRootName: vi.fn(),
+    setLibraryIndexTruncated: vi.fn(),
+    getLibraryRootName: vi.fn(() => ''),
+    getCurrentFolderPath: vi.fn(() => ''),
+    setCurrentFolderPath: vi.fn(),
+    getLibrarySearchStateSnapshot: vi.fn(() => null),
+    restoreLibrarySearchState: vi.fn(),
+    navigateToFolder: vi.fn(),
+    rebuildLibraryTree: vi.fn(async () => undefined),
+    firstTrackIndexFromRandomAlbumFolder: vi.fn(() => 0),
+    getPlaybackState: vi.fn(() => ({ loaded: false, playing: false, sourcePath: '', volume: 0.8, currentTimeSeconds: 0, durationSeconds: 0, endedEventId: 0 })),
+    loadTrack: vi.fn(async () => undefined),
+    updatePlayButton: vi.fn(),
+    refreshPlaylistOpenModal: vi.fn(),
+    scheduleLibraryIncrementalFolderRefresh: vi.fn(),
+    scheduleNowPlayingCoverRefresh: vi.fn(),
+    applyPlayerCardLayout: vi.fn(),
+    getStoredLayout: vi.fn(() => 'release'),
+    resetListenBrainzFeedbackState: vi.fn(),
+    listAudioOutputDevices: vi.fn(async () => []),
+    getSettings: vi.fn(async () => ({ libraryFolders: [] })),
+    setLissajousEnabled: vi.fn(),
+    applyUiDitheringSetting: vi.fn(),
+    handleSocialSettingsChanged: vi.fn(),
+    getMusicBrainzTagWorkerProgress: vi.fn(async () => ({ enabled: false, active: false, progress: 0, pendingTrackScans: 0, totalTrackScans: 0, completedTrackScans: 0, pendingEntityLookups: 0, totalEntityLookups: 0, completedEntityLookups: 0 })),
+    setMusicBrainzTagWorkerProgress: vi.fn(),
+    setPlaybackOrderMode: vi.fn(),
+    completeStartupIfReady: vi.fn(async () => undefined),
+    refreshListenBrainzFeedbackForCurrentTrack: vi.fn(async () => undefined),
+    getAppVersion: vi.fn(async () => 'dev'),
+    ensureTrackIndexForPath: vi.fn(() => 0),
+    rebuildTrackPathIndex: vi.fn(),
+    rebuildTextFilePathIndex: vi.fn(),
+    rebuildImageFilePathIndex: vi.fn(),
+    setFolderCoverPath: vi.fn(),
+    logRescan: vi.fn(),
+    loadIndexedFilePage: vi.fn(async (kind: LibraryIndexedFilePage['kind']) => {
+        if (kind === 'track') {
+            return {
+                kind,
+                offset: 0,
+                limit: 1000,
+                totalEntries: 1,
+                entries: [trackEntry],
+            };
+        }
+
+        return emptyIndexedFilePage(kind);
+    }),
+});
+
+describe('app-library-load-runtime', () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('keeps loading active for deferred scans and finishes hydration on the completion update', async () => {
+        const quickScanResult = createScanResult({
+            deferredFiles: true,
+            totalEntries: 42,
+            trackCount: 1,
+        });
+        const hydratedScanResult = createScanResult({
+            deferredFiles: false,
+            totalEntries: 42,
+            trackCount: 1,
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        const runtime = createAppLibraryLoadRuntime(context as never);
+
+        await runtime.scanConfiguredLibraryFolders();
+
+        expect(context.fullLibraryScanLoadActive).toBe(true);
+        expect(context.finishLibraryLoadTracking).not.toHaveBeenCalled();
+        expect(context.setLibraryLoading).toHaveBeenCalledWith(true);
+        expect(context.setLibraryLoading).not.toHaveBeenCalledWith(false);
+        expect(context.tracks).toHaveLength(0);
+
+        await runtime.handleLibraryScanUpdatedEvent(hydratedScanResult);
+
+        expect(context.loadIndexedFilePage).toHaveBeenCalledWith('track', 0, 1000);
+        expect(context.tracks).toHaveLength(1);
+        expect(context.loadTrack).toHaveBeenCalledWith(0);
+        expect(context.finishLibraryLoadTracking).toHaveBeenCalledTimes(1);
+        expect(context.setLibraryLoading).toHaveBeenLastCalledWith(false);
+        expect(context.fullLibraryScanLoadActive).toBe(false);
+    });
+});

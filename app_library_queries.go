@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,6 +38,20 @@ func (a *App) resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPat
 		if _, exists := a.folderEntriesByFolder[normalizedFolderPath]; exists {
 			return normalizedFolderPath
 		}
+		return ""
+	}
+
+	if a.libraryScan.DeferredFiles {
+		if normalizedFolderPath == "" {
+			return ""
+		}
+
+		for _, entry := range a.searchFolderEntries {
+			if entry.Path == normalizedFolderPath {
+				return normalizedFolderPath
+			}
+		}
+
 		return ""
 	}
 
@@ -78,6 +93,9 @@ func (a *App) ResolveLibraryFolderForPath(path string) string {
 	}
 
 	virtualFolderPath := buildVirtualLibraryPath(root.Name, filepath.ToSlash(relativePath))
+	if info, statErr := os.Stat(absolutePath); statErr == nil && !info.IsDir() {
+		virtualFolderPath = buildVirtualLibraryPath(root.Name, filepath.ToSlash(filepath.Dir(relativePath)))
+	}
 	return a.resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPath)
 }
 
@@ -88,12 +106,31 @@ func (a *App) GetLibraryIndexedFilePage(kind string, offset int, limit int) Libr
 	a.indexMu.Lock()
 	defer a.indexMu.Unlock()
 
+	emptyDeferredPage := func(kind string, totalEntries int) LibraryIndexedFilePage {
+		return LibraryIndexedFilePage{
+			Kind:         kind,
+			Offset:       offset,
+			Limit:        limit,
+			TotalEntries: totalEntries,
+			Entries:      []LibraryIndexedFile{},
+		}
+	}
+
 	switch normalizedKind {
 	case "track":
+		if a.libraryScan.DeferredFiles && len(a.libraryScan.TrackFiles) == 0 {
+			return emptyDeferredPage("track", a.libraryScan.TrackCount)
+		}
 		return pagedIndexedFiles("track", a.libraryScan.TrackFiles, offset, limit)
 	case "text-file":
+		if a.libraryScan.DeferredFiles && len(a.libraryScan.TextFiles) == 0 {
+			return emptyDeferredPage("text-file", a.libraryScan.TextFileCount)
+		}
 		return pagedIndexedFiles("text-file", a.libraryScan.TextFiles, offset, limit)
 	case "image-file":
+		if a.libraryScan.DeferredFiles && len(a.libraryScan.ImageFiles) == 0 {
+			return emptyDeferredPage("image-file", a.libraryScan.ImageFileCount)
+		}
 		return pagedIndexedFiles("image-file", a.libraryScan.ImageFiles, offset, limit)
 	default:
 		return LibraryIndexedFilePage{
@@ -131,10 +168,12 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 		time.Since(lockWaitStart).Seconds()*1000,
 		folderPathForLog(normalizedFolderPath),
 	)
-	defer a.indexMu.Unlock()
 
 	var entries []LibraryBrowserEntry
 	mode := "fallback-map"
+	useFilesystemFallback := false
+	var rootsSnapshot []libraryRootConfig
+	activeGeneration := a.libraryScanGeneration.Load()
 	if !a.scanInProgress {
 		a.maybeStartLibraryDerivedIndexRebuildLocked()
 	}
@@ -142,8 +181,37 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 	if a.isLibraryDerivedIndexReadyLocked() {
 		entries = a.folderEntriesByFolder[normalizedFolderPath]
 		mode = "derived-index"
+	} else if a.scanInProgress {
+		entries = a.buildFolderEntriesFromMapsLocked(normalizedFolderPath)
+	} else if a.libraryScan.DeferredFiles {
+		if cachedEntries, exists := a.libraryFolderEntriesCache[normalizedFolderPath]; exists {
+			entries = append([]LibraryBrowserEntry(nil), cachedEntries...)
+			mode = "lazy-cache"
+		} else {
+			rootsSnapshot = append([]libraryRootConfig(nil), a.activeLibraryRoots...)
+			useFilesystemFallback = true
+			mode = "lazy-filesystem"
+		}
 	} else {
 		entries = a.buildFolderEntriesFromMapsLocked(normalizedFolderPath)
+	}
+	a.indexMu.Unlock()
+
+	if useFilesystemFallback {
+		filesystemEntries, err := listLibraryFolderEntriesFromFilesystem(rootsSnapshot, normalizedFolderPath)
+		if err != nil {
+			filesystemEntries = []LibraryBrowserEntry{}
+		}
+
+		a.indexMu.Lock()
+		if a.libraryScanGeneration.Load() == activeGeneration && a.libraryScan.DeferredFiles {
+			if a.libraryFolderEntriesCache == nil {
+				a.libraryFolderEntriesCache = make(map[string][]LibraryBrowserEntry)
+			}
+			a.libraryFolderEntriesCache[normalizedFolderPath] = append([]LibraryBrowserEntry(nil), filesystemEntries...)
+		}
+		entries = filesystemEntries
+		a.indexMu.Unlock()
 	}
 
 	pagedEntries := copyPagedLibraryEntries(entries, offset, limit)
@@ -234,6 +302,9 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 		var derivedMode string
 		entries, derivedMode, canceled = a.buildSearchResultsLocked(normalizedQuery, searchCanceled)
 		mode = "derived-" + derivedMode
+	} else if a.libraryScan.DeferredFiles && len(a.trackByPath) == 0 && len(a.textByPath) == 0 && len(a.imageByPath) == 0 {
+		entries, canceled = filterSearchEntries(a.searchFolderEntries, normalizedQuery, searchCanceled)
+		mode = "folder-tree"
 	} else {
 		entries, canceled = a.buildSearchEntriesFromMapsLocked(normalizedQuery, searchCanceled)
 	}
@@ -334,9 +405,10 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	}
 
 	a.indexMu.Lock()
-	defer a.indexMu.Unlock()
 
 	mode := "fallback-map"
+	useFilesystemFallback := false
+	var rootsSnapshot []libraryRootConfig
 	if !a.scanInProgress {
 		a.maybeStartLibraryDerivedIndexRebuildLocked()
 	}
@@ -344,6 +416,27 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	if a.isLibraryDerivedIndexReadyLocked() {
 		mode = "derived-index"
 		paths := a.getFolderTrackPathsFromDerivedIndexLocked(normalizedFolderPath)
+		a.indexMu.Unlock()
+		a.logRescanEvent(
+			"GetLibraryFolderTrackPaths END: folder=%s mode=%s tracks=%d took %.2fms",
+			folderPathForLog(normalizedFolderPath),
+			mode,
+			len(paths),
+			time.Since(queryStartTime).Seconds()*1000,
+		)
+		return paths
+	} else if a.libraryScan.DeferredFiles && len(a.trackByPath) == 0 {
+		rootsSnapshot = append([]libraryRootConfig(nil), a.activeLibraryRoots...)
+		useFilesystemFallback = true
+		mode = "lazy-filesystem"
+	}
+
+	if useFilesystemFallback {
+		a.indexMu.Unlock()
+		paths, err := collectLibraryFolderTrackPathsFromFilesystem(rootsSnapshot, normalizedFolderPath)
+		if err != nil {
+			paths = []string{}
+		}
 		a.logRescanEvent(
 			"GetLibraryFolderTrackPaths END: folder=%s mode=%s tracks=%d took %.2fms",
 			folderPathForLog(normalizedFolderPath),
@@ -355,6 +448,7 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	}
 
 	paths := a.getFolderTrackPathsFromMapsLocked(normalizedFolderPath)
+	a.indexMu.Unlock()
 	a.logRescanEvent(
 		"GetLibraryFolderTrackPaths END: folder=%s mode=%s tracks=%d took %.2fms",
 		folderPathForLog(normalizedFolderPath),
@@ -374,9 +468,10 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 	}
 
 	a.indexMu.Lock()
-	defer a.indexMu.Unlock()
 
 	mode := "fallback-map"
+	useFilesystemFallback := false
+	var rootsSnapshot []libraryRootConfig
 	if !a.scanInProgress {
 		a.maybeStartLibraryDerivedIndexRebuildLocked()
 	}
@@ -384,6 +479,27 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 	if a.isLibraryDerivedIndexReadyLocked() {
 		mode = "derived-index"
 		count := a.getFolderTrackCountFromDerivedIndexLocked(normalizedFolderPath)
+		a.indexMu.Unlock()
+		a.logRescanEvent(
+			"GetLibraryFolderTrackCount END: folder=%s mode=%s tracks=%d took %.2fms",
+			folderPathForLog(normalizedFolderPath),
+			mode,
+			count,
+			time.Since(queryStartTime).Seconds()*1000,
+		)
+		return count
+	} else if a.libraryScan.DeferredFiles && len(a.trackByPath) == 0 {
+		rootsSnapshot = append([]libraryRootConfig(nil), a.activeLibraryRoots...)
+		useFilesystemFallback = true
+		mode = "lazy-filesystem"
+	}
+
+	if useFilesystemFallback {
+		a.indexMu.Unlock()
+		count, err := countLibraryFolderTracksFromFilesystem(rootsSnapshot, normalizedFolderPath)
+		if err != nil {
+			count = 0
+		}
 		a.logRescanEvent(
 			"GetLibraryFolderTrackCount END: folder=%s mode=%s tracks=%d took %.2fms",
 			folderPathForLog(normalizedFolderPath),
@@ -395,6 +511,7 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 	}
 
 	count := a.getFolderTrackCountFromMapsLocked(normalizedFolderPath)
+	a.indexMu.Unlock()
 	a.logRescanEvent(
 		"GetLibraryFolderTrackCount END: folder=%s mode=%s tracks=%d took %.2fms",
 		folderPathForLog(normalizedFolderPath),
