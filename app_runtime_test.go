@@ -155,3 +155,44 @@ func TestShutdownDoesNotBlockOnMusicBrainzWorkerStop(t *testing.T) {
 		t.Fatal("shutdown() should close the MusicBrainz worker stop channel")
 	}
 }
+
+func TestDisposeFrontendSessionState(t *testing.T) {
+	watchStop := make(chan struct{})
+	fakeContext := &fakeAudioContext{player: &fakeAudioPlayer{}}
+	backend := NewAudioBackend()
+	backend.context = fakeContext
+	backend.player = fakeContext.player
+	backend.streamSegments = []audioTrackSegment{{SourcePath: "track.flac", PCMData: make([]byte, audioBytesPerFrame*8)}}
+	backend.playing = true
+	app := &App{
+		watchStop: watchStop,
+		audio:     backend,
+	}
+	app.searchGeneration.Store(7)
+	app.libraryScanGeneration.Store(3)
+
+	app.DisposeFrontendSessionState()
+
+	if got := app.searchGeneration.Load(); got != 8 {
+		t.Fatalf("DisposeFrontendSessionState() searchGeneration = %d, want 8", got)
+	}
+	if got := app.libraryScanGeneration.Load(); got != 4 {
+		t.Fatalf("DisposeFrontendSessionState() libraryScanGeneration = %d, want 4", got)
+	}
+	if app.watchStop != nil {
+		t.Fatal("DisposeFrontendSessionState() should clear watchStop")
+	}
+	state := app.audioBackend().State()
+	if state.Loaded || state.Playing {
+		t.Fatalf("DisposeFrontendSessionState() audio state = %#v, want unloaded stopped playback", state)
+	}
+	if fakeContext.player.pauseCalls == 0 {
+		t.Fatal("DisposeFrontendSessionState() should pause the player while stopping playback")
+	}
+
+	select {
+	case <-watchStop:
+	default:
+		t.Fatal("DisposeFrontendSessionState() should close the library watcher stop channel")
+	}
+}

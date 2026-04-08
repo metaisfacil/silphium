@@ -32,6 +32,8 @@ export function AudioSetVolume(arg1:number):Promise<main.AudioPlaybackState>;
 
 export function AudioStop():Promise<main.AudioPlaybackState>;
 
+export function DisposeFrontendSessionState():Promise<void>;
+
 export function GetAppVersion():Promise<string>;
 
 export function GetLastFmFollowing():Promise<Array<string>>;

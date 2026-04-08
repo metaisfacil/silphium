@@ -46,6 +46,25 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 
 func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool) LibraryScanResult {
 	scanOverallStartedAt := time.Now()
+	scanGeneration := a.libraryScanGeneration.Add(1)
+	isScanCanceled := func() bool {
+		return a.libraryScanGeneration.Load() != scanGeneration
+	}
+	scanCanceledResponse := func() LibraryScanResult {
+		a.indexMu.Lock()
+		defer a.indexMu.Unlock()
+
+		return LibraryScanResult{
+			RootPath:       a.libraryScan.RootPath,
+			RootName:       a.libraryScan.RootName,
+			TotalEntries:   a.libraryScan.TotalEntries,
+			TrackCount:     a.libraryScan.TrackCount,
+			TextFileCount:  a.libraryScan.TextFileCount,
+			ImageFileCount: a.libraryScan.ImageFileCount,
+			Truncated:      a.libraryScan.Truncated,
+			EntryLimit:     a.libraryScan.EntryLimit,
+		}
+	}
 	roots := resolveLibraryRootConfigs(normalizeLibraryFolders(folders, "", 0))
 	rootPath, rootName := aggregateLibraryScanRootInfo(roots)
 	result := LibraryScanResult{
@@ -65,7 +84,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		a.indexMu.Lock()
 		a.activeLibraryRoots = nil
 		a.indexMu.Unlock()
-		a.setLibraryIndexFromScan(result)
+		a.setLibraryIndexFromScan(result, scanGeneration)
 		a.notifyMusicBrainzTagWorker()
 		return result
 	}
@@ -241,6 +260,10 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 	}
 
 	emitProgress := func(force bool, phase string) {
+		if isScanCanceled() {
+			return
+		}
+
 		if a.ctx == nil {
 			return
 		}
@@ -288,6 +311,10 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 	}
 
 	emitScanUpdated := func(force bool) {
+		if isScanCanceled() {
+			return
+		}
+
 		if a.ctx == nil {
 			return
 		}
@@ -324,6 +351,10 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 	var scanErr error
 	var scanDirectory func(root libraryRootConfig, absolutePath string, folderPath string)
 	scanDirectory = func(root libraryRootConfig, absolutePath string, folderPath string) {
+		if isScanCanceled() {
+			return
+		}
+
 		pendingDirectories--
 
 		entries, err := os.ReadDir(absolutePath)
@@ -335,6 +366,9 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 			if scanErr == nil {
 				scanErr = err
 			}
+			return
+		}
+		if isScanCanceled() {
 			return
 		}
 
@@ -375,6 +409,10 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		}
 
 		for _, entry := range entries {
+			if isScanCanceled() {
+				return
+			}
+
 			currentPath := filepath.Join(absolutePath, entry.Name())
 			result.TotalEntries++
 			scannedEntries++
@@ -438,6 +476,10 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 			}
 
 			a.indexMu.Lock()
+			if isScanCanceled() {
+				a.indexMu.Unlock()
+				return
+			}
 			switch kind {
 			case "track":
 				a.trackByPath[currentPath] = indexed
@@ -459,7 +501,15 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		}
 	}
 	for _, root := range roots {
+		if isScanCanceled() {
+			break
+		}
+
 		scanDirectory(root, root.Path, root.Name)
+	}
+	if isScanCanceled() {
+		a.logRescanEvent("scanLibraryFolders CANCELED: roots=%d", len(roots))
+		return scanCanceledResponse()
 	}
 	a.logRescanEvent(
 		"scanLibraryFolders walk END: scannedEntries=%d discoveredEntries=%d directories=%d took %.2fms",
@@ -493,6 +543,10 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 
 	scannedEntries = result.TotalEntries
 	finalizationStartedAt = time.Now()
+	if isScanCanceled() {
+		a.logRescanEvent("scanLibraryFolders CANCELED before finalization")
+		return scanCanceledResponse()
+	}
 	scanDurationMs := float64(finalizationStartedAt.Sub(scanStartedAt).Milliseconds())
 	if scanDurationMs > 0 && result.TotalEntries > 0 {
 		measuredScanEntryMs := scanDurationMs / float64(result.TotalEntries)
@@ -540,8 +594,15 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 	result.TrackCount = len(result.TrackFiles)
 	result.TextFileCount = len(result.TextFiles)
 	result.ImageFileCount = len(result.ImageFiles)
+	if isScanCanceled() {
+		a.logRescanEvent("scanLibraryFolders CANCELED before index commit")
+		return scanCanceledResponse()
+	}
 
-	a.setLibraryIndexFromScan(result)
+	if !a.setLibraryIndexFromScan(result, scanGeneration) {
+		a.logRescanEvent("scanLibraryFolders CANCELED during index commit")
+		return scanCanceledResponse()
+	}
 	a.notifyMusicBrainzTagWorker()
 	emitScanUpdated(true)
 
@@ -604,7 +665,7 @@ func cloneCoverPathByFolder(input map[string]string) map[string]string {
 	return cloned
 }
 
-func (a *App) setLibraryIndexFromScan(scan LibraryScanResult) {
+func (a *App) setLibraryIndexFromScan(scan LibraryScanResult, expectedScanGeneration uint64) bool {
 	setStartTime := time.Now()
 	a.logRescanEvent("setLibraryIndexFromScan START: %d tracks, %d text, %d images",
 		len(scan.TrackFiles), len(scan.TextFiles), len(scan.ImageFiles))
@@ -613,6 +674,14 @@ func (a *App) setLibraryIndexFromScan(scan LibraryScanResult) {
 	a.indexMu.Lock()
 	a.logRescanEvent("  - setLibraryIndexFromScan acquired lock (waited %.2fms)", time.Since(lockWaitStart).Seconds()*1000)
 	defer a.indexMu.Unlock()
+	if expectedScanGeneration > 0 && a.libraryScanGeneration.Load() != expectedScanGeneration {
+		a.logRescanEvent(
+			"  - setLibraryIndexFromScan canceled: stale generation expected=%d active=%d",
+			expectedScanGeneration,
+			a.libraryScanGeneration.Load(),
+		)
+		return false
+	}
 
 	mapStartTime := time.Now()
 	a.trackByPath = make(map[string]LibraryIndexedFile, len(scan.TrackFiles))
@@ -636,4 +705,5 @@ func (a *App) setLibraryIndexFromScan(scan LibraryScanResult) {
 	a.markLibraryDerivedIndexDirtyLocked()
 	a.logRescanEvent("  - cover paths copied (%.2fms)", time.Since(copyCoverStartTime).Seconds()*1000)
 	a.logRescanEvent("setLibraryIndexFromScan END: total time %.2fms", time.Since(setStartTime).Seconds()*1000)
+	return true
 }

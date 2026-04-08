@@ -365,3 +365,54 @@ func TestScanLibraryFoldersLargeScanUpdatesLearningMetrics(t *testing.T) {
 		)
 	}
 }
+
+func TestSetLibraryIndexFromScanSkipsStaleGeneration(t *testing.T) {
+	app := NewApp()
+	app.libraryScanGeneration.Store(5)
+	app.libraryScan = LibraryScanResult{
+		RootPath:       "existing-root",
+		RootName:       "Existing Root",
+		TotalEntries:   1,
+		TrackCount:     1,
+		TextFileCount:  0,
+		ImageFileCount: 0,
+		TrackFiles: []LibraryIndexedFile{{
+			Path:         "existing-track.flac",
+			RelativePath: "Existing Root/existing-track.flac",
+		}},
+		CoverPathByFolder: map[string]string{"existing root": "existing-cover.jpg"},
+	}
+	app.trackByPath = map[string]LibraryIndexedFile{"existing-track.flac": app.libraryScan.TrackFiles[0]}
+
+	staleScan := LibraryScanResult{
+		RootPath:       "stale-root",
+		RootName:       "Stale Root",
+		TotalEntries:   2,
+		TrackCount:     2,
+		TextFileCount:  0,
+		ImageFileCount: 0,
+		TrackFiles: []LibraryIndexedFile{
+			{Path: "stale-one.flac", RelativePath: "Stale Root/stale-one.flac"},
+			{Path: "stale-two.flac", RelativePath: "Stale Root/stale-two.flac"},
+		},
+		CoverPathByFolder: map[string]string{"stale root": "stale-cover.jpg"},
+	}
+
+	committed := app.setLibraryIndexFromScan(staleScan, 4)
+	if committed {
+		t.Fatal("setLibraryIndexFromScan(stale generation) = true, want false")
+	}
+
+	if app.libraryScan.RootName != "Existing Root" || app.libraryScan.TotalEntries != 1 {
+		t.Fatalf("libraryScan after stale commit = %#v, want existing scan unchanged", app.libraryScan)
+	}
+	if len(app.trackByPath) != 1 {
+		t.Fatalf("trackByPath len after stale commit = %d, want 1", len(app.trackByPath))
+	}
+	if _, exists := app.trackByPath["existing-track.flac"]; !exists {
+		t.Fatal("trackByPath missing existing entry after stale commit")
+	}
+	if _, exists := app.trackByPath["stale-one.flac"]; exists {
+		t.Fatal("trackByPath should not include stale scan entries")
+	}
+}
