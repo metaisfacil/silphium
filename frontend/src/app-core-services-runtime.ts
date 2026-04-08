@@ -20,7 +20,7 @@ import type { AppCoreServicesRuntimeContext } from './app-runtime-setup';
 import { createListenBrainzController, type ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import { createListenBrainzSocialController } from './controllers/listenbrainz-social-controller';
 import { createSidebarController } from './controllers/sidebar-controller';
-import { createLissajousVisualizerController } from './controllers/lissajous-visualizer-controller';
+import { createVisualizerController } from './controllers/visualizer-controller';
 import { createCoverArtService } from './services/cover-art-service';
 import { createPlaybackSequencingService } from './services/playback-sequencing-service';
 import { createPlaybackStateService } from './services/playback-state-service';
@@ -108,14 +108,17 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         },
     });
 
-    const lissajousVisualizerController = createLissajousVisualizerController({
-        canvas: context.playerLissajousCanvas,
+    const visualizerController = createVisualizerController({
+        canvas: context.playerVisualizerCanvas,
         getPlaybackState: () => playbackStateService.getPlaybackState(),
         fetchVisualizationFrame: async (frameCount: number): Promise<AudioVisualizationFrame> => (
             await AudioGetVisualizationFrame(frameCount) as AudioVisualizationFrame
         ),
+        getCoverArtImageSource: () => context.getCoverArtImageSource?.(),
     });
-    lissajousVisualizerController.setEnabled(context.currentSettings.lissajousEnabled);
+    visualizerController.setMode(context.currentSettings.visualizerMode);
+    visualizerController.setEqualizerPosition(context.currentSettings.equalizerPosition);
+    visualizerController.setEnabled(context.currentSettings.lissajousEnabled);
 
     const listenBrainzController = createListenBrainzController({
         elements: {
@@ -472,7 +475,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         getStoredLayout,
         hasLastFmScrobbling,
         hasListenBrainzScrobbling,
-        lissajousVisualizerController,
+        visualizerController,
         listenBrainzController,
         sidebarController,
         socialController,

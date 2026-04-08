@@ -443,7 +443,7 @@ Object.assign(runtimeScope, setupCoreServicesRuntime(Object.assign(Object.create
 const {
     applyPlayerCardLayout,
     defaultMusicBrainzServerUrl,
-    lissajousVisualizerController,
+    visualizerController,
     socialController,
     playbackSequencingService,
     playbackStateService,
@@ -536,7 +536,7 @@ const {
     },
     playbackSequencingService,
     updatePlayOrderMenuState,
-    lissajousVisualizerController,
+    visualizerController,
     applyUiDitheringSetting,
     rebuildTrackPathIndex,
 });
@@ -590,7 +590,9 @@ const initializeSettings = async (): Promise<void> => {
 
         const settings = await GetSettings() as AppSettings;
         currentSettings = normalizeAppSettings(settings);
-        lissajousVisualizerController.setEnabled(currentSettings.lissajousEnabled);
+        visualizerController.setMode(currentSettings.visualizerMode);
+        visualizerController.setEqualizerPosition(currentSettings.equalizerPosition);
+        visualizerController.setEnabled(currentSettings.lissajousEnabled);
         applyUiDitheringSetting();
         socialController.handleSettingsChanged();
         currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(

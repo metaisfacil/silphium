@@ -62,6 +62,7 @@ export interface SettingsControllerEventContext {
     refreshMusicBrainzTagWorkerControls: () => void;
     refreshMusicBrainzRateControls: () => void;
     refreshListenBrainzRateControls: () => void;
+    refreshEqualizerPositionControls: () => void;
     refreshScrobbleRuleDialogControls: (preferredOperator?: ScrobbleRuleOperator) => void;
     refreshAudioOutputDevices: (devices: AudioOutputDevice[], selectedDevice: string) => void;
     refreshForceReloadStatus: () => void;
@@ -109,6 +110,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         refreshMusicBrainzTagWorkerControls,
         refreshMusicBrainzRateControls,
         refreshListenBrainzRateControls,
+        refreshEqualizerPositionControls,
         refreshScrobbleRuleDialogControls,
         refreshAudioOutputDevices,
         refreshForceReloadStatus,
@@ -204,6 +206,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsApplyAudioNow,
         settingsMusicBrainzTagDatabaseEnabled,
         settingsPlayerCardLayout,
+        settingsVisualizerMode,
         settingsCoverArtPriorityAccordionToggle,
         settingsCoverArtPriorityAccordionPanel,
         settingsCoverArtPriorityList,
@@ -467,6 +470,10 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
 
     settingsListenBrainzServerUrl.addEventListener('input', () => {
         refreshListenBrainzRateControls();
+    });
+
+    settingsVisualizerMode.addEventListener('change', () => {
+        refreshEqualizerPositionControls();
     });
 
     settingsApplyAudioNow.addEventListener('click', async () => {

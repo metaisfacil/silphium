@@ -95,6 +95,10 @@ export type SettingsModalElements = {
     settingsMusicBrainzTagWorkerProgressRemaining: HTMLParagraphElement;
     settingsMusicBrainzTagWorkerProgressStatus: HTMLParagraphElement;
     settingsPlayerCardLayout: HTMLSelectElement;
+    settingsVisualizerControls: HTMLDivElement;
+    settingsVisualizerMode: HTMLSelectElement;
+    settingsEqualizerPositionField: HTMLDivElement;
+    settingsEqualizerPosition: HTMLSelectElement;
     settingsCoverArtPriorityAccordionToggle: HTMLButtonElement;
     settingsCoverArtPriorityAccordionPanel: HTMLDivElement;
     settingsCoverArtPriorityList: HTMLUListElement;
@@ -322,9 +326,28 @@ export const renderSettingsModal = (): string => `
                     <div class="settings-field settings-toggle-field">
                         <label class="settings-checkbox-row" for="settings-lissajous-enabled">
                             <input id="settings-lissajous-enabled" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Show lissajous visualizer</span>
+                            <span class="settings-label">Show player visualizer</span>
                         </label>
                         <p class="settings-hint">Draws the animated background behind the player card while audio is loaded.<br>Disabling this will reduce Silphium's GPU burden.</p>
+                    </div>
+                    <div class="settings-field">
+                        <p class="settings-hint">Choose between the existing stereo lissajous scope and a classic band equalizer display.</p>
+                        <div id="settings-visualizer-controls" class="settings-visualizer-controls" data-equalizer-visible="false">
+                            <div class="settings-field">
+                                <label class="settings-label" for="settings-visualizer-mode">Visualizer style</label>
+                                <select id="settings-visualizer-mode" class="settings-input settings-select">
+                                    <option value="lissajous">Lissajous</option>
+                                    <option value="equalizer">Band equalizer</option>
+                                </select>
+                            </div>
+                            <div id="settings-equalizer-position-field" class="settings-field">
+                                <label class="settings-label" for="settings-equalizer-position">Equalizer position</label>
+                                <select id="settings-equalizer-position" class="settings-input settings-select">
+                                    <option value="bottom">Bottom</option>
+                                    <option value="top">Top (flipped)</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     <div class="settings-field settings-toggle-field">
                         <label class="settings-checkbox-row" for="settings-ui-dithering-enabled">
@@ -576,6 +599,10 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsMusicBrainzTagWorkerProgressRemaining: root.querySelector('#settings-musicbrainz-tag-worker-progress-remaining') as HTMLParagraphElement,
     settingsMusicBrainzTagWorkerProgressStatus: root.querySelector('#settings-musicbrainz-tag-worker-progress-status') as HTMLParagraphElement,
     settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
+    settingsVisualizerControls: root.querySelector('#settings-visualizer-controls') as HTMLDivElement,
+    settingsVisualizerMode: root.querySelector('#settings-visualizer-mode') as HTMLSelectElement,
+    settingsEqualizerPositionField: root.querySelector('#settings-equalizer-position-field') as HTMLDivElement,
+    settingsEqualizerPosition: root.querySelector('#settings-equalizer-position') as HTMLSelectElement,
     settingsCoverArtPriorityAccordionToggle: root.querySelector('#settings-cover-art-priority-accordion-toggle') as HTMLButtonElement,
     settingsCoverArtPriorityAccordionPanel: root.querySelector('#settings-cover-art-priority-accordion-panel') as HTMLDivElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,

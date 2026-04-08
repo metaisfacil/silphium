@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "lissajous_visualizer"
+name = "visualizer"
 version = "0.1.0"

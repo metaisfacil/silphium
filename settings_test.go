@@ -279,6 +279,48 @@ func TestNormalizeAppSettingsPreservesDisabledLissajous(t *testing.T) {
 	}
 }
 
+func TestNormalizeAppSettingsDefaultsVisualizerModeToLissajous(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{})
+	if settings.VisualizerMode != "lissajous" {
+		t.Fatalf("VisualizerMode = %q, want %q", settings.VisualizerMode, "lissajous")
+	}
+}
+
+func TestNormalizeAppSettingsPreservesEqualizerVisualizerMode(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{VisualizerMode: "equalizer"})
+	if settings.VisualizerMode != "equalizer" {
+		t.Fatalf("VisualizerMode = %q, want %q", settings.VisualizerMode, "equalizer")
+	}
+}
+
+func TestNormalizeAppSettingsFallsBackForInvalidVisualizerMode(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{VisualizerMode: "vector-scope"})
+	if settings.VisualizerMode != "lissajous" {
+		t.Fatalf("VisualizerMode = %q, want %q", settings.VisualizerMode, "lissajous")
+	}
+}
+
+func TestNormalizeAppSettingsDefaultsEqualizerPositionToBottom(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{})
+	if settings.EqualizerPosition != "bottom" {
+		t.Fatalf("EqualizerPosition = %q, want %q", settings.EqualizerPosition, "bottom")
+	}
+}
+
+func TestNormalizeAppSettingsPreservesTopEqualizerPosition(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{EqualizerPosition: "top"})
+	if settings.EqualizerPosition != "top" {
+		t.Fatalf("EqualizerPosition = %q, want %q", settings.EqualizerPosition, "top")
+	}
+}
+
+func TestNormalizeAppSettingsFallsBackForInvalidEqualizerPosition(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{EqualizerPosition: "left"})
+	if settings.EqualizerPosition != "bottom" {
+		t.Fatalf("EqualizerPosition = %q, want %q", settings.EqualizerPosition, "bottom")
+	}
+}
+
 func TestNormalizeAppSettingsDefaultsUIDitheringEnabledToTrue(t *testing.T) {
 	settings := normalizeAppSettings(AppSettings{})
 	if settings.UIDitheringEnabled == nil {

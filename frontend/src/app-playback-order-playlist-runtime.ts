@@ -1,5 +1,4 @@
 import { LoadPlaylistFile, SaveSettings } from '../wailsjs/go/main/App';
-import { main as WailsModels } from '../wailsjs/go/models';
 import type { LoadedPlaylistData } from './controllers/playlist-controller';
 import { mergePlaylistFilesIntoTracks } from './services/library-data-service';
 import { normalizeAppSettings } from './utils/settings-normalization';
@@ -16,8 +15,10 @@ type PlaybackOrderPlaylistRuntimeContext = {
         getPlaybackOrderMode: () => PlaybackOrderMode;
     };
     updatePlayOrderMenuState: () => void;
-    lissajousVisualizerController?: {
+    visualizerController?: {
         setEnabled: (enabled: boolean) => void;
+        setMode?: (mode: AppSettings['visualizerMode']) => void;
+        setEqualizerPosition?: (position: AppSettings['equalizerPosition']) => void;
     };
     applyUiDitheringSetting?: () => void;
     rebuildTrackPathIndex?: () => void;
@@ -38,7 +39,7 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
     const savePlaybackOrderSetting = async (): Promise<void> => {
         try {
             const primaryLibraryFolder = context.currentSettings.libraryFolders[0];
-            const savedSettings = await SaveSettings(WailsModels.AppSettings.createFrom({
+            const savedSettings = await SaveSettings({
                 libraryFolders: context.currentSettings.libraryFolders,
                 libraryPath: context.currentSettings.libraryPath,
                 ffmpegPath: context.currentSettings.ffmpegPath,
@@ -61,14 +62,18 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
                 musicBrainzTagRequestStaggeringEnabled: context.currentSettings.musicBrainzTagRequestStaggeringEnabled,
                 musicBrainzTagWorkerCores: context.currentSettings.musicBrainzTagWorkerCores,
                 lissajousEnabled: context.currentSettings.lissajousEnabled,
+                visualizerMode: context.currentSettings.visualizerMode,
+                equalizerPosition: context.currentSettings.equalizerPosition,
                 uiDitheringEnabled: context.currentSettings.uiDitheringEnabled,
                 minimizeToTrayOnClose: context.currentSettings.minimizeToTrayOnClose,
                 customSendToActions: context.currentSettings.customSendToActions,
                 keyboardShortcuts: context.currentSettings.keyboardShortcuts,
-            })) as AppSettings;
+            } as Parameters<typeof SaveSettings>[0]) as AppSettings;
 
             context.currentSettings = normalizeAppSettings(savedSettings);
-            context.lissajousVisualizerController?.setEnabled(context.currentSettings.lissajousEnabled);
+            context.visualizerController?.setMode?.(context.currentSettings.visualizerMode);
+            context.visualizerController?.setEqualizerPosition?.(context.currentSettings.equalizerPosition);
+            context.visualizerController?.setEnabled(context.currentSettings.lissajousEnabled);
             context.applyUiDitheringSetting?.();
             setPlaybackOrderMode(context.currentSettings.playbackOrder);
         } catch (error) {

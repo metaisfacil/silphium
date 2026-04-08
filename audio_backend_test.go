@@ -120,6 +120,9 @@ func TestVisualizationFrameReturnsStereoWindow(t *testing.T) {
 	if frame.FrameCount != 4 {
 		t.Fatalf("visualization frame count = %d, want %d", frame.FrameCount, 4)
 	}
+	if frame.SampleStride != 1 {
+		t.Fatalf("visualization sample stride = %.4f, want 1", frame.SampleStride)
+	}
 	if got, want := len(frame.Samples), 8; got != want {
 		t.Fatalf("visualization sample len = %d, want %d", got, want)
 	}

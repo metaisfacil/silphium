@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    asPlayerVisualizerMode,
+    asPlayerEqualizerPosition,
     asCustomSendToActionScope,
     defaultAppSettings,
     defaultCoverArtPriority,
@@ -46,6 +48,10 @@ describe('settings normalization', () => {
         expect(normalizeCoverArtPriority(['embedded', 'file', 'embedded', 'invalid'])).toEqual(['embedded', 'file']);
         expect(normalizeCoverArtPriority(['invalid'])).toEqual(defaultCoverArtPriority);
         expect(normalizeCoverArtPriority([])).toEqual([]);
+        expect(asPlayerVisualizerMode('equalizer')).toBe('equalizer');
+        expect(asPlayerVisualizerMode('scope')).toBe('lissajous');
+        expect(asPlayerEqualizerPosition('top')).toBe('top');
+        expect(asPlayerEqualizerPosition('sideways')).toBe('bottom');
         expect(asCustomSendToActionScope('album')).toBe('album');
         expect(asCustomSendToActionScope('unsupported')).toBeNull();
     });
@@ -94,6 +100,8 @@ describe('settings normalization', () => {
             musicBrainzTagRequestStaggeringEnabled: true,
             musicBrainzTagWorkerCores: 999,
             lissajousEnabled: false,
+            visualizerMode: 'equalizer',
+            equalizerPosition: 'top',
             uiDitheringEnabled: false,
             minimizeToTrayOnClose: true,
             customSendToActions: [{ title: ' Send ', scope: 'folder', commandTemplate: ' run {path} ' }],
@@ -130,6 +138,8 @@ describe('settings normalization', () => {
         expect(normalized.musicBrainzTagRequestStaggeringEnabled).toBe(true);
         expect(normalized.musicBrainzTagWorkerCores).toBe(128);
         expect(normalized.lissajousEnabled).toBe(false);
+        expect(normalized.visualizerMode).toBe('equalizer');
+        expect(normalized.equalizerPosition).toBe('top');
         expect(normalized.uiDitheringEnabled).toBe(false);
         expect(normalized.minimizeToTrayOnClose).toBe(true);
         expect(normalized.customSendToActions).toEqual([{ title: 'Send', scope: 'folder', commandTemplate: 'run {path}' }]);
@@ -156,6 +166,8 @@ describe('settings normalization', () => {
             },
             musicBrainzTagStaleDays: -1,
             musicBrainzTagWorkerCores: 0,
+            visualizerMode: 'vector-scope',
+            equalizerPosition: 'sideways',
             keyboardShortcuts: {
                 nextTrack: 'bad+shortcut+value',
             },
@@ -178,6 +190,8 @@ describe('settings normalization', () => {
         });
         expect(normalized.musicBrainzTagStaleDays).toBe(defaultMusicBrainzTagStaleDays);
         expect(normalized.musicBrainzTagWorkerCores).toBe(1);
+        expect(normalized.visualizerMode).toBe('lissajous');
+        expect(normalized.equalizerPosition).toBe('bottom');
         expect(normalized.keyboardShortcuts.nextTrack).toBe(defaultAppSettings.keyboardShortcuts.nextTrack);
     });
 
@@ -185,6 +199,8 @@ describe('settings normalization', () => {
         const normalized = normalizeAppSettings({
             favoritePlaylists: null as unknown as string[],
             lissajousEnabled: undefined,
+            visualizerMode: undefined,
+            equalizerPosition: undefined,
             uiDitheringEnabled: undefined,
             audio: {
                 outputDevice: undefined as unknown as string,
@@ -199,6 +215,8 @@ describe('settings normalization', () => {
 
         expect(normalized.favoritePlaylists).toEqual([]);
         expect(normalized.lissajousEnabled).toBe(true);
+        expect(normalized.visualizerMode).toBe('lissajous');
+        expect(normalized.equalizerPosition).toBe('bottom');
         expect(normalized.uiDitheringEnabled).toBe(true);
         expect(normalized.audio.outputBufferMs).toBe(0);
         expect(normalized.audio.outputDevice).toBe('default');
@@ -215,5 +233,6 @@ describe('settings normalization', () => {
         expect(normalized.audio).toEqual(defaultAppSettings.audio);
         expect(normalized.musicBrainzTagStaleDays).toBe(defaultMusicBrainzTagStaleDays);
         expect(normalized.customSendToActions).toEqual([]);
+        expect(normalized.visualizerMode).toBe(defaultAppSettings.visualizerMode);
     });
 });

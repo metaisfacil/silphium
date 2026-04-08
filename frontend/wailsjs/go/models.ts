@@ -114,6 +114,8 @@ export namespace main {
 	    musicBrainzTagRequestStaggeringEnabled?: boolean;
 	    musicBrainzTagWorkerCores?: number;
 	    lissajousEnabled?: boolean;
+	    visualizerMode?: string;
+	    equalizerPosition?: string;
 	    uiDitheringEnabled?: boolean;
 	    minimizeToTrayOnClose?: boolean;
 	    customSendToActions?: CustomSendToAction[];
@@ -150,6 +152,8 @@ export namespace main {
 	        this.musicBrainzTagRequestStaggeringEnabled = source["musicBrainzTagRequestStaggeringEnabled"];
 	        this.musicBrainzTagWorkerCores = source["musicBrainzTagWorkerCores"];
 	        this.lissajousEnabled = source["lissajousEnabled"];
+	        this.visualizerMode = source["visualizerMode"];
+	        this.equalizerPosition = source["equalizerPosition"];
 	        this.uiDitheringEnabled = source["uiDitheringEnabled"];
 	        this.minimizeToTrayOnClose = source["minimizeToTrayOnClose"];
 	        this.customSendToActions = this.convertValues(source["customSendToActions"], CustomSendToAction);
@@ -224,6 +228,7 @@ export namespace main {
 	    sampleRate: number;
 	    channelCount: number;
 	    frameCount: number;
+	    sampleStride: number;
 	    peak: number;
 	    samples: number[];
 	
@@ -239,6 +244,7 @@ export namespace main {
 	        this.sampleRate = source["sampleRate"];
 	        this.channelCount = source["channelCount"];
 	        this.frameCount = source["frameCount"];
+	        this.sampleStride = source["sampleStride"];
 	        this.peak = source["peak"];
 	        this.samples = source["samples"];
 	    }

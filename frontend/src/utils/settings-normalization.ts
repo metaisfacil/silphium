@@ -4,6 +4,8 @@ import type {
     CustomSendToAction,
     CustomSendToActionScope,
     MusicBrainzTagWorkerProgress,
+    PlayerEqualizerPosition,
+    PlayerVisualizerMode,
 } from '../types/app-types';
 import {
     asPlaybackOrderMode,
@@ -61,11 +63,21 @@ export const defaultAppSettings: AppSettings = {
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 1,
     lissajousEnabled: true,
+    visualizerMode: 'lissajous',
+    equalizerPosition: 'bottom',
     uiDitheringEnabled: true,
     minimizeToTrayOnClose: false,
     customSendToActions: [],
     keyboardShortcuts: { ...defaultFocusedKeyboardShortcuts },
 };
+
+export const asPlayerVisualizerMode = (value: string): PlayerVisualizerMode => (
+    value === 'equalizer' ? 'equalizer' : 'lissajous'
+);
+
+export const asPlayerEqualizerPosition = (value: string): PlayerEqualizerPosition => (
+    value === 'top' ? 'top' : 'bottom'
+);
 
 export const normalizeMusicBrainzTagWorkerProgress = (value?: Partial<MusicBrainzTagWorkerProgress> | null): MusicBrainzTagWorkerProgress => {
     const source = value || {};
@@ -215,6 +227,8 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
             ? Math.max(1, Math.min(128, Math.floor(settings.musicBrainzTagWorkerCores || 1)))
             : 1,
         lissajousEnabled: settings.lissajousEnabled !== false,
+        visualizerMode: asPlayerVisualizerMode(settings.visualizerMode || ''),
+        equalizerPosition: asPlayerEqualizerPosition(settings.equalizerPosition || ''),
         uiDitheringEnabled: settings.uiDitheringEnabled !== false,
         minimizeToTrayOnClose: !!settings.minimizeToTrayOnClose,
         customSendToActions: normalizeCustomSendToActions(settings.customSendToActions),

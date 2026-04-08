@@ -1011,26 +1011,49 @@
     background-image: none;
 }
 
-.player-lissajous-canvas {
+.player-visualizer-canvas {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: min(100%, calc((100vh - 4rem) * 0.75));
-    height: var(--player-card-height);
-    transform-origin: center;
-    transform: translate(-50%, -50%) rotate(-45deg) scale(3);
+    width: 100%;
+    height: 100%;
     z-index: 0;
     pointer-events: none;
     opacity: 0;
-    mix-blend-mode: screen;
-    filter: blur(8px) saturate(1.08);
-    transition: opacity 220ms ease, transform 220ms ease;
+    transition: opacity 220ms ease, transform 220ms ease, filter 220ms ease;
 }
 
-.player-lissajous-canvas.is-active,
-.player-lissajous-canvas.is-visualizer-active {
-    opacity: 0.20;
-    transform: translate(-50%, -66.6%) rotate(45deg) scale(5);
+.player-visualizer-canvas:not([data-visualizer-mode="equalizer"]),
+.player-visualizer-canvas[data-visualizer-mode="lissajous"] {
+    transform-origin: center;
+    transform: translate(-50%, -50%) rotate(-45deg) scale(3);
+    mix-blend-mode: screen;
+    filter: blur(6.4px) saturate(1.16);
+}
+
+.player-visualizer-canvas:not([data-visualizer-mode="equalizer"]).is-active,
+.player-visualizer-canvas:not([data-visualizer-mode="equalizer"]).is-visualizer-active,
+.player-visualizer-canvas[data-visualizer-mode="lissajous"].is-active,
+.player-visualizer-canvas[data-visualizer-mode="lissajous"].is-visualizer-active {
+    opacity: 0.39;
+    transform: translate(-50%, -64.8%) rotate(45deg) scale(4.7);
+}
+
+.player-visualizer-canvas[data-visualizer-mode="equalizer"] {
+    transform: translate(-50%, -50%) scale(1);
+    mix-blend-mode: screen;
+    filter: blur(1.1px) saturate(1.14);
+}
+
+.player-visualizer-canvas[data-visualizer-mode="equalizer"].is-active,
+.player-visualizer-canvas[data-visualizer-mode="equalizer"].is-visualizer-active {
+    opacity: 0.48;
+    transform: translate(-50%, -53%) scale(1.2, 1.30);
+}
+
+.player-visualizer-canvas[data-visualizer-mode="equalizer"][data-equalizer-position="top"].is-active,
+.player-visualizer-canvas[data-visualizer-mode="equalizer"][data-equalizer-position="top"].is-visualizer-active {
+    transform: translate(-50%, -46%) scale(1.2, -1.30);
 }
 
 .lyrics-panel {

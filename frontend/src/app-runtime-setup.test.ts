@@ -134,8 +134,9 @@ const createScope = () => {
         resetListenBrainzFeedbackState: vi.fn(),
         listAudioOutputDevices: vi.fn(async () => ['device']),
         getSettings: vi.fn(async () => ({ ffmpegPath: 'ffmpeg' })),
-        lissajousVisualizerController: {
+        visualizerController: {
             setEnabled: vi.fn(),
+            setMode: vi.fn(),
         },
         applyUiDitheringSetting: vi.fn(),
         socialController: {

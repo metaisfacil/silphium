@@ -7,6 +7,8 @@ const testState = vi.hoisted(() => {
         libraryFolders: [],
         ffmpegPath: '',
         lissajousEnabled: false,
+        visualizerMode: 'equalizer',
+        equalizerPosition: 'top',
         uiDitheringEnabled: true,
         playbackOrder: 'ordered-library',
         audio: {
@@ -65,6 +67,8 @@ const testState = vi.hoisted(() => {
     const resetListenBrainzFeedbackState = vi.fn();
     const scanConfiguredLibraryFolders = vi.fn(async () => undefined);
     const setLissajousEnabled = vi.fn();
+    const setVisualizerMode = vi.fn();
+    const setEqualizerPosition = vi.fn();
     const setPlaybackOrderMode = vi.fn();
     const updatePlayOrderMenuState = vi.fn();
 
@@ -133,6 +137,8 @@ const testState = vi.hoisted(() => {
             controllerScope = scope;
         },
         setLissajousEnabled,
+        setVisualizerMode,
+        setEqualizerPosition,
         setPlaybackOrderMode,
         settingsController,
         updatePlayOrderMenuState,
@@ -172,7 +178,11 @@ vi.mock('./app-runtime-setup', () => ({
         applyPlayerCardLayout: testState.applyPlayerCardLayout,
         defaultMusicBrainzServerUrl: 'https://musicbrainz.org',
         getStoredLayout: testState.getStoredLayout,
-        lissajousVisualizerController: { setEnabled: testState.setLissajousEnabled },
+        visualizerController: {
+            setEnabled: testState.setLissajousEnabled,
+            setMode: testState.setVisualizerMode,
+            setEqualizerPosition: testState.setEqualizerPosition,
+        },
         socialController: { handleSettingsChanged: testState.handleSettingsChanged },
         playbackSequencingService: {
             getPlaybackOrderLabel: vi.fn(() => 'Ordered'),

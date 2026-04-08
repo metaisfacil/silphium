@@ -25,7 +25,14 @@ const createCoreServicesRuntimeContext = (scope: AppRuntimeScope) => ({
         return scope.tagRequestVersion;
     },
     objectUrls: scope.objectUrls,
-    playerLissajousCanvas: scope.playerLissajousCanvas,
+    playerVisualizerCanvas: scope.playerVisualizerCanvas,
+    getCoverArtImageSource: () => {
+        if (!scope.coverArt.src || !scope.coverArt.complete || scope.coverArt.naturalWidth <= 0 || scope.coverArt.naturalHeight <= 0) {
+            return undefined;
+        }
+
+        return scope.coverArt;
+    },
     playerCard: scope.playerCard,
     listenBrainzLoveBtn: scope.listenBrainzLoveBtn,
     listenBrainzFeedbackMenu: scope.listenBrainzFeedbackMenu,
@@ -185,7 +192,7 @@ const createNowPlayingRuntimeContext = (scope: AppRuntimeScope) => ({
     updateMediaSessionPositionState: () => {
         scope.updateMediaSessionPositionState();
     },
-    lissajousVisualizerController: scope.lissajousVisualizerController,
+    visualizerController: scope.visualizerController,
     goToTrack: (direction: -1 | 1) => {
         scope.goToTrack(direction);
     },
@@ -692,7 +699,7 @@ export const setupLibraryLoadRuntime = (scope: AppRuntimeScope) => createAppLibr
     listAudioOutputDevices: async () => await scope.listAudioOutputDevices(),
     getSettings: async () => await scope.getSettings(),
     setLissajousEnabled: (enabled: boolean) => {
-        scope.lissajousVisualizerController.setEnabled(enabled);
+        scope.visualizerController.setEnabled(enabled);
     },
     applyUiDitheringSetting: scope.applyUiDitheringSetting,
     handleSocialSettingsChanged: () => {

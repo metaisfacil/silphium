@@ -42,6 +42,7 @@ type AudioVisualizationFrame struct {
 	SampleRate   int     `json:"sampleRate"`
 	ChannelCount int     `json:"channelCount"`
 	FrameCount   int     `json:"frameCount"`
+	SampleStride float64 `json:"sampleStride"`
 	Peak         float64 `json:"peak"`
 	Samples      []int16 `json:"samples"`
 }

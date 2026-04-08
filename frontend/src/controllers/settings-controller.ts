@@ -144,6 +144,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagWorkerProgressRemaining,
         settingsMusicBrainzTagWorkerProgressStatus,
         settingsPlayerCardLayout,
+        settingsVisualizerControls,
+        settingsVisualizerMode,
+        settingsEqualizerPositionField,
+        settingsEqualizerPosition,
         settingsCoverArtPriorityAccordionToggle,
         settingsCoverArtPriorityAccordionPanel,
         settingsCoverArtPriorityList: settingsCoverArtPriorityListElement,
@@ -472,6 +476,16 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         });
     };
 
+    const refreshEqualizerPositionControls = (): void => {
+        const equalizerActive = settingsVisualizerMode.value === 'equalizer';
+        settingsVisualizerControls.dataset.equalizerVisible = equalizerActive ? 'true' : 'false';
+        settingsEqualizerPositionField.setAttribute('aria-hidden', equalizerActive ? 'false' : 'true');
+        settingsEqualizerPosition.disabled = !equalizerActive;
+        settingsEqualizerPosition.title = equalizerActive
+            ? ''
+            : 'Only used when Visualizer style is set to Band equalizer';
+    };
+
     const setShortcutValues = (shortcuts: ReturnType<typeof getShortcutValues>): void => {
         settingsShortcutPlayPauseToggle.value = shortcuts.playPauseToggle;
         settingsShortcutNextTrack.value = shortcuts.nextTrack;
@@ -534,6 +548,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         musicBrainzTagRequestStaggeringEnabled: settingsMusicBrainzTagRequestStaggeringEnabled.checked,
         musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
         lissajousEnabled: settingsLissajousEnabled.checked,
+        visualizerMode: settingsVisualizerMode.value === 'equalizer' ? 'equalizer' : 'lissajous',
+        equalizerPosition: settingsEqualizerPosition.value === 'top' ? 'top' : 'bottom',
         uiDitheringEnabled: settingsUiDitheringEnabled.checked,
         minimizeToTrayOnClose: settingsMinimizeToTrayOnClose.checked,
         customSendToActions: normalizeCustomSendToActions(customSendToActions).map((action) => ({ ...action })),
@@ -692,6 +708,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagRequestStaggeringEnabled.checked = !!values.musicBrainzTagRequestStaggeringEnabled;
         settingsMusicBrainzTagWorkerCores.value = values.musicBrainzTagWorkerCores > 0 ? String(values.musicBrainzTagWorkerCores) : '';
         settingsLissajousEnabled.checked = values.lissajousEnabled !== false;
+        settingsVisualizerMode.value = values.visualizerMode === 'equalizer' ? 'equalizer' : 'lissajous';
+        settingsEqualizerPosition.value = values.equalizerPosition === 'top' ? 'top' : 'bottom';
+        refreshEqualizerPositionControls();
         settingsUiDitheringEnabled.checked = values.uiDitheringEnabled !== false;
         settingsMinimizeToTrayOnClose.checked = !!values.minimizeToTrayOnClose;
         refreshMusicBrainzTagWorkerControls();
@@ -792,6 +811,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     setCoverArtPriorityAccordionExpanded(false, false);
     renderMusicBrainzTagWorkerProgress(musicBrainzTagWorkerProgress);
     refreshLastFmSessionFetchButton();
+    refreshEqualizerPositionControls();
 
     const eventContext: SettingsControllerEventContext = {
         elements,
@@ -920,6 +940,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         refreshMusicBrainzTagWorkerControls,
         refreshMusicBrainzRateControls,
         refreshListenBrainzRateControls,
+        refreshEqualizerPositionControls,
         refreshScrobbleRuleDialogControls: (preferredOperator?: ScrobbleRuleOperator) => {
             refreshScrobbleRuleDialogControls(scrobbleRuleElements, preferredOperator);
         },

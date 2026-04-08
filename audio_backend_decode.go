@@ -240,6 +240,7 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 			Playing:      false,
 			SampleRate:   audioSampleRate,
 			ChannelCount: audioChannelCount,
+			SampleStride: 1,
 			Samples:      []int16{},
 		}
 	}
@@ -252,6 +253,7 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 			SourcePath:   state.SourcePath,
 			SampleRate:   audioSampleRate,
 			ChannelCount: audioChannelCount,
+			SampleStride: 1,
 			Samples:      []int16{},
 		}
 	}
@@ -289,6 +291,10 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 	if actualFrameCount > 1 && availableFrames > 1 {
 		stride = float64(availableFrames-1) / float64(actualFrameCount-1)
 	}
+	sampleStride := 1.0
+	if stride > 0 {
+		sampleStride = math.Max(1, stride)
+	}
 
 	samples := make([]int16, actualFrameCount*audioChannelCount)
 	peak := 0.0
@@ -315,6 +321,7 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 		SampleRate:   audioSampleRate,
 		ChannelCount: audioChannelCount,
 		FrameCount:   actualFrameCount,
+		SampleStride: sampleStride,
 		Peak:         peak / 32768.0,
 		Samples:      samples,
 	}

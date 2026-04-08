@@ -51,6 +51,7 @@ const createContext = (): SettingsControllerEventContext => {
         refreshMusicBrainzTagWorkerControls: vi.fn(),
         refreshMusicBrainzRateControls: vi.fn(),
         refreshListenBrainzRateControls: vi.fn(),
+        refreshEqualizerPositionControls: vi.fn(),
         refreshScrobbleRuleDialogControls: vi.fn(),
         refreshAudioOutputDevices: vi.fn(),
         refreshForceReloadStatus: vi.fn(),

@@ -59,6 +59,8 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 4,
     lissajousEnabled: true,
+    visualizerMode: 'equalizer',
+    equalizerPosition: 'top',
     uiDitheringEnabled: true,
     minimizeToTrayOnClose: false,
     customSendToActions: [],
@@ -153,7 +155,9 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-audio-output-device"]')?.textContent).toBe('Audio output device');
         expect(document.querySelector('label[for="settings-audio-output-buffer-ms"]')?.textContent).toBe('Audio output buffer (ms)');
         expect(document.querySelector('label[for="settings-player-card-layout"]')?.textContent).toBe('Player card layout');
-        expect(document.querySelector('label[for="settings-lissajous-enabled"]')?.textContent?.trim()).toBe('Show lissajous visualizer');
+        expect(document.querySelector('label[for="settings-lissajous-enabled"]')?.textContent?.trim()).toBe('Show player visualizer');
+        expect(document.querySelector('label[for="settings-visualizer-mode"]')?.textContent).toBe('Visualizer style');
+        expect(document.querySelector('label[for="settings-equalizer-position"]')?.textContent).toBe('Equalizer position');
         expect(document.querySelector('label[for="settings-ui-dithering-enabled"]')?.textContent?.trim()).toBe('Enable pseudo-dithering');
         expect(document.querySelector('#settings-cover-art-priority-accordion-toggle')?.textContent).toBe('Cover art source priority');
         expect(document.querySelector('#settings-shortcut-accordion-toggle')?.textContent).toBe('Keyboard shortcuts');
@@ -196,6 +200,7 @@ describe('createSettingsController', () => {
             code: 'KeyK',
             bubbles: true,
         }));
+        elements.settingsVisualizerMode.value = 'lissajous';
         elements.settingsSave.click();
 
         await flushPromises();
@@ -213,6 +218,8 @@ describe('createSettingsController', () => {
             musicBrainzTagStaleDays: 30,
             musicBrainzTagRequestStaggeringEnabled: false,
             lissajousEnabled: true,
+            visualizerMode: 'lissajous',
+            equalizerPosition: 'top',
             uiDitheringEnabled: true,
             keyboardShortcuts: expect.objectContaining({ nextTrack: 'K' }),
         }));

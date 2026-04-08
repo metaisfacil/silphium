@@ -262,6 +262,8 @@ export type ScrobbleRule = {
 export type CoverArtPrioritySource = 'file' | 'embedded' | 'musicbrainz';
 
 export type PlayerCardLayout = 'default' | 'release';
+export type PlayerVisualizerMode = 'lissajous' | 'equalizer';
+export type PlayerEqualizerPosition = 'bottom' | 'top';
 
 export type FocusedKeyboardShortcuts = {
     playPauseToggle: string;
@@ -301,6 +303,7 @@ export type AudioVisualizationFrame = {
     sampleRate: number;
     channelCount: number;
     frameCount: number;
+    sampleStride: number;
     peak: number;
     samples: number[];
 };
@@ -343,6 +346,8 @@ export type AppSettings = {
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
     lissajousEnabled: boolean;
+    visualizerMode: PlayerVisualizerMode;
+    equalizerPosition: PlayerEqualizerPosition;
     uiDitheringEnabled: boolean;
     minimizeToTrayOnClose: boolean;
     customSendToActions: CustomSendToAction[];
