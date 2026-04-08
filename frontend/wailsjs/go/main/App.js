@@ -62,6 +62,10 @@ export function AudioStop() {
   return window['go']['main']['App']['AudioStop']();
 }
 
+export function DisposeFrontendSessionState() {
+  return window['go']['main']['App']['DisposeFrontendSessionState']();
+}
+
 export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
 }

@@ -524,10 +524,38 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     };
 
     const applyPlaybackState = (nextState: AudioPlaybackState): void => {
+        const clearNowPlayingCard = (): void => {
+            context.currentTrackIndex = -1;
+            context.trackTitle.textContent = 'Unknown Title';
+            context.trackAlbum.textContent = 'Unknown Album';
+            context.trackPosition.textContent = '';
+            context.trackArtist.textContent = 'Unknown Artist';
+            setTechnicalLabel(context.trackTechnical, '');
+            context.trackTechnical.disabled = true;
+            setTechnicalLabel(context.trackTechnicalAlt, '');
+            context.trackTechnicalAlt.disabled = true;
+            context.trackReleaseAlbum.textContent = '';
+            context.trackTitleInline.textContent = '';
+            context.trackPositionInline.textContent = '';
+            context.trackReleaseLabel.textContent = '';
+            context.trackReleaseCat.textContent = '';
+            context.trackReleaseYear.textContent = '';
+            context.trackGenreInline.textContent = '';
+            context.trackArtistHeader.textContent = '';
+            context.lyricsContent.textContent = '';
+            context.playerLane.classList.remove('lyrics-visible');
+            context.lyricsPanel.setAttribute('aria-hidden', 'true');
+            applyMbLinks(context.trackTitle, context.trackAlbum, context.trackArtist, {});
+            applyMbLinks(context.trackTitleInline, context.trackReleaseAlbum, context.trackArtistHeader, {});
+            updateExplorationButton(document, undefined);
+            context.playlistController().scheduleRender();
+        };
+
         if (!nextState.loaded) {
             context.gaplessQueueRequestVersion += 1;
             context.queuedGaplessTrackPath = '';
             setActiveReplayGainReleaseTrackPaths();
+            clearNowPlayingCard();
         }
 
         syncCurrentTrackFromPlaybackState(nextState);

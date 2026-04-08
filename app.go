@@ -40,6 +40,7 @@ type App struct {
 	libraryWatcher                         *fsnotify.Watcher
 	watchStop                              chan struct{}
 	libraryWatcherGeneration               atomic.Uint64
+	libraryScanGeneration                  atomic.Uint64
 	indexMu                                sync.Mutex
 	trackByPath                            map[string]LibraryIndexedFile
 	textByPath                             map[string]LibraryIndexedFile
@@ -166,4 +167,18 @@ func (a *App) beforeClose(context.Context) bool {
 // LogFrontendMessage logs a message from the frontend to the backend console
 func (a *App) LogFrontendMessage(message string) {
 	log.Println("[FRONTEND] " + message)
+}
+
+// DisposeFrontendSessionState clears backend runtime state bound to the current frontend session.
+func (a *App) DisposeFrontendSessionState() {
+	a.libraryScanGeneration.Add(1)
+	a.searchGeneration.Add(1)
+	a.stopLibraryWatcher()
+
+	state := a.audioBackend().State()
+	if state.Loaded || state.Playing {
+		if _, err := a.audioBackend().Stop(); err != nil {
+			log.Printf("failed to stop audio backend while disposing frontend session: %v", err)
+		}
+	}
 }

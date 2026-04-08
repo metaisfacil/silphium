@@ -62,7 +62,8 @@ import type {
 import {
     asReleaseDepth,
     findLibraryFolderForFilePath,
-} from './utils/main-helpers';
+} from './utils/main-helpers'; 
+import { installHmrFullReset } from './utils/hmr-full-reset';
 import { scheduleMusicBrainzRequest } from './utils/musicbrainz-request-scheduler';
 import {
     defaultAppSettings,
@@ -91,6 +92,8 @@ const isLinuxRuntime = /linux/i.test(navigator.userAgent) && !/android/i.test(na
 if (!app) {
     throw new Error('App container not found');
 }
+
+installHmrFullReset(import.meta);
 
 renderAppShell(app);
 
