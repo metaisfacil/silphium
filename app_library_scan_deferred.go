@@ -1,0 +1,813 @@
+package main
+
+import (
+	"errors"
+	"math"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+var errLibraryScanCanceled = errors.New("library scan canceled")
+
+type libraryQuickScanBuildResult struct {
+	ScanResult                     LibraryScanResult
+	DirectoryPaths                 []string
+	DiscoveredChildFoldersByParent map[string]map[string]struct{}
+}
+
+func libraryDeferredHydrationEnabled() bool {
+	return !libraryScanRunningUnderGoTest()
+}
+
+func libraryScanRunningUnderGoTest() bool {
+	programName := strings.ToLower(filepath.Base(os.Args[0]))
+	return strings.Contains(programName, ".test")
+}
+
+func newDeferredScanResult(rootPath string, rootName string) LibraryScanResult {
+	return LibraryScanResult{
+		RootPath:          rootPath,
+		RootName:          rootName,
+		TrackFiles:        []LibraryIndexedFile{},
+		TextFiles:         []LibraryIndexedFile{},
+		ImageFiles:        []LibraryIndexedFile{},
+		DeferredFiles:     true,
+		CoverPathByFolder: map[string]string{},
+	}
+}
+
+func buildFolderChildPathsFromDiscovered(discoveredByParent map[string]map[string]struct{}) map[string][]string {
+	folderChildPathsByFolder := make(map[string][]string, len(discoveredByParent)+1)
+	for parentPath, childSet := range discoveredByParent {
+		childPaths := make([]string, 0, len(childSet))
+		for childPath := range childSet {
+			if strings.TrimSpace(childPath) == "" {
+				continue
+			}
+
+			childPaths = append(childPaths, childPath)
+		}
+		sortPathsCaseInsensitive(childPaths)
+		folderChildPathsByFolder[parentPath] = childPaths
+	}
+
+	if _, exists := folderChildPathsByFolder[""]; !exists {
+		folderChildPathsByFolder[""] = []string{}
+	}
+
+	return folderChildPathsByFolder
+}
+
+func buildFolderSearchEntriesFromChildPaths(folderChildPathsByFolder map[string][]string) []LibraryBrowserEntry {
+	folderPaths := make([]string, 0)
+	seen := map[string]struct{}{}
+	for parentPath, childPaths := range folderChildPathsByFolder {
+		if parentPath != "" {
+			if _, exists := seen[parentPath]; !exists {
+				seen[parentPath] = struct{}{}
+				folderPaths = append(folderPaths, parentPath)
+			}
+		}
+
+		for _, childPath := range childPaths {
+			if childPath == "" {
+				continue
+			}
+
+			if _, exists := seen[childPath]; exists {
+				continue
+			}
+
+			seen[childPath] = struct{}{}
+			folderPaths = append(folderPaths, childPath)
+		}
+	}
+
+	entries := make([]LibraryBrowserEntry, 0, len(folderPaths))
+	for _, folderPath := range folderPaths {
+		entries = append(entries, folderBrowserEntry(folderPath))
+	}
+	sortBrowserEntriesByPath(entries)
+	return entries
+}
+
+func resolveLibraryFolderAbsolutePath(roots []libraryRootConfig, virtualFolderPath string) (libraryRootConfig, string, bool) {
+	normalizedFolderPath, ok := normalizeLibraryRelativePath(virtualFolderPath)
+	if !ok {
+		return libraryRootConfig{}, "", false
+	}
+
+	if normalizedFolderPath == "" {
+		return libraryRootConfig{}, "", true
+	}
+
+	for _, root := range roots {
+		if normalizedFolderPath == root.Name {
+			return root, root.Path, true
+		}
+
+		prefix := root.Name + "/"
+		if !strings.HasPrefix(normalizedFolderPath, prefix) {
+			continue
+		}
+
+		relativeFolderPath := strings.TrimPrefix(normalizedFolderPath, prefix)
+		if strings.TrimSpace(relativeFolderPath) == "" {
+			return root, root.Path, true
+		}
+
+		return root, filepath.Join(root.Path, filepath.FromSlash(relativeFolderPath)), true
+	}
+
+	return libraryRootConfig{}, "", false
+}
+
+func listLibraryFolderEntriesFromFilesystem(roots []libraryRootConfig, folderPath string) ([]LibraryBrowserEntry, error) {
+	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
+	if !ok {
+		return []LibraryBrowserEntry{}, nil
+	}
+
+	if normalizedFolderPath == "" {
+		entries := make([]LibraryBrowserEntry, 0, len(roots))
+		for _, root := range roots {
+			entries = append(entries, folderBrowserEntry(root.Name))
+		}
+		sortBrowserEntriesByPath(entries)
+		return entries, nil
+	}
+
+	root, absoluteFolderPath, ok := resolveLibraryFolderAbsolutePath(roots, normalizedFolderPath)
+	if !ok {
+		return []LibraryBrowserEntry{}, nil
+	}
+
+	entries, err := os.ReadDir(absoluteFolderPath)
+	if err != nil {
+		return []LibraryBrowserEntry{}, err
+	}
+
+	folderEntries := make([]LibraryBrowserEntry, 0)
+	trackEntries := make([]LibraryBrowserEntry, 0)
+	textEntries := make([]LibraryBrowserEntry, 0)
+	imageEntries := make([]LibraryBrowserEntry, 0)
+
+	for _, entry := range entries {
+		currentPath := filepath.Join(absoluteFolderPath, entry.Name())
+		currentFolderPath, relativePath, relativeOK := folderAndRelativeForLibraryRoot(root, currentPath)
+		if !relativeOK {
+			continue
+		}
+
+		if entry.IsDir() {
+			folderEntries = append(folderEntries, folderBrowserEntry(relativePath))
+			continue
+		}
+
+		indexed := LibraryIndexedFile{
+			Name:         entry.Name(),
+			Path:         currentPath,
+			RelativePath: relativePath,
+			FolderPath:   currentFolderPath,
+			RootPath:     root.Path,
+			RootName:     root.Name,
+		}
+
+		switch {
+		case isAudioPath(currentPath):
+			trackEntries = append(trackEntries, browserEntryFromIndexedFile("track", indexed))
+		case isTextPath(currentPath):
+			textEntries = append(textEntries, browserEntryFromIndexedFile("text-file", indexed))
+		case isImagePath(currentPath):
+			imageEntries = append(imageEntries, browserEntryFromIndexedFile("image-file", indexed))
+		}
+	}
+
+	sortBrowserEntriesByPath(folderEntries)
+	sortBrowserEntriesByName(trackEntries)
+	sortBrowserEntriesByName(textEntries)
+	sortBrowserEntriesByName(imageEntries)
+
+	combined := make([]LibraryBrowserEntry, 0, len(folderEntries)+len(trackEntries)+len(textEntries)+len(imageEntries))
+	combined = append(combined, folderEntries...)
+	combined = append(combined, trackEntries...)
+	combined = append(combined, textEntries...)
+	combined = append(combined, imageEntries...)
+	return combined, nil
+}
+
+func collectLibraryFolderTrackPathsFromFilesystem(roots []libraryRootConfig, folderPath string) ([]string, error) {
+	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
+	if !ok {
+		return []string{}, nil
+	}
+
+	indexedTracks := make([]LibraryIndexedFile, 0)
+	appendTracksUnderRoot := func(root libraryRootConfig, absoluteStartPath string) error {
+		return filepath.WalkDir(absoluteStartPath, func(currentPath string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil || entry.IsDir() || !isAudioPath(currentPath) {
+				return nil
+			}
+
+			indexed, indexedOK := indexFileForRoot(root, currentPath, entry.Name())
+			if !indexedOK {
+				return nil
+			}
+
+			indexedTracks = append(indexedTracks, indexed)
+			return nil
+		})
+	}
+
+	if normalizedFolderPath == "" {
+		for _, root := range roots {
+			if err := appendTracksUnderRoot(root, root.Path); err != nil {
+				return []string{}, err
+			}
+		}
+	} else {
+		root, absoluteFolderPath, resolved := resolveLibraryFolderAbsolutePath(roots, normalizedFolderPath)
+		if !resolved {
+			return []string{}, nil
+		}
+
+		if err := appendTracksUnderRoot(root, absoluteFolderPath); err != nil {
+			return []string{}, err
+		}
+	}
+
+	sort.SliceStable(indexedTracks, func(i int, j int) bool {
+		left := strings.ToLower(relativePathWithinFolder(normalizedFolderPath, indexedTracks[i].RelativePath))
+		right := strings.ToLower(relativePathWithinFolder(normalizedFolderPath, indexedTracks[j].RelativePath))
+		return left < right
+	})
+
+	paths := make([]string, 0, len(indexedTracks))
+	for _, indexed := range indexedTracks {
+		paths = append(paths, indexed.Path)
+	}
+
+	return paths, nil
+}
+
+func countLibraryFolderTracksFromFilesystem(roots []libraryRootConfig, folderPath string) (int, error) {
+	paths, err := collectLibraryFolderTrackPathsFromFilesystem(roots, folderPath)
+	if err != nil {
+		return 0, err
+	}
+
+	return len(paths), nil
+}
+
+func buildFilesystemQuickScan(roots []libraryRootConfig, isScanCanceled func() bool) (libraryQuickScanBuildResult, error) {
+	rootPath, rootName := aggregateLibraryScanRootInfo(roots)
+	build := libraryQuickScanBuildResult{
+		ScanResult:                     newDeferredScanResult(rootPath, rootName),
+		DiscoveredChildFoldersByParent: make(map[string]map[string]struct{}, len(roots)+1),
+		DirectoryPaths:                 make([]string, 0, len(roots)),
+	}
+
+	selectedCoverPriority := make(map[string]int)
+	selectedCoverName := make(map[string]string)
+	seenDirectories := make(map[string]struct{}, len(roots))
+
+	for _, root := range roots {
+		addDiscoveredChildFolder(build.DiscoveredChildFoldersByParent, "", root.Name)
+		if absoluteRootPath, ok := absoluteNormalizedPath(root.Path); ok {
+			if _, exists := seenDirectories[absoluteRootPath]; !exists {
+				seenDirectories[absoluteRootPath] = struct{}{}
+				build.DirectoryPaths = append(build.DirectoryPaths, absoluteRootPath)
+			}
+		}
+	}
+
+	var walk func(root libraryRootConfig, absolutePath string, folderPath string) error
+	walk = func(root libraryRootConfig, absolutePath string, folderPath string) error {
+		if isScanCanceled() {
+			return errLibraryScanCanceled
+		}
+
+		entries, err := os.ReadDir(absolutePath)
+		if err != nil {
+			return nil
+		}
+
+		for _, entry := range entries {
+			if isScanCanceled() {
+				return errLibraryScanCanceled
+			}
+
+			currentPath := filepath.Join(absolutePath, entry.Name())
+			build.ScanResult.TotalEntries++
+
+			folderPathForEntry, relativePath, relativeOK := folderAndRelativeForLibraryRoot(root, currentPath)
+			if !relativeOK {
+				continue
+			}
+
+			if entry.IsDir() {
+				addDiscoveredChildFolder(build.DiscoveredChildFoldersByParent, folderPath, relativePath)
+				if absoluteDirectoryPath, ok := absoluteNormalizedPath(currentPath); ok {
+					if _, exists := seenDirectories[absoluteDirectoryPath]; !exists {
+						seenDirectories[absoluteDirectoryPath] = struct{}{}
+						build.DirectoryPaths = append(build.DirectoryPaths, absoluteDirectoryPath)
+					}
+				}
+				if err := walk(root, currentPath, relativePath); err != nil {
+					return err
+				}
+				continue
+			}
+
+			switch {
+			case isAudioPath(currentPath):
+				build.ScanResult.TrackCount++
+			case isTextPath(currentPath):
+				build.ScanResult.TextFileCount++
+			case isImagePath(currentPath):
+				build.ScanResult.ImageFileCount++
+
+				if !isPreferredCoverImagePath(currentPath) {
+					continue
+				}
+
+				folderKey := strings.ToLower(folderPathForEntry)
+				name := strings.ToLower(entry.Name())
+				priority := coverPriority(name)
+				currentPriority, hasCurrent := selectedCoverPriority[folderKey]
+				currentName := selectedCoverName[folderKey]
+				if !hasCurrent || priority < currentPriority || (priority == currentPriority && name < currentName) {
+					selectedCoverPriority[folderKey] = priority
+					selectedCoverName[folderKey] = name
+					build.ScanResult.CoverPathByFolder[folderKey] = currentPath
+				}
+			}
+		}
+
+		return nil
+	}
+
+	for _, root := range roots {
+		if err := walk(root, root.Path, root.Name); err != nil {
+			return libraryQuickScanBuildResult{}, err
+		}
+	}
+
+	return build, nil
+}
+
+func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bool) (LibraryScanResult, error) {
+	rootPath, rootName := aggregateLibraryScanRootInfo(roots)
+	result := LibraryScanResult{
+		RootPath:          rootPath,
+		RootName:          rootName,
+		TrackFiles:        []LibraryIndexedFile{},
+		TextFiles:         []LibraryIndexedFile{},
+		ImageFiles:        []LibraryIndexedFile{},
+		CoverPathByFolder: map[string]string{},
+	}
+
+	selectedCoverPriority := make(map[string]int)
+	selectedCoverName := make(map[string]string)
+
+	var walk func(root libraryRootConfig, absolutePath string) error
+	walk = func(root libraryRootConfig, absolutePath string) error {
+		if isScanCanceled() {
+			return errLibraryScanCanceled
+		}
+
+		entries, err := os.ReadDir(absolutePath)
+		if err != nil {
+			return nil
+		}
+
+		for _, entry := range entries {
+			if isScanCanceled() {
+				return errLibraryScanCanceled
+			}
+
+			currentPath := filepath.Join(absolutePath, entry.Name())
+			result.TotalEntries++
+
+			folderPathForEntry, relativePath, relativeOK := folderAndRelativeForLibraryRoot(root, currentPath)
+			if !relativeOK {
+				continue
+			}
+
+			if entry.IsDir() {
+				if err := walk(root, currentPath); err != nil {
+					return err
+				}
+				continue
+			}
+
+			indexed := LibraryIndexedFile{
+				Name:         entry.Name(),
+				Path:         currentPath,
+				RelativePath: relativePath,
+				FolderPath:   folderPathForEntry,
+				RootPath:     root.Path,
+				RootName:     root.Name,
+			}
+
+			switch {
+			case isAudioPath(currentPath):
+				result.TrackFiles = append(result.TrackFiles, indexed)
+			case isTextPath(currentPath):
+				result.TextFiles = append(result.TextFiles, indexed)
+			case isImagePath(currentPath):
+				result.ImageFiles = append(result.ImageFiles, indexed)
+				if !isPreferredCoverImagePath(currentPath) {
+					continue
+				}
+
+				folderKey := strings.ToLower(folderPathForEntry)
+				name := strings.ToLower(entry.Name())
+				priority := coverPriority(name)
+				currentPriority, hasCurrent := selectedCoverPriority[folderKey]
+				currentName := selectedCoverName[folderKey]
+				if !hasCurrent || priority < currentPriority || (priority == currentPriority && name < currentName) {
+					selectedCoverPriority[folderKey] = priority
+					selectedCoverName[folderKey] = name
+					result.CoverPathByFolder[folderKey] = currentPath
+				}
+			}
+		}
+
+		return nil
+	}
+
+	for _, root := range roots {
+		if err := walk(root, root.Path); err != nil {
+			return LibraryScanResult{}, err
+		}
+	}
+
+	sort.SliceStable(result.TrackFiles, func(i int, j int) bool {
+		return strings.ToLower(result.TrackFiles[i].RelativePath) < strings.ToLower(result.TrackFiles[j].RelativePath)
+	})
+	sort.SliceStable(result.TextFiles, func(i int, j int) bool {
+		return strings.ToLower(result.TextFiles[i].RelativePath) < strings.ToLower(result.TextFiles[j].RelativePath)
+	})
+	sort.SliceStable(result.ImageFiles, func(i int, j int) bool {
+		return strings.ToLower(result.ImageFiles[i].RelativePath) < strings.ToLower(result.ImageFiles[j].RelativePath)
+	})
+
+	result.TrackCount = len(result.TrackFiles)
+	result.TextFileCount = len(result.TextFiles)
+	result.ImageFileCount = len(result.ImageFiles)
+	return result, nil
+}
+
+func compactLibraryScanResult(scan LibraryScanResult) LibraryScanResult {
+	return LibraryScanResult{
+		RootPath:       scan.RootPath,
+		RootName:       scan.RootName,
+		DeferredFiles:  scan.DeferredFiles,
+		TotalEntries:   scan.TotalEntries,
+		TrackCount:     scan.TrackCount,
+		TextFileCount:  scan.TextFileCount,
+		ImageFileCount: scan.ImageFileCount,
+		Truncated:      scan.Truncated,
+		EntryLimit:     scan.EntryLimit,
+	}
+}
+
+func (a *App) estimateDeferredHydrationMs(totalEntries int, quickScanElapsed time.Duration) float64 {
+	quickElapsedMs := float64(quickScanElapsed.Milliseconds())
+	if quickElapsedMs <= 0 {
+		quickElapsedMs = 1000
+	}
+
+	a.indexMu.Lock()
+	learnedScanEntryMs := a.scanEntryMs
+	learnedFinalizeMs := a.scanFinalizeMs
+	learnedWatcherMs := a.scanWatcherMs
+	a.indexMu.Unlock()
+
+	if learnedFinalizeMs > learnedWatcherMs && learnedWatcherMs > 0 {
+		learnedFinalizeMs -= learnedWatcherMs
+	}
+
+	estimatedMs := 0.0
+	if learnedScanEntryMs > 0 && totalEntries > 0 {
+		estimatedMs += learnedScanEntryMs * float64(totalEntries)
+	}
+	if learnedFinalizeMs > 0 {
+		estimatedMs += learnedFinalizeMs
+	}
+	if estimatedMs <= 0 {
+		estimatedMs = quickElapsedMs
+	}
+	if estimatedMs < 1000 {
+		estimatedMs = 1000
+	}
+
+	return estimatedMs
+}
+
+func (a *App) emitDeferredHydrationProgress(rootPath string, totalEntries int, startedAt time.Time, estimatedMs float64) {
+	if a.ctx == nil {
+		return
+	}
+
+	elapsedMs := time.Since(startedAt).Milliseconds()
+	if elapsedMs < 0 {
+		elapsedMs = 0
+	}
+
+	remainingMs := estimatedMs - float64(elapsedMs)
+	if remainingMs < 0 {
+		remainingMs = 0
+	}
+
+	entriesScanned := 0
+	if totalEntries > 0 && estimatedMs > 0 {
+		progress := float64(elapsedMs) / estimatedMs
+		if progress < 0 {
+			progress = 0
+		}
+		if progress > 1 {
+			progress = 1
+		}
+		entriesScanned = int(math.Round(progress * float64(totalEntries)))
+	}
+
+	runtimeEventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
+		RootPath:       rootPath,
+		EntriesScanned: entriesScanned,
+		TotalEntries:   totalEntries,
+		ElapsedMs:      elapsedMs,
+		EtaSeconds:     int(math.Ceil(remainingMs / 1000)),
+		Phase:          "finalizing",
+	})
+}
+
+func (a *App) emitDeferredScanInitialProgress(rootPath string) {
+	if a.ctx == nil {
+		return
+	}
+
+	a.indexMu.Lock()
+	learnedTotalEntries := a.scanLastTotalEntries
+	learnedScanEntryMs := a.scanEntryMs
+	learnedFinalizeMs := a.scanFinalizeMs
+	learnedWatcherMs := a.scanWatcherMs
+	a.indexMu.Unlock()
+
+	if learnedFinalizeMs > learnedWatcherMs && learnedWatcherMs > 0 {
+		learnedFinalizeMs -= learnedWatcherMs
+	}
+
+	estimatedMs := 0.0
+	if learnedScanEntryMs > 0 && learnedTotalEntries > 0 {
+		estimatedMs += learnedScanEntryMs * float64(learnedTotalEntries)
+	}
+	if learnedFinalizeMs > 0 {
+		estimatedMs += learnedFinalizeMs
+	}
+	if estimatedMs <= 0 {
+		return
+	}
+
+	runtimeEventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
+		RootPath:       rootPath,
+		EntriesScanned: 0,
+		TotalEntries:   learnedTotalEntries,
+		ElapsedMs:      0,
+		EtaSeconds:     int(math.Ceil(estimatedMs / 1000)),
+		Phase:          "scanning",
+	})
+}
+
+func (a *App) buildDeferredHydrationScan(roots []libraryRootConfig, expectedScanGeneration uint64) (LibraryScanResult, error) {
+	isScanCanceled := func() bool {
+		return a.libraryScanGeneration.Load() != expectedScanGeneration
+	}
+
+	result, err := buildFilesystemFullScan(roots, isScanCanceled)
+	if err != nil {
+		return LibraryScanResult{}, err
+	}
+	result.DeferredFiles = false
+	return result, nil
+}
+
+func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expectedScanGeneration uint64, totalEntries int, estimatedMs float64) {
+	if len(roots) == 0 {
+		return
+	}
+
+	rootsCopy := append([]libraryRootConfig(nil), roots...)
+	a.logRescanEvent("Deferred library hydration START: roots=%d", len(rootsCopy))
+
+	go func(activeRoots []libraryRootConfig) {
+		startedAt := time.Now()
+		stopProgress := make(chan struct{})
+		rootPath, _ := aggregateLibraryScanRootInfo(activeRoots)
+		if estimatedMs > 0 {
+			a.emitDeferredHydrationProgress(rootPath, totalEntries, startedAt, estimatedMs)
+		}
+
+		if estimatedMs > 0 {
+			go func(rootPath string, entries int, started time.Time, activeStop <-chan struct{}) {
+				ticker := time.NewTicker(500 * time.Millisecond)
+				defer ticker.Stop()
+
+				for {
+					select {
+					case <-activeStop:
+						return
+					case <-ticker.C:
+						a.emitDeferredHydrationProgress(rootPath, entries, started, estimatedMs)
+					}
+				}
+			}(rootPath, totalEntries, startedAt, stopProgress)
+		}
+		defer close(stopProgress)
+
+		result, err := a.buildDeferredHydrationScan(activeRoots, expectedScanGeneration)
+		if err != nil {
+			a.indexMu.Lock()
+			if a.libraryScanGeneration.Load() == expectedScanGeneration {
+				a.libraryFileHydrationPending = false
+			}
+			a.indexMu.Unlock()
+
+			if errors.Is(err, errLibraryScanCanceled) {
+				a.logRescanEvent("Deferred library hydration CANCELED")
+				return
+			}
+
+			a.logRescanEvent("Deferred library hydration failed: %v", err)
+			return
+		}
+
+		if !a.setLibraryIndexFromScan(result, expectedScanGeneration) {
+			a.logRescanEvent("Deferred library hydration canceled during index commit")
+			return
+		}
+
+		shouldEmitUpdate := false
+		payload := LibraryScanResult{}
+		a.indexMu.Lock()
+		if a.libraryScanGeneration.Load() == expectedScanGeneration {
+			a.libraryFileHydrationPending = false
+			a.libraryFolderEntriesCache = nil
+			a.maybeStartLibraryDerivedIndexRebuildLocked()
+			shouldEmitUpdate = true
+			payload = compactLibraryScanResult(a.libraryScan)
+		}
+		a.indexMu.Unlock()
+		if shouldEmitUpdate && a.ctx != nil {
+			runtimeEventsEmit(a.ctx, libraryScanUpdatedEvent, payload)
+		}
+		a.notifyMusicBrainzTagWorker()
+		a.emitDeferredHydrationProgress(result.RootPath, totalEntries, startedAt, 0)
+
+		a.logRescanEvent(
+			"Deferred library hydration END: tracks=%d text=%d images=%d took %.2fms",
+			result.TrackCount,
+			result.TextFileCount,
+			result.ImageFileCount,
+			time.Since(startedAt).Seconds()*1000,
+		)
+	}(rootsCopy)
+}
+
+func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatcher bool) LibraryScanResult {
+	scanStartedAt := time.Now()
+	scanGeneration := a.libraryScanGeneration.Add(1)
+	isScanCanceled := func() bool {
+		return a.libraryScanGeneration.Load() != scanGeneration
+	}
+	scanCanceledResponse := func() LibraryScanResult {
+		a.indexMu.Lock()
+		defer a.indexMu.Unlock()
+
+		return LibraryScanResult{
+			RootPath:       a.libraryScan.RootPath,
+			RootName:       a.libraryScan.RootName,
+			DeferredFiles:  a.libraryScan.DeferredFiles,
+			TotalEntries:   a.libraryScan.TotalEntries,
+			TrackCount:     a.libraryScan.TrackCount,
+			TextFileCount:  a.libraryScan.TextFileCount,
+			ImageFileCount: a.libraryScan.ImageFileCount,
+			Truncated:      a.libraryScan.Truncated,
+			EntryLimit:     a.libraryScan.EntryLimit,
+		}
+	}
+
+	roots := resolveLibraryRootConfigs(normalizeLibraryFolders(folders, "", 0))
+	rootPath, rootName := aggregateLibraryScanRootInfo(roots)
+	result := newDeferredScanResult(rootPath, rootName)
+
+	if len(roots) == 0 {
+		if restartWatcher {
+			a.stopLibraryWatcher()
+		}
+		a.indexMu.Lock()
+		a.activeLibraryRoots = nil
+		a.libraryWatchDirectoryPaths = nil
+		a.libraryFolderEntriesCache = nil
+		a.libraryFileHydrationPending = false
+		a.indexMu.Unlock()
+		a.setLibraryIndexFromScan(result, scanGeneration)
+		a.notifyMusicBrainzTagWorker()
+		return result
+	}
+
+	a.logRescanEvent("scanLibraryFolders deferred START: roots=%d restartWatcher=%t", len(roots), restartWatcher)
+	a.emitDeferredScanInitialProgress(result.RootPath)
+	if restartWatcher {
+		a.stopLibraryWatcher()
+	}
+
+	a.indexMu.Lock()
+	a.activeLibraryRoots = append([]libraryRootConfig(nil), roots...)
+	a.trackByPath = make(map[string]LibraryIndexedFile)
+	a.textByPath = make(map[string]LibraryIndexedFile)
+	a.imageByPath = make(map[string]LibraryIndexedFile)
+	a.markLibraryDerivedIndexDirtyLocked()
+	a.searchFolderEntries = nil
+	a.libraryFolderEntriesCache = make(map[string][]LibraryBrowserEntry)
+	a.libraryWatchDirectoryPaths = nil
+	a.libraryFileHydrationPending = false
+	a.scanInProgress = true
+	a.scanRemainingImmediateChildrenByFolder = make(map[string]int, len(roots))
+	a.scanDiscoveredChildFoldersByParent = make(map[string]map[string]struct{}, len(roots)+1)
+	for _, root := range roots {
+		addDiscoveredChildFolder(a.scanDiscoveredChildFoldersByParent, "", root.Name)
+		a.scanRemainingImmediateChildrenByFolder[root.Name] = 1
+	}
+	a.libraryScan = result
+	a.indexMu.Unlock()
+
+	defer func() {
+		a.indexMu.Lock()
+		a.scanInProgress = false
+		a.scanRemainingImmediateChildrenByFolder = nil
+		a.scanDiscoveredChildFoldersByParent = nil
+		a.indexMu.Unlock()
+	}()
+
+	quickBuild, quickErr := buildFilesystemQuickScan(roots, isScanCanceled)
+	if quickErr != nil {
+		if errors.Is(quickErr, errLibraryScanCanceled) {
+			return scanCanceledResponse()
+		}
+
+		a.logRescanEvent("scanLibraryFolders deferred walk failed: %v", quickErr)
+		return scanCanceledResponse()
+	}
+
+	quickBuild.ScanResult.DeferredFiles = true
+	folderChildPathsByFolder := buildFolderChildPathsFromDiscovered(quickBuild.DiscoveredChildFoldersByParent)
+	searchFolderEntries := buildFolderSearchEntriesFromChildPaths(folderChildPathsByFolder)
+
+	a.indexMu.Lock()
+	if a.libraryScanGeneration.Load() != scanGeneration {
+		a.indexMu.Unlock()
+		return scanCanceledResponse()
+	}
+
+	a.folderChildPathsByFolder = folderChildPathsByFolder
+	a.searchFolderEntries = searchFolderEntries
+	a.libraryFolderEntriesCache = make(map[string][]LibraryBrowserEntry)
+	a.libraryWatchDirectoryPaths = append([]string(nil), quickBuild.DirectoryPaths...)
+	a.libraryFileHydrationPending = quickBuild.ScanResult.TrackCount > 0 || quickBuild.ScanResult.TextFileCount > 0 || quickBuild.ScanResult.ImageFileCount > 0
+	a.scanLastTotalEntries = quickBuild.ScanResult.TotalEntries
+	a.libraryScan = quickBuild.ScanResult
+	a.libraryScan.CoverPathByFolder = cloneCoverPathByFolder(quickBuild.ScanResult.CoverPathByFolder)
+	a.indexMu.Unlock()
+
+	if restartWatcher {
+		a.startLibraryWatcherAsyncWithDirectories(roots, quickBuild.DirectoryPaths)
+	}
+	if a.libraryFileHydrationPending {
+		a.startLibraryFileHydrationAsync(
+			roots,
+			scanGeneration,
+			quickBuild.ScanResult.TotalEntries,
+			a.estimateDeferredHydrationMs(quickBuild.ScanResult.TotalEntries, time.Since(scanStartedAt)),
+		)
+	}
+
+	response := quickBuild.ScanResult
+	response.TrackFiles = []LibraryIndexedFile{}
+	response.TextFiles = []LibraryIndexedFile{}
+	response.ImageFiles = []LibraryIndexedFile{}
+	a.logRescanEvent(
+		"scanLibraryFolders deferred END: totalEntries=%d tracks=%d text=%d images=%d directories=%d took %.2fms",
+		response.TotalEntries,
+		response.TrackCount,
+		response.TextFileCount,
+		response.ImageFileCount,
+		len(quickBuild.DirectoryPaths),
+		time.Since(scanStartedAt).Seconds()*1000,
+	)
+	return response
+}

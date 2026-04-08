@@ -151,6 +151,7 @@ export type LibraryScanResult = {
     trackFiles: LibraryIndexedFile[];
     textFiles: LibraryIndexedFile[];
     imageFiles: LibraryIndexedFile[];
+    deferredFiles?: boolean;
     coverPathByFolder: Record<string, string>;
     totalEntries: number;
     trackCount: number;

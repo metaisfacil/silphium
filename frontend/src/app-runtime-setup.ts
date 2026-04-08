@@ -717,6 +717,7 @@ export const setupLibraryLoadRuntime = (scope: AppRuntimeScope) => createAppLibr
         await scope.refreshListenBrainzFeedbackForCurrentTrack(force);
     },
     getAppVersion: async () => await scope.getAppVersion(),
+    ensureTrackIndexForPath: scope.ensureTrackIndexForPath,
     rebuildTrackPathIndex: scope.rebuildTrackPathIndex,
     rebuildTextFilePathIndex: scope.rebuildTextFilePathIndex,
     rebuildImageFilePathIndex: scope.rebuildImageFilePathIndex,

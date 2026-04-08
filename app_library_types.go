@@ -17,6 +17,7 @@ type LibraryScanResult struct {
 	TrackFiles        []LibraryIndexedFile `json:"trackFiles"`
 	TextFiles         []LibraryIndexedFile `json:"textFiles"`
 	ImageFiles        []LibraryIndexedFile `json:"imageFiles"`
+	DeferredFiles     bool                 `json:"deferredFiles"`
 	CoverPathByFolder map[string]string    `json:"coverPathByFolder"`
 	TotalEntries      int                  `json:"totalEntries"`
 	TrackCount        int                  `json:"trackCount"`

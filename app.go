@@ -45,6 +45,8 @@ type App struct {
 	trackByPath                            map[string]LibraryIndexedFile
 	textByPath                             map[string]LibraryIndexedFile
 	imageByPath                            map[string]LibraryIndexedFile
+	libraryFolderEntriesCache              map[string][]LibraryBrowserEntry
+	libraryWatchDirectoryPaths             []string
 	folderEntriesByFolder                  map[string][]LibraryBrowserEntry
 	folderChildPathsByFolder               map[string][]string
 	trackFilesByFolder                     map[string][]LibraryIndexedFile
@@ -59,6 +61,7 @@ type App struct {
 	libraryDerivedIndexDirty               bool
 	libraryDerivedIndexBuilding            bool
 	libraryDerivedIndexGeneration          uint64
+	libraryFileHydrationPending            bool
 	trackTagsCacheMu                       sync.Mutex
 	trackTagsCacheByPath                   map[string]trackTagsCacheEntry
 	trackTagsCacheOrder                    []string

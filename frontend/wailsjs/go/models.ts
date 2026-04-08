@@ -431,6 +431,7 @@ export namespace main {
 	    trackFiles: LibraryIndexedFile[];
 	    textFiles: LibraryIndexedFile[];
 	    imageFiles: LibraryIndexedFile[];
+	    deferredFiles: boolean;
 	    coverPathByFolder: Record<string, string>;
 	    totalEntries: number;
 	    trackCount: number;
@@ -450,6 +451,7 @@ export namespace main {
 	        this.trackFiles = this.convertValues(source["trackFiles"], LibraryIndexedFile);
 	        this.textFiles = this.convertValues(source["textFiles"], LibraryIndexedFile);
 	        this.imageFiles = this.convertValues(source["imageFiles"], LibraryIndexedFile);
+	        this.deferredFiles = source["deferredFiles"];
 	        this.coverPathByFolder = source["coverPathByFolder"];
 	        this.totalEntries = source["totalEntries"];
 	        this.trackCount = source["trackCount"];

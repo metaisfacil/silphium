@@ -195,8 +195,15 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             : [];
     };
 
-    const createPlaceholderTrackForPath = (trackPath: string): Track => {
-        const normalizedPath = trackPath.trim();
+    const describeIndexedLibraryFileForPath = (candidatePath: string): {
+        name: string;
+        path: string;
+        relativePath: string;
+        folderPath: string;
+        rootPath: string;
+        rootName: string;
+    } => {
+        const normalizedPath = candidatePath.trim();
         const normalizedPathForSplit = normalizedPath.replace(/\\/g, '/');
         const segments = normalizedPathForSplit.split('/').filter((segment) => segment !== '');
         const fileName = segments[segments.length - 1] || normalizedPath;
@@ -224,14 +231,27 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         return {
-            title: fileName,
             name: fileName,
             path: normalizedPath,
             relativePath,
             folderPath,
             rootPath: matchingLibraryFolder?.path || '',
             rootName,
-            displayTitle: fileName,
+        };
+    };
+
+    const createPlaceholderTrackForPath = (trackPath: string): Track => {
+        const indexedFile = describeIndexedLibraryFileForPath(trackPath);
+
+        return {
+            title: indexedFile.name,
+            name: indexedFile.name,
+            path: indexedFile.path,
+            relativePath: indexedFile.relativePath,
+            folderPath: indexedFile.folderPath,
+            rootPath: indexedFile.rootPath,
+            rootName: indexedFile.rootName,
+            displayTitle: indexedFile.name,
             displayAlbum: 'Unknown Album',
             displayArtist: 'Unknown Artist',
             displayTrackNumber: '',
@@ -263,6 +283,56 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         context.tracks.push(placeholderTrack);
         const createdIndex = context.tracks.length - 1;
         context.trackIndexByPath.set(normalizedPath.toLowerCase(), createdIndex);
+        return createdIndex;
+    };
+
+    const ensureTextFileIndexForPath = (path: string): number => {
+        const existingIndex = textFileIndexForPath(path);
+        if (existingIndex >= 0) {
+            return existingIndex;
+        }
+
+        const normalizedPath = path.trim();
+        if (!normalizedPath) {
+            return -1;
+        }
+
+        const indexedFile = describeIndexedLibraryFileForPath(normalizedPath);
+        context.textFiles.push({
+            name: indexedFile.name,
+            path: indexedFile.path,
+            relativePath: indexedFile.relativePath,
+            folderPath: indexedFile.folderPath,
+            rootPath: indexedFile.rootPath,
+            rootName: indexedFile.rootName,
+        });
+        const createdIndex = context.textFiles.length - 1;
+        context.textFileIndexByPath.set(normalizedPath.toLowerCase(), createdIndex);
+        return createdIndex;
+    };
+
+    const ensureImageFileIndexForPath = (path: string): number => {
+        const existingIndex = imageFileIndexForPath(path);
+        if (existingIndex >= 0) {
+            return existingIndex;
+        }
+
+        const normalizedPath = path.trim();
+        if (!normalizedPath) {
+            return -1;
+        }
+
+        const indexedFile = describeIndexedLibraryFileForPath(normalizedPath);
+        context.imageFiles.push({
+            name: indexedFile.name,
+            path: indexedFile.path,
+            relativePath: indexedFile.relativePath,
+            folderPath: indexedFile.folderPath,
+            rootPath: indexedFile.rootPath,
+            rootName: indexedFile.rootName,
+        });
+        const createdIndex = context.imageFiles.length - 1;
+        context.imageFileIndexByPath.set(normalizedPath.toLowerCase(), createdIndex);
         return createdIndex;
     };
 
@@ -803,7 +873,9 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         collectReplayGainReleaseTrackPathsForIndex,
         currentReplayGainReleaseTrackPaths,
         currentTrackForPlaybackState,
+        ensureImageFileIndexForPath,
         ensureTrackIndexForPath,
+        ensureTextFileIndexForPath,
         ensureTrackTagsResolved,
         ensureTrackTagsResolvedBatch,
         handleAudioError,

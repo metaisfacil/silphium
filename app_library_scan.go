@@ -45,6 +45,10 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 }
 
 func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool) LibraryScanResult {
+	if libraryDeferredHydrationEnabled() {
+		return a.scanLibraryFoldersDeferred(folders, restartWatcher)
+	}
+
 	scanOverallStartedAt := time.Now()
 	scanGeneration := a.libraryScanGeneration.Add(1)
 	isScanCanceled := func() bool {
@@ -346,7 +350,6 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 
 	selectedCoverPriority := make(map[string]int)
 	selectedCoverName := make(map[string]string)
-
 	indexWalkStartedAt := time.Now()
 	var scanErr error
 	var scanDirectory func(root libraryRootConfig, absolutePath string, folderPath string)

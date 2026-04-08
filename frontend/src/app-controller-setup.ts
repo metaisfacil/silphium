@@ -248,8 +248,30 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
                 void context.openTextFileModal(textFile);
             }
         },
+        onTextFilePathChosen: (textFilePath: string) => {
+            const resolvedIndex = context.ensureTextFileIndexForPath(textFilePath);
+            if (resolvedIndex < 0) {
+                return;
+            }
+
+            const textFile = context.textFiles[resolvedIndex];
+            if (textFile) {
+                void context.openTextFileModal(textFile);
+            }
+        },
         onImageFileChosen: (imageFileIndex: number) => {
             const imageFile = context.imageFiles[imageFileIndex];
+            if (imageFile) {
+                void imageModalController.openImageFile(imageFile);
+            }
+        },
+        onImageFilePathChosen: (imageFilePath: string) => {
+            const resolvedIndex = context.ensureImageFileIndexForPath(imageFilePath);
+            if (resolvedIndex < 0) {
+                return;
+            }
+
+            const imageFile = context.imageFiles[resolvedIndex];
             if (imageFile) {
                 void imageModalController.openImageFile(imageFile);
             }
