@@ -267,6 +267,12 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 	}
 
 	windowFrames := normalizedFrameCount * visualizationWindowFactor
+	if normalizedFrameCount >= longVisualizationFrameThreshold {
+		longWindowFrames := int(float64(audioSampleRate) * longVisualizationWindowSeconds)
+		if longWindowFrames > windowFrames {
+			windowFrames = longWindowFrames
+		}
+	}
 	if windowFrames > totalFrames {
 		windowFrames = totalFrames
 	}

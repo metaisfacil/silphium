@@ -21,6 +21,7 @@ import type {
     AppSettings,
     AudioOutputDevice,
     AudioPlaybackState,
+    AudioVisualizationFrame,
     CustomSendToAction,
     CustomSendToActionScope,
     FFmpegPathStatus,
@@ -81,6 +82,7 @@ type SharedRuntimeMethods = {
     resolveLibraryFolderForAbsolutePath: (path: string) => Promise<string>;
     isFolderImmediateDescendantsEnumerated: (folderPath: string) => Promise<boolean>;
     searchLibrary: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
+    fetchVisualizationFrame: (frameCount: number) => Promise<AudioVisualizationFrame>;
     applyUiDitheringSetting: () => void;
     beginLibraryLoadTracking: () => void;
     markLibraryScanResolved: () => void;

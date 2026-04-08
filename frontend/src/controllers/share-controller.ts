@@ -5,7 +5,7 @@ import {
 } from '../services/share-image-service';
 import { deriveShareImageAccentPalette, type ShareImageAccentPalette } from '../utils/cover-accent-palette';
 import { buildShareImageDefaultFilename, blobToBase64 } from '../utils/display-helpers';
-import type { Track } from '../types/app-types';
+import type { AudioVisualizationFrame, Track } from '../types/app-types';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
 
 export interface ShareControllerElements {
@@ -32,6 +32,7 @@ export interface ShareControllerOptions {
     closeOtherMenus: () => void;
     selectShareImageSaveFile: (defaultName: string) => Promise<string>;
     saveShareImageFile: (path: string, base64: string) => Promise<boolean>;
+    fetchVisualizationFrame: (frameCount: number) => Promise<AudioVisualizationFrame>;
 }
 
 export interface ShareController {
@@ -53,6 +54,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
 
     const shareModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     const defaultShareImageComment = 'Listening right now.';
+    const shareWaveformFrameCount = 1536;
     let shareModalHideTimer: number | undefined;
     let sharePreviewRequestVersion = 0;
     let sharePreviewSnapshot: {
@@ -62,6 +64,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
         trackPath: string;
         coverImage?: ImageBitmap;
         accents: ShareImageAccentPalette;
+        waveformSamples?: number[];
     } | null = null;
 
     const clearSharePreviewSnapshot = (): void => {
@@ -111,6 +114,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
             comment: shareCommentInput.value,
             coverImage: sharePreviewSnapshot.coverImage,
             accents: sharePreviewSnapshot.accents,
+            waveformSamples: sharePreviewSnapshot.waveformSamples,
         });
     };
 
@@ -122,6 +126,31 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
         }
         const resolved = await options.resolveCoverForTrack(track);
         return options.getCachedMediaArtwork(track)?.src || resolved;
+    };
+
+    const resolveShareWaveformSamples = async (trackPath: string): Promise<number[] | undefined> => {
+        try {
+            const frame = await options.fetchVisualizationFrame(shareWaveformFrameCount);
+            if (!frame.loaded || frame.frameCount <= 0 || frame.samples.length < 2) {
+                return undefined;
+            }
+
+            if (frame.sourcePath && frame.sourcePath !== trackPath) {
+                return undefined;
+            }
+
+            const monoSamples: number[] = [];
+            for (let index = 0; index + 1 < frame.samples.length; index += 2) {
+                const left = frame.samples[index] || 0;
+                const right = frame.samples[index + 1] || 0;
+                const mono = (left + right) / 2;
+                monoSamples.push(Math.max(0, Math.min(1, ((mono / 32768) * 0.5) + 0.5)));
+            }
+
+            return monoSamples.length >= 24 ? monoSamples : undefined;
+        } catch {
+            return undefined;
+        }
     };
 
     const close = (): void => {
@@ -180,6 +209,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
             const track = resolvedIndex >= 0 ? (options.getTrack(resolvedIndex) || selectedTrack) : selectedTrack;
             const coverSource = await resolveShareCoverSource(track);
             const coverImage = await loadShareCanvasImage(coverSource);
+            const waveformSamples = await resolveShareWaveformSamples(track.path);
             if (requestVersion !== sharePreviewRequestVersion) {
                 coverImage?.close();
                 return;
@@ -193,6 +223,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
                 trackPath: track.path,
                 coverImage,
                 accents,
+                waveformSamples,
             };
             renderSharePreviewSnapshot();
             setShareStatus('');

@@ -7,10 +7,13 @@ export type ShareImagePreviewData = {
     comment: string;
     coverImage?: CanvasImageSource;
     accents?: ShareImageAccentPalette;
+    waveformSamples?: number[];
 };
 
 const shareImageWidth = 600;
 const shareImageHeight = 350;
+const shareQuoteBoxY = 228;
+const shareQuoteBoxHeight = 76;
 
 type RgbColor = {
     r: number;
@@ -235,6 +238,52 @@ const wrapTextLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: nu
     return wrapTextLinesDetailed(ctx, text, maxWidth, maxLines).lines;
 };
 
+const hashString = (text: string): number => {
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+};
+
+const generateWaveformSignature = (seedText: string, sampleCount: number): number[] => {
+    const minimumSampleCount = Math.max(24, sampleCount);
+    let state = hashString(seedText || 'silphium-share-waveform');
+    const next = (): number => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        return state / 4294967295;
+    };
+
+    const envelope = new Array<number>(minimumSampleCount);
+    for (let index = 0; index < minimumSampleCount; index += 1) {
+        const progress = minimumSampleCount <= 1 ? 0 : index / (minimumSampleCount - 1);
+        const edgeFade = Math.sin(Math.PI * progress) ** 0.66;
+        const base = 0.2 + (next() * 0.72);
+        envelope[index] = clampUnit(base * edgeFade);
+    }
+
+    // Light smoothing keeps the shape organic instead of jagged noise.
+    const smoothed = new Array<number>(minimumSampleCount);
+    for (let index = 0; index < minimumSampleCount; index += 1) {
+        const previous = envelope[Math.max(0, index - 1)];
+        const current = envelope[index];
+        const following = envelope[Math.min(minimumSampleCount - 1, index + 1)];
+        smoothed[index] = clampUnit((previous * 0.24) + (current * 0.52) + (following * 0.24));
+    }
+
+    return smoothed;
+};
+
+const normalizeWaveformSamples = (samples: number[] | undefined, seedText: string): number[] => {
+    const usable = (samples || []).filter((sample) => Number.isFinite(sample));
+    if (usable.length >= 24) {
+        return usable.map((sample) => clampUnit(sample));
+    }
+
+    return generateWaveformSignature(seedText, 84);
+};
+
 const fillCanvasBackground = (ctx: CanvasRenderingContext2D, accents: ShareImageAccentPalette): void => {
     const primary = parseHexColor(accents.primary);
     const secondary = parseHexColor(accents.secondary);
@@ -262,6 +311,59 @@ const fillCanvasBackground = (ctx: CanvasRenderingContext2D, accents: ShareImage
     glowB.addColorStop(1, rgbToCss(secondary, 0));
     ctx.fillStyle = glowB;
     ctx.fillRect(0, 0, shareImageWidth, shareImageHeight);
+};
+
+const drawWaveformFlourish = (ctx: CanvasRenderingContext2D, accents: ShareImageAccentPalette, samples: number[]): void => {
+    if (samples.length < 2) {
+        return;
+    }
+
+    const primary = parseHexColor(accents.primary);
+    const secondary = parseHexColor(accents.secondary);
+    const startX = 16;
+    const endX = shareImageWidth - 16;
+    const width = endX - startX;
+    const centerY = shareQuoteBoxY + (shareQuoteBoxHeight / 2);
+    const amplitude = 26;
+    const fadeInStop = 0.08;
+    const fadeOutStop = 0.92;
+
+    const strokeGradient = ctx.createLinearGradient(startX, 0, endX, 0);
+    strokeGradient.addColorStop(0, rgbToCss(primary, 0));
+    strokeGradient.addColorStop(fadeInStop, rgbToCss(primary, 0.05));
+    strokeGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
+    strokeGradient.addColorStop(fadeOutStop, rgbToCss(secondary, 0.05));
+    strokeGradient.addColorStop(1, rgbToCss(secondary, 0));
+
+    const glowGradient = ctx.createLinearGradient(startX, 0, endX, 0);
+    glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    glowGradient.addColorStop(fadeInStop, 'rgba(255, 255, 255, 0.025)');
+    glowGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.03)');
+    glowGradient.addColorStop(fadeOutStop, 'rgba(255, 255, 255, 0.025)');
+    glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+    const sampleCount = samples.length;
+
+    ctx.save();
+    ctx.beginPath();
+    for (let index = 0; index < sampleCount; index += 1) {
+        const progress = sampleCount <= 1 ? 0 : index / (sampleCount - 1);
+        const x = startX + (width * progress);
+        const centered = (samples[index] * 2) - 1;
+        const y = centerY - (centered * amplitude);
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+    ctx.strokeStyle = glowGradient;
+    ctx.lineWidth = 7;
+    ctx.stroke();
+    ctx.strokeStyle = strokeGradient;
+    ctx.lineWidth = 1.85;
+    ctx.stroke();
+    ctx.restore();
 };
 
 const getCanvasImageSourceSize = (source: CanvasImageSource): { width: number; height: number } | undefined => {
@@ -411,17 +513,19 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
 
     const ctx = context;
     ctx.clearRect(0, 0, shareImageWidth, shareImageHeight);
+    const trackTitle = normalizeWhitespace(data.title) || 'Unknown Title';
+    const trackArtist = normalizeWhitespace(data.artist) || 'Unknown Artist';
+    const trackAlbum = normalizeWhitespace(data.album) || 'Unknown Album';
+    const waveformSamples = normalizeWaveformSamples(data.waveformSamples, `${trackTitle}|${trackArtist}|${trackAlbum}`);
+
     fillCanvasBackground(ctx, data.accents || defaultShareImageAccents);
+    drawWaveformFlourish(ctx, data.accents || defaultShareImageAccents, waveformSamples);
     drawCoverBlock(ctx, data.coverImage);
 
     const textX = 262;
     const textWidth = shareImageWidth - textX - 34;
 
     drawLabel(ctx, 'Now playing', textX, 42);
-
-    const trackTitle = normalizeWhitespace(data.title) || 'Unknown Title';
-    const trackArtist = normalizeWhitespace(data.artist) || 'Unknown Artist';
-    const trackAlbum = normalizeWhitespace(data.album) || 'Unknown Album';
 
     const textFieldConfigs = [
         {
@@ -545,9 +649,9 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
     const normalizedComment = normalizeWhitespace(data.comment);
     if (normalizedComment !== '') {
         const quoteBoxX = 262;
-        const quoteBoxY = 228;
+        const quoteBoxY = shareQuoteBoxY;
         const quoteBoxWidth = shareImageWidth - quoteBoxX - 34;
-        const quoteBoxHeight = 76;
+        const quoteBoxHeight = shareQuoteBoxHeight;
 
         ctx.save();
         drawRoundedRect(ctx, quoteBoxX, quoteBoxY, quoteBoxWidth, quoteBoxHeight, 20);

@@ -69,6 +69,7 @@ describe('share image preview cover rendering', () => {
             createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
             beginPath: vi.fn(),
             moveTo: vi.fn(),
+            lineTo: vi.fn(),
             arcTo: vi.fn(),
             closePath: vi.fn(),
             clip: vi.fn(),
@@ -87,6 +88,7 @@ describe('share image preview cover rendering', () => {
             set font(_value: string) { void _value; },
             set textAlign(_value: CanvasTextAlign) { void _value; },
             set textBaseline(_value: CanvasTextBaseline) { void _value; },
+            set globalAlpha(_value: number) { void _value; },
             set shadowColor(_value: string) { void _value; },
             set shadowBlur(_value: number) { void _value; },
             set shadowOffsetY(_value: number) { void _value; },
@@ -145,6 +147,7 @@ describe('share image preview text fitting', () => {
             createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
             beginPath: vi.fn(),
             moveTo: vi.fn(),
+            lineTo: vi.fn(),
             arcTo: vi.fn(),
             closePath: vi.fn(),
             clip: vi.fn(),
@@ -171,6 +174,7 @@ describe('share image preview text fitting', () => {
             },
             set textAlign(_value: CanvasTextAlign) { void _value; },
             set textBaseline(_value: CanvasTextBaseline) { void _value; },
+            set globalAlpha(_value: number) { void _value; },
             set shadowColor(_value: string) { void _value; },
             set shadowBlur(_value: number) { void _value; },
             set shadowOffsetY(_value: number) { void _value; },
@@ -276,5 +280,56 @@ describe('share image preview text fitting', () => {
         expect(titleLines.length).toBeGreaterThan(1);
         expect(titleLines.some((line) => line.text.includes('...'))).toBe(false);
         expect(titleLines.slice(0, -1).some((line) => line.text.endsWith('~'))).toBe(true);
+    });
+
+    it('draws a subtle waveform flourish behind metadata', () => {
+        const lineTo = vi.fn();
+        const context = {
+            clearRect: vi.fn(),
+            createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+            createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+            beginPath: vi.fn(),
+            moveTo: vi.fn(),
+            lineTo,
+            arcTo: vi.fn(),
+            closePath: vi.fn(),
+            clip: vi.fn(),
+            fillRect: vi.fn(),
+            fill: vi.fn(),
+            stroke: vi.fn(),
+            save: vi.fn(),
+            restore: vi.fn(),
+            drawImage: vi.fn(),
+            measureText: vi.fn((text: string) => ({ width: text.length * 8 })),
+            fillText: vi.fn(),
+            set fillStyle(_value: string | CanvasGradient | CanvasPattern) { void _value; },
+            set strokeStyle(_value: string | CanvasGradient | CanvasPattern) { void _value; },
+            set lineWidth(_value: number) { void _value; },
+            set filter(_value: string) { void _value; },
+            set font(_value: string) { void _value; },
+            set textAlign(_value: CanvasTextAlign) { void _value; },
+            set textBaseline(_value: CanvasTextBaseline) { void _value; },
+            set globalAlpha(_value: number) { void _value; },
+            set shadowColor(_value: string) { void _value; },
+            set shadowBlur(_value: number) { void _value; },
+            set shadowOffsetY(_value: number) { void _value; },
+        } as unknown as CanvasRenderingContext2D;
+
+        const canvas = {
+            width: 0,
+            height: 0,
+            getContext: vi.fn(() => context),
+        } as unknown as HTMLCanvasElement;
+
+        renderShareImagePreview(canvas, {
+            title: 'Track',
+            album: 'Album',
+            artist: 'Artist',
+            comment: '',
+            waveformSamples: new Array(64).fill(0).map((_, index) => (index % 7) / 6),
+        });
+
+        expect(lineTo).toHaveBeenCalled();
+        expect(lineTo.mock.calls.length).toBeGreaterThan(50);
     });
 });

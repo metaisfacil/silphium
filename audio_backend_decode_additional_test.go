@@ -221,4 +221,24 @@ func TestAudioBackendDecodeAdditionalCoverageBranches(t *testing.T) {
 	if decimatedFrame.SampleStride <= 6 {
 		t.Fatalf("VisualizationFrame(decimated) sample stride = %.4f, want > 6", decimatedFrame.SampleStride)
 	}
+
+	longWindowBackend := NewAudioBackend()
+	longFrameSource := make([][2]int16, audioSampleRate*11)
+	for index := range longFrameSource {
+		value := int16(index % 4096)
+		longFrameSource[index] = [2]int16{value, -value}
+	}
+	longWindowBackend.streamSegments = []audioTrackSegment{{
+		SourcePath: "long-window.flac",
+		PCMData:    encodeStereoPCM(longFrameSource),
+	}}
+	longWindowBackend.streamReadOffset = int64(len(longWindowBackend.streamSegments[0].PCMData))
+	longWindowBackend.playbackBaseBytes = longWindowBackend.streamReadOffset
+	longWindowFrame := longWindowBackend.VisualizationFrame(1536)
+	if longWindowFrame.FrameCount != 1536 {
+		t.Fatalf("VisualizationFrame(long window) frame count = %d, want 1536", longWindowFrame.FrameCount)
+	}
+	if longWindowFrame.SampleStride <= 200 {
+		t.Fatalf("VisualizationFrame(long window) sample stride = %.4f, want > 200", longWindowFrame.SampleStride)
+	}
 }

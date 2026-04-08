@@ -17,6 +17,7 @@ import {
     AppendTracksToPlaylistFile,
     GetMusicBrainzTagWorkerProgress,
     AudioQueueNextTrack,
+    AudioGetVisualizationFrame,
     AudioSeek,
     AudioSetVolume,
     AudioStop,
@@ -409,6 +410,7 @@ Object.assign(runtimeScope, {
     resolveLibraryFolderForAbsolutePath: async (path: string): Promise<string> => await ResolveLibraryFolderForPath(path),
     isFolderImmediateDescendantsEnumerated: async (folderPath: string): Promise<boolean> => await IsLibraryFolderImmediateDescendantsEnumerated(folderPath),
     searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => await SearchLibrary(query, offset, limit) as LibrarySearchPage,
+    fetchVisualizationFrame: async (frameCount: number) => await AudioGetVisualizationFrame(frameCount),
 });
 
 Object.assign(runtimeScope, setupCoreServicesRuntime(Object.assign(Object.create(runtimeScope), {

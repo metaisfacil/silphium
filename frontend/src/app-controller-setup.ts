@@ -6,7 +6,7 @@ import { createPlaylistTargetModalController } from './controllers/playlist-targ
 import { createShareController } from './controllers/share-controller';
 import type { AppControllerSetupContext } from './app-bootstrap-setup';
 import { setupSettingsController } from './app-settings-controller-setup';
-import type { AppSettings, AudioPlaybackState, Track } from './types/app-types';
+import type { AppSettings, AudioPlaybackState, AudioVisualizationFrame, Track } from './types/app-types';
 
 export const setupAppControllers = (context: AppControllerSetupContext) => {
     let playlistController: PlaylistController | undefined;
@@ -170,6 +170,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         closeOtherMenus: context.closeOtherMenus,
         selectShareImageSaveFile: context.selectShareImageSaveFile,
         saveShareImageFile: context.saveShareImageFile,
+        fetchVisualizationFrame: async (frameCount: number): Promise<AudioVisualizationFrame> => await context.fetchVisualizationFrame(frameCount),
     });
 
     const imageModalController = createImageModalController({

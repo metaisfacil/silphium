@@ -168,6 +168,7 @@ const createControllerSetupContextFromScope = (scope: AppRuntimeScope) => ({
     resolveLibraryFolderForAbsolutePath: scope.resolveLibraryFolderForAbsolutePath,
     isFolderImmediateDescendantsEnumerated: scope.isFolderImmediateDescendantsEnumerated,
     searchLibrary: scope.searchLibrary,
+    fetchVisualizationFrame: scope.fetchVisualizationFrame,
     resolveTrackIndex: scope.ensureTrackIndexForPath,
     resolveTextFileIndex: scope.textFileIndexForPath,
     resolveImageFileIndex: scope.imageFileIndexForPath,

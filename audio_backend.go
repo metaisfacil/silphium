@@ -13,12 +13,14 @@ import (
 )
 
 const (
-	audioSampleRate            = 44100
-	audioChannelCount          = 2
-	audioBytesPerFrame         = audioChannelCount * 2
-	minVisualizationFrameCount = 64
-	maxVisualizationFrameCount = 512
-	visualizationWindowFactor  = 6
+	audioSampleRate                 = 44100
+	audioChannelCount               = 2
+	audioBytesPerFrame              = audioChannelCount * 2
+	minVisualizationFrameCount      = 64
+	maxVisualizationFrameCount      = 2048
+	visualizationWindowFactor       = 6
+	longVisualizationFrameThreshold = 768
+	longVisualizationWindowSeconds  = 10
 )
 
 var audioBytesPerSecond = audioSampleRate * audioBytesPerFrame
