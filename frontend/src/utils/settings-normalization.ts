@@ -29,6 +29,9 @@ export const defaultMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress =
 
 export const defaultMusicBrainzTagStaleDays = 30;
 export const maxMusicBrainzTagStaleDays = 36500;
+export const defaultLissajousScale = 0.25;
+export const minLissajousScale = 0.05;
+export const maxLissajousScale = 1;
 
 export const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 export const defaultCustomSendToActions: CustomSendToAction[] = [];
@@ -64,6 +67,7 @@ export const defaultAppSettings: AppSettings = {
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 1,
     lissajousEnabled: true,
+    lissajousScale: defaultLissajousScale,
     visualizerMode: 'lissajous',
     equalizerPosition: 'bottom',
     uiDitheringEnabled: true,
@@ -79,6 +83,19 @@ export const asPlayerVisualizerMode = (value: string): PlayerVisualizerMode => (
 export const asPlayerEqualizerPosition = (value: string): PlayerEqualizerPosition => (
     value === 'top' ? 'top' : 'bottom'
 );
+
+export const normalizeLissajousScale = (value: unknown): number => {
+    const numeric = typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+            ? Number.parseFloat(value)
+            : Number.NaN;
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+        return defaultLissajousScale;
+    }
+
+    return Math.max(minLissajousScale, Math.min(maxLissajousScale, numeric));
+};
 
 export const normalizeMusicBrainzTagWorkerProgress = (value?: Partial<MusicBrainzTagWorkerProgress> | null): MusicBrainzTagWorkerProgress => {
     const source = value || {};
@@ -229,6 +246,7 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
             ? Math.max(1, Math.min(128, Math.floor(settings.musicBrainzTagWorkerCores || 1)))
             : 1,
         lissajousEnabled: settings.lissajousEnabled !== false,
+        lissajousScale: normalizeLissajousScale(settings.lissajousScale),
         visualizerMode: asPlayerVisualizerMode(settings.visualizerMode || ''),
         equalizerPosition: asPlayerEqualizerPosition(settings.equalizerPosition || ''),
         uiDitheringEnabled: settings.uiDitheringEnabled !== false,

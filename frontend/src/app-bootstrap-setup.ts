@@ -60,6 +60,9 @@ const createControllerSetupContextFromScope = (scope: AppRuntimeScope) => ({
     setLissajousEnabled: (enabled: boolean) => {
         scope.visualizerController.setEnabled(enabled);
     },
+    setLissajousScale: (scale: AppSettings['lissajousScale']) => {
+        scope.visualizerController.setLissajousScale(scale);
+    },
     setVisualizerMode: (mode: AppSettings['visualizerMode']) => {
         scope.visualizerController.setMode(mode);
     },

@@ -4,12 +4,15 @@ import {
     asPlayerVisualizerMode,
     asPlayerEqualizerPosition,
     asCustomSendToActionScope,
+    defaultLissajousScale,
     defaultAppSettings,
     defaultCoverArtPriority,
     defaultCustomSendToActions,
     defaultMusicBrainzTagStaleDays,
     defaultMusicBrainzTagWorkerProgress,
+    minLissajousScale,
     maxMusicBrainzTagStaleDays,
+    normalizeLissajousScale,
     normalizeAppSettings,
     normalizeCoverArtPriority,
     normalizeCustomSendToActions,
@@ -54,6 +57,14 @@ describe('settings normalization', () => {
         expect(asPlayerEqualizerPosition('sideways')).toBe('bottom');
         expect(asCustomSendToActionScope('album')).toBe('album');
         expect(asCustomSendToActionScope('unsupported')).toBeNull();
+    });
+
+    it('normalizes Lissajous scale values', () => {
+        expect(normalizeLissajousScale(undefined)).toBe(defaultLissajousScale);
+        expect(normalizeLissajousScale(0)).toBe(defaultLissajousScale);
+        expect(normalizeLissajousScale('0.01')).toBe(minLissajousScale);
+        expect(normalizeLissajousScale(0.4)).toBe(0.4);
+        expect(normalizeLissajousScale(2)).toBe(1);
     });
 
     it('normalizes custom send-to actions and removes duplicates', () => {
@@ -101,6 +112,7 @@ describe('settings normalization', () => {
             musicBrainzTagRequestStaggeringEnabled: true,
             musicBrainzTagWorkerCores: 999,
             lissajousEnabled: false,
+            lissajousScale: 0.4,
             visualizerMode: 'equalizer',
             equalizerPosition: 'top',
             uiDitheringEnabled: false,
@@ -140,6 +152,7 @@ describe('settings normalization', () => {
         expect(normalized.musicBrainzTagRequestStaggeringEnabled).toBe(true);
         expect(normalized.musicBrainzTagWorkerCores).toBe(128);
         expect(normalized.lissajousEnabled).toBe(false);
+        expect(normalized.lissajousScale).toBe(0.4);
         expect(normalized.visualizerMode).toBe('equalizer');
         expect(normalized.equalizerPosition).toBe('top');
         expect(normalized.uiDitheringEnabled).toBe(false);
@@ -168,6 +181,7 @@ describe('settings normalization', () => {
             },
             musicBrainzTagStaleDays: -1,
             musicBrainzTagWorkerCores: 0,
+            lissajousScale: 0.01,
             visualizerMode: 'vector-scope',
             equalizerPosition: 'sideways',
             keyboardShortcuts: {
@@ -192,6 +206,7 @@ describe('settings normalization', () => {
         });
         expect(normalized.musicBrainzTagStaleDays).toBe(defaultMusicBrainzTagStaleDays);
         expect(normalized.musicBrainzTagWorkerCores).toBe(1);
+        expect(normalized.lissajousScale).toBe(minLissajousScale);
         expect(normalized.visualizerMode).toBe('lissajous');
         expect(normalized.equalizerPosition).toBe('bottom');
         expect(normalized.keyboardShortcuts.nextTrack).toBe(defaultAppSettings.keyboardShortcuts.nextTrack);
@@ -201,6 +216,7 @@ describe('settings normalization', () => {
         const normalized = normalizeAppSettings({
             favoritePlaylists: null as unknown as string[],
             lissajousEnabled: undefined,
+            lissajousScale: undefined,
             visualizerMode: undefined,
             equalizerPosition: undefined,
             uiDitheringEnabled: undefined,
@@ -217,6 +233,7 @@ describe('settings normalization', () => {
 
         expect(normalized.favoritePlaylists).toEqual([]);
         expect(normalized.lissajousEnabled).toBe(true);
+    expect(normalized.lissajousScale).toBe(defaultLissajousScale);
         expect(normalized.visualizerMode).toBe('lissajous');
         expect(normalized.equalizerPosition).toBe('bottom');
         expect(normalized.uiDitheringEnabled).toBe(true);

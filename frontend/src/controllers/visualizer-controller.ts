@@ -21,7 +21,7 @@ type VisualizerWasmExports = {
     input_ptr: () => number;
     output_ptr: () => number;
     band_output_ptr?: () => number;
-    render_lissajous: (frameCount: number, width: number, height: number, gain: number) => number;
+    render_lissajous: (frameCount: number, width: number, height: number, gain: number, scale: number) => number;
     render_equalizer?: (frameCount: number, sampleRate: number, sampleStride: number) => number;
 };
 
@@ -37,6 +37,9 @@ const equalizerPeakDropPerMs = 0.00115;
 const activeVisualizerClass = 'is-visualizer-active';
 const defaultVisualizerMode: PlayerVisualizerMode = 'lissajous';
 const defaultEqualizerPosition: PlayerEqualizerPosition = 'bottom';
+const minLissajousScale = 0.05;
+const maxLissajousScale = 1.0;
+const defaultLissajousScale = 0.25;
 const wasmUrl = new URL('../assets/wasm/visualizer_bg.wasm', import.meta.url);
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
@@ -64,11 +67,11 @@ const mixRgb = (from: RgbColor, to: RgbColor, ratio: number): RgbColor => {
     };
 };
 
-const createJsProjection = (samples: number[], frameCount: number, width: number, height: number, gain: number): Float32Array => {
+const createJsProjection = (samples: number[], frameCount: number, width: number, height: number, gain: number, scale: number): Float32Array => {
     const projected = new Float32Array(frameCount * 2);
     const centerX = width * 0.5;
     const centerY = height * 0.5;
-    const radius = Math.min(width, height) * 0.34 * gain;
+    const radius = Math.min(width, height) * 0.34 * gain * clamp(scale, minLissajousScale, maxLissajousScale);
     for (let index = 0; index < frameCount; index += 1) {
         const left = (samples[index * 2] || 0) / 32768;
         const right = (samples[(index * 2) + 1] || 0) / 32768;
@@ -178,6 +181,7 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
     let enabled = true;
     let mode: PlayerVisualizerMode = defaultVisualizerMode;
     let equalizerPosition: PlayerEqualizerPosition = defaultEqualizerPosition;
+    let lissajousScale = defaultLissajousScale;
     let fetchInFlight = false;
     let activeFetchRequestId = 0;
     let frameRequestVersion = 0;
@@ -304,15 +308,16 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         const width = canvas.width;
         const height = canvas.height;
         const gain = clamp(0.48 + (frame.peak * 1.6), 0.38, 1.08);
+        const scale = clamp(lissajousScale, minLissajousScale, maxLissajousScale);
         const wasm = await ensureWasm();
         let points: Float32Array;
 
         if (wasm) {
             const safeCount = writeFrameSamplesToWasm(wasm, frame);
-            const renderedCount = wasm.render_lissajous(safeCount, width, height, gain);
+            const renderedCount = wasm.render_lissajous(safeCount, width, height, gain, scale);
             points = new Float32Array(wasm.memory.buffer, wasm.output_ptr(), renderedCount * 2).slice();
         } else {
-            points = createJsProjection(frame.samples, frame.frameCount, width, height, gain);
+            points = createJsProjection(frame.samples, frame.frameCount, width, height, gain, scale);
         }
 
         if (disposed || revision !== projectionRevision) {
@@ -730,6 +735,35 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         setCanvasMode();
     };
 
+    const setLissajousScale = (nextScale: number): void => {
+        const resolvedScale = clamp(nextScale, minLissajousScale, maxLissajousScale);
+        if (lissajousScale === resolvedScale) {
+            return;
+        }
+
+        lissajousScale = resolvedScale;
+        lastFetchAtMs = 0;
+        if (mode !== 'lissajous') {
+            return;
+        }
+
+        resetProjectionState();
+
+        if (!enabled) {
+            canvas.classList.remove(activeVisualizerClass);
+            clear();
+            return;
+        }
+
+        syncCanvasSize();
+        if (latestFrame?.loaded) {
+            void updateTargetProjection();
+        }
+        if (options.getPlaybackState().loaded) {
+            startLoop();
+        }
+    };
+
     const start = (): void => {
         if (typeof ResizeObserver !== 'undefined') {
             resizeObserver = new ResizeObserver(handleWindowResize);
@@ -762,6 +796,7 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         dispose,
         setEnabled,
         setEqualizerPosition,
+        setLissajousScale,
         setMode,
         setPlaybackState,
         start,

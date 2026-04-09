@@ -207,6 +207,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsMusicBrainzTagDatabaseEnabled,
         settingsPlayerCardLayout,
         settingsVisualizerMode,
+        settingsLissajousScale,
         settingsCoverArtPriorityAccordionToggle,
         settingsCoverArtPriorityAccordionPanel,
         settingsCoverArtPriorityList,
@@ -473,6 +474,10 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
     });
 
     settingsVisualizerMode.addEventListener('change', () => {
+        refreshEqualizerPositionControls();
+    });
+
+    settingsLissajousScale.addEventListener('input', () => {
         refreshEqualizerPositionControls();
     });
 

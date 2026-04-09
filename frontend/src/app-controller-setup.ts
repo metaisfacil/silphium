@@ -62,6 +62,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         selectPlaylistFile: context.selectPlaylistFile,
         getPlaybackOrderMode: context.getPlaybackOrderMode,
         setLissajousEnabled: context.setLissajousEnabled,
+        setLissajousScale: context.setLissajousScale,
         setVisualizerMode: context.setVisualizerMode,
         setEqualizerPosition: context.setEqualizerPosition,
         applyUiDitheringSetting: context.applyUiDitheringSetting,

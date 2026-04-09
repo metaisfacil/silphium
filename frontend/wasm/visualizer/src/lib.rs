@@ -3,6 +3,8 @@ use core::f32::consts::PI;
 const MAX_FRAMES: usize = 512;
 const MAX_BANDS: usize = 40;
 const PCM_NORMALIZATION: f32 = 32768.0;
+const MIN_LISSAJOUS_SCALE: f32 = 0.05;
+const MAX_LISSAJOUS_SCALE: f32 = 1.0;
 
 static mut INPUT: [i16; MAX_FRAMES * 2] = [0; MAX_FRAMES * 2];
 static mut OUTPUT: [f32; MAX_FRAMES * 2] = [0.0; MAX_FRAMES * 2];
@@ -104,12 +106,18 @@ pub extern "C" fn render_lissajous(
     width: f32,
     height: f32,
     gain: f32,
+    scale: f32,
 ) -> usize {
     let safe_frame_count = frame_count.min(MAX_FRAMES);
     let center_x = width * 0.5;
     let center_y = height * 0.5;
     let clamped_gain = gain.clamp(0.28, 1.24);
-    let radius = width.min(height) * 0.34 * clamped_gain;
+    let clamped_scale = if scale.is_finite() {
+        scale.clamp(MIN_LISSAJOUS_SCALE, MAX_LISSAJOUS_SCALE)
+    } else {
+        0.25
+    };
+    let radius = width.min(height) * 0.34 * clamped_gain * clamped_scale;
 
     unsafe {
         for index in 0..safe_frame_count {
@@ -220,9 +228,26 @@ mod tests {
     fn render_lissajous_keeps_output_length() {
         write_sine_wave(220.0, 7350.0, 128);
 
-        let rendered = render_lissajous(128, 320.0, 400.0, 0.8);
+        let rendered = render_lissajous(128, 320.0, 400.0, 0.8, 0.25);
 
         assert_eq!(rendered, 128);
+    }
+
+    #[test]
+    fn render_lissajous_applies_scale_to_radius() {
+        unsafe {
+            INPUT[0] = 16384;
+            INPUT[1] = 0;
+        }
+
+        render_lissajous(1, 200.0, 200.0, 1.0, 1.0);
+        let full_scale_offset = unsafe { OUTPUT[0] - 100.0 };
+
+        render_lissajous(1, 200.0, 200.0, 1.0, 0.25);
+        let quarter_scale_offset = unsafe { OUTPUT[0] - 100.0 };
+
+        assert!(full_scale_offset > 0.0);
+        assert!((quarter_scale_offset / full_scale_offset - 0.25).abs() < 0.01);
     }
 
     #[test]

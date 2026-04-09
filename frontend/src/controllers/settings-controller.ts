@@ -1,6 +1,7 @@
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
 import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, MusicBrainzTagWorkerProgress, ScrobbleRule, ScrobbleRuleOperator } from '../types/app-types';
 import { normalizeLibraryFolders, normalizeScrobbleRules } from '../utils/main-helpers';
+import { normalizeLissajousScale } from '../utils/settings-normalization';
 import { normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 import {
     type DialogTimers,
@@ -149,6 +150,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsVisualizerMode,
         settingsEqualizerPositionField,
         settingsEqualizerPosition,
+        settingsLissajousScaleField,
+        settingsLissajousScale,
+        settingsLissajousScaleValue,
         settingsCoverArtPriorityAccordionToggle,
         settingsCoverArtPriorityAccordionPanel,
         settingsCoverArtPriorityList: settingsCoverArtPriorityListElement,
@@ -467,6 +471,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         renderAudioOutputDeviceOptions(settingsAudioOutputDevice, audioOutputDevices, selectedDevice);
     };
 
+    const formatLissajousScaleValue = (scale: number): string => `${Math.round(scale * 100)}%`;
+
     const getShortcutValues = () => {
         return normalizeFocusedKeyboardShortcuts({
             playPauseToggle: settingsShortcutPlayPauseToggle.value,
@@ -480,12 +486,22 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     const refreshEqualizerPositionControls = (): void => {
         const equalizerActive = settingsVisualizerMode.value === 'equalizer';
+        const lissajousActive = !equalizerActive;
+        const lissajousScale = normalizeLissajousScale(settingsLissajousScale.value);
         settingsVisualizerControls.dataset.equalizerVisible = equalizerActive ? 'true' : 'false';
+        settingsVisualizerControls.dataset.lissajousVisible = lissajousActive ? 'true' : 'false';
         settingsEqualizerPositionField.setAttribute('aria-hidden', equalizerActive ? 'false' : 'true');
         settingsEqualizerPosition.disabled = !equalizerActive;
         settingsEqualizerPosition.title = equalizerActive
             ? ''
             : 'Only used when Visualizer style is set to Band equalizer';
+        settingsLissajousScaleField.setAttribute('aria-hidden', lissajousActive ? 'false' : 'true');
+        settingsLissajousScale.disabled = !lissajousActive;
+        settingsLissajousScale.title = lissajousActive
+            ? ''
+            : 'Only used when Visualizer style is set to Lissajous';
+        settingsLissajousScaleValue.value = formatLissajousScaleValue(lissajousScale);
+        settingsLissajousScaleValue.textContent = formatLissajousScaleValue(lissajousScale);
     };
 
     const setShortcutValues = (shortcuts: ReturnType<typeof getShortcutValues>): void => {
@@ -551,6 +567,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         musicBrainzTagRequestStaggeringEnabled: settingsMusicBrainzTagRequestStaggeringEnabled.checked,
         musicBrainzTagWorkerCores: normalizeMusicBrainzTagWorkerCores(settingsMusicBrainzTagWorkerCores.value),
         lissajousEnabled: settingsLissajousEnabled.checked,
+        lissajousScale: normalizeLissajousScale(settingsLissajousScale.value),
         visualizerMode: settingsVisualizerMode.value === 'equalizer' ? 'equalizer' : 'lissajous',
         equalizerPosition: settingsEqualizerPosition.value === 'top' ? 'top' : 'bottom',
         uiDitheringEnabled: settingsUiDitheringEnabled.checked,
@@ -712,6 +729,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagRequestStaggeringEnabled.checked = !!values.musicBrainzTagRequestStaggeringEnabled;
         settingsMusicBrainzTagWorkerCores.value = values.musicBrainzTagWorkerCores > 0 ? String(values.musicBrainzTagWorkerCores) : '';
         settingsLissajousEnabled.checked = values.lissajousEnabled !== false;
+        settingsLissajousScale.value = String(normalizeLissajousScale(values.lissajousScale));
         settingsVisualizerMode.value = values.visualizerMode === 'equalizer' ? 'equalizer' : 'lissajous';
         settingsEqualizerPosition.value = values.equalizerPosition === 'top' ? 'top' : 'bottom';
         refreshEqualizerPositionControls();

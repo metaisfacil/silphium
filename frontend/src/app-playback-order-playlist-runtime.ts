@@ -17,6 +17,7 @@ type PlaybackOrderPlaylistRuntimeContext = {
     updatePlayOrderMenuState: () => void;
     visualizerController?: {
         setEnabled: (enabled: boolean) => void;
+        setLissajousScale?: (scale: AppSettings['lissajousScale']) => void;
         setMode?: (mode: AppSettings['visualizerMode']) => void;
         setEqualizerPosition?: (position: AppSettings['equalizerPosition']) => void;
     };
@@ -63,6 +64,7 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
                 musicBrainzTagRequestStaggeringEnabled: context.currentSettings.musicBrainzTagRequestStaggeringEnabled,
                 musicBrainzTagWorkerCores: context.currentSettings.musicBrainzTagWorkerCores,
                 lissajousEnabled: context.currentSettings.lissajousEnabled,
+                lissajousScale: context.currentSettings.lissajousScale,
                 visualizerMode: context.currentSettings.visualizerMode,
                 equalizerPosition: context.currentSettings.equalizerPosition,
                 uiDitheringEnabled: context.currentSettings.uiDitheringEnabled,
@@ -74,6 +76,7 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
             context.currentSettings = normalizeAppSettings(savedSettings);
             context.visualizerController?.setMode?.(context.currentSettings.visualizerMode);
             context.visualizerController?.setEqualizerPosition?.(context.currentSettings.equalizerPosition);
+            context.visualizerController?.setLissajousScale?.(context.currentSettings.lissajousScale);
             context.visualizerController?.setEnabled(context.currentSettings.lissajousEnabled);
             context.applyUiDitheringSetting?.();
             setPlaybackOrderMode(context.currentSettings.playbackOrder);

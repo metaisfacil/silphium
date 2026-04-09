@@ -100,6 +100,9 @@ export type SettingsModalElements = {
     settingsVisualizerMode: HTMLSelectElement;
     settingsEqualizerPositionField: HTMLDivElement;
     settingsEqualizerPosition: HTMLSelectElement;
+    settingsLissajousScaleField: HTMLDivElement;
+    settingsLissajousScale: HTMLInputElement;
+    settingsLissajousScaleValue: HTMLOutputElement;
     settingsCoverArtPriorityAccordionToggle: HTMLButtonElement;
     settingsCoverArtPriorityAccordionPanel: HTMLDivElement;
     settingsCoverArtPriorityList: HTMLUListElement;
@@ -340,7 +343,7 @@ export const renderSettingsModal = (): string => `
                     </div>
                     <div class="settings-field">
                         <p class="settings-hint">Choose between the existing stereo lissajous scope and a classic band equalizer display.</p>
-                        <div id="settings-visualizer-controls" class="settings-visualizer-controls" data-equalizer-visible="false">
+                        <div id="settings-visualizer-controls" class="settings-visualizer-controls" data-equalizer-visible="false" data-lissajous-visible="true">
                             <div class="settings-field">
                                 <label class="settings-label" for="settings-visualizer-mode">Visualizer style</label>
                                 <select id="settings-visualizer-mode" class="settings-input settings-select">
@@ -354,6 +357,13 @@ export const renderSettingsModal = (): string => `
                                     <option value="bottom">Bottom</option>
                                     <option value="top">Top (flipped)</option>
                                 </select>
+                            </div>
+                            <div id="settings-lissajous-scale-field" class="settings-field">
+                                <label class="settings-label" for="settings-lissajous-scale">Lissajous scale</label>
+                                <div class="settings-range-row">
+                                    <input id="settings-lissajous-scale" class="settings-range-input" type="range" min="0.05" max="1" step="0.05" value="0.25">
+                                    <output id="settings-lissajous-scale-value" class="settings-range-output" for="settings-lissajous-scale">25%</output>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -612,6 +622,9 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsVisualizerMode: root.querySelector('#settings-visualizer-mode') as HTMLSelectElement,
     settingsEqualizerPositionField: root.querySelector('#settings-equalizer-position-field') as HTMLDivElement,
     settingsEqualizerPosition: root.querySelector('#settings-equalizer-position') as HTMLSelectElement,
+    settingsLissajousScaleField: root.querySelector('#settings-lissajous-scale-field') as HTMLDivElement,
+    settingsLissajousScale: root.querySelector('#settings-lissajous-scale') as HTMLInputElement,
+    settingsLissajousScaleValue: root.querySelector('#settings-lissajous-scale-value') as HTMLOutputElement,
     settingsCoverArtPriorityAccordionToggle: root.querySelector('#settings-cover-art-priority-accordion-toggle') as HTMLButtonElement,
     settingsCoverArtPriorityAccordionPanel: root.querySelector('#settings-cover-art-priority-accordion-panel') as HTMLDivElement,
     settingsCoverArtPriorityList: root.querySelector('#settings-cover-art-priority-list') as HTMLUListElement,
