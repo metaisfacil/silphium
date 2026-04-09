@@ -10,6 +10,9 @@ import type {
 import { createLibraryControllerState, type LibraryControllerState } from './controllers/library-controller-types';
 import { createPlaylistControllerState, type PlaylistControllerState } from './controllers/playlist-controller-state';
 import { createSettingsControllerState, type SettingsControllerState } from './controllers/settings-controller-types';
+import { createPlaybackSequencingState, type PlaybackSequencingState } from './services/playback-sequencing-service';
+import { createPlaybackSessionState, type PlaybackSessionState } from './services/playback-state-service';
+import { createScrobbleSessionState, type ScrobbleSessionState } from './services/scrobble-service';
 import { defaultAppSettings, defaultMusicBrainzTagWorkerProgress } from './utils/settings-normalization';
 
 export interface AppState {
@@ -19,6 +22,9 @@ export interface AppState {
     libraryControllerState: LibraryControllerState;
     playlistControllerState: PlaylistControllerState;
     settingsControllerState: SettingsControllerState;
+    playbackSequencingState: PlaybackSequencingState;
+    playbackSessionState: PlaybackSessionState;
+    scrobbleSessionState: ScrobbleSessionState;
     trackIndexByPath: Map<string, number>;
     textFileIndexByPath: Map<string, number>;
     imageFileIndexByPath: Map<string, number>;
@@ -78,6 +84,9 @@ export const createAppState = (): AppState => ({
     libraryControllerState: createLibraryControllerState(),
     playlistControllerState: createPlaylistControllerState(),
     settingsControllerState: createSettingsControllerState(),
+    playbackSequencingState: createPlaybackSequencingState(defaultAppSettings.playbackOrder),
+    playbackSessionState: createPlaybackSessionState(),
+    scrobbleSessionState: createScrobbleSessionState(),
     trackIndexByPath: new Map(),
     textFileIndexByPath: new Map(),
     imageFileIndexByPath: new Map(),

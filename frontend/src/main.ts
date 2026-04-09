@@ -304,6 +304,9 @@ const runtimePorts = {
 
 const runtimeScope = Object.create(shell, {
     currentSettings: createStateAccessor('currentSettings'),
+    playbackSequencingState: createStateAccessor('playbackSequencingState'),
+    playbackSessionState: createStateAccessor('playbackSessionState'),
+    scrobbleSessionState: createStateAccessor('scrobbleSessionState'),
     tracks: createStateAccessor('tracks'),
     textFiles: createStateAccessor('textFiles'),
     imageFiles: createStateAccessor('imageFiles'),

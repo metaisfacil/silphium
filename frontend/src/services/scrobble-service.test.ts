@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AudioPlaybackState, Track } from '../types/app-types';
-import { createScrobbleService } from './scrobble-service';
+import { createScrobbleService, createScrobbleSessionState } from './scrobble-service';
 
 const createTrack = (overrides: Partial<Track> = {}): Track => ({
     title: 'Fallback Title',
@@ -278,5 +278,36 @@ describe('createScrobbleService', () => {
             expect.any(Object),
             0,
         );
+    });
+
+    it('mutates injected scrobble session state instead of closure-local session data', async () => {
+        const submitListenBrainz = vi.fn(async () => undefined);
+        const state = createScrobbleSessionState();
+        const service = createScrobbleService({ submitListenBrainz }, state);
+
+        const track = createTrack();
+        const playbackState = createPlaybackState({ currentTime: 200, duration: 300 });
+
+        service.startTrackSession(track.path);
+        expect(state.scrobbleSessionId).toBe(1);
+        expect(state.activeSessionTrackKey).toBe('/music/artist/album/fallback.flac');
+
+        service.maybeSubmit(playbackState, track, { listenBrainz: true, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenBrainz).toHaveBeenCalledTimes(2);
+        expect(state.nowPlayingSubmittedSessionId.listenBrainz).toBe(1);
+        expect(state.scrobbleSubmittedSessionId.listenBrainz).toBe(1);
+        expect(state.scrobbleSessionStartedAt).toBeGreaterThan(0);
+        expect(state.recentSinglesByProvider.listenBrainz.size).toBe(1);
+
+        service.reset();
+        expect(state.scrobbleSessionId).toBe(0);
+        expect(state.activeSessionTrackKey).toBe('');
+        expect(state.nowPlayingSubmittedSessionId.listenBrainz).toBe(-1);
+        expect(state.scrobbleSubmittedSessionId.listenBrainz).toBe(-1);
+        expect(state.recentSinglesByProvider.listenBrainz.size).toBe(1);
     });
 });

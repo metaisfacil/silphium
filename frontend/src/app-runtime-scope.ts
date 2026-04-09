@@ -16,9 +16,9 @@ import type { ShareController, createShareController } from './controllers/share
 import type { SettingsController } from './controllers/settings-controller';
 import type { SettingsControllerState } from './controllers/settings-controller-types';
 import type { createCoverArtService } from './services/cover-art-service';
-import type { createPlaybackSequencingService } from './services/playback-sequencing-service';
-import type { createPlaybackStateService } from './services/playback-state-service';
-import type { createScrobbleService } from './services/scrobble-service';
+import type { createPlaybackSequencingService, PlaybackSequencingState } from './services/playback-sequencing-service';
+import type { createPlaybackStateService, PlaybackSessionState } from './services/playback-state-service';
+import type { createScrobbleService, ScrobbleSessionState } from './services/scrobble-service';
 import type { createTrackMetadataService } from './services/track-metadata-service';
 import type {
     AppSettings,
@@ -230,6 +230,9 @@ export interface AppRuntimeState {
     libraryControllerState: LibraryControllerState;
     playlistControllerState: PlaylistControllerState;
     settingsControllerState: SettingsControllerState;
+    playbackSequencingState: PlaybackSequencingState;
+    playbackSessionState: PlaybackSessionState;
+    scrobbleSessionState: ScrobbleSessionState;
     currentTrackIndex: number;
     objectUrls: string[];
     tagRequestVersion: number;

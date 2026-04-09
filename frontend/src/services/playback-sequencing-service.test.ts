@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Track } from '../types/app-types';
-import { createPlaybackSequencingService } from './playback-sequencing-service';
+import { createPlaybackSequencingService, createPlaybackSequencingState } from './playback-sequencing-service';
 
 const createTrack = (name: string, folderPath: string, overrides: Partial<Track> = {}): Track => ({
     title: name,
@@ -135,6 +135,41 @@ describe('createPlaybackSequencingService', () => {
         expect(nextTrackIndex).toBeDefined();
         expect(nextTrackIndex).not.toBe(1);
 
+        expect(randomSpy).toHaveBeenCalled();
+    });
+
+    it('mutates injected sequencing state instead of closure-local shuffle state', () => {
+        const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+        const tracks = [
+            createTrack('01 Alpha', 'Library/Album A'),
+            createTrack('02 Beta', 'Library/Album B'),
+            createTrack('03 Gamma', 'Library/Album C'),
+        ];
+        let currentTrackIndex = 0;
+        const state = createPlaybackSequencingState('ordered-library');
+
+        const service = createPlaybackSequencingService({
+            getTracks: () => tracks,
+            getCurrentTrackIndex: () => currentTrackIndex,
+            getReleaseDepthForTrack: () => 0,
+        }, state);
+
+        expect(service.setPlaybackOrderMode('shuffle-library')).toBe(true);
+        expect(state.playbackOrderMode).toBe('shuffle-library');
+        expect(state.shuffleHistory).toEqual([]);
+        expect(state.shuffleCursor).toBe(-1);
+        expect(state.shuffleScopeKey).toBe('');
+
+        expect(service.peekNextTrackIndexForDirection(1)).toBe(1);
+        expect(state.shuffleHistory[0]).toBe(0);
+        expect(state.shuffleCursor).toBe(0);
+        expect(state.shuffleScopeKey).toBe('library');
+
+        const nextTrackIndex = service.nextTrackIndexForDirection(1);
+        expect(nextTrackIndex).toBe(1);
+        currentTrackIndex = nextTrackIndex ?? -1;
+        expect(service.nextTrackIndexForDirection(-1)).toBe(0);
+        expect(state.shuffleCursor).toBe(0);
         expect(randomSpy).toHaveBeenCalled();
     });
 });

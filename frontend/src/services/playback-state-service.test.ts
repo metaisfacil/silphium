@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createInitialPlaybackState, createPlaybackStateService } from './playback-state-service';
+import { createInitialPlaybackState, createPlaybackSessionState, createPlaybackStateService } from './playback-state-service';
 
 describe('createPlaybackStateService', () => {
     it('reports track endings only once per backend end event', () => {
@@ -45,6 +45,30 @@ describe('createPlaybackStateService', () => {
 
         expect(service.isBackendReady()).toBe(true);
         expect(service.getPlaybackState()).toEqual(nextState);
+    });
+
+    it('mutates an injected playback session state object', () => {
+        const state = createPlaybackSessionState();
+        const service = createPlaybackStateService(state);
+        const nextState = {
+            ...createInitialPlaybackState(),
+            loaded: true,
+            playing: true,
+            currentTime: 12,
+            sourcePath: '/music/current.flac',
+            endEventId: 4,
+        };
+
+        service.setBackendReady(true);
+        expect(service.applyPlaybackState(nextState, true)).toEqual({ trackEnded: true });
+
+        expect(state.backendReady).toBe(true);
+        expect(state.playbackState).toEqual(nextState);
+        expect(state.lastHandledEndEventId).toBe(4);
+
+        service.resetEndEventTracking();
+
+        expect(state.lastHandledEndEventId).toBe(0);
     });
 
     it('ignores end events after source path already advanced', () => {

@@ -12,7 +12,7 @@ type ScrobblePayload = {
     artistMbids?: string[];
 };
 
-type ScrobbleProvider = 'listenBrainz' | 'lastFm';
+export type ScrobbleProvider = 'listenBrainz' | 'lastFm';
 
 type ScrobbleProviderAvailability = Record<ScrobbleProvider, boolean>;
 
@@ -25,28 +25,44 @@ type ScrobbleServiceOptions = {
     submitLastFm?: (eventType: 'playing_now' | 'single', payload: ScrobblePayload, listenedAt: number) => Promise<unknown>;
 };
 
-export type ScrobbleService = ReturnType<typeof createScrobbleService>;
+const createProviderRecord = <T>(initial: T): Record<ScrobbleProvider, T> => ({
+    listenBrainz: initial,
+    lastFm: initial,
+});
 
-export const createScrobbleService = (options: ScrobbleServiceOptions) => {
-    const providers: ScrobbleProvider[] = ['listenBrainz', 'lastFm'];
+export type ScrobbleSessionState = {
+    scrobbleSessionId: number;
+    nowPlayingSubmittedSessionId: Record<ScrobbleProvider, number>;
+    scrobbleSubmittedSessionId: Record<ScrobbleProvider, number>;
+    nowPlayingInFlight: Record<ScrobbleProvider, boolean>;
+    scrobbleInFlight: Record<ScrobbleProvider, boolean>;
+    scrobbleSessionStartedAt: number;
+    activeSessionTrackKey: string;
+    recentSinglesByProvider: Record<ScrobbleProvider, Map<string, number>>;
+};
 
-    const createProviderRecord = <T>(initial: T): Record<ScrobbleProvider, T> => ({
-        listenBrainz: initial,
-        lastFm: initial,
-    });
-
-    let scrobbleSessionId = 0;
-    let nowPlayingSubmittedSessionId = createProviderRecord(-1);
-    let scrobbleSubmittedSessionId = createProviderRecord(-1);
-    let nowPlayingInFlight = createProviderRecord(false);
-    let scrobbleInFlight = createProviderRecord(false);
-    let scrobbleSessionStartedAt = 0;
-    let activeSessionTrackKey = '';
-    const singleDedupWindowSeconds = 15 * 60;
-    const recentSinglesByProvider: Record<ScrobbleProvider, Map<string, number>> = {
+export const createScrobbleSessionState = (): ScrobbleSessionState => ({
+    scrobbleSessionId: 0,
+    nowPlayingSubmittedSessionId: createProviderRecord(-1),
+    scrobbleSubmittedSessionId: createProviderRecord(-1),
+    nowPlayingInFlight: createProviderRecord(false),
+    scrobbleInFlight: createProviderRecord(false),
+    scrobbleSessionStartedAt: 0,
+    activeSessionTrackKey: '',
+    recentSinglesByProvider: {
         listenBrainz: new Map<string, number>(),
         lastFm: new Map<string, number>(),
-    };
+    },
+});
+
+export type ScrobbleService = ReturnType<typeof createScrobbleService>;
+
+export const createScrobbleService = (
+    options: ScrobbleServiceOptions,
+    state: ScrobbleSessionState = createScrobbleSessionState(),
+) => {
+    const providers: ScrobbleProvider[] = ['listenBrainz', 'lastFm'];
+    const singleDedupWindowSeconds = 15 * 60;
 
     const sessionTrackKey = (trackPath: string | undefined): string => {
         return (trackPath || '')
@@ -146,7 +162,7 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
             return false;
         }
 
-        const recentSingles = recentSinglesByProvider[provider];
+        const recentSingles = state.recentSinglesByProvider[provider];
 
         const cutoff = listenedAt - singleDedupWindowSeconds;
         for (const [key, previousListenedAt] of recentSingles.entries()) {
@@ -176,25 +192,25 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
         }
 
         if (eventType === 'playing_now') {
-            nowPlayingInFlight[provider] = true;
+            state.nowPlayingInFlight[provider] = true;
         } else {
-            scrobbleInFlight[provider] = true;
+            state.scrobbleInFlight[provider] = true;
             if (provider === 'lastFm') {
                 // Last.fm can occasionally accept a scrobble even when the client sees an error.
                 // Mark this session submitted before awaiting the response to avoid duplicates.
-                scrobbleSubmittedSessionId[provider] = scrobbleSessionId;
+                state.scrobbleSubmittedSessionId[provider] = state.scrobbleSessionId;
             }
         }
 
         void submit(eventType, payload, listenedAt)
             .then(() => {
                 if (eventType === 'playing_now') {
-                    nowPlayingSubmittedSessionId[provider] = scrobbleSessionId;
+                    state.nowPlayingSubmittedSessionId[provider] = state.scrobbleSessionId;
                     return;
                 }
 
                 if (provider !== 'lastFm') {
-                    scrobbleSubmittedSessionId[provider] = scrobbleSessionId;
+                    state.scrobbleSubmittedSessionId[provider] = state.scrobbleSessionId;
                 }
             })
             .catch((error) => {
@@ -202,17 +218,17 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
             })
             .finally(() => {
                 if (eventType === 'playing_now') {
-                    nowPlayingInFlight[provider] = false;
+                    state.nowPlayingInFlight[provider] = false;
                     return;
                 }
 
-                scrobbleInFlight[provider] = false;
+                state.scrobbleInFlight[provider] = false;
             });
     };
 
     return {
         maybeSubmit: (
-            state: AudioPlaybackState,
+            playbackState: AudioPlaybackState,
             track: Track | undefined,
             availability: ScrobbleProviderAvailability,
             submissionOptions?: ScrobbleSubmissionOptions,
@@ -226,19 +242,19 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
                 return;
             }
 
-            if (state.playing && scrobbleSessionStartedAt <= 0) {
-                scrobbleSessionStartedAt = Math.floor(Date.now() / 1000);
+            if (playbackState.playing && state.scrobbleSessionStartedAt <= 0) {
+                state.scrobbleSessionStartedAt = Math.floor(Date.now() / 1000);
             }
 
             if (!track.tagsResolved) {
                 return;
             }
 
-            const payload = buildScrobbleMetadata(track, state.duration);
+            const payload = buildScrobbleMetadata(track, playbackState.duration);
 
-            if (state.playing) {
+            if (playbackState.playing) {
                 for (const provider of enabledProviders) {
-                    if (nowPlayingSubmittedSessionId[provider] === scrobbleSessionId || nowPlayingInFlight[provider]) {
+                    if (state.nowPlayingSubmittedSessionId[provider] === state.scrobbleSessionId || state.nowPlayingInFlight[provider]) {
                         continue;
                     }
 
@@ -250,19 +266,19 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
                 }
             }
 
-            const threshold = scrobbleThreshold(state.duration);
-            if (state.currentTime < threshold) {
+            const threshold = scrobbleThreshold(playbackState.duration);
+            if (playbackState.currentTime < threshold) {
                 return;
             }
 
-            const listenedAt = scrobbleSessionStartedAt > 0 ? scrobbleSessionStartedAt : Math.floor(Date.now() / 1000);
+            const listenedAt = state.scrobbleSessionStartedAt > 0 ? state.scrobbleSessionStartedAt : Math.floor(Date.now() / 1000);
             for (const provider of enabledProviders) {
-                if (scrobbleSubmittedSessionId[provider] === scrobbleSessionId || scrobbleInFlight[provider]) {
+                if (state.scrobbleSubmittedSessionId[provider] === state.scrobbleSessionId || state.scrobbleInFlight[provider]) {
                     continue;
                 }
 
                 if (shouldSkipProviderSingle(provider, payload, listenedAt)) {
-                    scrobbleSubmittedSessionId[provider] = scrobbleSessionId;
+                    state.scrobbleSubmittedSessionId[provider] = state.scrobbleSessionId;
                     continue;
                 }
 
@@ -270,25 +286,25 @@ export const createScrobbleService = (options: ScrobbleServiceOptions) => {
             }
         },
         reset: (): void => {
-            scrobbleSessionId = 0;
-            nowPlayingSubmittedSessionId = createProviderRecord(-1);
-            scrobbleSubmittedSessionId = createProviderRecord(-1);
-            nowPlayingInFlight = createProviderRecord(false);
-            scrobbleInFlight = createProviderRecord(false);
-            scrobbleSessionStartedAt = 0;
-            activeSessionTrackKey = '';
+            state.scrobbleSessionId = 0;
+            state.nowPlayingSubmittedSessionId = createProviderRecord(-1);
+            state.scrobbleSubmittedSessionId = createProviderRecord(-1);
+            state.nowPlayingInFlight = createProviderRecord(false);
+            state.scrobbleInFlight = createProviderRecord(false);
+            state.scrobbleSessionStartedAt = 0;
+            state.activeSessionTrackKey = '';
         },
         startTrackSession: (trackPath?: string): void => {
             const nextTrackKey = sessionTrackKey(trackPath);
-            if (nextTrackKey !== '' && nextTrackKey === activeSessionTrackKey) {
+            if (nextTrackKey !== '' && nextTrackKey === state.activeSessionTrackKey) {
                 return;
             }
 
-            scrobbleSessionId += 1;
-            nowPlayingSubmittedSessionId = createProviderRecord(-1);
-            scrobbleSubmittedSessionId = createProviderRecord(-1);
-            scrobbleSessionStartedAt = 0;
-            activeSessionTrackKey = nextTrackKey;
+            state.scrobbleSessionId += 1;
+            state.nowPlayingSubmittedSessionId = createProviderRecord(-1);
+            state.scrobbleSubmittedSessionId = createProviderRecord(-1);
+            state.scrobbleSessionStartedAt = 0;
+            state.activeSessionTrackKey = nextTrackKey;
         },
     };
 };

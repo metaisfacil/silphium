@@ -14,6 +14,9 @@ type RuntimeScope<K extends keyof AppRuntimeScope> = Pick<AppRuntimeScope, K>;
 type AppCoreServicesRuntimeScope = RuntimeScope<
     | 'app'
     | 'currentSettings'
+    | 'playbackSequencingState'
+    | 'playbackSessionState'
+    | 'scrobbleSessionState'
     | 'tracks'
     | 'currentTrackIndex'
     | 'releaseDepthForTrack'
@@ -360,6 +363,9 @@ const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) =>
     get currentSettings() {
         return scope.currentSettings;
     },
+    playbackSequencingState: scope.playbackSequencingState,
+    playbackSessionState: scope.playbackSessionState,
+    scrobbleSessionState: scope.scrobbleSessionState,
     get tracks() {
         return scope.tracks;
     },
