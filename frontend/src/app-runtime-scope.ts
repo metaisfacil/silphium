@@ -255,6 +255,7 @@ export interface AppRuntimeState {
     availableAudioOutputDevices: AudioOutputDevice[];
     currentMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
     ffmpegConfigurationRequired: boolean;
+    libraryTotalLoadEstimateMs: number;
     libraryClientFinalizeEstimateMs: number;
     activeLibraryLoadScanResolvedAtMs: number | null;
     fullLibraryScanLoadActive: boolean;

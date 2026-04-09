@@ -155,28 +155,58 @@ const completeStartupIfReady = async (): Promise<void> => {
 };
 
 const LIBRARY_CLIENT_FINALIZE_MS_KEY = 'libraryClientFinalizeEstimateMs';
+const LIBRARY_TOTAL_LOAD_MS_KEY = 'libraryTotalLoadEstimateMs';
 
 const shell = getAppShellElements(document);
 const { coverFrame } = shell;
-state.libraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
+const storedLibraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
+const storedLibraryTotalLoadEstimateMs = parseFloat(localStorage.getItem(LIBRARY_TOTAL_LOAD_MS_KEY) ?? '') || 0;
+state.libraryClientFinalizeEstimateMs = storedLibraryClientFinalizeEstimateMs;
+state.libraryTotalLoadEstimateMs = storedLibraryTotalLoadEstimateMs > 0
+    ? storedLibraryTotalLoadEstimateMs
+    : (storedLibraryClientFinalizeEstimateMs > 0
+        ? Math.max(storedLibraryClientFinalizeEstimateMs * 5, 20_000)
+        : 0);
+let activeLibraryLoadStartedAtMs: number | null = null;
+let activeLibraryLoadResolved = false;
 const libraryIndexedFilePageSize = 1000;
 const libraryIncrementalRefreshDebounceMs = 180;
 const nowPlayingCoverRefreshDebounceMs = 220;
 
 const beginLibraryLoadTracking = (): void => {
+    activeLibraryLoadStartedAtMs = performance.now();
+    activeLibraryLoadResolved = false;
     state.activeLibraryLoadScanResolvedAtMs = null;
 };
 
 const markLibraryScanResolved = (): void => {
+    activeLibraryLoadResolved = true;
     state.activeLibraryLoadScanResolvedAtMs = performance.now();
 };
 
 const finishLibraryLoadTracking = (): void => {
+    const finishedAtMs = performance.now();
+    if (activeLibraryLoadStartedAtMs !== null && activeLibraryLoadResolved) {
+        const totalLoadMs = Math.max(0, finishedAtMs - activeLibraryLoadStartedAtMs);
+        if (Number.isFinite(totalLoadMs) && totalLoadMs > 0) {
+            if (state.libraryTotalLoadEstimateMs <= 0) {
+                state.libraryTotalLoadEstimateMs = totalLoadMs;
+            } else {
+                state.libraryTotalLoadEstimateMs = (state.libraryTotalLoadEstimateMs * 0.7) + (totalLoadMs * 0.3);
+            }
+
+            localStorage.setItem(LIBRARY_TOTAL_LOAD_MS_KEY, String(state.libraryTotalLoadEstimateMs));
+        }
+    }
+
+    activeLibraryLoadStartedAtMs = null;
+    activeLibraryLoadResolved = false;
+
     if (state.activeLibraryLoadScanResolvedAtMs === null) {
         return;
     }
 
-    const clientFinalizeMs = Math.max(0, performance.now() - state.activeLibraryLoadScanResolvedAtMs);
+    const clientFinalizeMs = Math.max(0, finishedAtMs - state.activeLibraryLoadScanResolvedAtMs);
     state.activeLibraryLoadScanResolvedAtMs = null;
     if (!Number.isFinite(clientFinalizeMs) || clientFinalizeMs <= 0) {
         return;
@@ -335,6 +365,7 @@ const runtimeScope = Object.create(shell, {
     availableAudioOutputDevices: createStateAccessor('availableAudioOutputDevices'),
     currentMusicBrainzTagWorkerProgress: createStateAccessor('currentMusicBrainzTagWorkerProgress'),
     ffmpegConfigurationRequired: createStateAccessor('ffmpegConfigurationRequired'),
+    libraryTotalLoadEstimateMs: createStateAccessor('libraryTotalLoadEstimateMs'),
     libraryClientFinalizeEstimateMs: createStateAccessor('libraryClientFinalizeEstimateMs'),
     activeLibraryLoadScanResolvedAtMs: createStateAccessor('activeLibraryLoadScanResolvedAtMs'),
     fullLibraryScanLoadActive: createStateAccessor('fullLibraryScanLoadActive'),

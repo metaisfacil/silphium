@@ -61,6 +61,7 @@ const createScope = () => {
         currentSettings: { playbackOrder: 'ordered-library' },
         currentMusicBrainzTagWorkerProgress: { progress: 0.5 },
         availableAudioOutputDevices: [{ id: 'default', name: 'Default', backend: 'wasapi', isDefault: true }],
+        libraryTotalLoadEstimateMs: 90000,
         libraryClientFinalizeEstimateMs: 2500,
         activeLibraryLoadScanResolvedAtMs: null,
         fullLibraryScanLoadActive: false,

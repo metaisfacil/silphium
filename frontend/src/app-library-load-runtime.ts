@@ -28,6 +28,7 @@ export interface AppLibraryLoadRuntimeContext {
     currentSettings: AppSettings;
     currentMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
     availableAudioOutputDevices: AudioOutputDevice[];
+    libraryTotalLoadEstimateMs: number;
     libraryClientFinalizeEstimateMs: number;
     activeLibraryLoadScanResolvedAtMs: number | null;
     fullLibraryScanLoadActive: boolean;
@@ -125,6 +126,51 @@ export interface AppLibraryLoadRuntimeContext {
 export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContext) => {
     let deferredHydrationPending = false;
     let deferredHydrationLoadInFlight = false;
+    let historicalTotalLoadEtaHandle: number | null = null;
+    let historicalTotalLoadEtaStartedAtMs: number | null = null;
+
+    const stopHistoricalTotalLoadEtaCountdown = (): void => {
+        if (historicalTotalLoadEtaHandle !== null) {
+            window.clearInterval(historicalTotalLoadEtaHandle);
+            historicalTotalLoadEtaHandle = null;
+        }
+
+        historicalTotalLoadEtaStartedAtMs = null;
+    };
+
+    const historicalTotalLoadEtaSeconds = (): number | null => {
+        if (historicalTotalLoadEtaStartedAtMs === null || context.libraryTotalLoadEstimateMs <= 0) {
+            return null;
+        }
+
+        const elapsedMs = Math.max(0, performance.now() - historicalTotalLoadEtaStartedAtMs);
+        const remainingMs = Math.max(0, context.libraryTotalLoadEstimateMs - elapsedMs);
+        return Math.max(1, Math.ceil(remainingMs / 1000));
+    };
+
+    const syncHistoricalTotalLoadEta = (): void => {
+        const etaSeconds = historicalTotalLoadEtaSeconds();
+        context.setLibraryLoadingEtaSeconds(etaSeconds);
+        context.setForceReloadEtaSeconds(etaSeconds);
+    };
+
+    const startHistoricalTotalLoadEtaCountdown = (): void => {
+        stopHistoricalTotalLoadEtaCountdown();
+        if (context.libraryTotalLoadEstimateMs <= 0) {
+            return;
+        }
+
+        historicalTotalLoadEtaStartedAtMs = performance.now();
+        syncHistoricalTotalLoadEta();
+        historicalTotalLoadEtaHandle = window.setInterval(() => {
+            if (!context.fullLibraryScanLoadActive) {
+                stopHistoricalTotalLoadEtaCountdown();
+                return;
+            }
+
+            syncHistoricalTotalLoadEta();
+        }, 1000);
+    };
 
     const hasDeferredHydrationWork = (scanResult: LibraryScanResult): boolean => {
         if (!scanResult.deferredFiles) {
@@ -139,6 +185,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
     const finishActiveLibraryLoad = (): void => {
         deferredHydrationPending = false;
         deferredHydrationLoadInFlight = false;
+        stopHistoricalTotalLoadEtaCountdown();
         context.finishLibraryLoadTracking();
         context.setLibraryLoading(false);
         context.fullLibraryScanLoadActive = false;
@@ -148,6 +195,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
     const clearLibrarySelection = async (): Promise<void> => {
         deferredHydrationPending = false;
         deferredHydrationLoadInFlight = false;
+        stopHistoricalTotalLoadEtaCountdown();
         context.closeSidebarQueueMenu();
         context.closeListenBrainzFeedbackMenu();
         context.closeMusicBrainzEntityModal();
@@ -220,14 +268,16 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         const clientTailSeconds = context.libraryClientFinalizeEstimateMs > 0
             ? Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000))
             : 0;
+        const historicalEtaSeconds = historicalTotalLoadEtaSeconds();
 
         if (!progress || !Number.isFinite(progress.etaSeconds)) {
-            const fallbackEtaSeconds = clientTailSeconds > 0 ? clientTailSeconds : null;
+            const fallbackEtaSeconds = historicalEtaSeconds ?? (clientTailSeconds > 0 ? clientTailSeconds : null);
             context.setLibraryLoadingEtaSeconds(fallbackEtaSeconds);
             context.setForceReloadEtaSeconds(fallbackEtaSeconds);
             return;
         }
 
+        stopHistoricalTotalLoadEtaCountdown();
         const backendSeconds = Math.max(0, Math.ceil(progress.etaSeconds));
         const blendedEtaSeconds = backendSeconds + clientTailSeconds;
         const nextEtaSeconds = blendedEtaSeconds > 0 ? blendedEtaSeconds : null;
@@ -513,11 +563,13 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         context.setLibraryLoading(true);
         context.setLibraryLoadingEtaSeconds(null);
         context.setLibraryLoadingStatusLabel('');
+        startHistoricalTotalLoadEtaCountdown();
         let keepLoadingForDeferredHydration = false;
         try {
             context.setLibraryPathMessage(context.currentSettings.libraryFolders.length > 1 ? 'Scanning library folders…' : 'Scanning folder…');
             const scanResult = await context.scanConfiguredLibraryFoldersBackend();
             context.markLibraryScanResolved();
+            stopHistoricalTotalLoadEtaCountdown();
             if (context.libraryClientFinalizeEstimateMs > 0) {
                 const finalizeEtaSeconds = Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000));
                 context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
@@ -547,6 +599,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             try {
                 context.markLibraryScanResolved();
                 context.setLibraryLoadingStatusLabel('');
+                stopHistoricalTotalLoadEtaCountdown();
                 if (context.libraryClientFinalizeEstimateMs > 0) {
                     const finalizeEtaSeconds = Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000));
                     context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);

@@ -237,6 +237,7 @@ type AppLibraryLoadRuntimeScope = RuntimeScope<
     | 'currentSettings'
     | 'currentMusicBrainzTagWorkerProgress'
     | 'availableAudioOutputDevices'
+    | 'libraryTotalLoadEstimateMs'
     | 'libraryClientFinalizeEstimateMs'
     | 'activeLibraryLoadScanResolvedAtMs'
     | 'fullLibraryScanLoadActive'
@@ -905,6 +906,12 @@ export const setupLibraryLoadRuntime = (scope: AppLibraryLoadRuntimeScope) => cr
     },
     set availableAudioOutputDevices(value) {
         scope.availableAudioOutputDevices = value;
+    },
+    get libraryTotalLoadEstimateMs() {
+        return scope.libraryTotalLoadEstimateMs;
+    },
+    set libraryTotalLoadEstimateMs(value) {
+        scope.libraryTotalLoadEstimateMs = value;
     },
     get libraryClientFinalizeEstimateMs() {
         return scope.libraryClientFinalizeEstimateMs;

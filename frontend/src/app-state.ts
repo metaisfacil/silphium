@@ -67,6 +67,7 @@ export interface AppState {
     sidebarQueueIncludeFileActions: boolean;
     sidebarQueueSendToActionScope: CustomSendToActionScope | null;
     queueConfirmResolver: ((confirmed: boolean) => void) | null;
+    libraryTotalLoadEstimateMs: number;
     libraryClientFinalizeEstimateMs: number;
     activeLibraryLoadScanResolvedAtMs: number | null;
     fullLibraryScanLoadActive: boolean;
@@ -129,6 +130,7 @@ export const createAppState = (): AppState => ({
     sidebarQueueIncludeFileActions: false,
     sidebarQueueSendToActionScope: null,
     queueConfirmResolver: null,
+    libraryTotalLoadEstimateMs: 0,
     libraryClientFinalizeEstimateMs: 0,
     activeLibraryLoadScanResolvedAtMs: null,
     fullLibraryScanLoadActive: false,

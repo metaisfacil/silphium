@@ -42,6 +42,7 @@ const createContext = (quickScanResult: LibraryScanResult, trackEntry: LibraryIn
     },
     currentMusicBrainzTagWorkerProgress: { enabled: false, active: false, progress: 0, pendingTrackScans: 0, totalTrackScans: 0, completedTrackScans: 0, pendingEntityLookups: 0, totalEntityLookups: 0, completedEntityLookups: 0 },
     availableAudioOutputDevices: [],
+    libraryTotalLoadEstimateMs: 0,
     libraryClientFinalizeEstimateMs: 2000,
     activeLibraryLoadScanResolvedAtMs: null,
     fullLibraryScanLoadActive: false,
@@ -150,7 +151,46 @@ const createContext = (quickScanResult: LibraryScanResult, trackEntry: LibraryIn
 
 describe('app-library-load-runtime', () => {
     afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
         vi.clearAllMocks();
+    });
+
+    it('starts a historical total-load ETA immediately before the backend scan resolves', async () => {
+        vi.useFakeTimers();
+        let nowMs = 0;
+        vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+
+        const quickScanResult = createScanResult();
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        let resolveScan!: (value: LibraryScanResult) => void;
+        context.libraryTotalLoadEstimateMs = 90_000;
+        context.scanConfiguredLibraryFoldersBackend = vi.fn(() => new Promise<LibraryScanResult>((resolve) => {
+            resolveScan = resolve;
+        }));
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+        const scanPromise = runtime.scanConfiguredLibraryFolders();
+
+        expect(context.setLibraryLoadingEtaSeconds).toHaveBeenLastCalledWith(90);
+        expect(context.setForceReloadEtaSeconds).toHaveBeenLastCalledWith(90);
+
+        nowMs = 10_000;
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(context.setLibraryLoadingEtaSeconds).toHaveBeenLastCalledWith(80);
+        expect(context.setForceReloadEtaSeconds).toHaveBeenLastCalledWith(80);
+
+        resolveScan(quickScanResult);
+        await scanPromise;
     });
 
     it('keeps loading active for deferred scans and finishes hydration on the completion update', async () => {
