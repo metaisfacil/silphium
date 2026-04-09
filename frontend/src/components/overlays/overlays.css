@@ -840,8 +840,9 @@
 }
 
 .settings-range-output {
-    min-width: 3.2rem;
-    font-size: 0.78rem;
+    width: 2rem;
+    min-width: 2rem;
+    font-size: 0.7rem;
     text-align: right;
     opacity: 0.72;
     font-variant-numeric: tabular-nums;

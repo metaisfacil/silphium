@@ -115,6 +115,7 @@ export namespace main {
 	    musicBrainzTagRequestStaggeringEnabled?: boolean;
 	    musicBrainzTagWorkerCores?: number;
 	    lissajousEnabled?: boolean;
+	    lissajousScale?: number;
 	    visualizerMode?: string;
 	    equalizerPosition?: string;
 	    uiDitheringEnabled?: boolean;
@@ -154,6 +155,7 @@ export namespace main {
 	        this.musicBrainzTagRequestStaggeringEnabled = source["musicBrainzTagRequestStaggeringEnabled"];
 	        this.musicBrainzTagWorkerCores = source["musicBrainzTagWorkerCores"];
 	        this.lissajousEnabled = source["lissajousEnabled"];
+	        this.lissajousScale = source["lissajousScale"];
 	        this.visualizerMode = source["visualizerMode"];
 	        this.equalizerPosition = source["equalizerPosition"];
 	        this.uiDitheringEnabled = source["uiDitheringEnabled"];
