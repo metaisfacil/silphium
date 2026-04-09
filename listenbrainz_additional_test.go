@@ -37,11 +37,11 @@ func TestListenBrainzHelpersAndFeedback(t *testing.T) {
 		t.Fatalf("normalizeListenBrainzSocialCount(high) = %d, want 1000", got)
 	}
 
-	app := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzServerURL: "https://listenbrainz.example/", ListenBrainzRequestRateMs: 0, ListenBrainzUserToken: "token"}}
+	app := newTestAppWithLoadedSettings(AppSettings{ListenBrainzServerURL: "https://listenbrainz.example/", ListenBrainzRequestRateMs: 0, ListenBrainzUserToken: "token"})
 	if got := app.listenBrainzServerURL(); got != "https://listenbrainz.example" {
 		t.Fatalf("listenBrainzServerURL() = %q, want %q", got, "https://listenbrainz.example")
 	}
-	if got := (&App{settingsLoaded: true}).listenBrainzServerURL(); got != listenBrainzPublicServerURL {
+	if got := newTestAppWithSettingsLoaded().listenBrainzServerURL(); got != listenBrainzPublicServerURL {
 		t.Fatalf("listenBrainzServerURL(default) = %q, want %q", got, listenBrainzPublicServerURL)
 	}
 	if got := app.listenBrainzRequestRateMs(); got != 0 {
@@ -50,7 +50,7 @@ func TestListenBrainzHelpersAndFeedback(t *testing.T) {
 	if token, err := app.listenBrainzToken(); err != nil || token != "token" {
 		t.Fatalf("listenBrainzToken() = (%q, %v), want token and nil", token, err)
 	}
-	if _, err := (&App{settingsLoaded: true}).listenBrainzToken(); err == nil {
+	if _, err := newTestAppWithSettingsLoaded().listenBrainzToken(); err == nil {
 		t.Fatal("listenBrainzToken(missing) error = nil, want error")
 	}
 
@@ -75,7 +75,7 @@ func TestListenBrainzHelpersAndFeedback(t *testing.T) {
 	}))
 	defer server.Close()
 
-	feedbackApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: token, ListenBrainzServerURL: server.URL, ListenBrainzRequestRateMs: 0}}
+	feedbackApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: token, ListenBrainzServerURL: server.URL, ListenBrainzRequestRateMs: 0})
 	user, err := feedbackApp.listenBrainzUserName(token)
 	if err != nil || user != userName {
 		t.Fatalf("listenBrainzUserName() = (%q, %v), want (%q, nil)", user, err, userName)
@@ -108,7 +108,7 @@ func TestListenBrainzHelpersAndFeedback(t *testing.T) {
 	}))
 	defer errorServer.Close()
 	errorToken := "different-token"
-	errorApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: errorToken, ListenBrainzServerURL: errorServer.URL, ListenBrainzRequestRateMs: 0}}
+	errorApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: errorToken, ListenBrainzServerURL: errorServer.URL, ListenBrainzRequestRateMs: 0})
 	if _, err := errorApp.listenBrainzUserName(errorToken); err == nil || !strings.Contains(err.Error(), "bad request") {
 		t.Fatalf("listenBrainzUserName(error) = %v, want parsed error", err)
 	}
@@ -180,7 +180,7 @@ func TestSubmitListenBrainzValidationAndErrors(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "token", ListenBrainzServerURL: server.URL, ListenBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "token", ListenBrainzServerURL: server.URL, ListenBrainzRequestRateMs: 0})
 	metadata := ListenBrainzTrackMetadata{ArtistName: "Artist", TrackName: "Track", ReleaseName: "Album"}
 
 	if err := app.SubmitListenBrainz("single", metadata, 0); err != nil {
@@ -204,7 +204,7 @@ func TestSubmitListenBrainzRecordingFeedbackServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "token", ListenBrainzServerURL: server.URL, ListenBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "token", ListenBrainzServerURL: server.URL, ListenBrainzRequestRateMs: 0})
 	if err := app.SubmitListenBrainzRecordingFeedback("recording-id", 1); err == nil || err.Error() != "feedback failed" {
 		t.Fatalf("SubmitListenBrainzRecordingFeedback(server error) = %v, want %q", err, "feedback failed")
 	}
@@ -216,7 +216,7 @@ func TestListenBrainzUserAndFeedbackErrorCases(t *testing.T) {
 	}))
 	defer invalidJSONServer.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "token", ListenBrainzServerURL: invalidJSONServer.URL, ListenBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "token", ListenBrainzServerURL: invalidJSONServer.URL, ListenBrainzRequestRateMs: 0})
 	if _, err := app.listenBrainzUserName("token"); err == nil || err.Error() != "invalid listenbrainz validate-token response" {
 		t.Fatalf("listenBrainzUserName(invalid json) = %v, want invalid-validate-token error", err)
 	}
@@ -276,12 +276,12 @@ func TestListenBrainzFollowingAndDedupErrorCases(t *testing.T) {
 	if !dedupApp.shouldSkipListenBrainzDuplicateScrobble(metadata, 1710000000) {
 		t.Fatal("second shouldSkipListenBrainzDuplicateScrobble() = false, want true")
 	}
-	dedupApp.listenBrainzScrobbleMu.Lock()
-	for key, entry := range dedupApp.listenBrainzRecentScrobbles {
+	dedupApp.scrobble.listenBrainzScrobbleMu.Lock()
+	for key, entry := range dedupApp.scrobble.listenBrainzRecentScrobbles {
 		entry.seenAt = time.Now().Add(-listenBrainzDuplicateScrobbleWindow - time.Second)
-		dedupApp.listenBrainzRecentScrobbles[key] = entry
+		dedupApp.scrobble.listenBrainzRecentScrobbles[key] = entry
 	}
-	dedupApp.listenBrainzScrobbleMu.Unlock()
+	dedupApp.scrobble.listenBrainzScrobbleMu.Unlock()
 	if dedupApp.shouldSkipListenBrainzDuplicateScrobble(metadata, 1710000100) {
 		t.Fatal("expired listenbrainz duplicate should not be skipped")
 	}
@@ -295,7 +295,7 @@ func TestListenBrainzFollowingAndDedupErrorCases(t *testing.T) {
 		}
 	}))
 	defer invalidFollowingServer.Close()
-	invalidFollowingApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "follow-invalid", ListenBrainzServerURL: invalidFollowingServer.URL, ListenBrainzRequestRateMs: 0}}
+	invalidFollowingApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "follow-invalid", ListenBrainzServerURL: invalidFollowingServer.URL, ListenBrainzRequestRateMs: 0})
 	if _, err := invalidFollowingApp.GetListenBrainzFollowing(); err == nil || err.Error() != "invalid listenbrainz following response" {
 		t.Fatalf("GetListenBrainzFollowing(invalid json) = %v, want invalid-following-response error", err)
 	}
@@ -310,7 +310,7 @@ func TestListenBrainzFollowingAndDedupErrorCases(t *testing.T) {
 		}
 	}))
 	defer statusFollowingServer.Close()
-	statusFollowingApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "follow-status", ListenBrainzServerURL: statusFollowingServer.URL, ListenBrainzRequestRateMs: 0}}
+	statusFollowingApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "follow-status", ListenBrainzServerURL: statusFollowingServer.URL, ListenBrainzRequestRateMs: 0})
 	if _, err := statusFollowingApp.GetListenBrainzFollowing(); err == nil || err.Error() != "following failed" {
 		t.Fatalf("GetListenBrainzFollowing(status error) = %v, want parsed error", err)
 	}
@@ -324,7 +324,7 @@ func TestListenBrainzFollowingAndDedupErrorCases(t *testing.T) {
 		}
 	}))
 	defer invalidFeedServer.Close()
-	invalidFeedApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "feed-invalid", ListenBrainzServerURL: invalidFeedServer.URL, ListenBrainzRequestRateMs: 0}}
+	invalidFeedApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "feed-invalid", ListenBrainzServerURL: invalidFeedServer.URL, ListenBrainzRequestRateMs: 0})
 	if _, err := invalidFeedApp.GetListenBrainzFollowingFeed(5); err == nil || err.Error() != "invalid listenbrainz following feed response" {
 		t.Fatalf("GetListenBrainzFollowingFeed(invalid json) = %v, want invalid-feed-response error", err)
 	}
@@ -339,7 +339,7 @@ func TestListenBrainzFollowingAndDedupErrorCases(t *testing.T) {
 		}
 	}))
 	defer statusFeedServer.Close()
-	statusFeedApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "feed-status", ListenBrainzServerURL: statusFeedServer.URL, ListenBrainzRequestRateMs: 0}}
+	statusFeedApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "feed-status", ListenBrainzServerURL: statusFeedServer.URL, ListenBrainzRequestRateMs: 0})
 	if _, err := statusFeedApp.GetListenBrainzFollowingFeed(5); err == nil || err.Error() != "feed failed" {
 		t.Fatalf("GetListenBrainzFollowingFeed(status error) = %v, want parsed error", err)
 	}
@@ -352,7 +352,7 @@ func TestListenBrainzTokenTransportAndRequestBranches(t *testing.T) {
 
 	metadata := ListenBrainzTrackMetadata{ArtistName: "Artist", TrackName: "Track", ReleaseName: "Album"}
 
-	missingTokenApp := &App{settingsLoaded: true}
+	missingTokenApp := newTestAppWithSettingsLoaded()
 	if err := missingTokenApp.SubmitListenBrainz("single", metadata, 1710000000); err == nil || err.Error() != "listenbrainz token is not configured" {
 		t.Fatalf("SubmitListenBrainz(missing token) = %v, want token-required error", err)
 	}
@@ -370,7 +370,7 @@ func TestListenBrainzTokenTransportAndRequestBranches(t *testing.T) {
 	}
 
 	invalidURLToken := "listenbrainz-invalid-url"
-	invalidURLApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: invalidURLToken, ListenBrainzServerURL: "://bad", ListenBrainzRequestRateMs: 0}}
+	invalidURLApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: invalidURLToken, ListenBrainzServerURL: "://bad", ListenBrainzRequestRateMs: 0})
 	if _, err := invalidURLApp.listenBrainzUserName(invalidURLToken); err == nil {
 		t.Fatal("listenBrainzUserName(invalid url) error = nil, want error")
 	}
@@ -403,7 +403,7 @@ func TestListenBrainzTokenTransportAndRequestBranches(t *testing.T) {
 	}
 
 	doErrorToken := "listenbrainz-do-error"
-	doErrorApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: doErrorToken, ListenBrainzServerURL: "http://127.0.0.1:1", ListenBrainzRequestRateMs: 0}}
+	doErrorApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: doErrorToken, ListenBrainzServerURL: "http://127.0.0.1:1", ListenBrainzRequestRateMs: 0})
 	if _, err := doErrorApp.listenBrainzUserName(doErrorToken); err == nil {
 		t.Fatal("listenBrainzUserName(do error) error = nil, want error")
 	}
@@ -436,7 +436,7 @@ func TestListenBrainzValidateTokenFeedbackAndFeedFallbackBranches(t *testing.T) 
 		_ = json.NewEncoder(writer).Encode(map[string]any{"valid": false, "message": "token invalid with message"})
 	}))
 	defer invalidTokenMessageServer.Close()
-	invalidTokenApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "token-message", ListenBrainzServerURL: invalidTokenMessageServer.URL, ListenBrainzRequestRateMs: 0}}
+	invalidTokenApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "token-message", ListenBrainzServerURL: invalidTokenMessageServer.URL, ListenBrainzRequestRateMs: 0})
 	if _, err := invalidTokenApp.listenBrainzUserName("token-message"); err == nil || err.Error() != "token invalid with message" {
 		t.Fatalf("listenBrainzUserName(invalid token message) = %v, want parsed message", err)
 	}
@@ -451,7 +451,7 @@ func TestListenBrainzValidateTokenFeedbackAndFeedFallbackBranches(t *testing.T) 
 		}
 	}))
 	defer feedbackStatusServer.Close()
-	feedbackStatusApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "feedback-status", ListenBrainzServerURL: feedbackStatusServer.URL, ListenBrainzRequestRateMs: 0}}
+	feedbackStatusApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "feedback-status", ListenBrainzServerURL: feedbackStatusServer.URL, ListenBrainzRequestRateMs: 0})
 	if _, err := feedbackStatusApp.GetListenBrainzRecordingFeedback("recording-id"); err == nil || err.Error() != "feedback lookup failed" {
 		t.Fatalf("GetListenBrainzRecordingFeedback(status error) = %v, want parsed error", err)
 	}
@@ -481,7 +481,7 @@ func TestListenBrainzValidateTokenFeedbackAndFeedFallbackBranches(t *testing.T) 
 		}
 	}))
 	defer feedFallbackServer.Close()
-	feedFallbackApp := &App{settingsLoaded: true, settings: AppSettings{ListenBrainzUserToken: "feed-fallback", ListenBrainzServerURL: feedFallbackServer.URL, ListenBrainzRequestRateMs: 0}}
+	feedFallbackApp := newTestAppWithLoadedSettings(AppSettings{ListenBrainzUserToken: "feed-fallback", ListenBrainzServerURL: feedFallbackServer.URL, ListenBrainzRequestRateMs: 0})
 	events, err := feedFallbackApp.GetListenBrainzFollowingFeed(5)
 	if err != nil {
 		t.Fatalf("GetListenBrainzFollowingFeed(created fallback) error = %v", err)

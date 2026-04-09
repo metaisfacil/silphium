@@ -305,28 +305,29 @@ func (a *App) shouldSkipListenBrainzDuplicateScrobble(metadata ListenBrainzTrack
 
 	duplicateKey := listenBrainzScrobbleFingerprint(metadata)
 	now := time.Now()
+	scrobbleState := a.scrobbleState()
 
-	a.listenBrainzScrobbleMu.Lock()
-	defer a.listenBrainzScrobbleMu.Unlock()
+	scrobbleState.listenBrainzScrobbleMu.Lock()
+	defer scrobbleState.listenBrainzScrobbleMu.Unlock()
 
-	if a.listenBrainzRecentScrobbles == nil {
-		a.listenBrainzRecentScrobbles = make(map[string]listenBrainzScrobbleDedupEntry)
+	if scrobbleState.listenBrainzRecentScrobbles == nil {
+		scrobbleState.listenBrainzRecentScrobbles = make(map[string]listenBrainzScrobbleDedupEntry)
 	}
 
 	cutoff := now.Add(-listenBrainzDuplicateScrobbleWindow)
-	for key, entry := range a.listenBrainzRecentScrobbles {
+	for key, entry := range scrobbleState.listenBrainzRecentScrobbles {
 		if entry.seenAt.Before(cutoff) {
-			delete(a.listenBrainzRecentScrobbles, key)
+			delete(scrobbleState.listenBrainzRecentScrobbles, key)
 		}
 	}
 
-	if entry, found := a.listenBrainzRecentScrobbles[duplicateKey]; found && !entry.seenAt.Before(cutoff) {
+	if entry, found := scrobbleState.listenBrainzRecentScrobbles[duplicateKey]; found && !entry.seenAt.Before(cutoff) {
 		if absInt64(entry.listenedAt-listenedAt) <= int64(listenBrainzDuplicateScrobbleWindow/time.Second) {
 			return true
 		}
 	}
 
-	a.listenBrainzRecentScrobbles[duplicateKey] = listenBrainzScrobbleDedupEntry{
+	scrobbleState.listenBrainzRecentScrobbles[duplicateKey] = listenBrainzScrobbleDedupEntry{
 		seenAt:     now,
 		listenedAt: listenedAt,
 	}

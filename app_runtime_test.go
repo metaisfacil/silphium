@@ -25,7 +25,8 @@ func TestAppRuntimeHelpers(t *testing.T) {
 		runtimeWindowHide = originalRuntimeWindowHide
 	})
 
-	app := &App{ctx: context.Background()}
+	app := &App{}
+	app.ctx = context.Background()
 	app.logRescanEvent("hello %s", "world")
 	if emittedEventName != libraryRescanLogEvent {
 		t.Fatalf("logRescanEvent() emitted %q, want %q", emittedEventName, libraryRescanLogEvent)
@@ -85,10 +86,10 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	if !app.settingsLoaded {
 		t.Fatal("startup() should mark settings as loaded")
 	}
-	if app.musicBrainzTagWorkerWake == nil {
+	if app.musicBrainzTagWorkerState().wakeCh == nil {
 		t.Fatal("startup() should initialize the MusicBrainz background worker")
 	}
-	if runtime.GOOS == "windows" && app.mediaKeyWatcherStop == nil {
+	if runtime.GOOS == "windows" && app.mediaKeyWatcherState().stopCh == nil {
 		t.Fatal("startup() should initialize the media key watcher on Windows")
 	}
 
@@ -96,11 +97,12 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	if !app.quitRequested.Load() {
 		t.Fatal("shutdown() should mark quitRequested")
 	}
-	if app.mediaKeyWatcherStop != nil || app.musicBrainzTagWorkerWake != nil {
+	if app.mediaKeyWatcherState().stopCh != nil || app.musicBrainzTagWorkerState().wakeCh != nil {
 		t.Fatal("shutdown() should stop background workers")
 	}
 
-	closeErrorApp := &App{audio: NewAudioBackend()}
+	closeErrorApp := &App{}
+	closeErrorApp.audio = NewAudioBackend()
 	closeErrorApp.audio.context = &fakeAudioContext{closeErr: errors.New("close failed")}
 	closeErrorApp.shutdown(context.Background())
 	if !closeErrorApp.quitRequested.Load() {
@@ -114,11 +116,11 @@ func TestAppStartupAndShutdown(t *testing.T) {
 func TestShutdownDoesNotBlockOnMusicBrainzWorkerStop(t *testing.T) {
 	stopCh := make(chan struct{})
 	doneCh := make(chan struct{})
-	app := &App{
-		audio:                    NewAudioBackend(),
-		musicBrainzTagWorkerStop: stopCh,
-		musicBrainzTagWorkerDone: doneCh,
-	}
+	app := &App{}
+	app.audio = NewAudioBackend()
+	workerState := app.musicBrainzTagWorkerState()
+	workerState.stopCh = stopCh
+	workerState.doneCh = doneCh
 	app.audio.context = &fakeAudioContext{}
 
 	originalTimeout := musicBrainzTagWorkerStopTimeout
@@ -145,7 +147,7 @@ func TestShutdownDoesNotBlockOnMusicBrainzWorkerStop(t *testing.T) {
 	if app.audio.context != nil {
 		t.Fatal("shutdown() should close and clear the audio context")
 	}
-	if app.musicBrainzTagWorkerStop != nil || app.musicBrainzTagWorkerDone != nil || app.musicBrainzTagWorkerWake != nil {
+	if workerState.stopCh != nil || workerState.doneCh != nil || workerState.wakeCh != nil {
 		t.Fatal("shutdown() should clear MusicBrainz worker channels")
 	}
 
@@ -165,9 +167,9 @@ func TestDisposeFrontendSessionState(t *testing.T) {
 	backend.streamSegments = []audioTrackSegment{{SourcePath: "track.flac", PCMData: make([]byte, audioBytesPerFrame*8)}}
 	backend.playing = true
 	app := &App{
-		watchStop: watchStop,
-		audio:     backend,
+		watchers: appWatcherState{library: appLibraryWatcherState{stopCh: watchStop}},
 	}
+	app.audio = backend
 	app.searchGeneration.Store(7)
 	app.libraryScanGeneration.Store(3)
 
@@ -179,7 +181,7 @@ func TestDisposeFrontendSessionState(t *testing.T) {
 	if got := app.libraryScanGeneration.Load(); got != 4 {
 		t.Fatalf("DisposeFrontendSessionState() libraryScanGeneration = %d, want 4", got)
 	}
-	if app.watchStop != nil {
+	if app.libraryWatcherState().stopCh != nil {
 		t.Fatal("DisposeFrontendSessionState() should clear watchStop")
 	}
 	state := app.audioBackend().State()

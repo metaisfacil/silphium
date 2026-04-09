@@ -16,10 +16,11 @@ func waitForLibraryWatcherToStart(t *testing.T, app *App) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		app.watchMu.Lock()
-		watcher := app.libraryWatcher
-		stopCh := app.watchStop
-		app.watchMu.Unlock()
+		watcherState := app.libraryWatcherState()
+		watcherState.mu.Lock()
+		watcher := watcherState.watcher
+		stopCh := watcherState.stopCh
+		watcherState.mu.Unlock()
 
 		if watcher != nil && stopCh != nil {
 			return
@@ -36,10 +37,11 @@ func waitForLibraryWatcherToStop(t *testing.T, app *App) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		app.watchMu.Lock()
-		watcher := app.libraryWatcher
-		stopCh := app.watchStop
-		app.watchMu.Unlock()
+		watcherState := app.libraryWatcherState()
+		watcherState.mu.Lock()
+		watcher := watcherState.watcher
+		stopCh := watcherState.stopCh
+		watcherState.mu.Unlock()
 
 		if watcher == nil && stopCh == nil {
 			return
@@ -263,12 +265,13 @@ func TestLibraryWatcherHelpersAndRuntimeEvents(t *testing.T) {
 	}
 
 	app.stopLibraryWatcher()
-	if app.libraryWatcher != nil || app.watchStop != nil {
+	watcherState := app.libraryWatcherState()
+	if watcherState.watcher != nil || watcherState.stopCh != nil {
 		t.Fatal("stopLibraryWatcher() should clear watcher state")
 	}
 
 	app.startLibraryWatcher(nil, nil)
-	if app.libraryWatcher != nil {
+	if watcherState.watcher != nil {
 		t.Fatal("startLibraryWatcher(nil) should leave watcher nil")
 	}
 }
@@ -314,16 +317,17 @@ func TestLibraryWatcherAdditionalEdgeBranches(t *testing.T) {
 
 	app.scanLibraryFolder(fixture.rootOne, false)
 	app.startLibraryWatcher([]libraryRootConfig{app.activeLibraryRoots[0]}, nil)
-	firstWatcher := app.libraryWatcher
+	watcherState := app.libraryWatcherState()
+	firstWatcher := watcherState.watcher
 	if firstWatcher == nil {
 		t.Fatal("startLibraryWatcher() did not create the initial watcher")
 	}
 
 	app.startLibraryWatcher([]libraryRootConfig{app.activeLibraryRoots[0]}, nil)
-	if app.libraryWatcher == nil {
+	if watcherState.watcher == nil {
 		t.Fatal("startLibraryWatcher(restart) did not keep a live watcher")
 	}
-	if app.libraryWatcher == firstWatcher {
+	if watcherState.watcher == firstWatcher {
 		t.Fatal("startLibraryWatcher(restart) should replace the previous watcher instance")
 	}
 	if err := firstWatcher.Add(fixture.rootOne); err == nil {
@@ -333,7 +337,7 @@ func TestLibraryWatcherAdditionalEdgeBranches(t *testing.T) {
 	invalidRootPath := filepath.Join(t.TempDir(), "not-a-directory")
 	writeTestFile(t, invalidRootPath, "file")
 	app.startLibraryWatcher([]libraryRootConfig{{Path: "   ", Name: "Blank"}, {Path: invalidRootPath, Name: "File"}}, nil)
-	if app.libraryWatcher != nil || app.watchStop != nil {
+	if watcherState.watcher != nil || watcherState.stopCh != nil {
 		t.Fatal("startLibraryWatcher(invalid roots) should stop and clear watcher state")
 	}
 
@@ -385,10 +389,11 @@ func TestAsyncLibraryWatcherStartupDoesNotRestoreStoppedWatcher(t *testing.T) {
 
 	deadline := time.Now().Add(1500 * time.Millisecond)
 	for time.Now().Before(deadline) {
-		app.watchMu.Lock()
-		watcher := app.libraryWatcher
-		stopCh := app.watchStop
-		app.watchMu.Unlock()
+		watcherState := app.libraryWatcherState()
+		watcherState.mu.Lock()
+		watcher := watcherState.watcher
+		stopCh := watcherState.stopCh
+		watcherState.mu.Unlock()
 
 		if watcher != nil || stopCh != nil {
 			t.Fatal("stale asynchronous watcher startup restored watcher state after stop")

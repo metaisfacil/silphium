@@ -89,15 +89,12 @@ func TestLookupMusicBrainzExploration(t *testing.T) {
 		}
 	}
 
-	app = &App{
-		ctx:            context.Background(),
-		settingsLoaded: true,
-		settings: AppSettings{
-			MusicBrainzServerURL:          server.URL,
-			MusicBrainzRequestRateMs:      0,
-			MusicBrainzTagDatabaseEnabled: true,
-		},
-	}
+	app = newTestAppWithLoadedSettings(AppSettings{
+		MusicBrainzServerURL:          server.URL,
+		MusicBrainzRequestRateMs:      0,
+		MusicBrainzTagDatabaseEnabled: true,
+	})
+	app.ctx = context.Background()
 	graph := app.LookupMusicBrainzExploration(recordingID, releaseID, nil, "", "request-1")
 	if !graph.Found || graph.Title != "Song Title" {
 		t.Fatalf("LookupMusicBrainzExploration() = %#v, want populated graph titled Song Title", graph)
@@ -128,14 +125,11 @@ func TestLookupMusicBrainzExplorationWarningsAndFallbackNodes(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()
 
-	app := &App{
-		settingsLoaded: true,
-		settings: AppSettings{
-			MusicBrainzServerURL:          server.URL,
-			MusicBrainzRequestRateMs:      0,
-			MusicBrainzTagDatabaseEnabled: true,
-		},
-	}
+	app := newTestAppWithLoadedSettings(AppSettings{
+		MusicBrainzServerURL:          server.URL,
+		MusicBrainzRequestRateMs:      0,
+		MusicBrainzTagDatabaseEnabled: true,
+	})
 
 	graph := app.LookupMusicBrainzExploration(recordingID, releaseID, artistIDs, labelID, "request-2")
 	if !graph.Found {
@@ -181,7 +175,7 @@ func TestLookupMusicBrainzExplorationDefaultSummaryAndExcludedLabel(t *testing.T
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 	graph := app.LookupMusicBrainzExploration("", releaseID, nil, "", "request-3")
 	if !graph.Found {
 		t.Fatalf("LookupMusicBrainzExploration(default summary) = %#v, want non-empty graph", graph)
@@ -376,7 +370,7 @@ func TestLookupMusicBrainzExplorationLimitAndSkipBranches(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 	graph := app.LookupMusicBrainzExploration(recordingID, releaseID, []string{seedArtistID, duplicateSeedID, failingArtistID}, labelID, "request-4")
 	if !graph.Found {
 		t.Fatalf("LookupMusicBrainzExploration(limits) = %#v, want populated graph", graph)
@@ -422,7 +416,7 @@ func TestLookupMusicBrainzExplorationReleaseTitleAndFetchedLabel(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 	graph := app.LookupMusicBrainzExploration("", releaseID, nil, "", "request-release-title")
 	if !graph.Found {
 		t.Fatalf("LookupMusicBrainzExploration(release title) = %#v, want populated graph", graph)
@@ -460,7 +454,7 @@ func TestLookupMusicBrainzExplorationExcludedFetchedLabelNoNodes(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 	graph := app.LookupMusicBrainzExploration("", "", nil, labelID, "request-excluded-label")
 	if graph.Found {
 		t.Fatalf("LookupMusicBrainzExploration(excluded label) = %#v, want no graph", graph)
@@ -507,7 +501,7 @@ func TestLookupMusicBrainzExplorationAlternateReleaseCheckLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 	graph := app.LookupMusicBrainzExploration(recordingID, "", nil, "", "request-alt-check-limit")
 	if !graph.Found {
 		t.Fatalf("LookupMusicBrainzExploration(alternate check limit) = %#v, want populated graph", graph)

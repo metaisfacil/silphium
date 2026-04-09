@@ -60,14 +60,11 @@ func TestSubmitLastFm(t *testing.T) {
 		defer server.Close()
 
 		lastFmAPIBaseURL = server.URL
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     " api-key ",
-				LastFmAPISecret:  " shared-secret ",
-				LastFmSessionKey: " session-key ",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     " api-key ",
+			LastFmAPISecret:  " shared-secret ",
+			LastFmSessionKey: " session-key ",
+		})
 
 		nowPlayingMetadata := LastFmTrackMetadata{
 			ArtistName:      "Test Artist",
@@ -149,14 +146,11 @@ func TestSubmitLastFm(t *testing.T) {
 		defer server.Close()
 
 		lastFmAPIBaseURL = server.URL
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     "api-key",
-				LastFmAPISecret:  "shared-secret",
-				LastFmSessionKey: "session-key",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     "api-key",
+			LastFmAPISecret:  "shared-secret",
+			LastFmSessionKey: "session-key",
+		})
 
 		err := app.SubmitLastFm("single", LastFmTrackMetadata{
 			ArtistName: "Test Artist",
@@ -171,14 +165,11 @@ func TestSubmitLastFm(t *testing.T) {
 	})
 
 	t.Run("requires complete credentials", func(t *testing.T) {
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     "api-key",
-				LastFmAPISecret:  "",
-				LastFmSessionKey: "session-key",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     "api-key",
+			LastFmAPISecret:  "",
+			LastFmSessionKey: "session-key",
+		})
 
 		err := app.SubmitLastFm("playing_now", LastFmTrackMetadata{
 			ArtistName: "Test Artist",
@@ -202,14 +193,11 @@ func TestSubmitLastFm(t *testing.T) {
 		defer server.Close()
 
 		lastFmAPIBaseURL = server.URL
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     "api-key",
-				LastFmAPISecret:  "shared-secret",
-				LastFmSessionKey: "session-key",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     "api-key",
+			LastFmAPISecret:  "shared-secret",
+			LastFmSessionKey: "session-key",
+		})
 
 		metadata := LastFmTrackMetadata{
 			ArtistName:    "Duplicate Artist",
@@ -240,14 +228,11 @@ func TestSubmitLastFm(t *testing.T) {
 		defer server.Close()
 
 		lastFmAPIBaseURL = server.URL
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     "api-key",
-				LastFmAPISecret:  "shared-secret",
-				LastFmSessionKey: "session-key",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     "api-key",
+			LastFmAPISecret:  "shared-secret",
+			LastFmSessionKey: "session-key",
+		})
 
 		metadata := LastFmTrackMetadata{
 			ArtistName:    "Duplicate Artist",
@@ -278,14 +263,11 @@ func TestSubmitLastFm(t *testing.T) {
 		defer server.Close()
 
 		lastFmAPIBaseURL = server.URL
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     "api-key",
-				LastFmAPISecret:  "shared-secret",
-				LastFmSessionKey: "session-key",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     "api-key",
+			LastFmAPISecret:  "shared-secret",
+			LastFmSessionKey: "session-key",
+		})
 
 		if err := app.SubmitLastFm("single", LastFmTrackMetadata{
 			ArtistName:    "Masato Kouda",
@@ -353,14 +335,11 @@ func TestSubmitLastFmLove(t *testing.T) {
 		defer server.Close()
 
 		lastFmAPIBaseURL = server.URL
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     "api-key",
-				LastFmAPISecret:  "shared-secret",
-				LastFmSessionKey: "session-key",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     "api-key",
+			LastFmAPISecret:  "shared-secret",
+			LastFmSessionKey: "session-key",
+		})
 
 		err := app.SubmitLastFmLove(LastFmTrackMetadata{
 			ArtistName:    "Test Artist",
@@ -377,14 +356,11 @@ func TestSubmitLastFmLove(t *testing.T) {
 	})
 
 	t.Run("requires artist and track", func(t *testing.T) {
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     "api-key",
-				LastFmAPISecret:  "shared-secret",
-				LastFmSessionKey: "session-key",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     "api-key",
+			LastFmAPISecret:  "shared-secret",
+			LastFmSessionKey: "session-key",
+		})
 
 		err := app.SubmitLastFmLove(LastFmTrackMetadata{ArtistName: "", TrackName: ""})
 		if err == nil {
@@ -438,14 +414,11 @@ func TestSubmitLastFmUnlove(t *testing.T) {
 		defer server.Close()
 
 		lastFmAPIBaseURL = server.URL
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     "api-key",
-				LastFmAPISecret:  "shared-secret",
-				LastFmSessionKey: "session-key",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     "api-key",
+			LastFmAPISecret:  "shared-secret",
+			LastFmSessionKey: "session-key",
+		})
 
 		err := app.SubmitLastFmUnlove(LastFmTrackMetadata{
 			ArtistName:    "Test Artist",
@@ -462,14 +435,11 @@ func TestSubmitLastFmUnlove(t *testing.T) {
 	})
 
 	t.Run("requires artist and track", func(t *testing.T) {
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				LastFmAPIKey:     "api-key",
-				LastFmAPISecret:  "shared-secret",
-				LastFmSessionKey: "session-key",
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			LastFmAPIKey:     "api-key",
+			LastFmAPISecret:  "shared-secret",
+			LastFmSessionKey: "session-key",
+		})
 
 		err := app.SubmitLastFmUnlove(LastFmTrackMetadata{ArtistName: "", TrackName: ""})
 		if err == nil {

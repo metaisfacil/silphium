@@ -26,7 +26,8 @@ func waitForMarkerFile(t *testing.T, path string) string {
 
 func TestCustomActionHelpers(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
-	app := &App{activeLibraryRoots: []libraryRootConfig{{Path: fixture.rootOne, Name: " "}, {Path: fixture.rootOne, Name: "Library"}}}
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: " "}, {Path: fixture.rootOne, Name: "Library"}}
 
 	originalShellQuoteGOOS := shellQuoteGOOS
 	t.Cleanup(func() {
@@ -49,7 +50,8 @@ func TestCustomActionHelpers(t *testing.T) {
 	if !ok || resolvedPath != fixture.rootOne {
 		t.Fatalf("resolveAbsoluteLibraryPathFromVirtualPath(root) = (%q, %t), want (%q, true)", resolvedPath, ok, fixture.rootOne)
 	}
-	blankRootPathApp := &App{activeLibraryRoots: []libraryRootConfig{{Path: " ", Name: "Library"}}}
+	blankRootPathApp := &App{}
+	blankRootPathApp.activeLibraryRoots = []libraryRootConfig{{Path: " ", Name: "Library"}}
 	if _, ok := blankRootPathApp.resolveAbsoluteLibraryPathFromVirtualPath("Library/Artist One"); ok {
 		t.Fatal("resolveAbsoluteLibraryPathFromVirtualPath(blank root path) = true, want false")
 	}
@@ -122,7 +124,8 @@ func TestRunCustomSendToAction(t *testing.T) {
 	markerPath := filepath.Join(helperDir, "sendto-marker.txt")
 	template := `"` + helperPath + `" "{path_unquoted}" "{directory_unquoted}"`
 
-	app := &App{activeLibraryRoots: []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}}
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
 	t.Setenv("SILPHIUM_TEST_SENDTO_MARKER", markerPath)
 	t.Setenv("SILPHIUM_TEST_SENDTO_EXIT", "0")
 	t.Setenv("SILPHIUM_TEST_SENDTO_STDOUT", "")

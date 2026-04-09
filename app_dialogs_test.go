@@ -30,7 +30,8 @@ func TestAppDialogHelpers(t *testing.T) {
 		t.Fatalf("sanitizeShareImageFilename(invalid-only) = %q, want %q", got, "silphium-share.png")
 	}
 
-	app := &App{ctx: context.Background()}
+	app := &App{}
+	app.ctx = context.Background()
 	runtimeOpenDirectoryDialog = func(context.Context, runtime.OpenDialogOptions) (string, error) {
 		return `C:\Music`, nil
 	}

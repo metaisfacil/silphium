@@ -171,13 +171,11 @@ func TestTrackTagCachingAndBatchReads(t *testing.T) {
 	secondTrack := filepath.Join(fixture.albumOneFolder, "02 Second.flac")
 	writeTestFile(t, secondTrack, "fake track")
 
-	app := &App{
-		settingsLoaded: true,
-		activeLibraryRoots: []libraryRootConfig{{
-			Path: fixture.rootOne,
-			Name: "Library",
-		}},
-	}
+	app := newTestAppWithSettingsLoaded()
+	app.activeLibraryRoots = []libraryRootConfig{{
+		Path: fixture.rootOne,
+		Name: "Library",
+	}}
 
 	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
 	if !ok {
@@ -228,7 +226,7 @@ func TestTrackTagCachingAndBatchReads(t *testing.T) {
 	if len(results) != 0 {
 		t.Fatalf("ReadTrackTags(fake tracks) len = %d, want 0", len(results))
 	}
-	if got, want := len(app.trackTagsCacheByPath), 2; got != want {
+	if got, want := len(app.trackTagsCacheState().byPath), 2; got != want {
 		t.Fatalf("ReadTrackTags() cache size = %d, want %d", got, want)
 	}
 
@@ -251,13 +249,13 @@ func TestTrackTagCachingAndBatchReads(t *testing.T) {
 		path := fmt.Sprintf("track-%d.flac", index)
 		evictionApp.putTrackTagsCache(path, trackTagsFileSignature{Size: int64(index), ModUnixNs: int64(index)}, TrackTags{Title: path}, true)
 	}
-	if got, want := len(evictionApp.trackTagsCacheByPath), trackTagsCacheLimit; got != want {
+	if got, want := len(evictionApp.trackTagsCacheState().byPath), trackTagsCacheLimit; got != want {
 		t.Fatalf("trackTags cache len = %d, want %d", got, want)
 	}
-	if _, exists := evictionApp.trackTagsCacheByPath["track-0.flac"]; exists {
+	if _, exists := evictionApp.trackTagsCacheState().byPath["track-0.flac"]; exists {
 		t.Fatal("expected oldest track tags cache entry to be evicted")
 	}
-	if _, exists := evictionApp.trackTagsCacheByPath[fmt.Sprintf("track-%d.flac", trackTagsCacheLimit)]; !exists {
+	if _, exists := evictionApp.trackTagsCacheState().byPath[fmt.Sprintf("track-%d.flac", trackTagsCacheLimit)]; !exists {
 		t.Fatal("expected newest track tags cache entry to remain present")
 	}
 }
@@ -269,13 +267,11 @@ func TestTrackTagWorkerAndBlobNoMetadataBranches(t *testing.T) {
 	})
 
 	fixture := createLibraryTestFixture(t)
-	app := &App{
-		settingsLoaded: true,
-		activeLibraryRoots: []libraryRootConfig{{
-			Path: fixture.rootOne,
-			Name: "Library",
-		}},
-	}
+	app := newTestAppWithSettingsLoaded()
+	app.activeLibraryRoots = []libraryRootConfig{{
+		Path: fixture.rootOne,
+		Name: "Library",
+	}}
 
 	if got := resolveTrackTagsWorkerCount(1); got != 1 {
 		t.Fatalf("resolveTrackTagsWorkerCount(1) = %d, want 1", got)
@@ -320,7 +316,7 @@ func TestReadTrackTagsFromBlobsAdditionalTempAndDiscardBranches(t *testing.T) {
 		readTaglibTags = originalReadTaglibTags
 	})
 
-	app := &App{settingsLoaded: true}
+	app := newTestAppWithSettingsLoaded()
 
 	blockedTemp := filepath.Join(t.TempDir(), "blocked-temp")
 	writeTestFile(t, blockedTemp, "blocked")
@@ -345,7 +341,7 @@ func TestReadTrackTagsFromBlobsDiscardNoMetadataBranch(t *testing.T) {
 		return map[string][]string{}, nil
 	}
 
-	app := &App{settingsLoaded: true}
+	app := newTestAppWithSettingsLoaded()
 	if got := app.ReadTrackTagsFromBlobs([]TrackBlob{{
 		Key:  "empty-blob",
 		Name: "track.flac",

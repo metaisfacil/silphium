@@ -196,11 +196,10 @@ func TestNormalizedPathHelpers(t *testing.T) {
 func TestActiveLibraryRootSelectionAndPermissions(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	nestedRootPath := filepath.Join(fixture.rootOne, "Artist One")
-	app := &App{
-		activeLibraryRoots: []libraryRootConfig{
-			{Path: fixture.rootOne, Name: "Library One"},
-			{Path: nestedRootPath, Name: "Artist One"},
-		},
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{
+		{Path: fixture.rootOne, Name: "Library One"},
+		{Path: nestedRootPath, Name: "Artist One"},
 	}
 
 	root, ok := app.activeLibraryRootForPath(fixture.trackOne)
@@ -225,11 +224,10 @@ func TestActiveLibraryRootSelectionAndPermissions(t *testing.T) {
 	if _, ok := (&App{}).activeLibraryRootForPath(fixture.trackOne); ok {
 		t.Fatal("activeLibraryRootForPath(no roots) = ok, want false")
 	}
-	equalLengthApp := &App{
-		activeLibraryRoots: []libraryRootConfig{
-			{Path: nestedRootPath, Name: "Artist One"},
-			{Path: fixture.rootOne, Name: "Library One"},
-		},
+	equalLengthApp := &App{}
+	equalLengthApp.activeLibraryRoots = []libraryRootConfig{
+		{Path: nestedRootPath, Name: "Artist One"},
+		{Path: fixture.rootOne, Name: "Library One"},
 	}
 	root, ok = equalLengthApp.activeLibraryRootForPath(fixture.trackOne)
 	if !ok || root.Path != nestedRootPath {

@@ -20,7 +20,8 @@ func TestReadTrackEmbeddedCover(t *testing.T) {
 	root := t.TempDir()
 	trackPath := filepath.Join(root, "track.flac")
 	writeTestFile(t, trackPath, "track")
-	app := &App{activeLibraryRoots: []libraryRootConfig{{Path: normalizePath(root), Name: filepath.Base(root)}}}
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: normalizePath(root), Name: filepath.Base(root)}}
 
 	if cover := app.ReadTrackEmbeddedCover(filepath.Join(t.TempDir(), "outside.flac")); cover != (EmbeddedCoverArt{}) {
 		t.Fatalf("ReadTrackEmbeddedCover(outside path) = %#v, want empty result", cover)

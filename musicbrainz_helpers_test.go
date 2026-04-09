@@ -12,11 +12,11 @@ func TestMusicBrainzHelperFunctions(t *testing.T) {
 	labelID := "44444444-4444-4444-8444-444444444444"
 	recordingID := "55555555-5555-4555-8555-555555555555"
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: "https://musicbrainz.example/", MusicBrainzRequestRateMs: 250}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: "https://musicbrainz.example/", MusicBrainzRequestRateMs: 250})
 	if got := app.musicBrainzServerURL(); got != "https://musicbrainz.example" {
 		t.Fatalf("musicBrainzServerURL() = %q, want %q", got, "https://musicbrainz.example")
 	}
-	if got := (&App{settingsLoaded: true}).musicBrainzServerURL(); got != musicBrainzPublicServerURL {
+	if got := newTestAppWithSettingsLoaded().musicBrainzServerURL(); got != musicBrainzPublicServerURL {
 		t.Fatalf("musicBrainzServerURL(default) = %q, want %q", got, musicBrainzPublicServerURL)
 	}
 	if got := app.musicBrainzAPIBaseURL(); got != "https://musicbrainz.example/ws/2" {

@@ -13,18 +13,17 @@ func newIndexedLibraryAppForTests(t *testing.T) (*App, libraryTestFixture) {
 	t.Helper()
 
 	fixture := createLibraryTestFixture(t)
-	app := &App{
-		activeLibraryRoots:       []libraryRootConfig{{Path: fixture.rootOne, Name: "Library One"}, {Path: fixture.rootTwo, Name: "Library Two"}},
-		trackByPath:              map[string]LibraryIndexedFile{},
-		textByPath:               map[string]LibraryIndexedFile{},
-		imageByPath:              map[string]LibraryIndexedFile{},
-		libraryDerivedIndexDirty: true,
-		libraryScan: LibraryScanResult{
-			CoverPathByFolder: map[string]string{},
-		},
-		searchResultsByQuery:                   make(map[string][]LibraryBrowserEntry),
-		scanRemainingImmediateChildrenByFolder: map[string]int{},
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library One"}, {Path: fixture.rootTwo, Name: "Library Two"}}
+	app.trackByPath = map[string]LibraryIndexedFile{}
+	app.textByPath = map[string]LibraryIndexedFile{}
+	app.imageByPath = map[string]LibraryIndexedFile{}
+	app.libraryScan = LibraryScanResult{
+		CoverPathByFolder: map[string]string{},
 	}
+	app.libraryDerivedIndexDirty = true
+	app.searchResultsByQuery = make(map[string][]LibraryBrowserEntry)
+	app.scanRemainingImmediateChildrenByFolder = map[string]int{}
 
 	for _, root := range app.activeLibraryRoots {
 		for _, candidate := range []string{fixture.trackOne, fixture.noteOne, fixture.coverOne, fixture.folderCoverOne, fixture.trackTwo, fixture.imageTwo} {
@@ -579,104 +578,102 @@ func TestLibraryIndexCancellationAndFolderBranches(t *testing.T) {
 		t.Fatalf("addFolderAncestorsToIndex(double slashes) = %#v, want normalized ancestor path", folderPaths)
 	}
 
-	searchResultsApp := &App{searchResultsByQuery: map[string][]LibraryBrowserEntry{}}
+	searchResultsApp := &App{}
+	searchResultsApp.searchResultsByQuery = map[string][]LibraryBrowserEntry{}
 	searchResultsApp.searchTrackEntries = makeEntries("track", 257)
 	if _, _, canceled := searchResultsApp.buildSearchResultsLocked("intro", func() bool { return true }); !canceled {
 		t.Fatal("buildSearchResultsLocked(track canceled) = false, want true")
 	}
 
-	searchResultsApp = &App{searchResultsByQuery: map[string][]LibraryBrowserEntry{}}
+	searchResultsApp = &App{}
+	searchResultsApp.searchResultsByQuery = map[string][]LibraryBrowserEntry{}
 	searchResultsApp.searchTextEntries = makeEntries("text-file", 257)
 	if _, _, canceled := searchResultsApp.buildSearchResultsLocked("intro", func() bool { return true }); !canceled {
 		t.Fatal("buildSearchResultsLocked(text canceled) = false, want true")
 	}
 
-	searchResultsApp = &App{searchResultsByQuery: map[string][]LibraryBrowserEntry{}}
+	searchResultsApp = &App{}
+	searchResultsApp.searchResultsByQuery = map[string][]LibraryBrowserEntry{}
 	searchResultsApp.searchImageEntries = makeEntries("image-file", 257)
 	if _, _, canceled := searchResultsApp.buildSearchResultsLocked("intro", func() bool { return true }); !canceled {
 		t.Fatal("buildSearchResultsLocked(image canceled) = false, want true")
 	}
 
-	searchResultsApp = &App{searchResultsByQuery: map[string][]LibraryBrowserEntry{}}
+	searchResultsApp = &App{}
+	searchResultsApp.searchResultsByQuery = map[string][]LibraryBrowserEntry{}
 	if _, _, canceled := searchResultsApp.buildSearchResultsLocked("intro", func() bool { return true }); !canceled {
 		t.Fatal("buildSearchResultsLocked(post-filter cancel) = false, want true")
 	}
 
-	mapsApp := &App{
-		trackByPath: map[string]LibraryIndexedFile{
-			"loose.flac": {
-				Name:         "Loose",
-				Path:         "loose.flac",
-				RelativePath: "Loose.flac",
-				FolderPath:   "",
-			},
+	mapsApp := &App{}
+	mapsApp.trackByPath = map[string]LibraryIndexedFile{
+		"loose.flac": {
+			Name:         "Loose",
+			Path:         "loose.flac",
+			RelativePath: "Loose.flac",
+			FolderPath:   "",
 		},
-		textByPath:  map[string]LibraryIndexedFile{},
-		imageByPath: map[string]LibraryIndexedFile{},
 	}
+	mapsApp.textByPath = map[string]LibraryIndexedFile{}
+	mapsApp.imageByPath = map[string]LibraryIndexedFile{}
 	entries, canceled := mapsApp.buildSearchEntriesFromMapsLocked("loose", nil)
 	if canceled || !hasBrowserEntry(entries, "track", "loose.flac") {
 		t.Fatalf("buildSearchEntriesFromMapsLocked(root track) = (%#v, %t), want loose track result", entries, canceled)
 	}
 
-	mapsApp = &App{
-		trackByPath: map[string]LibraryIndexedFile{
-			"nested.flac": {
-				Name:         "Nested",
-				Path:         "nested.flac",
-				RelativePath: "Artist One/Nested.flac",
-				FolderPath:   "Library One//Artist One",
-			},
+	mapsApp = &App{}
+	mapsApp.trackByPath = map[string]LibraryIndexedFile{
+		"nested.flac": {
+			Name:         "Nested",
+			Path:         "nested.flac",
+			RelativePath: "Artist One/Nested.flac",
+			FolderPath:   "Library One//Artist One",
 		},
-		textByPath:  map[string]LibraryIndexedFile{},
-		imageByPath: map[string]LibraryIndexedFile{},
 	}
+	mapsApp.textByPath = map[string]LibraryIndexedFile{}
+	mapsApp.imageByPath = map[string]LibraryIndexedFile{}
 	entries, canceled = mapsApp.buildSearchEntriesFromMapsLocked("artist one", nil)
 	if canceled || !hasBrowserEntry(entries, "folder", "Library One/Artist One") {
 		t.Fatalf("buildSearchEntriesFromMapsLocked(double slash folder) = (%#v, %t), want normalized folder match", entries, canceled)
 	}
 
-	trackCancelApp := &App{
-		trackByPath: map[string]LibraryIndexedFile{
-			"track.flac": {Name: "Track", Path: "track.flac", RelativePath: "Artist/Track.flac", FolderPath: "Library/Artist"},
-		},
-		textByPath:  map[string]LibraryIndexedFile{},
-		imageByPath: map[string]LibraryIndexedFile{},
+	trackCancelApp := &App{}
+	trackCancelApp.trackByPath = map[string]LibraryIndexedFile{
+		"track.flac": {Name: "Track", Path: "track.flac", RelativePath: "Artist/Track.flac", FolderPath: "Library/Artist"},
 	}
+	trackCancelApp.textByPath = map[string]LibraryIndexedFile{}
+	trackCancelApp.imageByPath = map[string]LibraryIndexedFile{}
 	if _, canceled := trackCancelApp.buildSearchEntriesFromMapsLocked("track", func() bool { return true }); !canceled {
 		t.Fatal("buildSearchEntriesFromMapsLocked(track canceled) = false, want true")
 	}
 
-	textCancelApp := &App{
-		trackByPath: map[string]LibraryIndexedFile{},
-		textByPath: map[string]LibraryIndexedFile{
-			"note.txt": {Name: "Note", Path: "note.txt", RelativePath: "Artist/Note.txt", FolderPath: "Library/Artist"},
-		},
-		imageByPath: map[string]LibraryIndexedFile{},
+	textCancelApp := &App{}
+	textCancelApp.trackByPath = map[string]LibraryIndexedFile{}
+	textCancelApp.textByPath = map[string]LibraryIndexedFile{
+		"note.txt": {Name: "Note", Path: "note.txt", RelativePath: "Artist/Note.txt", FolderPath: "Library/Artist"},
 	}
+	textCancelApp.imageByPath = map[string]LibraryIndexedFile{}
 	if _, canceled := textCancelApp.buildSearchEntriesFromMapsLocked("note", func() bool { return true }); !canceled {
 		t.Fatal("buildSearchEntriesFromMapsLocked(text canceled) = false, want true")
 	}
 
-	imageCancelApp := &App{
-		trackByPath: map[string]LibraryIndexedFile{},
-		textByPath:  map[string]LibraryIndexedFile{},
-		imageByPath: map[string]LibraryIndexedFile{
-			"cover.jpg": {Name: "Cover", Path: "cover.jpg", RelativePath: "Artist/Cover.jpg", FolderPath: "Library/Artist"},
-		},
+	imageCancelApp := &App{}
+	imageCancelApp.trackByPath = map[string]LibraryIndexedFile{}
+	imageCancelApp.textByPath = map[string]LibraryIndexedFile{}
+	imageCancelApp.imageByPath = map[string]LibraryIndexedFile{
+		"cover.jpg": {Name: "Cover", Path: "cover.jpg", RelativePath: "Artist/Cover.jpg", FolderPath: "Library/Artist"},
 	}
 	if _, canceled := imageCancelApp.buildSearchEntriesFromMapsLocked("cover", func() bool { return true }); !canceled {
 		t.Fatal("buildSearchEntriesFromMapsLocked(image canceled) = false, want true")
 	}
 
 	folderCancelCalls := 0
-	folderCancelApp := &App{
-		trackByPath: map[string]LibraryIndexedFile{
-			"track.flac": {Name: "Track", Path: "track.flac", RelativePath: "Artist/Track.flac", FolderPath: "Library/Artist"},
-		},
-		textByPath:  map[string]LibraryIndexedFile{},
-		imageByPath: map[string]LibraryIndexedFile{},
+	folderCancelApp := &App{}
+	folderCancelApp.trackByPath = map[string]LibraryIndexedFile{
+		"track.flac": {Name: "Track", Path: "track.flac", RelativePath: "Artist/Track.flac", FolderPath: "Library/Artist"},
 	}
+	folderCancelApp.textByPath = map[string]LibraryIndexedFile{}
+	folderCancelApp.imageByPath = map[string]LibraryIndexedFile{}
 	if _, canceled := folderCancelApp.buildSearchEntriesFromMapsLocked("artist", func() bool {
 		folderCancelCalls++
 		return folderCancelCalls > 1
@@ -684,13 +681,12 @@ func TestLibraryIndexCancellationAndFolderBranches(t *testing.T) {
 		t.Fatal("buildSearchEntriesFromMapsLocked(folder canceled) = false, want true")
 	}
 
-	folderMatchApp := &App{
-		trackByPath: map[string]LibraryIndexedFile{
-			"song.flac": {Name: "Song", Path: "song.flac", RelativePath: "Artist One/Song.flac", FolderPath: "Library One/Artist One"},
-		},
-		textByPath:  map[string]LibraryIndexedFile{},
-		imageByPath: map[string]LibraryIndexedFile{},
+	folderMatchApp := &App{}
+	folderMatchApp.trackByPath = map[string]LibraryIndexedFile{
+		"song.flac": {Name: "Song", Path: "song.flac", RelativePath: "Artist One/Song.flac", FolderPath: "Library One/Artist One"},
 	}
+	folderMatchApp.textByPath = map[string]LibraryIndexedFile{}
+	folderMatchApp.imageByPath = map[string]LibraryIndexedFile{}
 	entries, canceled = folderMatchApp.buildSearchEntriesFromMapsLocked("artist one", nil)
 	if canceled || !hasBrowserEntry(entries, "folder", "Library One/Artist One") {
 		t.Fatalf("buildSearchEntriesFromMapsLocked(folder match) = (%#v, %t), want folder result", entries, canceled)

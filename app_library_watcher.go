@@ -275,21 +275,22 @@ func collectWatchableLibraryDirectoryPaths(roots []libraryRootConfig, directoryP
 }
 
 func (a *App) stopLibraryWatcherReserved(generation uint64) {
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+	watcherState := a.libraryWatcherState()
+	if generation > 0 && watcherState.generation.Load() != generation {
 		return
 	}
 
-	a.watchMu.Lock()
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
-		a.watchMu.Unlock()
+	watcherState.mu.Lock()
+	if generation > 0 && watcherState.generation.Load() != generation {
+		watcherState.mu.Unlock()
 		return
 	}
 
-	watcher := a.libraryWatcher
-	stopCh := a.watchStop
-	a.libraryWatcher = nil
-	a.watchStop = nil
-	a.watchMu.Unlock()
+	watcher := watcherState.watcher
+	stopCh := watcherState.stopCh
+	watcherState.watcher = nil
+	watcherState.stopCh = nil
+	watcherState.mu.Unlock()
 
 	if stopCh != nil {
 		close(stopCh)
@@ -307,7 +308,8 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 		return false
 	}
 
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+	watcherState := a.libraryWatcherState()
+	if generation > 0 && watcherState.generation.Load() != generation {
 		return false
 	}
 
@@ -319,7 +321,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 		return false
 	}
 
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+	if generation > 0 && watcherState.generation.Load() != generation {
 		_ = watcher.Close()
 		return false
 	}
@@ -329,7 +331,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 		addLibraryWatchesFromDiscoveredDirectories(watcher, watchablePaths, onProgress)
 	} else {
 		for _, rootPath := range watchablePaths {
-			if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+			if generation > 0 && watcherState.generation.Load() != generation {
 				_ = watcher.Close()
 				return false
 			}
@@ -338,7 +340,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 		}
 	}
 
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+	if generation > 0 && watcherState.generation.Load() != generation {
 		_ = watcher.Close()
 		return false
 	}
@@ -346,18 +348,18 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 	a.logRescanEvent("Watcher ready, listening for changes")
 	stopCh := make(chan struct{})
 
-	a.watchMu.Lock()
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
-		a.watchMu.Unlock()
+	watcherState.mu.Lock()
+	if generation > 0 && watcherState.generation.Load() != generation {
+		watcherState.mu.Unlock()
 		_ = watcher.Close()
 		return false
 	}
 
-	previousWatcher := a.libraryWatcher
-	previousStopCh := a.watchStop
-	a.libraryWatcher = watcher
-	a.watchStop = stopCh
-	a.watchMu.Unlock()
+	previousWatcher := watcherState.watcher
+	previousStopCh := watcherState.stopCh
+	watcherState.watcher = watcher
+	watcherState.stopCh = stopCh
+	watcherState.mu.Unlock()
 
 	if previousStopCh != nil {
 		close(previousStopCh)
@@ -458,7 +460,7 @@ func (a *App) startLibraryWatcher(roots []libraryRootConfig, onProgress func()) 
 		return
 	}
 
-	generation := a.libraryWatcherGeneration.Add(1)
+	generation := a.libraryWatcherState().generation.Add(1)
 	if !a.startLibraryWatcherReserved(roots, nil, onProgress, generation) {
 		rootCount := len(collectWatchableLibraryRootPaths(roots))
 		if rootCount == 0 {
@@ -481,14 +483,15 @@ func (a *App) startLibraryWatcherAsyncWithDirectories(roots []libraryRootConfig,
 
 	rootsCopy := append([]libraryRootConfig(nil), roots...)
 	directoryPathsCopy := append([]string(nil), directoryPaths...)
-	generation := a.libraryWatcherGeneration.Add(1)
+	watcherState := a.libraryWatcherState()
+	generation := watcherState.generation.Add(1)
 	a.logRescanEvent("Scheduling asynchronous library watcher startup for %d roots", len(rootsCopy))
 
 	go func(activeRoots []libraryRootConfig, activeDirectoryPaths []string, activeGeneration uint64) {
 		startedAt := time.Now()
 		started := a.startLibraryWatcherReserved(activeRoots, activeDirectoryPaths, nil, activeGeneration)
 		if !started {
-			if a.libraryWatcherGeneration.Load() != activeGeneration {
+			if watcherState.generation.Load() != activeGeneration {
 				a.logRescanEvent("Asynchronous library watcher startup canceled as stale")
 				return
 			}
@@ -513,6 +516,6 @@ func (a *App) startLibraryWatcherAsyncWithDirectories(roots []libraryRootConfig,
 }
 
 func (a *App) stopLibraryWatcher() {
-	generation := a.libraryWatcherGeneration.Add(1)
+	generation := a.libraryWatcherState().generation.Add(1)
 	a.stopLibraryWatcherReserved(generation)
 }

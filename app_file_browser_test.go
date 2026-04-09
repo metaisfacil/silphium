@@ -38,7 +38,8 @@ func TestOpenFolderInFileBrowser(t *testing.T) {
 	markerPath := filepath.Join(helperDir, "explorer-marker.txt")
 	t.Setenv("SILPHIUM_TEST_SENDTO_MARKER", markerPath)
 	t.Setenv("SILPHIUM_TEST_SENDTO_EXIT", "0")
-	app := &App{activeLibraryRoots: []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}}
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
 
 	if app.OpenFolderInFileBrowser("") {
 		t.Fatal("OpenFolderInFileBrowser(empty) = true, want false")
@@ -49,7 +50,8 @@ func TestOpenFolderInFileBrowser(t *testing.T) {
 	if app.OpenFolderInFileBrowser(filepath.Join(fixture.rootOne, "missing-folder")) {
 		t.Fatal("OpenFolderInFileBrowser(missing) = true, want false")
 	}
-	fileRootApp := &App{activeLibraryRoots: []libraryRootConfig{{Path: fixture.trackOne, Name: filepath.Base(fixture.trackOne)}}}
+	fileRootApp := &App{}
+	fileRootApp.activeLibraryRoots = []libraryRootConfig{{Path: fixture.trackOne, Name: filepath.Base(fixture.trackOne)}}
 	if fileRootApp.OpenFolderInFileBrowser(fixture.trackOne) {
 		t.Fatal("OpenFolderInFileBrowser(file root) = true, want false after directory fallback leaves allowed scope")
 	}

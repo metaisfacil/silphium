@@ -318,10 +318,11 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 func (a *App) setMusicBrainzTagWorkerProgress(progress MusicBrainzTagWorkerProgress) {
 	progress.Progress = clampMusicBrainzTagWorkerProgress(progress.Progress)
 
-	a.musicBrainzTagProgressMu.Lock()
-	changed := a.musicBrainzTagProgress != progress
-	a.musicBrainzTagProgress = progress
-	a.musicBrainzTagProgressMu.Unlock()
+	workerState := a.musicBrainzTagWorkerState()
+	workerState.progressMu.Lock()
+	changed := workerState.progress != progress
+	workerState.progress = progress
+	workerState.progressMu.Unlock()
 
 	if changed && a.ctx != nil {
 		runtimeEventsEmit(a.ctx, musicBrainzTagWorkerProgressEvent, progress)
@@ -330,9 +331,10 @@ func (a *App) setMusicBrainzTagWorkerProgress(progress MusicBrainzTagWorkerProgr
 
 // GetMusicBrainzTagWorkerProgress returns the current MusicBrainz tag worker snapshot.
 func (a *App) GetMusicBrainzTagWorkerProgress() MusicBrainzTagWorkerProgress {
-	a.musicBrainzTagProgressMu.Lock()
-	progress := a.musicBrainzTagProgress
-	a.musicBrainzTagProgressMu.Unlock()
+	workerState := a.musicBrainzTagWorkerState()
+	workerState.progressMu.Lock()
+	progress := workerState.progress
+	workerState.progressMu.Unlock()
 
 	enabled := a.musicBrainzTagDatabaseEnabled()
 	if progress != (MusicBrainzTagWorkerProgress{}) || !enabled {
@@ -342,7 +344,7 @@ func (a *App) GetMusicBrainzTagWorkerProgress() MusicBrainzTagWorkerProgress {
 		return progress
 	}
 
-	state := a.buildMusicBrainzTagWorkerState(a.musicBrainzTagWorkGeneration.Load())
+	state := a.buildMusicBrainzTagWorkerState(workerState.generation.Load())
 	progress = state.progressSnapshot(true)
 	a.setMusicBrainzTagWorkerProgress(progress)
 	return progress
@@ -596,30 +598,32 @@ func (a *App) processMusicBrainzTagEntityFetch(entityKey string) bool {
 }
 
 func (a *App) startMusicBrainzTagWorker() {
-	if a.musicBrainzTagWorkerWake != nil {
+	workerState := a.musicBrainzTagWorkerState()
+	if workerState.wakeCh != nil {
 		return
 	}
 
 	stopCh := make(chan struct{})
 	doneCh := make(chan struct{})
 	wakeCh := make(chan struct{}, 1)
-	a.musicBrainzTagWorkerStop = stopCh
-	a.musicBrainzTagWorkerDone = doneCh
-	a.musicBrainzTagWorkerWake = wakeCh
+	workerState.stopCh = stopCh
+	workerState.doneCh = doneCh
+	workerState.wakeCh = wakeCh
 
 	go a.musicBrainzTagWorkerLoop(stopCh, wakeCh, doneCh)
 }
 
 func (a *App) stopMusicBrainzTagWorker() {
-	stopCh := a.musicBrainzTagWorkerStop
-	doneCh := a.musicBrainzTagWorkerDone
+	workerState := a.musicBrainzTagWorkerState()
+	stopCh := workerState.stopCh
+	doneCh := workerState.doneCh
 	if stopCh == nil || doneCh == nil {
 		return
 	}
 
-	a.musicBrainzTagWorkerStop = nil
-	a.musicBrainzTagWorkerDone = nil
-	a.musicBrainzTagWorkerWake = nil
+	workerState.stopCh = nil
+	workerState.doneCh = nil
+	workerState.wakeCh = nil
 	close(stopCh)
 	select {
 	case <-doneCh:
@@ -630,13 +634,14 @@ func (a *App) stopMusicBrainzTagWorker() {
 }
 
 func (a *App) notifyMusicBrainzTagWorker() {
-	a.musicBrainzTagWorkGeneration.Add(1)
-	if a.musicBrainzTagWorkerWake == nil {
+	workerState := a.musicBrainzTagWorkerState()
+	workerState.generation.Add(1)
+	if workerState.wakeCh == nil {
 		return
 	}
 
 	select {
-	case a.musicBrainzTagWorkerWake <- struct{}{}:
+	case workerState.wakeCh <- struct{}{}:
 	default:
 	}
 }
@@ -663,7 +668,7 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 			}
 		}
 
-		currentGeneration := a.musicBrainzTagWorkGeneration.Load()
+		currentGeneration := a.musicBrainzTagWorkerState().generation.Load()
 		if state.generation != currentGeneration {
 			state = a.buildMusicBrainzTagWorkerState(currentGeneration)
 			a.setMusicBrainzTagWorkerProgress(state.progressSnapshot(true))

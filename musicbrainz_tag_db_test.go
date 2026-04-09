@@ -131,10 +131,7 @@ func TestArtistFolderPathsForIndexedTrack(t *testing.T) {
 }
 
 func TestUpsertMusicBrainzTagEntityRecordLockedSkipsMissingMBID(t *testing.T) {
-	app := &App{
-		musicBrainzTagStore:       newMusicBrainzTagDatabaseStore(),
-		musicBrainzTagStoreLoaded: true,
-	}
+	app := newMusicBrainzTagDatabaseTestApp()
 
 	app.upsertMusicBrainzTagEntityRecordLocked(musicBrainzTagEntityRecord{
 		EntityType: "artist",
@@ -166,14 +163,11 @@ func TestMusicBrainzTagIndexGuardBranches(t *testing.T) {
 		t.Fatalf("entity index guards left entries behind: %#v", entityIndex)
 	}
 
-	app := &App{
-		musicBrainzTagStore:                    newMusicBrainzTagDatabaseStore(),
-		musicBrainzTagStoreLoaded:              true,
-		musicBrainzTagEntityKeysByTag:          map[string]map[string]struct{}{},
-		musicBrainzTagReleaseFoldersByID:       map[string]map[string]struct{}{},
-		musicBrainzTagReleaseFoldersByArtistID: map[string]map[string]struct{}{},
-		musicBrainzTagArtistFoldersByID:        map[string]map[string]struct{}{},
-	}
+	app := newMusicBrainzTagDatabaseTestApp()
+	app.musicBrainzTagEntityKeysByTag = map[string]map[string]struct{}{}
+	app.musicBrainzTagReleaseFoldersByID = map[string]map[string]struct{}{}
+	app.musicBrainzTagReleaseFoldersByArtistID = map[string]map[string]struct{}{}
+	app.musicBrainzTagArtistFoldersByID = map[string]map[string]struct{}{}
 
 	app.addMusicBrainzTagEntityIndexesLocked(musicBrainzTagEntityRecord{EntityType: "artist"})
 	app.removeMusicBrainzTagEntityIndexesLocked(musicBrainzTagEntityRecord{EntityType: "artist"})
@@ -235,14 +229,11 @@ func TestMusicBrainzTagEntityNeedsFetchLockedUsesConfiguredStaleDays(t *testing.
 	now := time.Date(2026, time.April, 5, 12, 0, 0, 0, time.UTC)
 	artistMBID := "11111111-1111-4111-8111-111111111111"
 	entityKey := musicBrainzTagEntityKey("artist", artistMBID)
-	app := &App{
-		settings: AppSettings{
-			MusicBrainzTagStaleDays: intPointer(10),
-		},
-		settingsLoaded:            true,
-		musicBrainzTagStore:       newMusicBrainzTagDatabaseStore(),
-		musicBrainzTagStoreLoaded: true,
+	app := newMusicBrainzTagDatabaseTestApp()
+	app.settings = AppSettings{
+		MusicBrainzTagStaleDays: intPointer(10),
 	}
+	app.settingsLoaded = true
 
 	app.musicBrainzTagStore.Entities[entityKey] = musicBrainzTagEntityRecord{
 		EntityType:    "artist",
@@ -436,7 +427,7 @@ func TestMusicBrainzTagDatabaseAdditionalEdgeCases(t *testing.T) {
 		t.Fatalf("popNextEntityKey(stale prefix) = (%q, %t), want the first live entity key", entityKey, ok)
 	}
 
-	app := &App{musicBrainzTagStore: newMusicBrainzTagDatabaseStore(), musicBrainzTagStoreLoaded: true}
+	app := newMusicBrainzTagDatabaseTestApp()
 	app.musicBrainzTagStore.Tracks["z.flac"] = musicBrainzTagTrackRecord{ReleaseFolderPath: "../bad"}
 	app.musicBrainzTagStore.Tracks["b.flac"] = musicBrainzTagTrackRecord{ReleaseFolderPath: "Library/Artist/Album"}
 	app.musicBrainzTagStore.Tracks["A.flac"] = musicBrainzTagTrackRecord{ReleaseFolderPath: "Library/Artist/Album"}
@@ -445,7 +436,7 @@ func TestMusicBrainzTagDatabaseAdditionalEdgeCases(t *testing.T) {
 		t.Fatalf("storedMusicBrainzTagTrackRecordsByReleaseFolderLocked() = %#v, want the case-insensitive earliest path", recordsByReleaseFolder)
 	}
 
-	caseTieApp := &App{musicBrainzTagStore: newMusicBrainzTagDatabaseStore(), musicBrainzTagStoreLoaded: true}
+	caseTieApp := newMusicBrainzTagDatabaseTestApp()
 	caseTieApp.musicBrainzTagStore.Tracks["alpha.flac"] = musicBrainzTagTrackRecord{ReleaseFolderPath: "Library/Artist/Album"}
 	caseTieApp.musicBrainzTagStore.Tracks["Alpha.flac"] = musicBrainzTagTrackRecord{ReleaseFolderPath: "Library/Artist/Album"}
 	caseTieRecords := caseTieApp.storedMusicBrainzTagTrackRecordsByReleaseFolderLocked()
@@ -565,20 +556,24 @@ func newMusicBrainzTagWorkerStateTestApp(rootPath string, indexedTracks ...Libra
 		trackByPath[indexed.Path] = indexed
 	}
 
-	app := &App{
-		settings: AppSettings{
-			LibraryFolders: []AppLibraryFolder{{
-				Path:         rootPath,
-				ReleaseDepth: 2,
-			}},
-			MusicBrainzTagDatabaseEnabled: true,
-		},
-		settingsLoaded:            true,
-		trackByPath:               trackByPath,
-		musicBrainzTagStore:       newMusicBrainzTagDatabaseStore(),
-		musicBrainzTagStoreLoaded: true,
-	}
+	app := newTestAppWithLoadedSettings(AppSettings{
+		LibraryFolders: []AppLibraryFolder{{
+			Path:         rootPath,
+			ReleaseDepth: 2,
+		}},
+		MusicBrainzTagDatabaseEnabled: true,
+	})
+	app.trackByPath = trackByPath
+	app.musicBrainzTagStore = newMusicBrainzTagDatabaseStore()
+	app.musicBrainzTagStoreLoaded = true
 	app.rebuildMusicBrainzTagIndexesLocked()
+	return app
+}
+
+func newMusicBrainzTagDatabaseTestApp() *App {
+	app := &App{}
+	app.musicBrainzTagStore = newMusicBrainzTagDatabaseStore()
+	app.musicBrainzTagStoreLoaded = true
 	return app
 }
 
@@ -1315,12 +1310,9 @@ func TestPersistAndEnsureMusicBrainzTagDatabase(t *testing.T) {
 	releaseMBID := "22222222-2222-4222-8222-222222222222"
 	writeTestFile(t, trackPath, "track")
 
-	app := &App{
-		settingsPath:              settingsPath,
-		musicBrainzTagStore:       newMusicBrainzTagDatabaseStore(),
-		musicBrainzTagStoreLoaded: true,
-		musicBrainzTagStoreDirty:  true,
-	}
+	app := newMusicBrainzTagDatabaseTestApp()
+	app.settingsPath = settingsPath
+	app.musicBrainzTagStoreDirty = true
 	app.musicBrainzTagStore.Tracks[trackPath] = musicBrainzTagTrackRecord{
 		Signature:         trackTagsFileSignature{Size: 12, ModUnixNs: 34},
 		ReleaseID:         releaseMBID,
@@ -1366,10 +1358,9 @@ func TestPersistAndEnsureMusicBrainzTagDatabase(t *testing.T) {
 
 func TestPersistMusicBrainzTagDatabaseGuardsAndFailure(t *testing.T) {
 	tempDir := t.TempDir()
-	app := &App{
-		settingsPath:        filepath.Join(tempDir, "silphium.settings.json"),
-		musicBrainzTagStore: newMusicBrainzTagDatabaseStore(),
-	}
+	app := &App{}
+	app.settingsPath = filepath.Join(tempDir, "silphium.settings.json")
+	app.musicBrainzTagStore = newMusicBrainzTagDatabaseStore()
 
 	app.persistMusicBrainzTagDatabase(true)
 	if app.musicBrainzTagStoreDirty {

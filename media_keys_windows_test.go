@@ -58,9 +58,10 @@ func TestMediaKeyWatcherAndEmitter(t *testing.T) {
 	}
 	app.ctx = context.Background()
 	app.startMediaKeyWatcher()
-	firstStop := app.mediaKeyWatcherStop
+	watcherState := app.mediaKeyWatcherState()
+	firstStop := watcherState.stopCh
 	app.startMediaKeyWatcher()
-	if app.mediaKeyWatcherStop != firstStop {
+	if watcherState.stopCh != firstStop {
 		t.Fatal("startMediaKeyWatcher() should not replace an already-running watcher")
 	}
 
@@ -76,7 +77,7 @@ func TestMediaKeyWatcherAndEmitter(t *testing.T) {
 	}
 
 	app.stopMediaKeyWatcher()
-	if app.mediaKeyWatcherStop != nil || app.mediaKeyWatcherDone != nil {
+	if watcherState.stopCh != nil || watcherState.doneCh != nil {
 		t.Fatal("stopMediaKeyWatcher() should clear watcher channels")
 	}
 	if !seen["playpause"] || !seen["next"] || !seen["previous"] || !seen["stop"] {

@@ -661,32 +661,35 @@ func resolveTrackTagsWorkerCount(jobCount int) int {
 }
 
 func (a *App) removeTrackTagsCacheOrderEntryLocked(path string) {
-	for idx, cachedPath := range a.trackTagsCacheOrder {
+	cacheState := a.trackTagsCacheState()
+	for idx, cachedPath := range cacheState.order {
 		if cachedPath != path {
 			continue
 		}
 
-		a.trackTagsCacheOrder = append(a.trackTagsCacheOrder[:idx], a.trackTagsCacheOrder[idx+1:]...)
+		cacheState.order = append(cacheState.order[:idx], cacheState.order[idx+1:]...)
 		return
 	}
 }
 
 func (a *App) touchTrackTagsCacheOrderLocked(path string) {
+	cacheState := a.trackTagsCacheState()
 	a.removeTrackTagsCacheOrderEntryLocked(path)
-	a.trackTagsCacheOrder = append(a.trackTagsCacheOrder, path)
+	cacheState.order = append(cacheState.order, path)
 }
 
 func (a *App) getTrackTagsCache(path string, signature trackTagsFileSignature) (TrackTags, bool, bool) {
-	a.trackTagsCacheMu.Lock()
-	defer a.trackTagsCacheMu.Unlock()
+	cacheState := a.trackTagsCacheState()
+	cacheState.mu.Lock()
+	defer cacheState.mu.Unlock()
 
-	entry, exists := a.trackTagsCacheByPath[path]
+	entry, exists := cacheState.byPath[path]
 	if !exists {
 		return TrackTags{}, false, false
 	}
 
 	if entry.Signature != signature {
-		delete(a.trackTagsCacheByPath, path)
+		delete(cacheState.byPath, path)
 		a.removeTrackTagsCacheOrderEntryLocked(path)
 		return TrackTags{}, false, false
 	}
@@ -696,24 +699,25 @@ func (a *App) getTrackTagsCache(path string, signature trackTagsFileSignature) (
 }
 
 func (a *App) putTrackTagsCache(path string, signature trackTagsFileSignature, tags TrackTags, hasMetadata bool) {
-	a.trackTagsCacheMu.Lock()
-	defer a.trackTagsCacheMu.Unlock()
+	cacheState := a.trackTagsCacheState()
+	cacheState.mu.Lock()
+	defer cacheState.mu.Unlock()
 
-	if a.trackTagsCacheByPath == nil {
-		a.trackTagsCacheByPath = make(map[string]trackTagsCacheEntry, trackTagsCacheLimit)
+	if cacheState.byPath == nil {
+		cacheState.byPath = make(map[string]trackTagsCacheEntry, trackTagsCacheLimit)
 	}
 
-	a.trackTagsCacheByPath[path] = trackTagsCacheEntry{
+	cacheState.byPath[path] = trackTagsCacheEntry{
 		Signature:   signature,
 		Tags:        tags,
 		HasMetadata: hasMetadata,
 	}
 	a.touchTrackTagsCacheOrderLocked(path)
 
-	for len(a.trackTagsCacheOrder) > trackTagsCacheLimit {
-		evictedPath := a.trackTagsCacheOrder[0]
-		a.trackTagsCacheOrder = a.trackTagsCacheOrder[1:]
-		delete(a.trackTagsCacheByPath, evictedPath)
+	for len(cacheState.order) > trackTagsCacheLimit {
+		evictedPath := cacheState.order[0]
+		cacheState.order = cacheState.order[1:]
+		delete(cacheState.byPath, evictedPath)
 	}
 }
 

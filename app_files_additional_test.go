@@ -51,7 +51,8 @@ func writePNGFile(t *testing.T, path string, width int, height int) []byte {
 
 func TestReadFileBase64AndSaveShareImageFile(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
-	app := &App{activeLibraryRoots: []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}}
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
 
 	if got := app.ReadFileBase64(fixture.outsideTrack); got != "" {
 		t.Fatalf("ReadFileBase64(outside) = %q, want empty", got)
@@ -133,7 +134,8 @@ func TestCopyShareImageToClipboard(t *testing.T) {
 
 func TestReadImageThumbnailAndResize(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
-	app := &App{activeLibraryRoots: []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}}
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
 
 	smallImagePath := filepath.Join(fixture.albumOneFolder, "small.png")
 	smallImageBytes := writePNGFile(t, smallImagePath, 4, 4)
@@ -220,7 +222,8 @@ func TestReadImageThumbnailAndResize(t *testing.T) {
 
 func TestTextDecodingHelpers(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
-	app := &App{activeLibraryRoots: []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}}
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
 
 	textPath := filepath.Join(fixture.albumOneFolder, "utf8.txt")
 	writeTestFile(t, textPath, "plain text")

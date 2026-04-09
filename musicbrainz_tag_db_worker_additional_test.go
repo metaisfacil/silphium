@@ -171,12 +171,13 @@ func TestMusicBrainzTagWorkerTrackBatchAndProgress(t *testing.T) {
 
 	app.settings.MusicBrainzTagDatabaseEnabled = true
 	app.startMusicBrainzTagWorker()
-	if app.musicBrainzTagWorkerWake == nil {
+	if app.musicBrainzTagWorkerState().wakeCh == nil {
 		t.Fatal("startMusicBrainzTagWorker() did not initialize worker channels")
 	}
 	app.notifyMusicBrainzTagWorker()
 	app.stopMusicBrainzTagWorker()
-	if app.musicBrainzTagWorkerWake != nil || app.musicBrainzTagWorkerDone != nil || app.musicBrainzTagWorkerStop != nil {
+	workerState := app.musicBrainzTagWorkerState()
+	if workerState.wakeCh != nil || workerState.doneCh != nil || workerState.stopCh != nil {
 		t.Fatal("stopMusicBrainzTagWorker() should clear worker channels")
 	}
 }
@@ -300,15 +301,12 @@ func TestMusicBrainzTagEntityFetchHelpers(t *testing.T) {
 		t.Fatal("fetchMusicBrainzTagEntityRecord(label) = true, want false")
 	}
 
-	app := &App{
-		settingsLoaded: true,
-		settings: AppSettings{
-			MusicBrainzServerURL:          server.URL,
-			MusicBrainzRequestRateMs:      0,
-			MusicBrainzTagDatabaseEnabled: true,
-		},
-		musicBrainzTagStore:       newMusicBrainzTagDatabaseStore(),
-		musicBrainzTagStoreLoaded: true,
+	app := newMusicBrainzTagDatabaseTestApp()
+	app.settingsLoaded = true
+	app.settings = AppSettings{
+		MusicBrainzServerURL:          server.URL,
+		MusicBrainzRequestRateMs:      0,
+		MusicBrainzTagDatabaseEnabled: true,
 	}
 	app.rebuildMusicBrainzTagIndexesLocked()
 	if !app.processMusicBrainzTagEntityFetch("artist:11111111-1111-4111-8111-111111111111") {
@@ -528,33 +526,34 @@ func TestMusicBrainzTagWorkerLifecycleAndCompletedTrackEntityBranches(t *testing
 	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne, indexed)
 	app.settingsPath = filepath.Join(t.TempDir(), "silphium.settings.json")
 
-	initialGeneration := app.musicBrainzTagWorkGeneration.Load()
+	workerState := app.musicBrainzTagWorkerState()
+	initialGeneration := workerState.generation.Load()
 	app.notifyMusicBrainzTagWorker()
-	if app.musicBrainzTagWorkGeneration.Load() != initialGeneration+1 {
-		t.Fatalf("notifyMusicBrainzTagWorker() without a worker = generation %d, want %d", app.musicBrainzTagWorkGeneration.Load(), initialGeneration+1)
+	if workerState.generation.Load() != initialGeneration+1 {
+		t.Fatalf("notifyMusicBrainzTagWorker() without a worker = generation %d, want %d", workerState.generation.Load(), initialGeneration+1)
 	}
 
 	app.stopMusicBrainzTagWorker()
 
 	manualWake := make(chan struct{}, 1)
 	manualWake <- struct{}{}
-	app.musicBrainzTagWorkerWake = manualWake
+	workerState.wakeCh = manualWake
 	app.notifyMusicBrainzTagWorker()
 	if len(manualWake) != 1 {
 		t.Fatalf("notifyMusicBrainzTagWorker(full wake channel) left %d queued signals, want 1", len(manualWake))
 	}
-	app.musicBrainzTagWorkerWake = nil
+	workerState.wakeCh = nil
 
 	app.settings.MusicBrainzTagDatabaseEnabled = false
 	app.startMusicBrainzTagWorker()
-	firstWake := app.musicBrainzTagWorkerWake
-	firstStop := app.musicBrainzTagWorkerStop
-	firstDone := app.musicBrainzTagWorkerDone
+	firstWake := workerState.wakeCh
+	firstStop := workerState.stopCh
+	firstDone := workerState.doneCh
 	if firstWake == nil || firstStop == nil || firstDone == nil {
 		t.Fatal("startMusicBrainzTagWorker() did not initialize worker channels")
 	}
 	app.startMusicBrainzTagWorker()
-	if app.musicBrainzTagWorkerWake != firstWake || app.musicBrainzTagWorkerStop != firstStop || app.musicBrainzTagWorkerDone != firstDone {
+	if workerState.wakeCh != firstWake || workerState.stopCh != firstStop || workerState.doneCh != firstDone {
 		t.Fatal("startMusicBrainzTagWorker() should be a no-op while the worker is already running")
 	}
 	app.notifyMusicBrainzTagWorker()

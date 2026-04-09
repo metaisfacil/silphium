@@ -38,14 +38,15 @@ func (a *App) emitMediaKeyAction(action string) {
 }
 
 func (a *App) startMediaKeyWatcher() {
-	if a.mediaKeyWatcherStop != nil {
+	watcherState := a.mediaKeyWatcherState()
+	if watcherState.stopCh != nil {
 		return
 	}
 
 	stop := make(chan struct{})
 	done := make(chan struct{})
-	a.mediaKeyWatcherStop = stop
-	a.mediaKeyWatcherDone = done
+	watcherState.stopCh = stop
+	watcherState.doneCh = done
 
 	go func() {
 		defer close(done)
@@ -75,14 +76,15 @@ func (a *App) startMediaKeyWatcher() {
 }
 
 func (a *App) stopMediaKeyWatcher() {
-	if a.mediaKeyWatcherStop == nil {
+	watcherState := a.mediaKeyWatcherState()
+	if watcherState.stopCh == nil {
 		return
 	}
 
-	close(a.mediaKeyWatcherStop)
-	if a.mediaKeyWatcherDone != nil {
-		<-a.mediaKeyWatcherDone
+	close(watcherState.stopCh)
+	if watcherState.doneCh != nil {
+		<-watcherState.doneCh
 	}
-	a.mediaKeyWatcherStop = nil
-	a.mediaKeyWatcherDone = nil
+	watcherState.stopCh = nil
+	watcherState.doneCh = nil
 }

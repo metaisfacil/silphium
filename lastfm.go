@@ -413,27 +413,28 @@ func (a *App) shouldSkipLastFmDuplicateScrobble(metadata LastFmTrackMetadata, li
 	duplicateKey := lastFmScrobbleFingerprint(metadata)
 
 	now := time.Now()
-	a.lastFmScrobbleMu.Lock()
-	defer a.lastFmScrobbleMu.Unlock()
+	scrobbleState := a.scrobbleState()
+	scrobbleState.lastFmScrobbleMu.Lock()
+	defer scrobbleState.lastFmScrobbleMu.Unlock()
 
-	if a.lastFmRecentScrobbles == nil {
-		a.lastFmRecentScrobbles = make(map[string]lastFmScrobbleDedupEntry)
+	if scrobbleState.lastFmRecentScrobbles == nil {
+		scrobbleState.lastFmRecentScrobbles = make(map[string]lastFmScrobbleDedupEntry)
 	}
 
 	cutoff := now.Add(-lastFmDuplicateScrobbleWindow)
-	for key, entry := range a.lastFmRecentScrobbles {
+	for key, entry := range scrobbleState.lastFmRecentScrobbles {
 		if entry.seenAt.Before(cutoff) {
-			delete(a.lastFmRecentScrobbles, key)
+			delete(scrobbleState.lastFmRecentScrobbles, key)
 		}
 	}
 
-	if entry, found := a.lastFmRecentScrobbles[duplicateKey]; found && !entry.seenAt.Before(cutoff) {
+	if entry, found := scrobbleState.lastFmRecentScrobbles[duplicateKey]; found && !entry.seenAt.Before(cutoff) {
 		if absInt64(entry.listenedAt-listenedAt) <= int64(lastFmDuplicateScrobbleWindow/time.Second) {
 			return true
 		}
 	}
 
-	a.lastFmRecentScrobbles[duplicateKey] = lastFmScrobbleDedupEntry{
+	scrobbleState.lastFmRecentScrobbles[duplicateKey] = lastFmScrobbleDedupEntry{
 		seenAt:     now,
 		listenedAt: listenedAt,
 	}
