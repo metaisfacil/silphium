@@ -150,6 +150,7 @@ const createControllerSetupContextFromScope = (scope: AppRuntimeScope) => ({
     },
     selectShareImageSaveFile: scope.selectShareImageSaveFile,
     saveShareImageFile: scope.saveShareImageFile,
+    copyShareImageToClipboard: scope.copyShareImageToClipboard,
     imageModalElements: scope.imageModalElements,
     readFileBase64: scope.readFileBase64,
     readImageThumbnail: scope.readImageThumbnail,

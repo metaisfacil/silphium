@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -90,6 +91,43 @@ func TestReadFileBase64AndSaveShareImageFile(t *testing.T) {
 	}
 	if !bytes.Equal(savedBytes, payload) {
 		t.Fatalf("saved payload = %q, want %q", string(savedBytes), string(payload))
+	}
+}
+
+func TestCopyShareImageToClipboard(t *testing.T) {
+	app := &App{}
+	originalCopyShareImageToClipboardPNG := copyShareImageToClipboardPNG
+	t.Cleanup(func() {
+		copyShareImageToClipboardPNG = originalCopyShareImageToClipboardPNG
+	})
+
+	var copiedPayload []byte
+	copyShareImageToClipboardPNG = func(imagePNG []byte) error {
+		copiedPayload = append([]byte(nil), imagePNG...)
+		return nil
+	}
+
+	if app.CopyShareImageToClipboard("") {
+		t.Fatal("CopyShareImageToClipboard(empty payload) = true, want false")
+	}
+	if app.CopyShareImageToClipboard("%%notbase64%%") {
+		t.Fatal("CopyShareImageToClipboard(invalid payload) = true, want false")
+	}
+
+	payload := []byte("png payload")
+	encodedPayload := "data:image/png;base64," + base64.StdEncoding.EncodeToString(payload)
+	if !app.CopyShareImageToClipboard(encodedPayload) {
+		t.Fatal("CopyShareImageToClipboard(valid payload) = false, want true")
+	}
+	if !bytes.Equal(copiedPayload, payload) {
+		t.Fatalf("clipboard payload = %q, want %q", string(copiedPayload), string(payload))
+	}
+
+	copyShareImageToClipboardPNG = func([]byte) error {
+		return errors.New("clipboard unavailable")
+	}
+	if app.CopyShareImageToClipboard(encodedPayload) {
+		t.Fatal("CopyShareImageToClipboard(copy failure) = true, want false")
 	}
 }
 

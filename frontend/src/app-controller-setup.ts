@@ -171,6 +171,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         closeOtherMenus: context.closeOtherMenus,
         selectShareImageSaveFile: context.selectShareImageSaveFile,
         saveShareImageFile: context.saveShareImageFile,
+        copyShareImageToClipboard: context.copyShareImageToClipboard,
         fetchVisualizationFrame: async (frameCount: number): Promise<AudioVisualizationFrame> => await context.fetchVisualizationFrame(frameCount),
     });
 

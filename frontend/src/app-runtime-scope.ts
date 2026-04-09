@@ -76,6 +76,7 @@ type SharedRuntimeMethods = {
     selectPlaylistSaveFile: () => Promise<string>;
     selectShareImageSaveFile: (defaultName: string) => Promise<string>;
     saveShareImageFile: (path: string, base64: string) => Promise<boolean>;
+    copyShareImageToClipboard: (base64: string) => Promise<boolean>;
     readFileBase64: (path: string) => Promise<string>;
     readImageThumbnail: (path: string, maxEdge: number) => Promise<{ base64?: string; mimeType?: string }>;
     loadFolderPage: (folderPath: string, offset: number, limit: number) => Promise<LibraryFolderPage>;
