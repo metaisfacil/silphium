@@ -174,22 +174,25 @@ func NewApp() *App {
 
 // logRescanEvent logs a rescan-related event with precise timestamp to both console and frontend
 func (a *App) logRescanEvent(message string, args ...interface{}) {
+	runtimeState := a.runtimeState()
 	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formattedMessage := fmt.Sprintf(message, args...)
 	logLine := fmt.Sprintf("[%s] %s", timestamp, formattedMessage)
 	log.Println(logLine)
-	if a.ctx != nil {
-		runtimeEventsEmit(a.ctx, libraryRescanLogEvent, logLine)
+	if runtimeState.ctx != nil {
+		runtimeEventsEmit(runtimeState.ctx, libraryRescanLogEvent, logLine)
 	}
 }
 
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+	runtimeState := a.runtimeState()
+	settingsState := a.settingsState()
+	runtimeState.ctx = ctx
 	a.loadStoredSettings()
-	a.audioBackend().SetFFmpegPath(a.settings.FFmpegPath)
-	a.audioBackend().ApplyAudioSettings(a.settings.Audio)
+	a.audioBackend().SetFFmpegPath(settingsState.settings.FFmpegPath)
+	a.audioBackend().ApplyAudioSettings(settingsState.settings.Audio)
 	a.refreshSystemTrayForSettings()
 	a.startMediaKeyWatcher()
 	a.startMusicBrainzTagWorker()
@@ -197,7 +200,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(context.Context) {
-	a.quitRequested.Store(true)
+	a.runtimeState().quitRequested.Store(true)
 	a.stopSystemTray()
 	a.stopMediaKeyWatcher()
 	a.stopLibraryWatcher()
@@ -208,11 +211,48 @@ func (a *App) shutdown(context.Context) {
 }
 
 func (a *App) audioBackend() *AudioBackend {
-	if a.audio == nil {
-		a.audio = NewAudioBackend()
+	audioState := a.audioState()
+	if audioState.audio == nil {
+		audioState.audio = NewAudioBackend()
 	}
 
-	return a.audio
+	return audioState.audio
+}
+
+func (a *App) audioState() *appAudioState {
+	return &a.appAudioState
+}
+
+func (a *App) runtimeState() *appRuntimeState {
+	return &a.appRuntimeState
+}
+
+func (a *App) settingsState() *appSettingsState {
+	return &a.appSettingsState
+}
+
+func (a *App) settingsStorageState() *appSettingsStorageState {
+	return &a.settingsState().appSettingsStorageState
+}
+
+func (a *App) libraryState() *appLibraryState {
+	return &a.appLibraryState
+}
+
+func (a *App) libraryContentState() *appLibraryContentState {
+	return &a.libraryState().appLibraryContentState
+}
+
+func (a *App) libraryScanState() *appLibraryScanState {
+	return &a.libraryState().appLibraryScanState
+}
+
+func (a *App) libraryGenerationState() *appLibraryGenerationState {
+	return &a.libraryState().appLibraryGenerationState
+}
+
+func (a *App) libraryIndexState() *appLibraryIndexState {
+	return &a.libraryState().appLibraryIndexState
 }
 
 func (a *App) libraryWatcherState() *appLibraryWatcherState {
@@ -245,7 +285,8 @@ func (a *App) GetAppVersion() string {
 }
 
 func (a *App) beforeClose(context.Context) bool {
-	if a.quitRequested.Load() {
+	runtimeState := a.runtimeState()
+	if runtimeState.quitRequested.Load() {
 		return false
 	}
 
@@ -253,7 +294,7 @@ func (a *App) beforeClose(context.Context) bool {
 		return false
 	}
 
-	runtimeWindowHide(a.ctx)
+	runtimeWindowHide(runtimeState.ctx)
 	return true
 }
 
@@ -264,8 +305,9 @@ func (a *App) LogFrontendMessage(message string) {
 
 // DisposeFrontendSessionState clears backend runtime state bound to the current frontend session.
 func (a *App) DisposeFrontendSessionState() {
-	a.libraryScanGeneration.Add(1)
-	a.searchGeneration.Add(1)
+	libraryGenerationState := a.libraryGenerationState()
+	libraryGenerationState.libraryScanGeneration.Add(1)
+	libraryGenerationState.searchGeneration.Add(1)
 	a.stopLibraryWatcher()
 
 	state := a.audioBackend().State()

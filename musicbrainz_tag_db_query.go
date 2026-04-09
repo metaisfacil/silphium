@@ -108,13 +108,15 @@ func (a *App) isMusicBrainzTagSearchFolderAvailableLocked(folderPath string) boo
 	if cleanFolderPath == "" {
 		return false
 	}
+	scanState := a.libraryScanState()
+	indexState := a.libraryIndexState()
 
-	if !a.scanInProgress {
+	if !scanState.scanInProgress {
 		a.maybeStartLibraryDerivedIndexRebuildLocked()
 	}
 
 	if a.isLibraryDerivedIndexReadyLocked() {
-		_, exists := a.folderEntriesByFolder[cleanFolderPath]
+		_, exists := indexState.folderEntriesByFolder[cleanFolderPath]
 		return exists
 	}
 
@@ -140,8 +142,9 @@ func (a *App) buildMusicBrainzTagSearchResultsLocked(tagNames []string) []Librar
 	}
 	appendFolderEntries := func(folderPath string) {
 		var folderEntries []LibraryBrowserEntry
+		indexState := a.libraryIndexState()
 		if a.isLibraryDerivedIndexReadyLocked() {
-			folderEntries = a.folderEntriesByFolder[folderPath]
+			folderEntries = indexState.folderEntriesByFolder[folderPath]
 		} else {
 			folderEntries = a.buildFolderEntriesFromMapsLocked(folderPath)
 		}

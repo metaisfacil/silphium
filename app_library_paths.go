@@ -196,6 +196,7 @@ func pathWithinRoot(rootPath string, absolutePath string) bool {
 }
 
 func (a *App) activeLibraryRootForPath(path string) (libraryRootConfig, bool) {
+	contentState := a.libraryContentState()
 	absolutePath, ok := absoluteNormalizedPath(path)
 	if !ok {
 		return libraryRootConfig{}, false
@@ -203,7 +204,7 @@ func (a *App) activeLibraryRootForPath(path string) (libraryRootConfig, bool) {
 
 	bestMatch := libraryRootConfig{}
 	bestMatchLength := -1
-	for _, root := range a.activeLibraryRoots {
+	for _, root := range contentState.activeLibraryRoots {
 		if !pathWithinRoot(root.Path, absolutePath) {
 			continue
 		}
@@ -224,11 +225,12 @@ func (a *App) activeLibraryRootForPath(path string) (libraryRootConfig, bool) {
 }
 
 func (a *App) primaryActiveLibraryRoot() (libraryRootConfig, bool) {
-	if len(a.activeLibraryRoots) == 0 {
+	contentState := a.libraryContentState()
+	if len(contentState.activeLibraryRoots) == 0 {
 		return libraryRootConfig{}, false
 	}
 
-	return a.activeLibraryRoots[0], true
+	return contentState.activeLibraryRoots[0], true
 }
 
 func coverPriority(name string) int {
@@ -418,12 +420,13 @@ func pagedIndexedFiles(kind string, entries []LibraryIndexedFile, offset int, li
 }
 
 func (a *App) isAllowedLibraryPath(path string) bool {
+	contentState := a.libraryContentState()
 	absolutePath, ok := absoluteNormalizedPath(path)
 	if !ok {
 		return false
 	}
 
-	if len(a.activeLibraryRoots) == 0 {
+	if len(contentState.activeLibraryRoots) == 0 {
 		return true
 	}
 

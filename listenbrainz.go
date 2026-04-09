@@ -250,7 +250,7 @@ func normalizeListenBrainzSocialCount(count int) int {
 
 func (a *App) listenBrainzServerURL() string {
 	a.ensureSettingsLoaded()
-	u := strings.TrimRight(strings.TrimSpace(a.settings.ListenBrainzServerURL), "/")
+	u := strings.TrimRight(strings.TrimSpace(a.settingsState().settings.ListenBrainzServerURL), "/")
 	if u == "" {
 		return listenBrainzPublicServerURL
 	}
@@ -260,7 +260,7 @@ func (a *App) listenBrainzServerURL() string {
 
 func (a *App) listenBrainzRequestRateMs() int {
 	a.ensureSettingsLoaded()
-	return a.settings.ListenBrainzRequestRateMs
+	return a.settingsState().settings.ListenBrainzRequestRateMs
 }
 
 func (a *App) waitForListenBrainzRequestSlotIfNeeded() {
@@ -270,7 +270,7 @@ func (a *App) waitForListenBrainzRequestSlotIfNeeded() {
 func (a *App) listenBrainzToken() (string, error) {
 	a.ensureSettingsLoaded()
 
-	token := strings.TrimSpace(a.settings.ListenBrainzUserToken)
+	token := strings.TrimSpace(a.settingsState().settings.ListenBrainzUserToken)
 	if token == "" {
 		return "", errors.New("listenbrainz token is not configured")
 	}

@@ -333,9 +333,10 @@ func (a *App) GetLastFmSessionKey(apiKey string, apiSecret string, requestToken 
 func (a *App) lastFmCredentials() (string, string, string, error) {
 	a.ensureSettingsLoaded()
 
-	apiKey := strings.TrimSpace(a.settings.LastFmAPIKey)
-	apiSecret := strings.TrimSpace(a.settings.LastFmAPISecret)
-	sessionKey := strings.TrimSpace(a.settings.LastFmSessionKey)
+	settings := a.settingsState().settings
+	apiKey := strings.TrimSpace(settings.LastFmAPIKey)
+	apiSecret := strings.TrimSpace(settings.LastFmAPISecret)
+	sessionKey := strings.TrimSpace(settings.LastFmSessionKey)
 	if apiKey == "" || apiSecret == "" || sessionKey == "" {
 		return "", "", "", errors.New("last.fm scrobbling requires an API key, shared secret, and session key")
 	}
@@ -626,8 +627,9 @@ func (a *App) SubmitLastFmUnlove(metadata LastFmTrackMetadata) error {
 func (a *App) lastFmSessionCredentials() (string, string, error) {
 	a.ensureSettingsLoaded()
 
-	apiKey := strings.TrimSpace(a.settings.LastFmAPIKey)
-	sessionKey := strings.TrimSpace(a.settings.LastFmSessionKey)
+	settings := a.settingsState().settings
+	apiKey := strings.TrimSpace(settings.LastFmAPIKey)
+	sessionKey := strings.TrimSpace(settings.LastFmSessionKey)
 	if apiKey == "" || sessionKey == "" {
 		return "", "", errors.New("last.fm social feed requires an API key and session key")
 	}

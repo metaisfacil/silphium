@@ -477,16 +477,18 @@ func compactLibraryScanResult(scan LibraryScanResult) LibraryScanResult {
 }
 
 func (a *App) estimateDeferredHydrationMs(totalEntries int, quickScanElapsed time.Duration) float64 {
+	contentState := a.libraryContentState()
+	scanState := a.libraryScanState()
 	quickElapsedMs := float64(quickScanElapsed.Milliseconds())
 	if quickElapsedMs <= 0 {
 		quickElapsedMs = 1000
 	}
 
-	a.indexMu.Lock()
-	learnedScanEntryMs := a.scanEntryMs
-	learnedFinalizeMs := a.scanFinalizeMs
-	learnedWatcherMs := a.scanWatcherMs
-	a.indexMu.Unlock()
+	contentState.indexMu.Lock()
+	learnedScanEntryMs := scanState.scanEntryMs
+	learnedFinalizeMs := scanState.scanFinalizeMs
+	learnedWatcherMs := scanState.scanWatcherMs
+	contentState.indexMu.Unlock()
 
 	if learnedFinalizeMs > learnedWatcherMs && learnedWatcherMs > 0 {
 		learnedFinalizeMs -= learnedWatcherMs
@@ -510,7 +512,8 @@ func (a *App) estimateDeferredHydrationMs(totalEntries int, quickScanElapsed tim
 }
 
 func (a *App) emitDeferredHydrationProgress(rootPath string, totalEntries int, startedAt time.Time, estimatedMs float64) {
-	if a.ctx == nil {
+	runtimeState := a.runtimeState()
+	if runtimeState.ctx == nil {
 		return
 	}
 
@@ -536,7 +539,7 @@ func (a *App) emitDeferredHydrationProgress(rootPath string, totalEntries int, s
 		entriesScanned = int(math.Round(progress * float64(totalEntries)))
 	}
 
-	runtimeEventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
+	runtimeEventsEmit(runtimeState.ctx, libraryScanProgressEvent, LibraryScanProgress{
 		RootPath:       rootPath,
 		EntriesScanned: entriesScanned,
 		TotalEntries:   totalEntries,
@@ -547,16 +550,19 @@ func (a *App) emitDeferredHydrationProgress(rootPath string, totalEntries int, s
 }
 
 func (a *App) emitDeferredScanInitialProgress(rootPath string) {
-	if a.ctx == nil {
+	runtimeState := a.runtimeState()
+	contentState := a.libraryContentState()
+	scanState := a.libraryScanState()
+	if runtimeState.ctx == nil {
 		return
 	}
 
-	a.indexMu.Lock()
-	learnedTotalEntries := a.scanLastTotalEntries
-	learnedScanEntryMs := a.scanEntryMs
-	learnedFinalizeMs := a.scanFinalizeMs
-	learnedWatcherMs := a.scanWatcherMs
-	a.indexMu.Unlock()
+	contentState.indexMu.Lock()
+	learnedTotalEntries := scanState.scanLastTotalEntries
+	learnedScanEntryMs := scanState.scanEntryMs
+	learnedFinalizeMs := scanState.scanFinalizeMs
+	learnedWatcherMs := scanState.scanWatcherMs
+	contentState.indexMu.Unlock()
 
 	if learnedFinalizeMs > learnedWatcherMs && learnedWatcherMs > 0 {
 		learnedFinalizeMs -= learnedWatcherMs
@@ -573,7 +579,7 @@ func (a *App) emitDeferredScanInitialProgress(rootPath string) {
 		return
 	}
 
-	runtimeEventsEmit(a.ctx, libraryScanProgressEvent, LibraryScanProgress{
+	runtimeEventsEmit(runtimeState.ctx, libraryScanProgressEvent, LibraryScanProgress{
 		RootPath:       rootPath,
 		EntriesScanned: 0,
 		TotalEntries:   learnedTotalEntries,
@@ -584,8 +590,9 @@ func (a *App) emitDeferredScanInitialProgress(rootPath string) {
 }
 
 func (a *App) buildDeferredHydrationScan(roots []libraryRootConfig, expectedScanGeneration uint64) (LibraryScanResult, error) {
+	generationState := a.libraryGenerationState()
 	isScanCanceled := func() bool {
-		return a.libraryScanGeneration.Load() != expectedScanGeneration
+		return generationState.libraryScanGeneration.Load() != expectedScanGeneration
 	}
 
 	result, err := buildFilesystemFullScan(roots, isScanCanceled)
@@ -600,6 +607,10 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 	if len(roots) == 0 {
 		return
 	}
+	contentState := a.libraryContentState()
+	generationState := a.libraryGenerationState()
+	indexState := a.libraryIndexState()
+	runtimeState := a.runtimeState()
 
 	rootsCopy := append([]libraryRootConfig(nil), roots...)
 	a.logRescanEvent("Deferred library hydration START: roots=%d", len(rootsCopy))
@@ -631,11 +642,11 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 
 		result, err := a.buildDeferredHydrationScan(activeRoots, expectedScanGeneration)
 		if err != nil {
-			a.indexMu.Lock()
-			if a.libraryScanGeneration.Load() == expectedScanGeneration {
-				a.libraryFileHydrationPending = false
+			contentState.indexMu.Lock()
+			if generationState.libraryScanGeneration.Load() == expectedScanGeneration {
+				indexState.libraryFileHydrationPending = false
 			}
-			a.indexMu.Unlock()
+			contentState.indexMu.Unlock()
 
 			if errors.Is(err, errLibraryScanCanceled) {
 				a.logRescanEvent("Deferred library hydration CANCELED")
@@ -653,17 +664,17 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 
 		shouldEmitUpdate := false
 		payload := LibraryScanResult{}
-		a.indexMu.Lock()
-		if a.libraryScanGeneration.Load() == expectedScanGeneration {
-			a.libraryFileHydrationPending = false
-			a.libraryFolderEntriesCache = nil
+		contentState.indexMu.Lock()
+		if generationState.libraryScanGeneration.Load() == expectedScanGeneration {
+			indexState.libraryFileHydrationPending = false
+			indexState.libraryFolderEntriesCache = nil
 			a.maybeStartLibraryDerivedIndexRebuildLocked()
 			shouldEmitUpdate = true
-			payload = compactLibraryScanResult(a.libraryScan)
+			payload = compactLibraryScanResult(contentState.libraryScan)
 		}
-		a.indexMu.Unlock()
-		if shouldEmitUpdate && a.ctx != nil {
-			runtimeEventsEmit(a.ctx, libraryScanUpdatedEvent, payload)
+		contentState.indexMu.Unlock()
+		if shouldEmitUpdate && runtimeState.ctx != nil {
+			runtimeEventsEmit(runtimeState.ctx, libraryScanUpdatedEvent, payload)
 		}
 		a.notifyMusicBrainzTagWorker()
 		a.emitDeferredHydrationProgress(result.RootPath, totalEntries, startedAt, 0)
@@ -680,24 +691,28 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 
 func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatcher bool) LibraryScanResult {
 	scanStartedAt := time.Now()
-	scanGeneration := a.libraryScanGeneration.Add(1)
+	contentState := a.libraryContentState()
+	scanState := a.libraryScanState()
+	generationState := a.libraryGenerationState()
+	indexState := a.libraryIndexState()
+	scanGeneration := generationState.libraryScanGeneration.Add(1)
 	isScanCanceled := func() bool {
-		return a.libraryScanGeneration.Load() != scanGeneration
+		return generationState.libraryScanGeneration.Load() != scanGeneration
 	}
 	scanCanceledResponse := func() LibraryScanResult {
-		a.indexMu.Lock()
-		defer a.indexMu.Unlock()
+		contentState.indexMu.Lock()
+		defer contentState.indexMu.Unlock()
 
 		return LibraryScanResult{
-			RootPath:       a.libraryScan.RootPath,
-			RootName:       a.libraryScan.RootName,
-			DeferredFiles:  a.libraryScan.DeferredFiles,
-			TotalEntries:   a.libraryScan.TotalEntries,
-			TrackCount:     a.libraryScan.TrackCount,
-			TextFileCount:  a.libraryScan.TextFileCount,
-			ImageFileCount: a.libraryScan.ImageFileCount,
-			Truncated:      a.libraryScan.Truncated,
-			EntryLimit:     a.libraryScan.EntryLimit,
+			RootPath:       contentState.libraryScan.RootPath,
+			RootName:       contentState.libraryScan.RootName,
+			DeferredFiles:  contentState.libraryScan.DeferredFiles,
+			TotalEntries:   contentState.libraryScan.TotalEntries,
+			TrackCount:     contentState.libraryScan.TrackCount,
+			TextFileCount:  contentState.libraryScan.TextFileCount,
+			ImageFileCount: contentState.libraryScan.ImageFileCount,
+			Truncated:      contentState.libraryScan.Truncated,
+			EntryLimit:     contentState.libraryScan.EntryLimit,
 		}
 	}
 
@@ -709,12 +724,12 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 		if restartWatcher {
 			a.stopLibraryWatcher()
 		}
-		a.indexMu.Lock()
-		a.activeLibraryRoots = nil
-		a.libraryWatchDirectoryPaths = nil
-		a.libraryFolderEntriesCache = nil
-		a.libraryFileHydrationPending = false
-		a.indexMu.Unlock()
+		contentState.indexMu.Lock()
+		contentState.activeLibraryRoots = nil
+		indexState.libraryWatchDirectoryPaths = nil
+		indexState.libraryFolderEntriesCache = nil
+		indexState.libraryFileHydrationPending = false
+		contentState.indexMu.Unlock()
 		a.setLibraryIndexFromScan(result, scanGeneration)
 		a.notifyMusicBrainzTagWorker()
 		return result
@@ -726,32 +741,32 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 		a.stopLibraryWatcher()
 	}
 
-	a.indexMu.Lock()
-	a.activeLibraryRoots = append([]libraryRootConfig(nil), roots...)
-	a.trackByPath = make(map[string]LibraryIndexedFile)
-	a.textByPath = make(map[string]LibraryIndexedFile)
-	a.imageByPath = make(map[string]LibraryIndexedFile)
+	contentState.indexMu.Lock()
+	contentState.activeLibraryRoots = append([]libraryRootConfig(nil), roots...)
+	contentState.trackByPath = make(map[string]LibraryIndexedFile)
+	contentState.textByPath = make(map[string]LibraryIndexedFile)
+	contentState.imageByPath = make(map[string]LibraryIndexedFile)
 	a.markLibraryDerivedIndexDirtyLocked()
-	a.searchFolderEntries = nil
-	a.libraryFolderEntriesCache = make(map[string][]LibraryBrowserEntry)
-	a.libraryWatchDirectoryPaths = nil
-	a.libraryFileHydrationPending = false
-	a.scanInProgress = true
-	a.scanRemainingImmediateChildrenByFolder = make(map[string]int, len(roots))
-	a.scanDiscoveredChildFoldersByParent = make(map[string]map[string]struct{}, len(roots)+1)
+	indexState.searchFolderEntries = nil
+	indexState.libraryFolderEntriesCache = make(map[string][]LibraryBrowserEntry)
+	indexState.libraryWatchDirectoryPaths = nil
+	indexState.libraryFileHydrationPending = false
+	scanState.scanInProgress = true
+	scanState.scanRemainingImmediateChildrenByFolder = make(map[string]int, len(roots))
+	scanState.scanDiscoveredChildFoldersByParent = make(map[string]map[string]struct{}, len(roots)+1)
 	for _, root := range roots {
-		addDiscoveredChildFolder(a.scanDiscoveredChildFoldersByParent, "", root.Name)
-		a.scanRemainingImmediateChildrenByFolder[root.Name] = 1
+		addDiscoveredChildFolder(scanState.scanDiscoveredChildFoldersByParent, "", root.Name)
+		scanState.scanRemainingImmediateChildrenByFolder[root.Name] = 1
 	}
-	a.libraryScan = result
-	a.indexMu.Unlock()
+	contentState.libraryScan = result
+	contentState.indexMu.Unlock()
 
 	defer func() {
-		a.indexMu.Lock()
-		a.scanInProgress = false
-		a.scanRemainingImmediateChildrenByFolder = nil
-		a.scanDiscoveredChildFoldersByParent = nil
-		a.indexMu.Unlock()
+		contentState.indexMu.Lock()
+		scanState.scanInProgress = false
+		scanState.scanRemainingImmediateChildrenByFolder = nil
+		scanState.scanDiscoveredChildFoldersByParent = nil
+		contentState.indexMu.Unlock()
 	}()
 
 	quickBuild, quickErr := buildFilesystemQuickScan(roots, isScanCanceled)
@@ -768,26 +783,26 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 	folderChildPathsByFolder := buildFolderChildPathsFromDiscovered(quickBuild.DiscoveredChildFoldersByParent)
 	searchFolderEntries := buildFolderSearchEntriesFromChildPaths(folderChildPathsByFolder)
 
-	a.indexMu.Lock()
-	if a.libraryScanGeneration.Load() != scanGeneration {
-		a.indexMu.Unlock()
+	contentState.indexMu.Lock()
+	if generationState.libraryScanGeneration.Load() != scanGeneration {
+		contentState.indexMu.Unlock()
 		return scanCanceledResponse()
 	}
 
-	a.folderChildPathsByFolder = folderChildPathsByFolder
-	a.searchFolderEntries = searchFolderEntries
-	a.libraryFolderEntriesCache = make(map[string][]LibraryBrowserEntry)
-	a.libraryWatchDirectoryPaths = append([]string(nil), quickBuild.DirectoryPaths...)
-	a.libraryFileHydrationPending = quickBuild.ScanResult.TrackCount > 0 || quickBuild.ScanResult.TextFileCount > 0 || quickBuild.ScanResult.ImageFileCount > 0
-	a.scanLastTotalEntries = quickBuild.ScanResult.TotalEntries
-	a.libraryScan = quickBuild.ScanResult
-	a.libraryScan.CoverPathByFolder = cloneCoverPathByFolder(quickBuild.ScanResult.CoverPathByFolder)
-	a.indexMu.Unlock()
+	indexState.folderChildPathsByFolder = folderChildPathsByFolder
+	indexState.searchFolderEntries = searchFolderEntries
+	indexState.libraryFolderEntriesCache = make(map[string][]LibraryBrowserEntry)
+	indexState.libraryWatchDirectoryPaths = append([]string(nil), quickBuild.DirectoryPaths...)
+	indexState.libraryFileHydrationPending = quickBuild.ScanResult.TrackCount > 0 || quickBuild.ScanResult.TextFileCount > 0 || quickBuild.ScanResult.ImageFileCount > 0
+	scanState.scanLastTotalEntries = quickBuild.ScanResult.TotalEntries
+	contentState.libraryScan = quickBuild.ScanResult
+	contentState.libraryScan.CoverPathByFolder = cloneCoverPathByFolder(quickBuild.ScanResult.CoverPathByFolder)
+	contentState.indexMu.Unlock()
 
 	if restartWatcher {
 		a.startLibraryWatcherAsyncWithDirectories(roots, quickBuild.DirectoryPaths)
 	}
-	if a.libraryFileHydrationPending {
+	if indexState.libraryFileHydrationPending {
 		a.startLibraryFileHydrationAsync(
 			roots,
 			scanGeneration,

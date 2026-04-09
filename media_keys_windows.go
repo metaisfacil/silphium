@@ -30,11 +30,12 @@ func virtualKeyPressedSinceLastPoll(vk int32) bool {
 }
 
 func (a *App) emitMediaKeyAction(action string) {
-	if a.ctx == nil {
+	runtimeState := a.runtimeState()
+	if runtimeState.ctx == nil {
 		return
 	}
 
-	runtimeEventsEmit(a.ctx, mediaKeyEvent, action)
+	runtimeEventsEmit(runtimeState.ctx, mediaKeyEvent, action)
 }
 
 func (a *App) startMediaKeyWatcher() {

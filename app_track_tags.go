@@ -749,7 +749,7 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 	queuedJobs := 0
 	cacheHits := 0
 	a.ensureSettingsLoaded()
-	ffprobePath := resolveFFProbePath(a.settings.FFmpegPath)
+	ffprobePath := resolveFFProbePath(a.settingsState().settings.FFmpegPath)
 
 	for _, path := range normalizedPaths {
 		signature, ok := trackTagsFileSignatureForPath(path)
@@ -839,7 +839,7 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
 	tagByKey := make(map[string]TrackTags, len(blobs))
 	a.ensureSettingsLoaded()
-	ffprobePath := resolveFFProbePath(a.settings.FFmpegPath)
+	ffprobePath := resolveFFProbePath(a.settingsState().settings.FFmpegPath)
 
 	for _, blob := range blobs {
 		if strings.TrimSpace(blob.Key) == "" || strings.TrimSpace(blob.Data) == "" {

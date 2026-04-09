@@ -46,23 +46,24 @@ func musicBrainzTagSameDay(left time.Time, right time.Time) bool {
 
 func (a *App) musicBrainzTagDatabaseEnabled() bool {
 	a.ensureSettingsLoaded()
-	return a.settings.MusicBrainzTagDatabaseEnabled
+	return a.settingsState().settings.MusicBrainzTagDatabaseEnabled
 }
 
 func (a *App) musicBrainzTagStaleDays() int {
 	a.ensureSettingsLoaded()
-	return normalizeMusicBrainzTagStaleDays(a.settings.MusicBrainzTagStaleDays)
+	return normalizeMusicBrainzTagStaleDays(a.settingsState().settings.MusicBrainzTagStaleDays)
 }
 
 func (a *App) musicBrainzTagRequestStaggeringEnabled() bool {
 	a.ensureSettingsLoaded()
-	return a.settings.MusicBrainzTagRequestStaggeringEnabled && a.musicBrainzTagStaleDays() > 0
+	return a.settingsState().settings.MusicBrainzTagRequestStaggeringEnabled && a.musicBrainzTagStaleDays() > 0
 }
 
 func (a *App) musicBrainzTagReleaseDepthByRootPath() map[string]int {
 	a.ensureSettingsLoaded()
-	releaseDepthByRootPath := make(map[string]int, len(a.settings.LibraryFolders))
-	for _, folder := range a.settings.LibraryFolders {
+	settings := a.settingsState().settings
+	releaseDepthByRootPath := make(map[string]int, len(settings.LibraryFolders))
+	for _, folder := range settings.LibraryFolders {
 		normalizedPath, ok := absoluteNormalizedPath(folder.Path)
 		if !ok {
 			continue
@@ -75,15 +76,16 @@ func (a *App) musicBrainzTagReleaseDepthByRootPath() map[string]int {
 }
 
 func (a *App) musicBrainzTagLibraryTrackSnapshot() map[string]LibraryIndexedFile {
-	a.indexMu.Lock()
-	defer a.indexMu.Unlock()
+	contentState := a.libraryContentState()
+	contentState.indexMu.Lock()
+	defer contentState.indexMu.Unlock()
 
-	if len(a.trackByPath) == 0 {
+	if len(contentState.trackByPath) == 0 {
 		return nil
 	}
 
-	snapshot := make(map[string]LibraryIndexedFile, len(a.trackByPath))
-	for path, indexed := range a.trackByPath {
+	snapshot := make(map[string]LibraryIndexedFile, len(contentState.trackByPath))
+	for path, indexed := range contentState.trackByPath {
 		snapshot[path] = indexed
 	}
 
@@ -324,8 +326,9 @@ func (a *App) setMusicBrainzTagWorkerProgress(progress MusicBrainzTagWorkerProgr
 	workerState.progress = progress
 	workerState.progressMu.Unlock()
 
-	if changed && a.ctx != nil {
-		runtimeEventsEmit(a.ctx, musicBrainzTagWorkerProgressEvent, progress)
+	runtimeState := a.runtimeState()
+	if changed && runtimeState.ctx != nil {
+		runtimeEventsEmit(runtimeState.ctx, musicBrainzTagWorkerProgressEvent, progress)
 	}
 }
 
@@ -382,7 +385,7 @@ func (a *App) musicBrainzTagWorkerCount(jobCount int) int {
 	}
 
 	a.ensureSettingsLoaded()
-	workerCount := normalizeMusicBrainzTagWorkerCores(a.settings.MusicBrainzTagWorkerCores)
+	workerCount := normalizeMusicBrainzTagWorkerCores(a.settingsState().settings.MusicBrainzTagWorkerCores)
 	if workerCount > jobCount {
 		workerCount = jobCount
 	}
@@ -463,7 +466,7 @@ func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIn
 	}
 
 	a.ensureSettingsLoaded()
-	ffprobePath := resolveFFProbePath(a.settings.FFmpegPath)
+	ffprobePath := resolveFFProbePath(a.settingsState().settings.FFmpegPath)
 	releaseDepthByRootPath := a.musicBrainzTagReleaseDepthByRootPath()
 	workerCount := a.musicBrainzTagWorkerCount(len(paths))
 
