@@ -1656,6 +1656,10 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.about-version {
+    line-height: 1 !important;
+}
+
 .about-title {
     margin: 0;
     font-size: 0.98rem;
@@ -1700,8 +1704,16 @@
     height: auto;
 }
 
+.about-nameplate,
+.about-byline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
 .about-name,
 .about-version,
+.about-tagline,
 .about-author {
     margin: 0;
     font-size: 0.98rem;
@@ -1709,20 +1721,23 @@
     opacity: 0.88;
 }
 
-.about-name strong {
-    font-size: 1.2rem;
-}
-
 .about-name {
+    font-size: 1.2rem;
     margin-top: 0.1rem;
+    font-weight: 700;
 }
 
 .about-version {
     opacity: 0.8;
 }
 
+.about-tagline {
+    margin: 0.3rem 0;
+    font-size: 0.86rem;
+    opacity: 0.74;
+}
+
 .about-author {
-    margin-top: 0.6rem;
     opacity: 0.78;
 }
 

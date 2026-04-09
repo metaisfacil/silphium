@@ -18,12 +18,17 @@ export const renderAboutModal = (): string => `
                 <div class="about-logo-wrap">
                     <img class="about-logo" src="/silphium.svg" alt="Silphium logo">
                 </div>
-                <p class="about-name"><strong>Silphium</strong></p>
-                <p id="about-version" class="about-version">dev</p>
-                <p class="about-author">by metaisfacil</p>
-                <p class="about-repo">
-                    <a id="about-repo-link" class="about-repo-link" href="https://github.com/metaisfacil/silphium">github.com/metaisfacil/silphium</a>
-                </p>
+                <div class="about-nameplate">
+                    <p class="about-name">Silphium</p>
+                    <p id="about-version" class="about-version">dev</p>
+                </div>
+                <p class="about-tagline">A media player for the metadata-conscious</p>
+                <div class="about-byline">
+                    <p class="about-author">by metaisfacil</p>
+                    <p class="about-repo">
+                        <a id="about-repo-link" class="about-repo-link" href="https://github.com/metaisfacil/silphium">github.com/metaisfacil/silphium</a>
+                    </p>
+                </div>
             </div>
         </section>
     </div>
