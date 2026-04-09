@@ -198,7 +198,7 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                     <div class="settings-field">
-                        ${renderSettingsLabel('settings-ffmpeg-path', 'FFmpeg executable path', 'Optional full path to ffmpeg. Leave blank to use the version available on PATH.')}
+                        ${renderSettingsLabel('settings-ffmpeg-path', 'FFmpeg executable path', 'Full path to FFmpeg in the event Silphium cannot find it on PATH.')}
                         <input id="settings-ffmpeg-path" class="settings-input" type="text" spellcheck="false" placeholder="Leave blank to use PATH">
                     </div>
                     <div class="settings-field settings-toggle-field">
