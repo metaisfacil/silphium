@@ -60,6 +60,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 4,
     lissajousEnabled: true,
+    lissajousScale: 0.25,
     visualizerMode: 'equalizer',
     equalizerPosition: 'top',
     uiDitheringEnabled: true,
@@ -158,6 +159,7 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-player-card-layout"]')?.textContent).toBe('Player card layout');
         expect(document.querySelector('label[for="settings-lissajous-enabled"]')?.textContent?.trim()).toBe('Show player visualizer');
         expect(document.querySelector('label[for="settings-visualizer-mode"]')?.textContent).toBe('Visualizer style');
+        expect(document.querySelector('label[for="settings-lissajous-scale"]')?.textContent).toBe('Lissajous scale');
         expect(document.querySelector('label[for="settings-equalizer-position"]')?.textContent).toBe('Equalizer position');
         expect(document.querySelector('label[for="settings-ui-dithering-enabled"]')?.textContent?.trim()).toBe('Enable pseudo-dithering');
         expect(document.querySelector('#settings-cover-art-priority-accordion-toggle')?.textContent).toBe('Cover art source priority');
@@ -202,6 +204,9 @@ describe('createSettingsController', () => {
             bubbles: true,
         }));
         elements.settingsVisualizerMode.value = 'lissajous';
+        elements.settingsVisualizerMode.dispatchEvent(new Event('change', { bubbles: true }));
+        elements.settingsLissajousScale.value = '0.4';
+        elements.settingsLissajousScale.dispatchEvent(new Event('input', { bubbles: true }));
         elements.settingsSave.click();
 
         await flushPromises();
@@ -219,12 +224,34 @@ describe('createSettingsController', () => {
             musicBrainzTagStaleDays: 30,
             musicBrainzTagRequestStaggeringEnabled: false,
             lissajousEnabled: true,
+            lissajousScale: 0.4,
             visualizerMode: 'lissajous',
             equalizerPosition: 'top',
             uiDitheringEnabled: true,
             keyboardShortcuts: expect.objectContaining({ nextTrack: 'K' }),
         }));
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(false);
+        expect(elements.settingsLissajousScaleValue.textContent).toBe('40%');
+    });
+
+    it('shows the scale control only for lissajous mode and formats its value', () => {
+        const { controller, elements } = mountSettingsController();
+
+        controller.open('ui');
+
+        expect(elements.settingsVisualizerControls.dataset.equalizerVisible).toBe('true');
+        expect(elements.settingsVisualizerControls.dataset.lissajousVisible).toBe('false');
+        expect(elements.settingsLissajousScale.disabled).toBe(true);
+
+        elements.settingsVisualizerMode.value = 'lissajous';
+        elements.settingsVisualizerMode.dispatchEvent(new Event('change', { bubbles: true }));
+        elements.settingsLissajousScale.value = '0.35';
+        elements.settingsLissajousScale.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(elements.settingsVisualizerControls.dataset.equalizerVisible).toBe('false');
+        expect(elements.settingsVisualizerControls.dataset.lissajousVisible).toBe('true');
+        expect(elements.settingsLissajousScale.disabled).toBe(false);
+        expect(elements.settingsLissajousScaleValue.textContent).toBe('35%');
     });
 
     it('opens the modal when the trigger button is clicked', async () => {

@@ -349,6 +349,7 @@ export type AppSettings = {
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
     lissajousEnabled: boolean;
+    lissajousScale: number;
     visualizerMode: PlayerVisualizerMode;
     equalizerPosition: PlayerEqualizerPosition;
     uiDitheringEnabled: boolean;

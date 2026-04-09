@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -83,6 +84,7 @@ type AppSettings struct {
 	MusicBrainzTagRequestStaggeringEnabled bool                     `json:"musicBrainzTagRequestStaggeringEnabled,omitempty"`
 	MusicBrainzTagWorkerCores              int                      `json:"musicBrainzTagWorkerCores,omitempty"`
 	LissajousEnabled                       *bool                    `json:"lissajousEnabled,omitempty"`
+	LissajousScale                         float64                  `json:"lissajousScale,omitempty"`
 	VisualizerMode                         string                   `json:"visualizerMode,omitempty"`
 	EqualizerPosition                      string                   `json:"equalizerPosition,omitempty"`
 	UIDitheringEnabled                     *bool                    `json:"uiDitheringEnabled,omitempty"`
@@ -94,6 +96,9 @@ type AppSettings struct {
 const defaultPlaybackOrder = "ordered-library"
 const defaultVisualizerMode = "lissajous"
 const defaultEqualizerPosition = "bottom"
+const defaultLissajousScale = 0.25
+const minLissajousScale = 0.05
+const maxLissajousScale = 1.0
 const defaultScrobbleFilterMode = "blacklist"
 const maxReleaseDepth = 64
 const defaultMusicBrainzTagStaleDays = 30
@@ -208,6 +213,22 @@ func normalizeEqualizerPosition(value string) string {
 	default:
 		return defaultEqualizerPosition
 	}
+}
+
+func normalizeLissajousScale(value float64) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 {
+		return defaultLissajousScale
+	}
+
+	if value < minLissajousScale {
+		return minLissajousScale
+	}
+
+	if value > maxLissajousScale {
+		return maxLissajousScale
+	}
+
+	return value
 }
 
 func normalizeScrobbleFilterMode(value string) string {
@@ -709,6 +730,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	if settings.LissajousEnabled != nil {
 		lissajousEnabled = *settings.LissajousEnabled
 	}
+	lissajousScale := normalizeLissajousScale(settings.LissajousScale)
 	visualizerMode := normalizeVisualizerMode(settings.VisualizerMode)
 	equalizerPosition := normalizeEqualizerPosition(settings.EqualizerPosition)
 	uiDitheringEnabled := true
@@ -743,6 +765,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		MusicBrainzTagRequestStaggeringEnabled: settings.MusicBrainzTagRequestStaggeringEnabled,
 		MusicBrainzTagWorkerCores:              normalizeMusicBrainzTagWorkerCores(settings.MusicBrainzTagWorkerCores),
 		LissajousEnabled:                       boolPointer(lissajousEnabled),
+		LissajousScale:                         lissajousScale,
 		VisualizerMode:                         visualizerMode,
 		EqualizerPosition:                      equalizerPosition,
 		UIDitheringEnabled:                     boolPointer(uiDitheringEnabled),

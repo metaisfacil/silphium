@@ -7,6 +7,7 @@ const testState = vi.hoisted(() => {
         libraryFolders: [],
         ffmpegPath: '',
         lissajousEnabled: false,
+        lissajousScale: 0.25,
         visualizerMode: 'equalizer',
         equalizerPosition: 'top',
         uiDitheringEnabled: true,
@@ -67,6 +68,7 @@ const testState = vi.hoisted(() => {
     const resetListenBrainzFeedbackState = vi.fn();
     const scanConfiguredLibraryFolders = vi.fn(async () => undefined);
     const setLissajousEnabled = vi.fn();
+    const setLissajousScale = vi.fn();
     const setVisualizerMode = vi.fn();
     const setEqualizerPosition = vi.fn();
     const setPlaybackOrderMode = vi.fn();
@@ -137,6 +139,7 @@ const testState = vi.hoisted(() => {
             controllerScope = scope;
         },
         setLissajousEnabled,
+        setLissajousScale,
         setVisualizerMode,
         setEqualizerPosition,
         setPlaybackOrderMode,
@@ -180,6 +183,7 @@ vi.mock('./app-runtime-setup', () => ({
         getStoredLayout: testState.getStoredLayout,
         visualizerController: {
             setEnabled: testState.setLissajousEnabled,
+            setLissajousScale: testState.setLissajousScale,
             setMode: testState.setVisualizerMode,
             setEqualizerPosition: testState.setEqualizerPosition,
         },
@@ -328,6 +332,12 @@ describe('main entrypoint runtime scope', () => {
         expect(scope).not.toBeNull();
         expect(scope?.completeStartupIfReady).toBeTypeOf('function');
         await expect(scope?.completeStartupIfReady?.()).resolves.toBeUndefined();
+    });
+
+    it('applies the persisted lissajous scale during settings initialization', async () => {
+        await import('./main');
+
+        expect(testState.setLissajousScale).toHaveBeenCalledWith(0.25);
     });
 
     it('allows updating seek interaction state through the runtime scope', async () => {

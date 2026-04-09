@@ -59,6 +59,7 @@ const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     musicBrainzTagRequestStaggeringEnabled: false,
     musicBrainzTagWorkerCores: 4,
     lissajousEnabled: true,
+    lissajousScale: 0.25,
     visualizerMode: 'lissajous',
     equalizerPosition: 'bottom',
     uiDitheringEnabled: true,
@@ -141,6 +142,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         const normalizedSettings = createSettings({
             playbackOrder: 'shuffle-library',
             lissajousEnabled: false,
+            lissajousScale: 0.45,
             visualizerMode: 'equalizer',
             equalizerPosition: 'top',
             uiDitheringEnabled: false,
@@ -160,6 +162,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             updatePlayOrderMenuState: vi.fn(),
             visualizerController: {
                 setEnabled: vi.fn(),
+                setLissajousScale: vi.fn(),
                 setMode: vi.fn(),
                 setEqualizerPosition: vi.fn(),
             },
@@ -181,6 +184,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         expect(context.currentSettings).toBe(normalizedSettings);
         expect(context.visualizerController.setMode).toHaveBeenCalledWith('equalizer');
         expect(context.visualizerController.setEqualizerPosition).toHaveBeenCalledWith('top');
+        expect(context.visualizerController.setLissajousScale).toHaveBeenCalledWith(0.45);
         expect(context.visualizerController.setEnabled).toHaveBeenCalledWith(false);
         expect(context.applyUiDitheringSetting).toHaveBeenCalledTimes(1);
         expect(context.playlistController.clearEditableQueue).toHaveBeenCalledTimes(1);

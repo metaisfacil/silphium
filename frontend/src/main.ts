@@ -594,6 +594,7 @@ const initializeSettings = async (): Promise<void> => {
         currentSettings = normalizeAppSettings(settings);
         visualizerController.setMode(currentSettings.visualizerMode);
         visualizerController.setEqualizerPosition(currentSettings.equalizerPosition);
+        visualizerController.setLissajousScale(currentSettings.lissajousScale);
         visualizerController.setEnabled(currentSettings.lissajousEnabled);
         applyUiDitheringSetting();
         socialController.handleSettingsChanged();

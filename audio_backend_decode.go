@@ -227,6 +227,23 @@ func normalizeVisualizationFrameCount(frameCount int) int {
 	return frameCount
 }
 
+func replayGainCompensatedVisualizationSample(sample int16, replayGainScale float64) int16 {
+	scale := normalizeReplayGainScale(replayGainScale)
+	if math.Abs(scale-1) < 0.000001 {
+		return sample
+	}
+
+	compensated := math.Round(float64(sample) / scale)
+	if compensated > math.MaxInt16 {
+		return math.MaxInt16
+	}
+	if compensated < math.MinInt16 {
+		return math.MinInt16
+	}
+
+	return int16(compensated)
+}
+
 // VisualizationFrame returns a decimated stereo sample window around the current playback position.
 func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFrame {
 	b.mutex.Lock()
@@ -313,6 +330,8 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 		byteOffset := sourceFrame * audioBytesPerFrame
 		left := int16(binary.LittleEndian.Uint16(activeSegment.PCMData[byteOffset : byteOffset+2]))
 		right := int16(binary.LittleEndian.Uint16(activeSegment.PCMData[byteOffset+2 : byteOffset+4]))
+		left = replayGainCompensatedVisualizationSample(left, activeSegment.ReplayGainScale)
+		right = replayGainCompensatedVisualizationSample(right, activeSegment.ReplayGainScale)
 		samples[index*2] = left
 		samples[index*2+1] = right
 

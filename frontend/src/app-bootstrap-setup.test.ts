@@ -60,6 +60,7 @@ const createScope = () => {
         },
         visualizerController: {
             setEnabled: vi.fn(),
+            setLissajousScale: vi.fn(),
             setMode: vi.fn(),
         },
         applyUiDitheringSetting: vi.fn(),
@@ -340,6 +341,7 @@ describe('app-bootstrap-setup wrappers', () => {
         expect(scope.ffmpegConfigurationRequired).toBe(true);
         expect(scope.saveSettingsBackend).toHaveBeenCalledWith({ libraryPath: '/music' });
         expect(scope.visualizerController.setEnabled).not.toHaveBeenCalled();
+        expect(scope.visualizerController.setLissajousScale).not.toHaveBeenCalled();
         expect(scope.visualizerController.setMode).not.toHaveBeenCalled();
         expect(scope.playbackStateService.setBackendReady).toHaveBeenCalledWith(false);
         expect(scope.closePlayOrderMenu).toHaveBeenCalledTimes(1);

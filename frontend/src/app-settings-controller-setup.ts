@@ -32,6 +32,7 @@ export interface AppSettingsControllerSetupContext {
     selectPlaylistFile: () => Promise<string>;
     getPlaybackOrderMode: () => AppSettings['playbackOrder'];
     setLissajousEnabled: (enabled: boolean) => void;
+    setLissajousScale: (scale: AppSettings['lissajousScale']) => void;
     setVisualizerMode: (mode: AppSettings['visualizerMode']) => void;
     setEqualizerPosition: (position: AppSettings['equalizerPosition']) => void;
     applyUiDitheringSetting: () => void;
@@ -90,6 +91,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         musicBrainzTagRequestStaggeringEnabled: boolean;
         musicBrainzTagWorkerCores: number;
         lissajousEnabled: boolean;
+        lissajousScale: AppSettings['lissajousScale'];
         visualizerMode: AppSettings['visualizerMode'];
         equalizerPosition: AppSettings['equalizerPosition'];
         uiDitheringEnabled: boolean;
@@ -135,6 +137,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             musicBrainzTagRequestStaggeringEnabled: values.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: values.musicBrainzTagWorkerCores,
             lissajousEnabled: values.lissajousEnabled,
+            lissajousScale: values.lissajousScale,
             visualizerMode: values.visualizerMode,
             equalizerPosition: values.equalizerPosition,
             uiDitheringEnabled: values.uiDitheringEnabled,
@@ -146,6 +149,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         context.currentSettings = normalizeAppSettings(savedSettings);
         context.setVisualizerMode(context.currentSettings.visualizerMode);
         context.setEqualizerPosition(context.currentSettings.equalizerPosition);
+        context.setLissajousScale(context.currentSettings.lissajousScale);
         context.setLissajousEnabled(context.currentSettings.lissajousEnabled);
         context.applyUiDitheringSetting();
         context.handleSocialSettingsChanged();
@@ -209,6 +213,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             musicBrainzTagRequestStaggeringEnabled: context.currentSettings.musicBrainzTagRequestStaggeringEnabled,
             musicBrainzTagWorkerCores: context.currentSettings.musicBrainzTagWorkerCores,
             lissajousEnabled: context.currentSettings.lissajousEnabled,
+            lissajousScale: context.currentSettings.lissajousScale,
             visualizerMode: context.currentSettings.visualizerMode,
             equalizerPosition: context.currentSettings.equalizerPosition,
             uiDitheringEnabled: context.currentSettings.uiDitheringEnabled,

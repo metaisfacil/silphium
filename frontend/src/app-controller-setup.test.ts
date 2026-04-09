@@ -119,6 +119,7 @@ const createContext = () => {
         selectPlaylistFile: vi.fn(async () => '/playlists/favorites.m3u'),
         getPlaybackOrderMode: vi.fn(() => 'shuffle-library'),
         setLissajousEnabled: vi.fn(),
+        setLissajousScale: vi.fn(),
         setVisualizerMode: vi.fn(),
         setEqualizerPosition: vi.fn(),
         applyUiDitheringSetting: vi.fn(),
@@ -283,6 +284,7 @@ describe('app-controller-setup', () => {
             musicBrainzTagRequestStaggeringEnabled: false,
             musicBrainzTagWorkerCores: 2,
             lissajousEnabled: true,
+            lissajousScale: 0.4,
             visualizerMode: 'equalizer',
             equalizerPosition: 'top',
             uiDitheringEnabled: true,
@@ -369,6 +371,7 @@ describe('app-controller-setup', () => {
         expect(context.validateConfiguredFFmpegPath).toHaveBeenCalled();
         expect(context.saveSettings).toHaveBeenCalled();
         expect(context.setLissajousEnabled).toHaveBeenCalledWith(true);
+        expect(context.setLissajousScale).toHaveBeenCalledWith(0.4);
         expect(context.setVisualizerMode).toHaveBeenCalledWith('equalizer');
         expect(context.setEqualizerPosition).toHaveBeenCalledWith('top');
         expect(context.applyUiDitheringSetting).toHaveBeenCalled();

@@ -44,6 +44,7 @@ export type SettingsFormValues = {
     musicBrainzTagRequestStaggeringEnabled: boolean;
     musicBrainzTagWorkerCores: number;
     lissajousEnabled: boolean;
+    lissajousScale: number;
     visualizerMode: PlayerVisualizerMode;
     equalizerPosition: PlayerEqualizerPosition;
     uiDitheringEnabled: boolean;

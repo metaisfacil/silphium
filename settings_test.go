@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestNormalizeBrainzServerURL(t *testing.T) {
 	testCases := []struct {
@@ -276,6 +279,32 @@ func TestNormalizeAppSettingsPreservesDisabledLissajous(t *testing.T) {
 	}
 	if *settings.LissajousEnabled {
 		t.Fatal("LissajousEnabled should remain false when explicitly disabled")
+	}
+}
+
+func TestNormalizeAppSettingsDefaultsLissajousScale(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{})
+	if math.Abs(settings.LissajousScale-defaultLissajousScale) > 1e-9 {
+		t.Fatalf("LissajousScale = %v, want %v", settings.LissajousScale, defaultLissajousScale)
+	}
+}
+
+func TestNormalizeAppSettingsClampsLissajousScale(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{LissajousScale: 5})
+	if math.Abs(settings.LissajousScale-maxLissajousScale) > 1e-9 {
+		t.Fatalf("LissajousScale = %v, want %v", settings.LissajousScale, maxLissajousScale)
+	}
+
+	settings = normalizeAppSettings(AppSettings{LissajousScale: 0.01})
+	if math.Abs(settings.LissajousScale-minLissajousScale) > 1e-9 {
+		t.Fatalf("LissajousScale = %v, want %v", settings.LissajousScale, minLissajousScale)
+	}
+}
+
+func TestNormalizeAppSettingsPreservesLissajousScale(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{LissajousScale: 0.4})
+	if math.Abs(settings.LissajousScale-0.4) > 1e-9 {
+		t.Fatalf("LissajousScale = %v, want %v", settings.LissajousScale, 0.4)
 	}
 }
 

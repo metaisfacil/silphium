@@ -136,3 +136,36 @@ func TestVisualizationFrameReturnsStereoWindow(t *testing.T) {
 		t.Fatalf("visualization peak = %.4f, want approx 0.1221", frame.Peak)
 	}
 }
+
+func TestVisualizationFrameCompensatesReplayGainScaledSamples(t *testing.T) {
+	backend := NewAudioBackend()
+	backend.streamSegments = []audioTrackSegment{{
+		SourcePath:      "track.flac",
+		ReplayGainScale: 0.25,
+		PCMData: encodeStereoPCM([][2]int16{
+			{250, -250},
+			{500, -500},
+			{750, -750},
+			{1000, -1000},
+		}),
+	}}
+	backend.streamReadOffset = int64(len(backend.streamSegments[0].PCMData))
+	backend.playbackBaseBytes = backend.streamReadOffset
+
+	frame := backend.VisualizationFrame(4)
+	if !frame.Loaded {
+		t.Fatal("expected visualization frame to be loaded")
+	}
+	if got, want := len(frame.Samples), 8; got != want {
+		t.Fatalf("visualization sample len = %d, want %d", got, want)
+	}
+	if frame.Samples[0] != 1000 || frame.Samples[1] != -1000 {
+		t.Fatalf("unexpected compensated first stereo sample pair = [%d %d]", frame.Samples[0], frame.Samples[1])
+	}
+	if frame.Samples[6] != 4000 || frame.Samples[7] != -4000 {
+		t.Fatalf("unexpected compensated last stereo sample pair = [%d %d]", frame.Samples[6], frame.Samples[7])
+	}
+	if frame.Peak <= 0.12 || frame.Peak > 0.13 {
+		t.Fatalf("visualization peak = %.4f, want approx 0.1221 after ReplayGain compensation", frame.Peak)
+	}
+}

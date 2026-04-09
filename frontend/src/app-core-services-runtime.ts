@@ -118,6 +118,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     });
     visualizerController.setMode(context.currentSettings.visualizerMode);
     visualizerController.setEqualizerPosition(context.currentSettings.equalizerPosition);
+    visualizerController.setLissajousScale(context.currentSettings.lissajousScale);
     visualizerController.setEnabled(context.currentSettings.lissajousEnabled);
 
     const listenBrainzController = createListenBrainzController({
