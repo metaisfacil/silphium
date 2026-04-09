@@ -32,6 +32,7 @@ export interface ShareControllerOptions {
     closeOtherMenus: () => void;
     selectShareImageSaveFile: (defaultName: string) => Promise<string>;
     saveShareImageFile: (path: string, base64: string) => Promise<boolean>;
+    copyShareImageToClipboard: (base64: string) => Promise<boolean>;
     fetchVisualizationFrame: (frameCount: number) => Promise<AudioVisualizationFrame>;
 }
 
@@ -274,6 +275,33 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
         }
     };
 
+    const copyShareImageBlob = async (blob: Blob): Promise<void> => {
+        const clipboard = navigator.clipboard as Clipboard & { write?: (items: unknown[]) => Promise<void> };
+        const clipboardItemCtor = (window as Window & {
+            ClipboardItem?: new (items: Record<string, Blob>) => unknown;
+        }).ClipboardItem;
+        let browserClipboardError: unknown;
+
+        if (clipboard.write && clipboardItemCtor) {
+            try {
+                await clipboard.write([new clipboardItemCtor({ 'image/png': blob })]);
+                return;
+            } catch (error) {
+                browserClipboardError = error;
+            }
+        }
+
+        if (await options.copyShareImageToClipboard(await blobToBase64(blob))) {
+            return;
+        }
+
+        if (browserClipboardError) {
+            throw browserClipboardError;
+        }
+
+        throw new Error('Clipboard image copy is not available in this environment');
+    };
+
     const copyPreview = async (): Promise<void> => {
         if (!sharePreviewSnapshot) {
             return;
@@ -284,16 +312,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
 
         try {
             const blob = await canvasToPngBlob(sharePreview);
-            const clipboard = navigator.clipboard as Clipboard & { write?: (items: unknown[]) => Promise<void> };
-            const clipboardItemCtor = (window as Window & {
-                ClipboardItem?: new (items: Record<string, Blob>) => unknown;
-            }).ClipboardItem;
-
-            if (!clipboard.write || !clipboardItemCtor) {
-                throw new Error('Clipboard image copy is not available in this environment');
-            }
-
-            await clipboard.write([new clipboardItemCtor({ 'image/png': blob })]);
+            await copyShareImageBlob(blob);
             setShareStatus('Copied image to clipboard.', 'success');
         } catch (error) {
             console.error(error);

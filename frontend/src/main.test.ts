@@ -265,6 +265,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
     AudioSeek: vi.fn(async () => ({ loaded: false })),
     AudioSetVolume: vi.fn(async () => ({ loaded: false })),
     AudioStop: vi.fn(async () => ({ loaded: false })),
+    CopyShareImageToClipboard: vi.fn(async () => true),
     GetAppVersion: vi.fn(async () => '0.0.0'),
     GetLastFmRequestToken: vi.fn(async () => ''),
     GetLastFmSessionKey: vi.fn(async () => ''),

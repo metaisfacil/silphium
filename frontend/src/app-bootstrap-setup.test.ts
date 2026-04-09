@@ -123,6 +123,7 @@ const createScope = () => {
         closeSidebarQueueMenu: vi.fn(),
         selectShareImageSaveFile: vi.fn(async () => '/art/share.png'),
         saveShareImageFile: vi.fn(async () => undefined),
+        copyShareImageToClipboard: vi.fn(async () => true),
         imageModalElements: { modal: document.createElement('div') },
         readFileBase64: vi.fn(async () => 'base64'),
         readImageThumbnail: vi.fn(async () => 'thumb'),

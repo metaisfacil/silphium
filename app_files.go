@@ -37,16 +37,10 @@ func (a *App) ReadFileBase64(path string) string {
 	return base64.StdEncoding.EncodeToString(rawBytes)
 }
 
-// SaveShareImageFile decodes a base64 PNG payload and writes it to the requested path.
-func (a *App) SaveShareImageFile(path string, imageBase64 string) bool {
-	cleanPath := strings.TrimSpace(path)
-	if cleanPath == "" {
-		return false
-	}
-
+func decodeShareImagePayload(imageBase64 string) ([]byte, bool) {
 	payload := strings.TrimSpace(imageBase64)
 	if payload == "" {
-		return false
+		return nil, false
 	}
 
 	if commaIndex := strings.Index(payload, ","); commaIndex >= 0 && strings.Contains(payload[:commaIndex], ";base64") {
@@ -55,10 +49,35 @@ func (a *App) SaveShareImageFile(path string, imageBase64 string) bool {
 
 	decoded, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil || len(decoded) == 0 {
+		return nil, false
+	}
+
+	return decoded, true
+}
+
+// SaveShareImageFile decodes a base64 PNG payload and writes it to the requested path.
+func (a *App) SaveShareImageFile(path string, imageBase64 string) bool {
+	cleanPath := strings.TrimSpace(path)
+	if cleanPath == "" {
+		return false
+	}
+
+	decoded, ok := decodeShareImagePayload(imageBase64)
+	if !ok {
 		return false
 	}
 
 	return os.WriteFile(cleanPath, decoded, 0o644) == nil
+}
+
+// CopyShareImageToClipboard decodes a base64 PNG payload and writes it to the operating system clipboard.
+func (a *App) CopyShareImageToClipboard(imageBase64 string) bool {
+	decoded, ok := decodeShareImagePayload(imageBase64)
+	if !ok {
+		return false
+	}
+
+	return copyShareImageToClipboardPNG(decoded) == nil
 }
 
 // ReadImageThumbnail reads an image from the allowed library scope and returns a cheap thumbnail.

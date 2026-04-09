@@ -170,6 +170,7 @@ const createContext = () => {
         closeOtherMenus: vi.fn(),
         selectShareImageSaveFile: vi.fn(async () => '/art/share.png'),
         saveShareImageFile: vi.fn(async () => undefined),
+        copyShareImageToClipboard: vi.fn(async () => true),
         fetchVisualizationFrame: vi.fn(async () => ({
             loaded: true,
             playing: true,

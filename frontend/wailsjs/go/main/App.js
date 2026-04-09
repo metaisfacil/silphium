@@ -62,6 +62,10 @@ export function AudioStop() {
   return window['go']['main']['App']['AudioStop']();
 }
 
+export function CopyShareImageToClipboard(arg1) {
+  return window['go']['main']['App']['CopyShareImageToClipboard'](arg1);
+}
+
 export function DisposeFrontendSessionState() {
   return window['go']['main']['App']['DisposeFrontendSessionState']();
 }
