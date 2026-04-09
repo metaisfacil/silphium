@@ -122,4 +122,26 @@ describe('bindSettingsControllerEvents', () => {
         expect(context.setActiveTab).toHaveBeenCalledWith('network');
         expect(document.activeElement).toBe(context.elements.settingsListenBrainzToken);
     });
+
+    it('toggles the shortcuts accordion when clicking the header outside the tooltip', () => {
+        const context = createContext();
+        bindSettingsControllerEvents(context);
+
+        const header = context.elements.settingsShortcutAccordionToggle.parentElement as HTMLDivElement;
+        header.click();
+
+        expect(context.setShortcutAccordionExpanded).toHaveBeenCalledWith(true);
+    });
+
+    it('does not toggle the shortcuts accordion when clicking its tooltip', () => {
+        const context = createContext();
+        bindSettingsControllerEvents(context);
+
+        const tooltipTrigger = document.querySelector('[aria-label="Show help for Keyboard shortcuts"]');
+        expect(tooltipTrigger).not.toBeNull();
+
+        (tooltipTrigger as HTMLButtonElement).click();
+
+        expect(context.setShortcutAccordionExpanded).not.toHaveBeenCalled();
+    });
 });

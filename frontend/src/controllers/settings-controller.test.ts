@@ -165,8 +165,10 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-lissajous-scale"]')?.textContent).toBe('Lissajous scale');
         expect(document.querySelector('label[for="settings-equalizer-position"]')?.textContent).toBe('Equalizer position');
         expect(document.querySelector('label[for="settings-ui-dithering-enabled"]')?.textContent?.trim()).toBe('Enable pseudo-dithering');
-        expect(document.querySelector('#settings-cover-art-priority-accordion-toggle')?.textContent).toBe('Cover art source priority');
-        expect(document.querySelector('#settings-shortcut-accordion-toggle')?.textContent).toBe('Keyboard shortcuts');
+        expect(document.querySelector('#settings-cover-art-priority-accordion-toggle')?.textContent?.trim()).toBe('Cover art source priority');
+        expect(document.querySelector('#settings-shortcut-accordion-toggle')?.textContent?.trim()).toBe('Keyboard shortcuts');
+        expect(document.querySelector('[aria-label="Show help for Player card layout"]')).not.toBeNull();
+        expect(document.querySelector('[aria-label="Show help for Keyboard shortcuts"]')).not.toBeNull();
         expect(document.querySelector('label[for="settings-shortcut-play-pause"]')?.textContent).toBe('Play/pause toggle');
         expect(document.querySelector('#settings-apply-audio-now')?.getAttribute('aria-label')).toBe('Refresh audio settings');
         expect(document.querySelector('#settings-force-reload')?.textContent).toBe('Force reload');

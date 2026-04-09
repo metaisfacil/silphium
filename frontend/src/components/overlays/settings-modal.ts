@@ -55,7 +55,7 @@ export type SettingsModalElements = {
     settingsScrobbleRuleOperator: HTMLSelectElement;
     settingsScrobbleRuleValueLabel: HTMLLabelElement;
     settingsScrobbleRuleValue: HTMLInputElement;
-    settingsScrobbleRuleHint: HTMLParagraphElement;
+    settingsScrobbleRuleHint: HTMLElement;
     settingsScrobbleRuleStatus: HTMLParagraphElement;
     settingsScrobbleRuleCancel: HTMLButtonElement;
     settingsScrobbleRuleConfirm: HTMLButtonElement;
@@ -64,7 +64,7 @@ export type SettingsModalElements = {
     settingsSendToActionForm: HTMLFormElement;
     settingsSendToActionTitleInput: HTMLInputElement;
     settingsSendToActionScopeInput: HTMLSelectElement;
-    settingsSendToActionCommandHint: HTMLParagraphElement;
+    settingsSendToActionCommandHint: HTMLElement;
     settingsSendToActionCommandInput: HTMLInputElement;
     settingsSendToActionStatus: HTMLParagraphElement;
     settingsSendToActionCancel: HTMLButtonElement;
@@ -119,6 +119,52 @@ export type SettingsModalElements = {
     settingsStatus: HTMLParagraphElement;
 };
 
+const renderSettingsTooltipIcon = (): string => `
+    <svg class="settings-tooltip-icon" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M6.45 6.18C6.45 5.07 7.24 4.34 8.33 4.34C9.38 4.34 10.18 4.98 10.18 5.93C10.18 6.7 9.84 7.15 8.98 7.71C8.18 8.24 7.83 8.7 7.83 9.46V9.73" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="7.83" cy="11.72" r="0.86" fill="currentColor"/>
+    </svg>
+`;
+
+const renderSettingsTooltip = (label: string, hintHtml: string, align: 'start' | 'end' = 'start'): string => `
+    <span class="settings-tooltip settings-tooltip--${align}">
+        <button class="settings-tooltip-trigger" type="button" aria-label="Show help for ${label}">
+            ${renderSettingsTooltipIcon()}
+        </button>
+        <span class="settings-tooltip-bubble" role="tooltip">${hintHtml}</span>
+    </span>
+`;
+
+const renderSettingsLabel = (forId: string, text: string, hintHtml?: string, tooltipAlign: 'start' | 'end' = 'start'): string => `
+    <div class="settings-label-row">
+        <label class="settings-label" for="${forId}">${text}</label>
+        ${hintHtml ? renderSettingsTooltip(text, hintHtml, tooltipAlign) : ''}
+    </div>
+`;
+
+const renderSettingsCheckboxLabel = (forId: string, text: string, hintHtml?: string, tooltipAlign: 'start' | 'end' = 'start'): string => `
+    <div class="settings-label-row settings-checkbox-label-row">
+        <label class="settings-checkbox-row" for="${forId}">
+            <input id="${forId}" class="settings-checkbox" type="checkbox">
+            <span class="settings-label">${text}</span>
+        </label>
+        ${hintHtml ? renderSettingsTooltip(text, hintHtml, tooltipAlign) : ''}
+    </div>
+`;
+
+const renderSettingsAccordionHeader = (id: string, panelId: string, title: string, hintHtml?: string): string => `
+    <div class="settings-accordion-header">
+        <button id="${id}" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="${panelId}">
+            <span class="settings-accordion-toggle-label">${title}</span>
+            <svg class="settings-accordion-toggle-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 6L15 12L9 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+        ${hintHtml ? renderSettingsTooltip(title, hintHtml) : ''}
+    </div>
+`;
+
 export const renderSettingsModal = (): string => `
     <div id="settings-modal" class="settings-modal" hidden>
         <div id="settings-backdrop" class="settings-backdrop"></div>
@@ -144,8 +190,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-general" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-library-folder-list">Library folders</label>
-                        <p class="settings-hint">Add one or more library roots. A folder settings dialog opens after adding a folder, and you can double-click an existing entry to change its label or release depth.</p>
+                        ${renderSettingsLabel('settings-library-folder-list', 'Library folders', 'Add one or more library roots. A folder settings dialog opens after adding a folder, and you can double-click an existing entry to change its label or release depth.')}
                         <ul id="settings-library-folder-list" class="settings-library-folder-list" role="listbox" aria-label="Library folders" tabindex="0"></ul>
                         <div class="settings-list-actions">
                             <button id="settings-add-library-folder" class="settings-list-btn" type="button" title="Add library folder" aria-label="Add library folder">+</button>
@@ -153,52 +198,38 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-ffmpeg-path">FFmpeg executable path</label>
-                        <p class="settings-hint">Optional full path to ffmpeg. Leave blank to use the version available on PATH.</p>
+                        ${renderSettingsLabel('settings-ffmpeg-path', 'FFmpeg executable path', 'Optional full path to ffmpeg. Leave blank to use the version available on PATH.')}
                         <input id="settings-ffmpeg-path" class="settings-input" type="text" spellcheck="false" placeholder="Leave blank to use PATH">
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-prefer-musicbrainz-metadata">
-                            <input id="settings-prefer-musicbrainz-metadata" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Prefer MusicBrainz metadata when MBIDs are present</span>
-                        </label>
-                        <p class="settings-hint">Track labels are replaced on-the-fly by MusicBrainz lookup.</p>
+                        ${renderSettingsCheckboxLabel('settings-prefer-musicbrainz-metadata', 'Prefer MusicBrainz metadata when MBIDs are present', 'Track labels are replaced on-the-fly by MusicBrainz lookup.', 'end')}
                     </div>
                     <div id="settings-minimize-to-tray-field" class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-minimize-to-tray-on-close">
-                            <input id="settings-minimize-to-tray-on-close" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Minimize to system tray</span>
-                        </label>
-                        <p class="settings-hint">Disabled by default. When enabled, closing the window hides Silphium to the system tray instead of quitting.</p>
+                        ${renderSettingsCheckboxLabel('settings-minimize-to-tray-on-close', 'Minimize to system tray', 'Disabled by default. When enabled, closing the window hides Silphium to the system tray instead of quitting.')}
                     </div>
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-listenbrainz-token">ListenBrainz user token</label>
-                        <p class="settings-hint">Used to submit scrobbles to your ListenBrainz account.</p>
+                        ${renderSettingsLabel('settings-listenbrainz-token', 'ListenBrainz user token', 'Used to submit scrobbles to your ListenBrainz account.')}
                         <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-lastfm-api-key">Last.fm API key</label>
-                        <p class="settings-hint">Optional. When the API key, shared secret, and session key are all set, allowed scrobbles are also submitted to Last.fm.</p>
+                        ${renderSettingsLabel('settings-lastfm-api-key', 'Last.fm API key', 'Optional. When the API key, shared secret, and session key are all set, allowed scrobbles are also submitted to Last.fm.')}
                         <input id="settings-lastfm-api-key" class="settings-input" type="text" spellcheck="false" placeholder="Optional">
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-lastfm-api-secret">Last.fm shared secret</label>
-                        <p class="settings-hint">Used to sign Last.fm write requests. Pair it with your own API key and desktop-auth session key.</p>
+                        ${renderSettingsLabel('settings-lastfm-api-secret', 'Last.fm shared secret', 'Used to sign Last.fm write requests. Pair it with your own API key and desktop-auth session key.')}
                         <input id="settings-lastfm-api-secret" class="settings-input" type="password" spellcheck="false" placeholder="Optional">
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-lastfm-session-key">Last.fm session key</label>
-                        <p class="settings-hint">Session keys are obtained through the Last.fm desktop authentication flow and remain valid until revoked.</p>
+                        ${renderSettingsLabel('settings-lastfm-session-key', 'Last.fm session key', 'Session keys are obtained through the Last.fm desktop authentication flow and remain valid until revoked.')}
                         <div class="settings-lastfm-session-row">
                             <input id="settings-lastfm-session-key" class="settings-input" type="password" spellcheck="false" placeholder="Optional">
                             <button id="settings-lastfm-session-key-fetch" class="settings-secondary-btn" type="button">Fetch</button>
                         </div>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-musicbrainz-server-url">MusicBrainz server URL</label>
-                        <p class="settings-hint">Override the MusicBrainz server used for lookups. Local hosts are permitted a shorter cooldown between requests.</p>
+                        ${renderSettingsLabel('settings-musicbrainz-server-url', 'MusicBrainz server URL', 'Override the MusicBrainz server used for lookups. Local hosts are permitted a shorter cooldown between requests.')}
                         <div class="settings-server-url-row">
                             <input id="settings-musicbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://musicbrainz.org">
                             <div class="settings-server-rate-group">
@@ -208,8 +239,7 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-listenbrainz-server-url">ListenBrainz server URL</label>
-                        <p class="settings-hint">Override the ListenBrainz server used for scrobbling. Local hosts are permitted a shorter cooldown between requests.</p>
+                        ${renderSettingsLabel('settings-listenbrainz-server-url', 'ListenBrainz server URL', 'Override the ListenBrainz server used for scrobbling. Local hosts are permitted a shorter cooldown between requests.')}
                         <div class="settings-server-url-row">
                             <input id="settings-listenbrainz-server-url" class="settings-input" type="text" spellcheck="false" placeholder="https://api.listenbrainz.org">
                             <div class="settings-server-rate-group">
@@ -221,11 +251,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-database" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-database" hidden>
                     <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-musicbrainz-tag-database-enabled">
-                            <input id="settings-musicbrainz-tag-database-enabled" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Enable MusicBrainz tag database</span>
-                        </label>
-                        <p class="settings-hint">Builds a background MusicBrainz tag index for <code>mbtag:</code> library searches. Direct user lookups still take priority over the background worker.</p>
+                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-database-enabled', 'Enable MusicBrainz tag database', 'Builds a background MusicBrainz tag index for <code>mbtag:</code> searches. Direct user lookups still take priority over the background worker.')}
                     </div>
                     <div class="settings-field settings-worker-progress-field">
                         <div class="settings-worker-progress-header">
@@ -239,37 +265,26 @@ export const renderSettingsModal = (): string => `
                         <p id="settings-musicbrainz-tag-worker-progress-status" class="settings-hint settings-worker-progress-status">MusicBrainz tag worker idle.</p>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-musicbrainz-tag-stale-days">Metadata stale after</label>
-                        <p class="settings-hint">Default is 30 days. Set 0 to never automatically refetch cached MusicBrainz metadata.</p>
+                        ${renderSettingsLabel('settings-musicbrainz-tag-stale-days', 'Metadata stale after', 'Default is 30 days. Set 0 to never automatically refetch cached MusicBrainz metadata.')}
                         <div class="settings-server-rate-group">
                             <input id="settings-musicbrainz-tag-stale-days" class="settings-input settings-server-rate-input" type="number" min="0" max="36500" step="1" inputmode="numeric" aria-label="MusicBrainz metadata stale days" placeholder="30">
                             <span class="settings-server-rate-unit">days</span>
                         </div>
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-musicbrainz-tag-request-staggering-enabled">
-                            <input id="settings-musicbrainz-tag-request-staggering-enabled" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Stagger background refetches</span>
-                        </label>
-                        <p class="settings-hint">Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.</p>
+                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-request-staggering-enabled', 'Stagger background refetches', 'Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.')}
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-highlight-musicbrainz-tagged-album-folders">
-                            <input id="settings-highlight-musicbrainz-tagged-album-folders" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Highlight MusicBrainz-tagged album folders</span>
-                        </label>
-                        <p class="settings-hint">When enabled, album folders tagged with MusicBrainz IDs use a subtle orange folder icon in the library browser.</p>
+                        ${renderSettingsCheckboxLabel('settings-highlight-musicbrainz-tagged-album-folders', 'Highlight MusicBrainz-tagged album folders', 'When enabled, album folders tagged with MusicBrainz IDs use a subtle orange folder icon in the library browser.', 'end')}
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-musicbrainz-tag-worker-cores">MusicBrainz tag worker cores</label>
-                        <p class="settings-hint">Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.</p>
+                        ${renderSettingsLabel('settings-musicbrainz-tag-worker-cores', 'MusicBrainz tag worker cores', 'Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.')}
                         <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-favourite-playlist-list">Favourite playlists</label>
-                        <p class="settings-hint">These playlists will always appear in the playlist modal.</p>
+                        ${renderSettingsLabel('settings-favourite-playlist-list', 'Favourite playlists', 'These playlists will always appear in the playlist modal.')}
                         <ul id="settings-favourite-playlist-list" class="settings-favorite-list" role="listbox" aria-label="Favourite playlists"></ul>
                         <div class="settings-list-actions">
                             <button id="settings-add-favorite-playlist" class="settings-list-btn" type="button" title="Add favourite playlist" aria-label="Add favourite playlist">+</button>
@@ -279,16 +294,14 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-scrobbling" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-scrobbling" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-scrobble-filter-mode">Scrobble mode</label>
-                        <p class="settings-hint">In blacklist mode matching rules block scrobbles. In whitelist mode at least one rule must match before a scrobble is submitted. The same rules apply to all scrobble providers.</p>
+                        ${renderSettingsLabel('settings-scrobble-filter-mode', 'Scrobble mode', 'In blacklist mode matching rules block scrobbles. In whitelist mode at least one rule must match before a scrobble is submitted. The same rules apply to all scrobble providers.')}
                         <select id="settings-scrobble-filter-mode" class="settings-input settings-select">
                             <option value="blacklist">Blacklist: scrobble unless a rule matches</option>
                             <option value="whitelist">Whitelist: scrobble only when a rule matches</option>
                         </select>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-scrobble-rule-list">Scrobble rules</label>
-                        <p class="settings-hint">Rules can target paths, names, genres, MBIDs, and track length. Text rules support contains, equals, starts with, and RegEx matching. Double-click a rule to edit it.</p>
+                        ${renderSettingsLabel('settings-scrobble-rule-list', 'Scrobble rules', 'Rules can target paths, names, genres, MBIDs, and track length. Text rules support contains, equals, starts with, and RegEx matching. Double-click a rule to edit it.')}
                         <ul id="settings-scrobble-rule-list" class="settings-folder-list" role="listbox" aria-label="Scrobble rules"></ul>
                         <div class="settings-list-actions">
                             <button id="settings-add-scrobble-rule" class="settings-list-btn" type="button" title="Add scrobble rule" aria-label="Add scrobble rule">+</button>
@@ -298,54 +311,41 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-audio" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-audio" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-audio-output-device">Audio output device</label>
+                        ${renderSettingsLabel('settings-audio-output-device', 'Audio output device', 'Choose the output device used when the audio backend initializes.<br>Use the refresh button to rescan devices and reload audio-related state without restarting.')}
                         <div class="settings-audio-device-row">
                             <select id="settings-audio-output-device" class="settings-input settings-select"></select>
                             <button id="settings-apply-audio-now" class="settings-secondary-btn settings-audio-apply-btn" type="button" title="Refresh the device list and reload audio-related app state without restarting." aria-label="Refresh audio settings"><svg class="overlay-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M20 5V10H15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 19V14H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.6 9.2C7.6 7.2 9.6 6 12 6C14.4 6 16.4 7.1 17.5 8.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M17.4 14.8C16.4 16.8 14.4 18 12 18C9.6 18 7.6 16.9 6.5 15.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                         </div>
-                        <p class="settings-hint">Choose the output device used when the audio backend initializes.<br>Use the refresh button to rescan devices and reload audio-related state without restarting.</p>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-audio-output-buffer-ms">Audio output buffer (ms)</label>
-                        <p class="settings-hint">0 uses driver default. Higher values may reduce crackling but increase latency.<br>Applied on next app launch.</p>
+                        ${renderSettingsLabel('settings-audio-output-buffer-ms', 'Audio output buffer (ms)', '0 uses driver default. Higher values may reduce crackling but increase latency. Applied on next launch.')}
                         <input id="settings-audio-output-buffer-ms" class="settings-input" type="number" min="0" max="1000" step="1" inputmode="numeric" placeholder="0">
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-gapless-playback">
-                            <input id="settings-gapless-playback" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Enable gapless playback</span>
-                        </label>
-                        <p class="settings-hint">When supported, trims encoder delay/padding and prequeues the next track for seamless transitions.</p>
+                        ${renderSettingsCheckboxLabel('settings-gapless-playback', 'Enable gapless playback', 'When supported, trims encoder delay/padding and prequeues the next track for seamless transitions.')}
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-replaygain">
-                            <input id="settings-replaygain" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Enable ReplayGain</span>
-                        </label>
-                        <p class="settings-hint">Reads ReplayGain tags when present and scans tracks without them before playback. The gain is applied before the volume slider and never written back to files.</p>
+                        ${renderSettingsCheckboxLabel('settings-replaygain', 'Enable ReplayGain', 'Reads ReplayGain tags when present and scans tracks without them before playback. The gain is applied before the volume slider and never written back to files.')}
                     </div>
                 </div>
                 <div id="settings-panel-ui" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-ui" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-player-card-layout">Player card layout</label>
-                        <p class="settings-hint">Choose how track metadata is arranged on the player card.</p>
+                        ${renderSettingsLabel('settings-player-card-layout', 'Player card layout', 'Choose how track metadata is arranged on the player card.')}
                         <select id="settings-player-card-layout" class="settings-input settings-select">
                             <option value="default">Default — Title, album, artist</option>
                             <option value="release">Release-focused — Artist, cover, label &amp; year</option>
                         </select>
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-lissajous-enabled">
-                            <input id="settings-lissajous-enabled" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Show player visualizer</span>
-                        </label>
-                        <p class="settings-hint">Draws the animated background behind the player card while audio is loaded.<br>Disabling this will reduce Silphium's GPU burden.</p>
+                        ${renderSettingsCheckboxLabel('settings-ui-dithering-enabled', 'Enable pseudo-dithering', 'Applies subtle noise to blurred translucent layers to reduce banding on 8-bit displays.')}
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-lissajous-enabled', 'Show player visualizer', 'Draws the animated background behind the player card while audio is loaded. Disabling this will reduce Silphium\'s GPU burden.')}
                     </div>
                     <div class="settings-field">
-                        <p class="settings-hint">Choose between the existing stereo lissajous scope and a classic band equalizer display.</p>
                         <div id="settings-visualizer-controls" class="settings-visualizer-controls" data-equalizer-visible="false" data-lissajous-visible="true">
                             <div class="settings-field">
-                                <label class="settings-label" for="settings-visualizer-mode">Visualizer style</label>
+                                ${renderSettingsLabel('settings-visualizer-mode', 'Visualizer style', 'Choose between the existing stereo lissajous scope and a classic band equalizer display.')}
                                 <select id="settings-visualizer-mode" class="settings-input settings-select">
                                     <option value="lissajous">Lissajous</option>
                                     <option value="equalizer">Band equalizer</option>
@@ -367,24 +367,15 @@ export const renderSettingsModal = (): string => `
                             </div>
                         </div>
                     </div>
-                    <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-ui-dithering-enabled">
-                            <input id="settings-ui-dithering-enabled" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Enable pseudo-dithering</span>
-                        </label>
-                        <p class="settings-hint">Applies subtle noise to blurred translucent layers to reduce banding on 8-bit displays.</p>
-                    </div>
                     <div class="settings-accordion">
-                        <button id="settings-cover-art-priority-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-cover-art-priority-accordion-panel">Cover art source priority</button>
+                        ${renderSettingsAccordionHeader('settings-cover-art-priority-accordion-toggle', 'settings-cover-art-priority-accordion-panel', 'Cover art source priority', 'Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.')}
                         <div id="settings-cover-art-priority-accordion-panel" class="settings-accordion-panel" hidden>
-                            <p class="settings-hint">Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.</p>
                             <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
                         </div>
                     </div>
                     <div class="settings-accordion">
-                        <button id="settings-shortcut-accordion-toggle" class="settings-accordion-toggle" type="button" aria-expanded="false" aria-controls="settings-shortcut-accordion-panel">Keyboard shortcuts</button>
+                        ${renderSettingsAccordionHeader('settings-shortcut-accordion-toggle', 'settings-shortcut-accordion-panel', 'Keyboard shortcuts', 'Click a field and press a key combination. Use Delete to clear.')}
                         <div id="settings-shortcut-accordion-panel" class="settings-accordion-panel" hidden>
-                            <p class="settings-hint">Click a field and press a key combination. Use Delete to clear.</p>
                             <div class="settings-shortcuts-grid">
                                 <div class="settings-field">
                                     <label class="settings-label" for="settings-shortcut-play-pause">Play/pause toggle</label>
@@ -416,8 +407,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-actions" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-actions" hidden>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-send-to-action-list">Send to actions</label>
-                        <p class="settings-hint">Create commands that appear in context menus. Use <code>{path}</code> for selected path and <code>{directory}</code> for its folder.</p>
+                        ${renderSettingsLabel('settings-send-to-action-list', 'Send to actions', 'Create commands that appear in context menus. Use <code>{path}</code> for selected path and <code>{directory}</code> for its folder.')}
                         <ul id="settings-send-to-action-list" class="settings-folder-list" role="listbox" aria-label="Send to actions"></ul>
                         <div class="settings-list-actions">
                             <button id="settings-add-send-to-action" class="settings-list-btn" type="button" title="Add send to action" aria-label="Add send to action">+</button>
@@ -437,13 +427,11 @@ export const renderSettingsModal = (): string => `
             <form id="settings-library-depth-form" class="settings-subdialog" role="dialog" aria-modal="true" aria-labelledby="settings-library-depth-title">
                 <p id="settings-library-depth-title" class="settings-subdialog-title">Library folder settings</p>
                 <div class="settings-field">
-                    <label class="settings-label" for="settings-library-depth-label-input">Custom label</label>
-                    <p class="settings-hint">Overrides the name shown for this library in the app.<br>Leave blank to use the folder name.</p>
+                    ${renderSettingsLabel('settings-library-depth-label-input', 'Custom label', 'Overrides the name shown for this library in the app.<br>Leave blank to use the folder name.')}
                     <input id="settings-library-depth-label-input" class="settings-input" type="text" maxlength="120" placeholder="Optional">
                 </div>
                 <div class="settings-field">
-                    <label class="settings-label" for="settings-library-depth-input">Release folder depth</label>
-                    <p class="settings-hint">Enter how many folder levels below this library root a release begins.<br>Use 0 to treat the whole folder as one release.</p>
+                    ${renderSettingsLabel('settings-library-depth-input', 'Release folder depth', 'Enter how many folder levels below this library root a release begins.<br>Use 0 to treat the whole folder as one release.')}
                     <input id="settings-library-depth-input" class="settings-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
                 </div>
                 <p id="settings-library-depth-status" class="settings-subdialog-status" aria-live="polite"></p>
@@ -477,8 +465,15 @@ export const renderSettingsModal = (): string => `
                     <select id="settings-scrobble-rule-operator" class="settings-input settings-select"></select>
                 </div>
                 <div class="settings-field">
-                    <label id="settings-scrobble-rule-value-label" class="settings-label" for="settings-scrobble-rule-value">Rule value</label>
-                    <p id="settings-scrobble-rule-hint" class="settings-hint">Enter a value for this rule.</p>
+                    <div class="settings-label-row">
+                        <label id="settings-scrobble-rule-value-label" class="settings-label" for="settings-scrobble-rule-value">Rule value</label>
+                        <span class="settings-tooltip">
+                            <button class="settings-tooltip-trigger" type="button" aria-label="Show help for Rule value">
+                                ${renderSettingsTooltipIcon()}
+                            </button>
+                            <span id="settings-scrobble-rule-hint" class="settings-tooltip-bubble" role="tooltip">Enter a value for this rule.</span>
+                        </span>
+                    </div>
                     <input id="settings-scrobble-rule-value" class="settings-input" type="text" spellcheck="false" placeholder="Value">
                 </div>
                 <p id="settings-scrobble-rule-status" class="settings-subdialog-status" aria-live="polite"></p>
@@ -506,8 +501,15 @@ export const renderSettingsModal = (): string => `
                     </select>
                 </div>
                 <div class="settings-field">
-                    <label class="settings-label" for="settings-send-to-action-command-input">Command template</label>
-                    <p id="settings-send-to-action-command-hint" class="settings-hint">Examples:<br><code>%programfiles%\\Mp3tag\\Mp3tag.exe {path}</code><br><code>covit --input {path} --primary-output {directory}\\cover</code></p>
+                    <div class="settings-label-row">
+                        <label class="settings-label" for="settings-send-to-action-command-input">Command template</label>
+                        <span class="settings-tooltip">
+                            <button class="settings-tooltip-trigger" type="button" aria-label="Show help for Command template">
+                                ${renderSettingsTooltipIcon()}
+                            </button>
+                            <span id="settings-send-to-action-command-hint" class="settings-tooltip-bubble" role="tooltip">Examples:<br><code>%programfiles%\\Mp3tag\\Mp3tag.exe {path}</code><br><code>covit --input {path} --primary-output {directory}\\cover</code></span>
+                        </span>
+                    </div>
                     <input id="settings-send-to-action-command-input" class="settings-input" type="text" spellcheck="false" placeholder="%programfiles%\\Mp3tag\\Mp3tag.exe {path}">
                 </div>
                 <p id="settings-send-to-action-status" class="settings-subdialog-status" aria-live="polite"></p>
@@ -577,7 +579,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsScrobbleRuleOperator: root.querySelector('#settings-scrobble-rule-operator') as HTMLSelectElement,
     settingsScrobbleRuleValueLabel: root.querySelector('#settings-scrobble-rule-value-label') as HTMLLabelElement,
     settingsScrobbleRuleValue: root.querySelector('#settings-scrobble-rule-value') as HTMLInputElement,
-    settingsScrobbleRuleHint: root.querySelector('#settings-scrobble-rule-hint') as HTMLParagraphElement,
+    settingsScrobbleRuleHint: root.querySelector('#settings-scrobble-rule-hint') as HTMLElement,
     settingsScrobbleRuleStatus: root.querySelector('#settings-scrobble-rule-status') as HTMLParagraphElement,
     settingsScrobbleRuleCancel: root.querySelector('#settings-scrobble-rule-cancel') as HTMLButtonElement,
     settingsScrobbleRuleConfirm: root.querySelector('#settings-scrobble-rule-confirm') as HTMLButtonElement,
@@ -586,7 +588,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsSendToActionForm: root.querySelector('#settings-send-to-action-form') as HTMLFormElement,
     settingsSendToActionTitleInput: root.querySelector('#settings-send-to-action-title-input') as HTMLInputElement,
     settingsSendToActionScopeInput: root.querySelector('#settings-send-to-action-scope-input') as HTMLSelectElement,
-    settingsSendToActionCommandHint: root.querySelector('#settings-send-to-action-command-hint') as HTMLParagraphElement,
+    settingsSendToActionCommandHint: root.querySelector('#settings-send-to-action-command-hint') as HTMLElement,
     settingsSendToActionCommandInput: root.querySelector('#settings-send-to-action-command-input') as HTMLInputElement,
     settingsSendToActionStatus: root.querySelector('#settings-send-to-action-status') as HTMLParagraphElement,
     settingsSendToActionCancel: root.querySelector('#settings-send-to-action-cancel') as HTMLButtonElement,

@@ -213,6 +213,44 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsCoverArtPriorityList,
     } = elements;
 
+    const bindAccordionHeaderToggle = (
+        toggle: HTMLButtonElement,
+        panel: HTMLDivElement,
+        setExpanded: (expanded: boolean, animate?: boolean) => void,
+        scrollIntoView: () => void,
+    ): void => {
+        const activate = (): void => {
+            const shouldExpand = panel.hidden !== false;
+            setExpanded(shouldExpand);
+            if (shouldExpand) {
+                window.requestAnimationFrame(() => {
+                    scrollIntoView();
+                });
+            }
+        };
+
+        toggle.addEventListener('click', () => {
+            activate();
+        });
+
+        const header = toggle.parentElement;
+        if (header instanceof HTMLDivElement && header.classList.contains('settings-accordion-header')) {
+            header.addEventListener('click', (event) => {
+                const target = event.target;
+                if (!(target instanceof Element)) {
+                    return;
+                }
+
+                if (target.closest('.settings-tooltip') || target.closest('.settings-accordion-toggle')) {
+                    return;
+                }
+
+                activate();
+                toggle.focus();
+            });
+        }
+    };
+
     settingsLibraryDepthLabelInput.addEventListener('input', () => {
         setLibraryDepthStatusMessage('');
     });
@@ -553,25 +591,19 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         }
     });
 
-    settingsShortcutAccordionToggle.addEventListener('click', () => {
-        const shouldExpand = settingsShortcutAccordionPanel.hidden !== false;
-        setShortcutAccordionExpanded(shouldExpand);
-        if (shouldExpand) {
-            window.requestAnimationFrame(() => {
-                scrollShortcutAccordionIntoView();
-            });
-        }
-    });
+    bindAccordionHeaderToggle(
+        settingsShortcutAccordionToggle,
+        settingsShortcutAccordionPanel,
+        setShortcutAccordionExpanded,
+        scrollShortcutAccordionIntoView,
+    );
 
-    settingsCoverArtPriorityAccordionToggle.addEventListener('click', () => {
-        const shouldExpand = settingsCoverArtPriorityAccordionPanel.hidden !== false;
-        setCoverArtPriorityAccordionExpanded(shouldExpand);
-        if (shouldExpand) {
-            window.requestAnimationFrame(() => {
-                scrollCoverArtPriorityAccordionIntoView();
-            });
-        }
-    });
+    bindAccordionHeaderToggle(
+        settingsCoverArtPriorityAccordionToggle,
+        settingsCoverArtPriorityAccordionPanel,
+        setCoverArtPriorityAccordionExpanded,
+        scrollCoverArtPriorityAccordionIntoView,
+    );
 
     settingsPlayerCardLayout.addEventListener('change', () => {
         const layout = settingsPlayerCardLayout.value === 'release' ? 'release' : 'default';

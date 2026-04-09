@@ -918,7 +918,7 @@
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 0.7rem;
     background: rgba(255, 255, 255, 0.04);
-    overflow: hidden;
+    overflow: visible;
 }
 
 .settings-accordion.is-expanded {
@@ -927,9 +927,24 @@
     min-height: 0;
 }
 
+.settings-accordion-header {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    justify-content: flex-start;
+    padding-right: 0.9rem;
+}
+
+.settings-accordion.is-expanded .settings-accordion-header {
+    background: rgba(255, 255, 255, 0.04);
+}
+
 .settings-accordion-toggle {
-    width: 100%;
+    width: auto;
+    flex: 0 1 auto;
+    min-width: 0;
     box-sizing: border-box;
+    appearance: none;
     border: none;
     background: transparent;
     color: inherit;
@@ -940,22 +955,29 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    padding: 0.78rem 0.9rem;
+    padding: 0.78rem 0.4rem 0.78rem 0.9rem;
     cursor: pointer;
 }
 
 .settings-accordion-toggle::after {
-    content: '▸';
-    font-size: 0.78rem;
+    content: none;
+    display: none;
+}
+
+.settings-accordion-toggle-label {
+    min-width: 0;
+    line-height: 1.2;
+}
+
+.settings-accordion-toggle-icon {
+    flex: 0 0 auto;
     opacity: 0.72;
+    transform: rotate(0deg);
+    transition: transform 160ms ease;
 }
 
-.settings-accordion-toggle[aria-expanded='true'] {
-    background: rgba(255, 255, 255, 0.04);
-}
-
-.settings-accordion-toggle[aria-expanded='true']::after {
-    content: '▾';
+.settings-accordion-toggle[aria-expanded='true'] .settings-accordion-toggle-icon {
+    transform: rotate(90deg);
 }
 
 .settings-accordion-panel {
@@ -1003,17 +1025,124 @@
     gap: 0.42rem;
 }
 
+.settings-label-row {
+    display: flex;
+    align-items: center;
+    gap: 0.42rem;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.settings-checkbox-label-row {
+    display: inline-flex;
+    align-items: flex-start;
+    width: auto;
+}
+
 .settings-label {
     margin: 0;
     font-size: 0.82rem;
+    line-height: 1.2;
     opacity: 0.86;
 }
 
-.settings-checkbox-row {
+.settings-tooltip {
+    position: relative;
     display: inline-flex;
     align-items: center;
+    align-self: center;
+    flex: 0 0 auto;
+}
+
+.settings-tooltip-trigger {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.84);
+    line-height: 0;
+    cursor: help;
+}
+
+.settings-tooltip-trigger:hover {
+    color: rgba(255, 255, 255, 0.96);
+}
+
+.settings-tooltip-trigger:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24);
+    border-radius: 999px;
+}
+
+.settings-tooltip-icon {
+    display: block;
+    width: 0.92rem;
+    height: 0.92rem;
+    overflow: visible;
+}
+
+.settings-tooltip-bubble {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    left: 0;
+    min-width: 12rem;
+    max-width: min(22rem, calc(100vw - 4rem));
+    padding: 0.55rem 0.65rem;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 0.55rem;
+    background: rgba(10, 12, 18, 0.96);
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 0.74rem;
+    line-height: 1.4;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-0.15rem);
+    pointer-events: none;
+    z-index: 12;
+    transition: opacity 160ms ease, transform 160ms ease, visibility 0ms linear 160ms;
+}
+
+.settings-tooltip-bubble code {
+    font-size: 0.92em;
+}
+
+.settings-tooltip:hover .settings-tooltip-bubble,
+.settings-tooltip:focus-within .settings-tooltip-bubble {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    transition-delay: 0ms;
+}
+
+.settings-accordion-header .settings-tooltip {
+    margin-left: 0;
+}
+
+.settings-tooltip--end .settings-tooltip-bubble {
+    left: auto;
+    right: 0;
+}
+
+.settings-checkbox-row {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
     gap: 0.52rem;
+    min-width: 0;
     cursor: pointer;
+}
+
+.settings-checkbox-label-row .settings-checkbox-row {
+    flex: 0 1 auto;
+}
+
+.settings-checkbox-row .settings-label {
+    min-width: 0;
+    white-space: normal;
 }
 
 .settings-checkbox {

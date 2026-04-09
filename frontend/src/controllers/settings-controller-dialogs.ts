@@ -30,7 +30,7 @@ export type ScrobbleRuleDialogElements = {
     operator: HTMLSelectElement;
     valueLabel: HTMLLabelElement;
     value: HTMLInputElement;
-    hint: HTMLParagraphElement;
+    hint: HTMLElement;
     status: HTMLParagraphElement;
     cancel: HTMLButtonElement;
     confirm: HTMLButtonElement;
@@ -42,7 +42,7 @@ export type SendToActionDialogElements = {
     form: HTMLFormElement;
     titleInput: HTMLInputElement;
     scopeInput: HTMLSelectElement;
-    commandHint: HTMLParagraphElement;
+    commandHint: HTMLElement;
     commandInput: HTMLInputElement;
     status: HTMLParagraphElement;
     cancel: HTMLButtonElement;
@@ -384,7 +384,7 @@ export const openSendToActionDialog = (
 };
 
 export const applySendToCommandExamplesForPlatform = (
-    commandHint: HTMLParagraphElement,
+    commandHint: HTMLElement,
     commandInput: HTMLInputElement,
     isWindows: boolean,
     isMac: boolean,
