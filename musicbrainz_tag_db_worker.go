@@ -46,23 +46,24 @@ func musicBrainzTagSameDay(left time.Time, right time.Time) bool {
 
 func (a *App) musicBrainzTagDatabaseEnabled() bool {
 	a.ensureSettingsLoaded()
-	return a.settings.MusicBrainzTagDatabaseEnabled
+	return a.settingsState().settings.MusicBrainzTagDatabaseEnabled
 }
 
 func (a *App) musicBrainzTagStaleDays() int {
 	a.ensureSettingsLoaded()
-	return normalizeMusicBrainzTagStaleDays(a.settings.MusicBrainzTagStaleDays)
+	return normalizeMusicBrainzTagStaleDays(a.settingsState().settings.MusicBrainzTagStaleDays)
 }
 
 func (a *App) musicBrainzTagRequestStaggeringEnabled() bool {
 	a.ensureSettingsLoaded()
-	return a.settings.MusicBrainzTagRequestStaggeringEnabled && a.musicBrainzTagStaleDays() > 0
+	return a.settingsState().settings.MusicBrainzTagRequestStaggeringEnabled && a.musicBrainzTagStaleDays() > 0
 }
 
 func (a *App) musicBrainzTagReleaseDepthByRootPath() map[string]int {
 	a.ensureSettingsLoaded()
-	releaseDepthByRootPath := make(map[string]int, len(a.settings.LibraryFolders))
-	for _, folder := range a.settings.LibraryFolders {
+	settings := a.settingsState().settings
+	releaseDepthByRootPath := make(map[string]int, len(settings.LibraryFolders))
+	for _, folder := range settings.LibraryFolders {
 		normalizedPath, ok := absoluteNormalizedPath(folder.Path)
 		if !ok {
 			continue
@@ -75,15 +76,16 @@ func (a *App) musicBrainzTagReleaseDepthByRootPath() map[string]int {
 }
 
 func (a *App) musicBrainzTagLibraryTrackSnapshot() map[string]LibraryIndexedFile {
-	a.indexMu.Lock()
-	defer a.indexMu.Unlock()
+	contentState := a.libraryContentState()
+	contentState.indexMu.Lock()
+	defer contentState.indexMu.Unlock()
 
-	if len(a.trackByPath) == 0 {
+	if len(contentState.trackByPath) == 0 {
 		return nil
 	}
 
-	snapshot := make(map[string]LibraryIndexedFile, len(a.trackByPath))
-	for path, indexed := range a.trackByPath {
+	snapshot := make(map[string]LibraryIndexedFile, len(contentState.trackByPath))
+	for path, indexed := range contentState.trackByPath {
 		snapshot[path] = indexed
 	}
 
@@ -318,21 +320,24 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 func (a *App) setMusicBrainzTagWorkerProgress(progress MusicBrainzTagWorkerProgress) {
 	progress.Progress = clampMusicBrainzTagWorkerProgress(progress.Progress)
 
-	a.musicBrainzTagProgressMu.Lock()
-	changed := a.musicBrainzTagProgress != progress
-	a.musicBrainzTagProgress = progress
-	a.musicBrainzTagProgressMu.Unlock()
+	workerState := a.musicBrainzTagWorkerState()
+	workerState.progressMu.Lock()
+	changed := workerState.progress != progress
+	workerState.progress = progress
+	workerState.progressMu.Unlock()
 
-	if changed && a.ctx != nil {
-		runtimeEventsEmit(a.ctx, musicBrainzTagWorkerProgressEvent, progress)
+	runtimeState := a.runtimeState()
+	if changed && runtimeState.ctx != nil {
+		runtimeEventsEmit(runtimeState.ctx, musicBrainzTagWorkerProgressEvent, progress)
 	}
 }
 
 // GetMusicBrainzTagWorkerProgress returns the current MusicBrainz tag worker snapshot.
 func (a *App) GetMusicBrainzTagWorkerProgress() MusicBrainzTagWorkerProgress {
-	a.musicBrainzTagProgressMu.Lock()
-	progress := a.musicBrainzTagProgress
-	a.musicBrainzTagProgressMu.Unlock()
+	workerState := a.musicBrainzTagWorkerState()
+	workerState.progressMu.Lock()
+	progress := workerState.progress
+	workerState.progressMu.Unlock()
 
 	enabled := a.musicBrainzTagDatabaseEnabled()
 	if progress != (MusicBrainzTagWorkerProgress{}) || !enabled {
@@ -342,7 +347,7 @@ func (a *App) GetMusicBrainzTagWorkerProgress() MusicBrainzTagWorkerProgress {
 		return progress
 	}
 
-	state := a.buildMusicBrainzTagWorkerState(a.musicBrainzTagWorkGeneration.Load())
+	state := a.buildMusicBrainzTagWorkerState(workerState.generation.Load())
 	progress = state.progressSnapshot(true)
 	a.setMusicBrainzTagWorkerProgress(progress)
 	return progress
@@ -380,7 +385,7 @@ func (a *App) musicBrainzTagWorkerCount(jobCount int) int {
 	}
 
 	a.ensureSettingsLoaded()
-	workerCount := normalizeMusicBrainzTagWorkerCores(a.settings.MusicBrainzTagWorkerCores)
+	workerCount := normalizeMusicBrainzTagWorkerCores(a.settingsState().settings.MusicBrainzTagWorkerCores)
 	if workerCount > jobCount {
 		workerCount = jobCount
 	}
@@ -461,7 +466,7 @@ func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIn
 	}
 
 	a.ensureSettingsLoaded()
-	ffprobePath := resolveFFProbePath(a.settings.FFmpegPath)
+	ffprobePath := resolveFFProbePath(a.settingsState().settings.FFmpegPath)
 	releaseDepthByRootPath := a.musicBrainzTagReleaseDepthByRootPath()
 	workerCount := a.musicBrainzTagWorkerCount(len(paths))
 
@@ -596,30 +601,32 @@ func (a *App) processMusicBrainzTagEntityFetch(entityKey string) bool {
 }
 
 func (a *App) startMusicBrainzTagWorker() {
-	if a.musicBrainzTagWorkerWake != nil {
+	workerState := a.musicBrainzTagWorkerState()
+	if workerState.wakeCh != nil {
 		return
 	}
 
 	stopCh := make(chan struct{})
 	doneCh := make(chan struct{})
 	wakeCh := make(chan struct{}, 1)
-	a.musicBrainzTagWorkerStop = stopCh
-	a.musicBrainzTagWorkerDone = doneCh
-	a.musicBrainzTagWorkerWake = wakeCh
+	workerState.stopCh = stopCh
+	workerState.doneCh = doneCh
+	workerState.wakeCh = wakeCh
 
 	go a.musicBrainzTagWorkerLoop(stopCh, wakeCh, doneCh)
 }
 
 func (a *App) stopMusicBrainzTagWorker() {
-	stopCh := a.musicBrainzTagWorkerStop
-	doneCh := a.musicBrainzTagWorkerDone
+	workerState := a.musicBrainzTagWorkerState()
+	stopCh := workerState.stopCh
+	doneCh := workerState.doneCh
 	if stopCh == nil || doneCh == nil {
 		return
 	}
 
-	a.musicBrainzTagWorkerStop = nil
-	a.musicBrainzTagWorkerDone = nil
-	a.musicBrainzTagWorkerWake = nil
+	workerState.stopCh = nil
+	workerState.doneCh = nil
+	workerState.wakeCh = nil
 	close(stopCh)
 	select {
 	case <-doneCh:
@@ -630,13 +637,14 @@ func (a *App) stopMusicBrainzTagWorker() {
 }
 
 func (a *App) notifyMusicBrainzTagWorker() {
-	a.musicBrainzTagWorkGeneration.Add(1)
-	if a.musicBrainzTagWorkerWake == nil {
+	workerState := a.musicBrainzTagWorkerState()
+	workerState.generation.Add(1)
+	if workerState.wakeCh == nil {
 		return
 	}
 
 	select {
-	case a.musicBrainzTagWorkerWake <- struct{}{}:
+	case workerState.wakeCh <- struct{}{}:
 	default:
 	}
 }
@@ -663,7 +671,7 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 			}
 		}
 
-		currentGeneration := a.musicBrainzTagWorkGeneration.Load()
+		currentGeneration := a.musicBrainzTagWorkerState().generation.Load()
 		if state.generation != currentGeneration {
 			state = a.buildMusicBrainzTagWorkerState(currentGeneration)
 			a.setMusicBrainzTagWorkerProgress(state.progressSnapshot(true))

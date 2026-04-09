@@ -42,7 +42,8 @@ func sanitizeShareImageFilename(defaultFilename string) string {
 
 // SelectLibraryFolder opens a directory picker and returns the selected library path.
 func (a *App) SelectLibraryFolder() string {
-	selectedPath, err := runtimeOpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+	runtimeState := a.runtimeState()
+	selectedPath, err := runtimeOpenDirectoryDialog(runtimeState.ctx, runtime.OpenDialogOptions{
 		Title: "Select Music Library Folder",
 	})
 	if err != nil {
@@ -54,7 +55,8 @@ func (a *App) SelectLibraryFolder() string {
 
 // SelectPlaylistFile opens a file picker and returns a selected M3U/M3U8 playlist path.
 func (a *App) SelectPlaylistFile() string {
-	selectedPath, err := runtimeOpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+	runtimeState := a.runtimeState()
+	selectedPath, err := runtimeOpenFileDialog(runtimeState.ctx, runtime.OpenDialogOptions{
 		Title: "Select Playlist File",
 		Filters: []runtime.FileFilter{{
 			DisplayName: "Playlists",
@@ -70,7 +72,8 @@ func (a *App) SelectPlaylistFile() string {
 
 // SelectPlaylistSaveFile opens a save dialog and returns a target M3U/M3U8 path.
 func (a *App) SelectPlaylistSaveFile() string {
-	selectedPath, err := runtimeSaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+	runtimeState := a.runtimeState()
+	selectedPath, err := runtimeSaveFileDialog(runtimeState.ctx, runtime.SaveDialogOptions{
 		Title:           "Save Playlist As",
 		DefaultFilename: "playlist.m3u8",
 		Filters: []runtime.FileFilter{{
@@ -97,7 +100,8 @@ func (a *App) SelectPlaylistSaveFile() string {
 
 // SelectShareImageSaveFile opens a save dialog and returns a target PNG path for the current share image.
 func (a *App) SelectShareImageSaveFile(defaultFilename string) string {
-	selectedPath, err := runtimeSaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+	runtimeState := a.runtimeState()
+	selectedPath, err := runtimeSaveFileDialog(runtimeState.ctx, runtime.SaveDialogOptions{
 		Title:           "Save Share Image As",
 		DefaultFilename: sanitizeShareImageFilename(defaultFilename),
 		Filters: []runtime.FileFilter{{
@@ -123,6 +127,7 @@ func (a *App) SelectShareImageSaveFile(defaultFilename string) string {
 
 // ShowErrorDialog displays an application error dialog with the provided title and message.
 func (a *App) ShowErrorDialog(title string, message string) {
+	runtimeState := a.runtimeState()
 	cleanTitle := strings.TrimSpace(title)
 	if cleanTitle == "" {
 		cleanTitle = "Error"
@@ -133,7 +138,7 @@ func (a *App) ShowErrorDialog(title string, message string) {
 		cleanMessage = "An unexpected error occurred."
 	}
 
-	_, _ = runtimeMessageDialog(a.ctx, runtime.MessageDialogOptions{
+	_, _ = runtimeMessageDialog(runtimeState.ctx, runtime.MessageDialogOptions{
 		Type:    runtime.ErrorDialog,
 		Title:   cleanTitle,
 		Message: cleanMessage,

@@ -31,11 +31,11 @@ func TestLastFmHelpersAndSocialFeeds(t *testing.T) {
 		t.Fatalf("lastFmAuthCredentials() = (%q, %q, %v), want trimmed credentials", key, secret, err)
 	}
 
-	app := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"}}
+	app := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"})
 	if key, session, err := app.lastFmSessionCredentials(); err != nil || key != "key" || session != "session" {
 		t.Fatalf("lastFmSessionCredentials() = (%q, %q, %v), want stored credentials", key, session, err)
 	}
-	if _, _, err := (&App{settingsLoaded: true}).lastFmSessionCredentials(); err == nil {
+	if _, _, err := newTestAppWithSettingsLoaded().lastFmSessionCredentials(); err == nil {
 		t.Fatal("lastFmSessionCredentials(missing) error = nil, want error")
 	}
 
@@ -80,7 +80,7 @@ func TestLastFmHelpersAndSocialFeeds(t *testing.T) {
 		t.Fatalf("callLastFmReadAPI(error) = %v, want parsed message", err)
 	}
 
-	feedApp := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"}}
+	feedApp := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"})
 	following, err := feedApp.GetLastFmFollowing()
 	if err != nil {
 		t.Fatalf("GetLastFmFollowing() error = %v", err)
@@ -161,7 +161,7 @@ func TestLastFmAPIAndSocialEdgeCases(t *testing.T) {
 	defer feedServer.Close()
 	lastFmAPIBaseURL = feedServer.URL
 
-	app := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"}}
+	app := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"})
 	events, err := app.GetLastFmFollowingFeed(1)
 	if err != nil {
 		t.Fatalf("GetLastFmFollowingFeed(edge cases) error = %v", err)
@@ -203,7 +203,7 @@ func TestLastFmSessionAndFollowingErrorCases(t *testing.T) {
 	}))
 	defer infoErrorServer.Close()
 	lastFmAPIBaseURL = infoErrorServer.URL
-	app := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"}}
+	app := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"})
 	if _, err := app.GetLastFmFollowing(); err == nil || err.Error() != "last.fm user info response did not include a username" {
 		t.Fatalf("GetLastFmFollowing(missing username) = %v, want missing-username error", err)
 	}
@@ -253,12 +253,12 @@ func TestLastFmHelperAndSubmissionEdgeCases(t *testing.T) {
 	if !dedupApp.shouldSkipLastFmDuplicateScrobble(metadata, 1710000000) {
 		t.Fatal("second shouldSkipLastFmDuplicateScrobble() = false, want true")
 	}
-	dedupApp.lastFmScrobbleMu.Lock()
-	for key, entry := range dedupApp.lastFmRecentScrobbles {
+	dedupApp.scrobble.lastFmScrobbleMu.Lock()
+	for key, entry := range dedupApp.scrobble.lastFmRecentScrobbles {
 		entry.seenAt = time.Now().Add(-lastFmDuplicateScrobbleWindow - time.Second)
-		dedupApp.lastFmRecentScrobbles[key] = entry
+		dedupApp.scrobble.lastFmRecentScrobbles[key] = entry
 	}
-	dedupApp.lastFmScrobbleMu.Unlock()
+	dedupApp.scrobble.lastFmScrobbleMu.Unlock()
 	if dedupApp.shouldSkipLastFmDuplicateScrobble(metadata, 1710000100) {
 		t.Fatal("expired last.fm duplicate should not be skipped")
 	}
@@ -281,7 +281,7 @@ func TestLastFmHelperAndSubmissionEdgeCases(t *testing.T) {
 		t.Fatalf("GetLastFmRequestToken(failed without message) = %v, want generic failure", err)
 	}
 
-	loveApp := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"}}
+	loveApp := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"})
 	invalidLoveServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		_, _ = writer.Write([]byte(`not xml`))
 	}))
@@ -313,7 +313,7 @@ func TestLastFmHelperAndSubmissionEdgeCases(t *testing.T) {
 	}))
 	defer feedSkipServer.Close()
 	lastFmAPIBaseURL = feedSkipServer.URL
-	feedApp := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "api-key", LastFmSessionKey: "session"}}
+	feedApp := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "api-key", LastFmSessionKey: "session"})
 	events, err := feedApp.GetLastFmFollowingFeed(10)
 	if err != nil {
 		t.Fatalf("GetLastFmFollowingFeed(skip errors) error = %v", err)
@@ -342,7 +342,7 @@ func TestLastFmRequestValidationAndTransportBranches(t *testing.T) {
 	if _, err := (&App{}).GetLastFmSessionKey("api-key", "shared-secret", "request-token"); err == nil {
 		t.Fatal("GetLastFmSessionKey(invalid url) error = nil, want error")
 	}
-	invalidSubmitApp := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"}}
+	invalidSubmitApp := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"})
 	if err := invalidSubmitApp.SubmitLastFmLove(LastFmTrackMetadata{ArtistName: "Artist", TrackName: "Track"}); err == nil {
 		t.Fatal("SubmitLastFmLove(invalid url) error = nil, want error")
 	}
@@ -392,7 +392,7 @@ func TestLastFmSubmitAndSocialValidationBranches(t *testing.T) {
 		lastFmAPIBaseURL = originalBaseURL
 	})
 
-	missingCredentialApp := &App{settingsLoaded: true}
+	missingCredentialApp := newTestAppWithSettingsLoaded()
 	if err := missingCredentialApp.SubmitLastFmLove(LastFmTrackMetadata{ArtistName: "Artist", TrackName: "Track"}); err == nil || err.Error() != "last.fm scrobbling requires an API key, shared secret, and session key" {
 		t.Fatalf("SubmitLastFmLove(missing credentials) = %v, want credentials-required error", err)
 	}
@@ -400,7 +400,7 @@ func TestLastFmSubmitAndSocialValidationBranches(t *testing.T) {
 		t.Fatalf("SubmitLastFmUnlove(missing credentials) = %v, want credentials-required error", err)
 	}
 
-	app := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"}}
+	app := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"})
 	if err := app.SubmitLastFm("single", LastFmTrackMetadata{}, 1710000000); err == nil || err.Error() != "artist name and track name are required for Last.fm submissions" {
 		t.Fatalf("SubmitLastFm(missing metadata) = %v, want metadata-required error", err)
 	}
@@ -409,7 +409,7 @@ func TestLastFmSubmitAndSocialValidationBranches(t *testing.T) {
 	}
 
 	duplicateMetadata := LastFmTrackMetadata{ArtistName: "Artist", TrackName: "Track", ReleaseName: "Album"}
-	app.lastFmRecentScrobbles = map[string]lastFmScrobbleDedupEntry{
+	app.scrobble.lastFmRecentScrobbles = map[string]lastFmScrobbleDedupEntry{
 		lastFmScrobbleFingerprint(duplicateMetadata): {
 			seenAt:     time.Now(),
 			listenedAt: time.Now().Unix(),
@@ -429,7 +429,7 @@ func TestLastFmSubmitAndSocialValidationBranches(t *testing.T) {
 		t.Fatalf("SubmitLastFm(single duplicate with zero timestamp) requestCount = %d, want 0", requestCount)
 	}
 
-	missingTrackApp := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"}}
+	missingTrackApp := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"})
 	if err := missingTrackApp.SubmitLastFmLove(LastFmTrackMetadata{ArtistName: "Artist"}); err == nil || err.Error() != "artist name and track name are required for Last.fm love submissions" {
 		t.Fatalf("SubmitLastFmLove(missing track) = %v, want metadata-required error", err)
 	}
@@ -437,10 +437,10 @@ func TestLastFmSubmitAndSocialValidationBranches(t *testing.T) {
 		t.Fatalf("SubmitLastFmUnlove(missing track) = %v, want metadata-required error", err)
 	}
 
-	if _, err := (&App{settingsLoaded: true}).GetLastFmFollowing(); err == nil || err.Error() != "last.fm social feed requires an API key and session key" {
+	if _, err := newTestAppWithSettingsLoaded().GetLastFmFollowing(); err == nil || err.Error() != "last.fm social feed requires an API key and session key" {
 		t.Fatalf("GetLastFmFollowing(missing credentials) = %v, want credentials-required error", err)
 	}
-	if _, err := (&App{settingsLoaded: true}).GetLastFmFollowingFeed(5); err == nil || err.Error() != "last.fm social feed requires an API key and session key" {
+	if _, err := newTestAppWithSettingsLoaded().GetLastFmFollowingFeed(5); err == nil || err.Error() != "last.fm social feed requires an API key and session key" {
 		t.Fatalf("GetLastFmFollowingFeed(missing credentials) = %v, want credentials-required error", err)
 	}
 
@@ -454,7 +454,7 @@ func TestLastFmSubmitAndSocialValidationBranches(t *testing.T) {
 	}))
 	defer infoErrorServer.Close()
 	lastFmAPIBaseURL = infoErrorServer.URL
-	socialApp := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"}}
+	socialApp := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"})
 	if _, err := socialApp.GetLastFmFollowing(); err == nil || err.Error() != "info failed" {
 		t.Fatalf("GetLastFmFollowing(info error) = %v, want parsed error", err)
 	}
@@ -554,7 +554,7 @@ func TestLastFmAdditionalFallbackTransportAndFeedBranches(t *testing.T) {
 		t.Fatalf("GetLastFmSessionKey(failed with message) = %v, want parsed error message", err)
 	}
 
-	preferenceApp := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"}}
+	preferenceApp := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "api-key", LastFmAPISecret: "shared-secret", LastFmSessionKey: "session-key"})
 	lastFmAPIBaseURL = "http://127.0.0.1:1"
 	if err := preferenceApp.SubmitLastFmLove(LastFmTrackMetadata{ArtistName: "Artist", TrackName: "Track"}); err == nil {
 		t.Fatal("SubmitLastFmLove(do error) error = nil, want error")
@@ -589,7 +589,7 @@ func TestLastFmAdditionalFallbackTransportAndFeedBranches(t *testing.T) {
 	}))
 	defer invalidInfoServer.Close()
 	lastFmAPIBaseURL = invalidInfoServer.URL
-	socialApp := &App{settingsLoaded: true, settings: AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"}}
+	socialApp := newTestAppWithLoadedSettings(AppSettings{LastFmAPIKey: "key", LastFmSessionKey: "session"})
 	if _, err := socialApp.GetLastFmFollowing(); err == nil || err.Error() != "invalid last.fm user info response" {
 		t.Fatalf("GetLastFmFollowing(invalid user info json) = %v, want invalid-user-info error", err)
 	}

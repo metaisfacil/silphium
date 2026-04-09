@@ -1,5 +1,5 @@
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, MusicBrainzTagWorkerProgress, ScrobbleRule, ScrobbleRuleOperator } from '../types/app-types';
+import type { AudioOutputDevice, CoverArtPrioritySource, MusicBrainzTagWorkerProgress, ScrobbleRuleOperator } from '../types/app-types';
 import { normalizeLibraryFolders, normalizeScrobbleRules } from '../utils/main-helpers';
 import { normalizeLissajousScale } from '../utils/settings-normalization';
 import { normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
@@ -31,7 +31,7 @@ import {
     renderMusicBrainzTagWorkerProgressUI,
     renderScrobbleRuleList,
 } from './settings-controller-rendering';
-import { allCoverArtPrioritySources, defaultCoverArtPriority } from './settings-controller-types';
+import { createSettingsControllerState } from './settings-controller-types';
 import type { LibraryFolderDialogValues, ScrobbleRuleDialogValues, SendToActionDialogValues, SettingsControllerOptions, SettingsFormValues, SettingsPrimaryTab, SettingsTab } from './settings-controller-types';
 import {
     normalizeAudioOutputBufferMs,
@@ -180,43 +180,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const isWindowsRuntime = options.isWindows ?? false;
     const isMacRuntime = options.isMac ?? false;
     const isLinuxRuntime = options.isLinux ?? false;
+    const controllerState = options.state ?? createSettingsControllerState();
     let hideTimer: number | undefined;
     let settingsStatusFadeTimer: number | undefined;
     let shortcutAccordionHideTimer: number | undefined;
     let coverArtPriorityAccordionHideTimer: number | undefined;
-
-    let favoritePlaylists: string[] = [];
-    let selectedFavoritePlaylistIndex = -1;
-    let scrobbleRules: ScrobbleRule[] = [];
-    let selectedScrobbleRuleIndex = -1;
-    let customSendToActions: CustomSendToAction[] = [];
-    let selectedCustomSendToActionIndex = -1;
-    let lastCustomSendToActionClickIndex = -1;
-    let lastCustomSendToActionClickAt = Number.NEGATIVE_INFINITY;
-    let lastScrobbleRuleClickIndex = -1;
-    let lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
-    let libraryFolders: AppLibraryFolder[] = [];
-    let selectedLibraryFolderIndex = -1;
-    let lastLibraryFolderClickIndex = -1;
-    let lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
-    let forceReloadInProgress = false;
-    let lastFmSessionFetchInProgress = false;
-    let forceReloadEtaSeconds: number | null = null;
-    let audioOutputDevices: AudioOutputDevice[] = [];
-    let coverArtPriority: CoverArtPrioritySource[] = [...defaultCoverArtPriority];
-    let coverArtPriorityOrder: CoverArtPrioritySource[] = [...allCoverArtPrioritySources];
-    let draggedCoverPriorityIndex = -1;
-    let musicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress = {
-        enabled: false,
-        active: false,
-        progress: 0,
-        pendingTrackScans: 0,
-        totalTrackScans: 0,
-        completedTrackScans: 0,
-        pendingEntityLookups: 0,
-        totalEntityLookups: 0,
-        completedEntityLookups: 0,
-    };
     const libraryFolderRepeatClickWindowMs = 400;
 
     // Dialog state
@@ -307,7 +275,12 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     );
 
     const renderMusicBrainzTagWorkerProgress = (value: MusicBrainzTagWorkerProgress): void => {
-        musicBrainzTagWorkerProgress = renderMusicBrainzTagWorkerProgressUI(value, mbProgressCtx, musicBrainzTagWorkerProgress, mbProgressEta);
+        controllerState.musicBrainzTagWorkerProgress = renderMusicBrainzTagWorkerProgressUI(
+            value,
+            mbProgressCtx,
+            controllerState.musicBrainzTagWorkerProgress,
+            mbProgressEta,
+        );
     };
 
     const {
@@ -376,27 +349,32 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             dialogTimers.settingsLibraryDepthStatusFadeTimer = value;
         },
         get forceReloadInProgress() {
-            return forceReloadInProgress;
+            return controllerState.forceReloadInProgress;
         },
         set forceReloadInProgress(value) {
-            forceReloadInProgress = value;
+            controllerState.forceReloadInProgress = value;
         },
         get forceReloadEtaSeconds() {
-            return forceReloadEtaSeconds;
+            return controllerState.forceReloadEtaSeconds;
         },
         set forceReloadEtaSeconds(value) {
-            forceReloadEtaSeconds = value;
+            controllerState.forceReloadEtaSeconds = value;
         },
         get lastFmSessionFetchInProgress() {
-            return lastFmSessionFetchInProgress;
+            return controllerState.lastFmSessionFetchInProgress;
         },
         set lastFmSessionFetchInProgress(value) {
-            lastFmSessionFetchInProgress = value;
+            controllerState.lastFmSessionFetchInProgress = value;
         },
     });
 
     const moveCoverArtPriority = (fromIndex: number, toIndex: number): void => {
-        if (fromIndex < 0 || toIndex < 0 || fromIndex >= coverArtPriorityOrder.length || toIndex >= coverArtPriorityOrder.length) {
+        if (
+            fromIndex < 0
+            || toIndex < 0
+            || fromIndex >= controllerState.coverArtPriorityOrder.length
+            || toIndex >= controllerState.coverArtPriorityOrder.length
+        ) {
             return;
         }
 
@@ -404,27 +382,27 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
 
-        const next = coverArtPriorityOrder.slice();
+        const next = controllerState.coverArtPriorityOrder.slice();
         const [moved] = next.splice(fromIndex, 1);
         next.splice(toIndex, 0, moved);
-        coverArtPriorityOrder = normalizeCoverArtPriorityOrder(next);
-        const enabled = new Set<CoverArtPrioritySource>(coverArtPriority);
-        coverArtPriority = coverArtPriorityOrder.filter((source) => enabled.has(source));
+        controllerState.coverArtPriorityOrder = normalizeCoverArtPriorityOrder(next);
+        const enabled = new Set<CoverArtPrioritySource>(controllerState.coverArtPriority);
+        controllerState.coverArtPriority = controllerState.coverArtPriorityOrder.filter((source) => enabled.has(source));
     };
 
     const setCoverArtPrioritySourceEnabled = (source: CoverArtPrioritySource, enabled: boolean): void => {
-        const nextEnabled = new Set<CoverArtPrioritySource>(coverArtPriority);
+        const nextEnabled = new Set<CoverArtPrioritySource>(controllerState.coverArtPriority);
         if (enabled) {
             nextEnabled.add(source);
         } else {
             nextEnabled.delete(source);
         }
 
-        coverArtPriority = coverArtPriorityOrder.filter((candidate) => nextEnabled.has(candidate));
+        controllerState.coverArtPriority = controllerState.coverArtPriorityOrder.filter((candidate) => nextEnabled.has(candidate));
     };
 
     const clearCoverArtDragState = (): void => {
-        draggedCoverPriorityIndex = -1;
+        controllerState.draggedCoverPriorityIndex = -1;
         settingsCoverArtPriorityListElement.classList.remove('is-dragging');
         settingsCoverArtPriorityListElement.querySelectorAll('.is-drop-target').forEach((node) => {
             node.classList.remove('is-drop-target');
@@ -432,43 +410,67 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     };
 
     const doRenderLibraryFolderList = (): void => {
-        renderLibraryFolderList(settingsLibraryFolderList, settingsRemoveLibraryFolder, libraryFolders, selectedLibraryFolderIndex);
+        renderLibraryFolderList(
+            settingsLibraryFolderList,
+            settingsRemoveLibraryFolder,
+            controllerState.libraryFolders,
+            controllerState.selectedLibraryFolderIndex,
+        );
     };
 
     const doRenderFavoritePlaylistList = (): void => {
-        renderFavoritePlaylistList(settingsFavoritePlaylistList, settingsRemoveFavoritePlaylist, favoritePlaylists, selectedFavoritePlaylistIndex);
+        renderFavoritePlaylistList(
+            settingsFavoritePlaylistList,
+            settingsRemoveFavoritePlaylist,
+            controllerState.favoritePlaylists,
+            controllerState.selectedFavoritePlaylistIndex,
+        );
     };
 
     const doRenderScrobbleRuleList = (): void => {
-        renderScrobbleRuleList(settingsScrobbleRuleList, settingsRemoveScrobbleRule, scrobbleRules, selectedScrobbleRuleIndex);
+        renderScrobbleRuleList(
+            settingsScrobbleRuleList,
+            settingsRemoveScrobbleRule,
+            controllerState.scrobbleRules,
+            controllerState.selectedScrobbleRuleIndex,
+        );
     };
 
     const doRenderCustomSendToActionList = (): void => {
-        renderCustomSendToActionList(settingsSendToActionList, settingsRemoveSendToAction, customSendToActions, selectedCustomSendToActionIndex);
+        renderCustomSendToActionList(
+            settingsSendToActionList,
+            settingsRemoveSendToAction,
+            controllerState.customSendToActions,
+            controllerState.selectedCustomSendToActionIndex,
+        );
     };
 
     const doRenderCoverArtPriorityList = (): void => {
-        renderCoverArtPriorityList(settingsCoverArtPriorityListElement, coverArtPriority, coverArtPriorityOrder);
+        renderCoverArtPriorityList(
+            settingsCoverArtPriorityListElement,
+            controllerState.coverArtPriority,
+            controllerState.coverArtPriorityOrder,
+        );
     };
 
     const setSelectedLibraryFolderIndex = (nextIndex: number): void => {
-        if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= libraryFolders.length) {
-            selectedLibraryFolderIndex = -1;
+        if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= controllerState.libraryFolders.length) {
+            controllerState.selectedLibraryFolderIndex = -1;
         } else {
-            selectedLibraryFolderIndex = nextIndex;
+            controllerState.selectedLibraryFolderIndex = nextIndex;
         }
 
         doRenderLibraryFolderList();
     };
 
     const setSelectedCustomSendToActionIndex = (nextIndex: number): void => {
-        selectedCustomSendToActionIndex = nextIndex >= 0 && nextIndex < customSendToActions.length ? nextIndex : -1;
+        controllerState.selectedCustomSendToActionIndex = nextIndex >= 0 && nextIndex < controllerState.customSendToActions.length ? nextIndex : -1;
         doRenderCustomSendToActionList();
     };
 
     const refreshAudioOutputDevices = (devices: AudioOutputDevice[], selectedDevice: string): void => {
-        audioOutputDevices = Array.isArray(devices) ? devices.slice() : [];
-        renderAudioOutputDeviceOptions(settingsAudioOutputDevice, audioOutputDevices, selectedDevice);
+        controllerState.audioOutputDevices = Array.isArray(devices) ? devices.slice() : [];
+        renderAudioOutputDeviceOptions(settingsAudioOutputDevice, controllerState.audioOutputDevices, selectedDevice);
     };
 
     const formatLissajousScaleValue = (scale: number): string => `${Math.round(scale * 100)}%`;
@@ -542,20 +544,20 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     });
 
     const buildFormValues = (): SettingsFormValues => ({
-        libraryFolders: libraryFolders.map((folder) => ({ ...folder })),
+        libraryFolders: controllerState.libraryFolders.map((folder) => ({ ...folder })),
         ffmpegPath: settingsFFmpegPath.value,
         listenBrainzUserToken: settingsListenBrainzToken.value,
         lastFmApiKey: settingsLastFmApiKey.value,
         lastFmApiSecret: settingsLastFmApiSecret.value,
         lastFmSessionKey: settingsLastFmSessionKey.value,
         scrobbleFilterMode: settingsScrobbleFilterMode.value === 'whitelist' ? 'whitelist' : 'blacklist',
-        scrobbleRules: normalizeScrobbleRules(scrobbleRules).map((rule) => ({ ...rule })),
+        scrobbleRules: normalizeScrobbleRules(controllerState.scrobbleRules).map((rule) => ({ ...rule })),
         musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
         musicBrainzRequestRateMs: normalizedMusicBrainzRequestRateMs(),
         listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
         listenBrainzRequestRateMs: normalizedListenBrainzRequestRateMs(),
-        favoritePlaylists: favoritePlaylists.slice(),
-        coverArtPriority: coverArtPriority.slice(),
+        favoritePlaylists: controllerState.favoritePlaylists.slice(),
+        coverArtPriority: controllerState.coverArtPriority.slice(),
         audioOutputDevice: settingsAudioOutputDevice.value || 'default',
         audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
         gaplessPlayback: settingsGaplessPlayback.checked,
@@ -572,7 +574,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         equalizerPosition: settingsEqualizerPosition.value === 'top' ? 'top' : 'bottom',
         uiDitheringEnabled: settingsUiDitheringEnabled.checked,
         minimizeToTrayOnClose: settingsMinimizeToTrayOnClose.checked,
-        customSendToActions: normalizeCustomSendToActions(customSendToActions).map((action) => ({ ...action })),
+        customSendToActions: normalizeCustomSendToActions(controllerState.customSendToActions).map((action) => ({ ...action })),
         keyboardShortcuts: getShortcutValues(),
     });
 
@@ -601,7 +603,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     };
 
     const editCustomSendToAction = async (index: number): Promise<boolean> => {
-        const action = customSendToActions[index];
+        const action = controllerState.customSendToActions[index];
         if (!action) {
             return false;
         }
@@ -611,13 +613,13 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return false;
         }
 
-        customSendToActions[index] = {
+        controllerState.customSendToActions[index] = {
             title: nextValues.title,
             scope: nextValues.scope,
             commandTemplate: nextValues.commandTemplate,
         };
-        customSendToActions = normalizeCustomSendToActions(customSendToActions);
-        selectedCustomSendToActionIndex = customSendToActions.findIndex((candidate) => (
+        controllerState.customSendToActions = normalizeCustomSendToActions(controllerState.customSendToActions);
+        controllerState.selectedCustomSendToActionIndex = controllerState.customSendToActions.findIndex((candidate) => (
             candidate.title === nextValues.title
                 && candidate.scope === nextValues.scope
                 && candidate.commandTemplate === nextValues.commandTemplate
@@ -628,7 +630,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     };
 
     const editScrobbleRule = async (index: number): Promise<boolean> => {
-        const rule = scrobbleRules[index];
+        const rule = controllerState.scrobbleRules[index];
         if (!rule) {
             return false;
         }
@@ -638,15 +640,15 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return false;
         }
 
-        scrobbleRules[index] = { ...nextValues };
-        selectedScrobbleRuleIndex = index;
+        controllerState.scrobbleRules[index] = { ...nextValues };
+        controllerState.selectedScrobbleRuleIndex = index;
         doRenderScrobbleRuleList();
         settingsScrobbleRuleList.focus();
         return true;
     };
 
     const editLibraryFolderSettings = async (index: number): Promise<boolean> => {
-        const folder = libraryFolders[index];
+        const folder = controllerState.libraryFolders[index];
         if (!folder) {
             return false;
         }
@@ -668,12 +670,12 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         doCloseScrobbleRuleDialog(null, false, true);
         doCloseSendToActionDialog(null, false, true);
         settingsModal.classList.remove('is-visible');
-        lastLibraryFolderClickIndex = -1;
-        lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
-        lastScrobbleRuleClickIndex = -1;
-        lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
-        lastCustomSendToActionClickIndex = -1;
-        lastCustomSendToActionClickAt = Number.NEGATIVE_INFINITY;
+        controllerState.lastLibraryFolderClickIndex = -1;
+        controllerState.lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
+        controllerState.lastScrobbleRuleClickIndex = -1;
+        controllerState.lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
+        controllerState.lastCustomSendToActionClickIndex = -1;
+        controllerState.lastCustomSendToActionClickAt = Number.NEGATIVE_INFINITY;
 
         if (hideTimer !== undefined) {
             window.clearTimeout(hideTimer);
@@ -704,14 +706,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         }
 
         const values = options.getValues();
-        libraryFolders = normalizeLibraryFolders(values.libraryFolders);
+        controllerState.libraryFolders = normalizeLibraryFolders(values.libraryFolders);
         settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         settingsLastFmApiKey.value = values.lastFmApiKey || '';
         settingsLastFmApiSecret.value = values.lastFmApiSecret || '';
         settingsLastFmSessionKey.value = values.lastFmSessionKey || '';
         settingsScrobbleFilterMode.value = values.scrobbleFilterMode === 'whitelist' ? 'whitelist' : 'blacklist';
-        scrobbleRules = normalizeScrobbleRules(values.scrobbleRules);
+        controllerState.scrobbleRules = normalizeScrobbleRules(values.scrobbleRules);
         settingsMusicBrainzServerUrl.value = values.musicBrainzServerUrl || '';
         settingsMusicBrainzRequestRateMs.value = values.musicBrainzRequestRateMs > 0 ? String(values.musicBrainzRequestRateMs) : '';
         settingsListenBrainzServerUrl.value = values.listenBrainzServerUrl || '';
@@ -739,26 +741,26 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         renderMusicBrainzTagWorkerProgress(values.musicBrainzTagWorkerProgress);
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
-        favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
-        customSendToActions = normalizeCustomSendToActions(values.customSendToActions || []);
-        coverArtPriority = normalizeCoverArtPriority(values.coverArtPriority);
-        coverArtPriorityOrder = normalizeCoverArtPriorityOrder(values.coverArtPriority);
-        selectedLibraryFolderIndex = libraryFolders.length > 0 ? 0 : -1;
-        selectedFavoritePlaylistIndex = -1;
-        selectedScrobbleRuleIndex = -1;
-        selectedCustomSendToActionIndex = -1;
-        lastLibraryFolderClickIndex = -1;
-        lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
-        lastScrobbleRuleClickIndex = -1;
-        lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
-        lastCustomSendToActionClickIndex = -1;
-        lastCustomSendToActionClickAt = Number.NEGATIVE_INFINITY;
+        controllerState.favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
+        controllerState.customSendToActions = normalizeCustomSendToActions(values.customSendToActions || []);
+        controllerState.coverArtPriority = normalizeCoverArtPriority(values.coverArtPriority);
+        controllerState.coverArtPriorityOrder = normalizeCoverArtPriorityOrder(values.coverArtPriority);
+        controllerState.selectedLibraryFolderIndex = controllerState.libraryFolders.length > 0 ? 0 : -1;
+        controllerState.selectedFavoritePlaylistIndex = -1;
+        controllerState.selectedScrobbleRuleIndex = -1;
+        controllerState.selectedCustomSendToActionIndex = -1;
+        controllerState.lastLibraryFolderClickIndex = -1;
+        controllerState.lastLibraryFolderClickAt = Number.NEGATIVE_INFINITY;
+        controllerState.lastScrobbleRuleClickIndex = -1;
+        controllerState.lastScrobbleRuleClickAt = Number.NEGATIVE_INFINITY;
+        controllerState.lastCustomSendToActionClickIndex = -1;
+        controllerState.lastCustomSendToActionClickAt = Number.NEGATIVE_INFINITY;
         doRenderLibraryFolderList();
         doRenderFavoritePlaylistList();
         doRenderScrobbleRuleList();
         doRenderCustomSendToActionList();
         doRenderCoverArtPriorityList();
-        if (forceReloadInProgress) {
+        if (controllerState.forceReloadInProgress) {
             refreshForceReloadStatus();
         } else {
             setSettingsStatusMessage('');
@@ -782,7 +784,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
                 settingsFFmpegPath.focus();
                 return;
             }
-            if (libraryFolders.length > 0) {
+            if (controllerState.libraryFolders.length > 0) {
                 settingsLibraryFolderList.focus();
                 return;
             }
@@ -831,7 +833,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     setShortcutAccordionExpanded(false, false);
     setCoverArtPriorityAccordionExpanded(false, false);
-    renderMusicBrainzTagWorkerProgress(musicBrainzTagWorkerProgress);
+    renderMusicBrainzTagWorkerProgress(controllerState.musicBrainzTagWorkerProgress);
     refreshLastFmSessionFetchButton();
     refreshEqualizerPositionControls();
 
@@ -841,118 +843,118 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         libraryFolderRepeatClickWindowMs,
         settingsTabScrollStepPx,
         get libraryFolders() {
-            return libraryFolders;
+            return controllerState.libraryFolders;
         },
         set libraryFolders(value) {
-            libraryFolders = value;
+            controllerState.libraryFolders = value;
         },
         get selectedLibraryFolderIndex() {
-            return selectedLibraryFolderIndex;
+            return controllerState.selectedLibraryFolderIndex;
         },
         set selectedLibraryFolderIndex(value) {
-            selectedLibraryFolderIndex = value;
+            controllerState.selectedLibraryFolderIndex = value;
         },
         get lastLibraryFolderClickIndex() {
-            return lastLibraryFolderClickIndex;
+            return controllerState.lastLibraryFolderClickIndex;
         },
         set lastLibraryFolderClickIndex(value) {
-            lastLibraryFolderClickIndex = value;
+            controllerState.lastLibraryFolderClickIndex = value;
         },
         get lastLibraryFolderClickAt() {
-            return lastLibraryFolderClickAt;
+            return controllerState.lastLibraryFolderClickAt;
         },
         set lastLibraryFolderClickAt(value) {
-            lastLibraryFolderClickAt = value;
+            controllerState.lastLibraryFolderClickAt = value;
         },
         get favoritePlaylists() {
-            return favoritePlaylists;
+            return controllerState.favoritePlaylists;
         },
         set favoritePlaylists(value) {
-            favoritePlaylists = value;
+            controllerState.favoritePlaylists = value;
         },
         get selectedFavoritePlaylistIndex() {
-            return selectedFavoritePlaylistIndex;
+            return controllerState.selectedFavoritePlaylistIndex;
         },
         set selectedFavoritePlaylistIndex(value) {
-            selectedFavoritePlaylistIndex = value;
+            controllerState.selectedFavoritePlaylistIndex = value;
         },
         get scrobbleRules() {
-            return scrobbleRules;
+            return controllerState.scrobbleRules;
         },
         set scrobbleRules(value) {
-            scrobbleRules = value;
+            controllerState.scrobbleRules = value;
         },
         get selectedScrobbleRuleIndex() {
-            return selectedScrobbleRuleIndex;
+            return controllerState.selectedScrobbleRuleIndex;
         },
         set selectedScrobbleRuleIndex(value) {
-            selectedScrobbleRuleIndex = value;
+            controllerState.selectedScrobbleRuleIndex = value;
         },
         get lastScrobbleRuleClickIndex() {
-            return lastScrobbleRuleClickIndex;
+            return controllerState.lastScrobbleRuleClickIndex;
         },
         set lastScrobbleRuleClickIndex(value) {
-            lastScrobbleRuleClickIndex = value;
+            controllerState.lastScrobbleRuleClickIndex = value;
         },
         get lastScrobbleRuleClickAt() {
-            return lastScrobbleRuleClickAt;
+            return controllerState.lastScrobbleRuleClickAt;
         },
         set lastScrobbleRuleClickAt(value) {
-            lastScrobbleRuleClickAt = value;
+            controllerState.lastScrobbleRuleClickAt = value;
         },
         get customSendToActions() {
-            return customSendToActions;
+            return controllerState.customSendToActions;
         },
         set customSendToActions(value) {
-            customSendToActions = value;
+            controllerState.customSendToActions = value;
         },
         get selectedCustomSendToActionIndex() {
-            return selectedCustomSendToActionIndex;
+            return controllerState.selectedCustomSendToActionIndex;
         },
         set selectedCustomSendToActionIndex(value) {
-            selectedCustomSendToActionIndex = value;
+            controllerState.selectedCustomSendToActionIndex = value;
         },
         get lastCustomSendToActionClickIndex() {
-            return lastCustomSendToActionClickIndex;
+            return controllerState.lastCustomSendToActionClickIndex;
         },
         set lastCustomSendToActionClickIndex(value) {
-            lastCustomSendToActionClickIndex = value;
+            controllerState.lastCustomSendToActionClickIndex = value;
         },
         get lastCustomSendToActionClickAt() {
-            return lastCustomSendToActionClickAt;
+            return controllerState.lastCustomSendToActionClickAt;
         },
         set lastCustomSendToActionClickAt(value) {
-            lastCustomSendToActionClickAt = value;
+            controllerState.lastCustomSendToActionClickAt = value;
         },
         get coverArtPriorityOrder() {
-            return coverArtPriorityOrder;
+            return controllerState.coverArtPriorityOrder;
         },
         set coverArtPriorityOrder(value) {
-            coverArtPriorityOrder = value;
+            controllerState.coverArtPriorityOrder = value;
         },
         get draggedCoverPriorityIndex() {
-            return draggedCoverPriorityIndex;
+            return controllerState.draggedCoverPriorityIndex;
         },
         set draggedCoverPriorityIndex(value) {
-            draggedCoverPriorityIndex = value;
+            controllerState.draggedCoverPriorityIndex = value;
         },
         get forceReloadInProgress() {
-            return forceReloadInProgress;
+            return controllerState.forceReloadInProgress;
         },
         set forceReloadInProgress(value) {
-            forceReloadInProgress = value;
+            controllerState.forceReloadInProgress = value;
         },
         get forceReloadEtaSeconds() {
-            return forceReloadEtaSeconds;
+            return controllerState.forceReloadEtaSeconds;
         },
         set forceReloadEtaSeconds(value) {
-            forceReloadEtaSeconds = value;
+            controllerState.forceReloadEtaSeconds = value;
         },
         get lastFmSessionFetchInProgress() {
-            return lastFmSessionFetchInProgress;
+            return controllerState.lastFmSessionFetchInProgress;
         },
         set lastFmSessionFetchInProgress(value) {
-            lastFmSessionFetchInProgress = value;
+            controllerState.lastFmSessionFetchInProgress = value;
         },
         setShortcutAccordionExpanded,
         setCoverArtPriorityAccordionExpanded,

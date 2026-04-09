@@ -6,6 +6,12 @@ import (
 )
 
 func TestMusicBrainzTypesAndProgressTracker(t *testing.T) {
+	newAppWithContext := func() *App {
+		app := &App{}
+		app.ctx = context.Background()
+		return app
+	}
+
 	originalRuntimeEventsEmit := runtimeEventsEmit
 	emitted := make([]MusicBrainzExplorationProgress, 0, 4)
 	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
@@ -31,11 +37,11 @@ func TestMusicBrainzTypesAndProgressTracker(t *testing.T) {
 	if tracker := newMusicBrainzExplorationProgressTracker(&App{}, "req"); tracker != nil {
 		t.Fatalf("newMusicBrainzExplorationProgressTracker(nil ctx) = %#v, want nil", tracker)
 	}
-	if tracker := newMusicBrainzExplorationProgressTracker(&App{ctx: context.Background()}, " "); tracker != nil {
+	if tracker := newMusicBrainzExplorationProgressTracker(newAppWithContext(), " "); tracker != nil {
 		t.Fatalf("newMusicBrainzExplorationProgressTracker(empty request) = %#v, want nil", tracker)
 	}
 
-	tracker := newMusicBrainzExplorationProgressTracker(&App{ctx: context.Background()}, "request-1")
+	tracker := newMusicBrainzExplorationProgressTracker(newAppWithContext(), "request-1")
 	if tracker == nil {
 		t.Fatal("newMusicBrainzExplorationProgressTracker(valid) = nil, want tracker")
 	}
@@ -107,6 +113,12 @@ func TestMusicBrainzTypesAndProgressTracker(t *testing.T) {
 }
 
 func TestMusicBrainzTypesAdditionalEdgeBranches(t *testing.T) {
+	newAppWithContext := func() *App {
+		app := &App{}
+		app.ctx = context.Background()
+		return app
+	}
+
 	originalRuntimeEventsEmit := runtimeEventsEmit
 	emitted := make([]MusicBrainzExplorationProgress, 0, 4)
 	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
@@ -125,7 +137,7 @@ func TestMusicBrainzTypesAdditionalEdgeBranches(t *testing.T) {
 	invalidTracker.emit("ignored", false)
 
 	tracker := &musicBrainzExplorationProgressTracker{
-		app:       &App{ctx: context.Background()},
+		app:       newAppWithContext(),
 		requestID: "request-2",
 		current:   3,
 		total:     1,
@@ -140,7 +152,7 @@ func TestMusicBrainzTypesAdditionalEdgeBranches(t *testing.T) {
 	}
 
 	finishingTracker := &musicBrainzExplorationProgressTracker{
-		app:       &App{ctx: context.Background()},
+		app:       newAppWithContext(),
 		requestID: "request-3",
 		current:   5,
 		total:     1,

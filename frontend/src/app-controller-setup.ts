@@ -17,6 +17,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         isWindowsRuntime: context.isWindowsRuntime,
         isMacRuntime: context.isMacRuntime,
         isLinuxRuntime: context.isLinuxRuntime,
+        settingsControllerState: context.settingsControllerState,
         get currentSettings() {
             return context.currentSettings;
         },
@@ -120,6 +121,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         trigger: context.playlistBtn,
         menu: context.playlistMenuElements,
         modal: context.playlistModalElements,
+        state: context.playlistControllerState,
         getTrack: (index: number) => context.tracks[index],
         getTrackPath: (index: number) => context.tracks[index]?.path || '',
         getTrackCount: () => context.tracks.length,
@@ -201,6 +203,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         librarySearch: context.librarySearch,
         libraryBrowser: context.libraryBrowser,
         libraryScanYieldIndicator: context.libraryScanYieldIndicator,
+        state: context.libraryControllerState,
         getTracks: () => context.tracks,
         getTextFiles: () => context.textFiles,
         getImageFiles: () => context.imageFiles,

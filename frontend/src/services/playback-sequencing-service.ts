@@ -14,13 +14,26 @@ const playbackOrderLabelByMode: Record<PlaybackOrderMode, string> = {
     'shuffle-library': 'Shuffle: Library',
 };
 
+export type PlaybackSequencingState = {
+    playbackOrderMode: PlaybackOrderMode;
+    shuffleHistory: number[];
+    shuffleCursor: number;
+    shuffleScopeKey: string;
+};
+
+export const createPlaybackSequencingState = (initialPlaybackOrderMode: PlaybackOrderMode = 'ordered-library'): PlaybackSequencingState => ({
+    playbackOrderMode: initialPlaybackOrderMode,
+    shuffleHistory: [],
+    shuffleCursor: -1,
+    shuffleScopeKey: '',
+});
+
 export type PlaybackSequencingService = ReturnType<typeof createPlaybackSequencingService>;
 
-export const createPlaybackSequencingService = (options: PlaybackSequencingServiceOptions) => {
-    let playbackOrderMode: PlaybackOrderMode = options.initialPlaybackOrderMode || 'ordered-library';
-    let shuffleHistory: number[] = [];
-    let shuffleCursor = -1;
-    let shuffleScopeKey = '';
+export const createPlaybackSequencingService = (
+    options: PlaybackSequencingServiceOptions,
+    state: PlaybackSequencingState = createPlaybackSequencingState(options.initialPlaybackOrderMode),
+) => {
 
     const albumScopePathForTrack = (track: Track): string => {
         const folderPath = track.folderPath || '';
@@ -57,7 +70,7 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
             return [];
         }
 
-        if (playbackOrderMode === 'ordered-library' || playbackOrderMode === 'shuffle-library') {
+        if (state.playbackOrderMode === 'ordered-library' || state.playbackOrderMode === 'shuffle-library') {
             return tracks.map((_, index) => index);
         }
 
@@ -80,10 +93,10 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
             .map(({ index }) => index);
     };
 
-    const isShuffleMode = (): boolean => playbackOrderMode === 'shuffle-album' || playbackOrderMode === 'shuffle-library';
+    const isShuffleMode = (): boolean => state.playbackOrderMode === 'shuffle-album' || state.playbackOrderMode === 'shuffle-library';
 
     const currentShuffleScopeKey = (): string => {
-        if (playbackOrderMode === 'shuffle-library') {
+        if (state.playbackOrderMode === 'shuffle-library') {
             return 'library';
         }
 
@@ -98,9 +111,9 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
     };
 
     const resetShuffleHistory = (): void => {
-        shuffleHistory = [];
-        shuffleCursor = -1;
-        shuffleScopeKey = '';
+        state.shuffleHistory = [];
+        state.shuffleCursor = -1;
+        state.shuffleScopeKey = '';
     };
 
     const syncShuffleCursorToCurrentTrack = (orderedIndexes: number[]): void => {
@@ -109,9 +122,9 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
             return;
         }
 
-        const existingPosition = shuffleHistory.lastIndexOf(currentTrackIndex);
+        const existingPosition = state.shuffleHistory.lastIndexOf(currentTrackIndex);
         if (existingPosition >= 0) {
-            shuffleCursor = existingPosition;
+            state.shuffleCursor = existingPosition;
             return;
         }
 
@@ -119,8 +132,8 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
         // calls nextTrackIndexForDirection, so append the externally advanced
         // current track and move the cursor forward to keep history aligned.
         if (orderedIndexes.includes(currentTrackIndex)) {
-            shuffleHistory.push(currentTrackIndex);
-            shuffleCursor = shuffleHistory.length - 1;
+            state.shuffleHistory.push(currentTrackIndex);
+            state.shuffleCursor = state.shuffleHistory.length - 1;
         }
     };
 
@@ -149,24 +162,24 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
         }
 
         const scopeKey = currentShuffleScopeKey();
-        if (shuffleScopeKey !== scopeKey) {
-            shuffleScopeKey = scopeKey;
-            shuffleHistory = [];
-            shuffleCursor = -1;
+        if (state.shuffleScopeKey !== scopeKey) {
+            state.shuffleScopeKey = scopeKey;
+            state.shuffleHistory = [];
+            state.shuffleCursor = -1;
         }
 
         const currentTrackIndex = options.getCurrentTrackIndex();
-        if (shuffleCursor < 0) {
-            shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
-            shuffleCursor = 0;
+        if (state.shuffleCursor < 0) {
+            state.shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
+            state.shuffleCursor = 0;
         }
 
         syncShuffleCursorToCurrentTrack(orderedIndexes);
 
-        while (shuffleHistory.length - shuffleCursor - 1 < count) {
-            const currentIndex = shuffleHistory[shuffleHistory.length - 1];
+        while (state.shuffleHistory.length - state.shuffleCursor - 1 < count) {
+            const currentIndex = state.shuffleHistory[state.shuffleHistory.length - 1];
             const nextIndex = pickRandomTrackIndex(orderedIndexes, currentIndex);
-            shuffleHistory.push(nextIndex);
+            state.shuffleHistory.push(nextIndex);
         }
     };
 
@@ -174,8 +187,8 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
         if (isShuffleMode()) {
             ensureShuffleFutureTracks(50);
             return {
-                indexes: shuffleHistory,
-                currentPosition: shuffleCursor >= 0 ? shuffleCursor : 0,
+                indexes: state.shuffleHistory,
+                currentPosition: state.shuffleCursor >= 0 ? state.shuffleCursor : 0,
             };
         }
 
@@ -204,37 +217,37 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
         }
 
         const scopeKey = currentShuffleScopeKey();
-        if (shuffleScopeKey !== scopeKey) {
-            shuffleScopeKey = scopeKey;
-            shuffleHistory = [];
-            shuffleCursor = -1;
+        if (state.shuffleScopeKey !== scopeKey) {
+            state.shuffleScopeKey = scopeKey;
+            state.shuffleHistory = [];
+            state.shuffleCursor = -1;
         }
 
         const currentTrackIndex = options.getCurrentTrackIndex();
-        if (shuffleCursor < 0) {
-            shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
-            shuffleCursor = 0;
+        if (state.shuffleCursor < 0) {
+            state.shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
+            state.shuffleCursor = 0;
         }
 
         syncShuffleCursorToCurrentTrack(orderedIndexes);
 
         if (direction < 0) {
-            if (shuffleCursor > 0) {
-                shuffleCursor -= 1;
+            if (state.shuffleCursor > 0) {
+                state.shuffleCursor -= 1;
             }
 
-            return shuffleHistory[shuffleCursor];
+            return state.shuffleHistory[state.shuffleCursor];
         }
 
-        if (shuffleCursor < shuffleHistory.length - 1) {
-            shuffleCursor += 1;
-            return shuffleHistory[shuffleCursor];
+        if (state.shuffleCursor < state.shuffleHistory.length - 1) {
+            state.shuffleCursor += 1;
+            return state.shuffleHistory[state.shuffleCursor];
         }
 
-        const currentIndex = shuffleHistory[shuffleCursor];
+        const currentIndex = state.shuffleHistory[state.shuffleCursor];
         const nextIndex = pickRandomTrackIndex(orderedIndexes, currentIndex);
-        shuffleHistory.push(nextIndex);
-        shuffleCursor += 1;
+        state.shuffleHistory.push(nextIndex);
+        state.shuffleCursor += 1;
         return nextIndex;
     };
 
@@ -255,50 +268,50 @@ export const createPlaybackSequencingService = (options: PlaybackSequencingServi
         }
 
         const scopeKey = currentShuffleScopeKey();
-        if (shuffleScopeKey !== scopeKey) {
-            shuffleScopeKey = scopeKey;
-            shuffleHistory = [];
-            shuffleCursor = -1;
+        if (state.shuffleScopeKey !== scopeKey) {
+            state.shuffleScopeKey = scopeKey;
+            state.shuffleHistory = [];
+            state.shuffleCursor = -1;
         }
 
         const currentTrackIndex = options.getCurrentTrackIndex();
-        if (shuffleCursor < 0) {
-            shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
-            shuffleCursor = 0;
+        if (state.shuffleCursor < 0) {
+            state.shuffleHistory.push(currentTrackIndex >= 0 ? currentTrackIndex : orderedIndexes[0]);
+            state.shuffleCursor = 0;
         }
 
         syncShuffleCursorToCurrentTrack(orderedIndexes);
 
         if (direction < 0) {
-            if (shuffleCursor > 0) {
-                return shuffleHistory[shuffleCursor - 1];
+            if (state.shuffleCursor > 0) {
+                return state.shuffleHistory[state.shuffleCursor - 1];
             }
 
-            return shuffleHistory[shuffleCursor];
+            return state.shuffleHistory[state.shuffleCursor];
         }
 
         // Keep peek deterministic for gapless prequeue: generate and cache one future item if needed.
         ensureShuffleFutureTracks(1);
-        if (shuffleCursor < shuffleHistory.length - 1) {
-            return shuffleHistory[shuffleCursor + 1];
+        if (state.shuffleCursor < state.shuffleHistory.length - 1) {
+            return state.shuffleHistory[state.shuffleCursor + 1];
         }
 
-        return shuffleHistory[shuffleCursor];
+        return state.shuffleHistory[state.shuffleCursor];
     };
 
     return {
         baseSequenceIndexes,
-        getPlaybackOrderLabel: (): string => playbackOrderLabelByMode[playbackOrderMode],
-        getPlaybackOrderMode: (): PlaybackOrderMode => playbackOrderMode,
+        getPlaybackOrderLabel: (): string => playbackOrderLabelByMode[state.playbackOrderMode],
+        getPlaybackOrderMode: (): PlaybackOrderMode => state.playbackOrderMode,
         nextTrackIndexForDirection,
         peekNextTrackIndexForDirection,
         resetShuffleHistory,
         setPlaybackOrderMode: (nextMode: PlaybackOrderMode): boolean => {
-            if (playbackOrderMode === nextMode) {
+            if (state.playbackOrderMode === nextMode) {
                 return false;
             }
 
-            playbackOrderMode = nextMode;
+            state.playbackOrderMode = nextMode;
             resetShuffleHistory();
             return true;
         },

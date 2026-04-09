@@ -250,7 +250,7 @@ func normalizeListenBrainzSocialCount(count int) int {
 
 func (a *App) listenBrainzServerURL() string {
 	a.ensureSettingsLoaded()
-	u := strings.TrimRight(strings.TrimSpace(a.settings.ListenBrainzServerURL), "/")
+	u := strings.TrimRight(strings.TrimSpace(a.settingsState().settings.ListenBrainzServerURL), "/")
 	if u == "" {
 		return listenBrainzPublicServerURL
 	}
@@ -260,7 +260,7 @@ func (a *App) listenBrainzServerURL() string {
 
 func (a *App) listenBrainzRequestRateMs() int {
 	a.ensureSettingsLoaded()
-	return a.settings.ListenBrainzRequestRateMs
+	return a.settingsState().settings.ListenBrainzRequestRateMs
 }
 
 func (a *App) waitForListenBrainzRequestSlotIfNeeded() {
@@ -270,7 +270,7 @@ func (a *App) waitForListenBrainzRequestSlotIfNeeded() {
 func (a *App) listenBrainzToken() (string, error) {
 	a.ensureSettingsLoaded()
 
-	token := strings.TrimSpace(a.settings.ListenBrainzUserToken)
+	token := strings.TrimSpace(a.settingsState().settings.ListenBrainzUserToken)
 	if token == "" {
 		return "", errors.New("listenbrainz token is not configured")
 	}
@@ -305,28 +305,29 @@ func (a *App) shouldSkipListenBrainzDuplicateScrobble(metadata ListenBrainzTrack
 
 	duplicateKey := listenBrainzScrobbleFingerprint(metadata)
 	now := time.Now()
+	scrobbleState := a.scrobbleState()
 
-	a.listenBrainzScrobbleMu.Lock()
-	defer a.listenBrainzScrobbleMu.Unlock()
+	scrobbleState.listenBrainzScrobbleMu.Lock()
+	defer scrobbleState.listenBrainzScrobbleMu.Unlock()
 
-	if a.listenBrainzRecentScrobbles == nil {
-		a.listenBrainzRecentScrobbles = make(map[string]listenBrainzScrobbleDedupEntry)
+	if scrobbleState.listenBrainzRecentScrobbles == nil {
+		scrobbleState.listenBrainzRecentScrobbles = make(map[string]listenBrainzScrobbleDedupEntry)
 	}
 
 	cutoff := now.Add(-listenBrainzDuplicateScrobbleWindow)
-	for key, entry := range a.listenBrainzRecentScrobbles {
+	for key, entry := range scrobbleState.listenBrainzRecentScrobbles {
 		if entry.seenAt.Before(cutoff) {
-			delete(a.listenBrainzRecentScrobbles, key)
+			delete(scrobbleState.listenBrainzRecentScrobbles, key)
 		}
 	}
 
-	if entry, found := a.listenBrainzRecentScrobbles[duplicateKey]; found && !entry.seenAt.Before(cutoff) {
+	if entry, found := scrobbleState.listenBrainzRecentScrobbles[duplicateKey]; found && !entry.seenAt.Before(cutoff) {
 		if absInt64(entry.listenedAt-listenedAt) <= int64(listenBrainzDuplicateScrobbleWindow/time.Second) {
 			return true
 		}
 	}
 
-	a.listenBrainzRecentScrobbles[duplicateKey] = listenBrainzScrobbleDedupEntry{
+	scrobbleState.listenBrainzRecentScrobbles[duplicateKey] = listenBrainzScrobbleDedupEntry{
 		seenAt:     now,
 		listenedAt: listenedAt,
 	}

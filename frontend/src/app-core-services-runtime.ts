@@ -65,7 +65,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         });
     };
 
-    const playbackStateService = createPlaybackStateService();
+    const playbackStateService = createPlaybackStateService(context.playbackSessionState);
     setMusicBrainzRequestLogServerResolver(() => context.currentSettings.musicBrainzServerUrl || defaultMusicBrainzServerUrl);
     const scrobbleService = createScrobbleService({
         submitListenBrainz: async (eventType, payload, listenedAt) => await scheduleListenBrainzRequest(async () => (
@@ -80,13 +80,12 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             server: defaultLastFmServerUrl,
             path: eventType === 'playing_now' ? 'track.updateNowPlaying' : 'track.scrobble',
         }),
-    });
+    }, context.scrobbleSessionState);
     const playbackSequencingService = createPlaybackSequencingService({
         getTracks: () => context.tracks,
         getCurrentTrackIndex: () => context.currentTrackIndex,
         getReleaseDepthForTrack: (track: Track) => context.releaseDepthForTrack(track),
-        initialPlaybackOrderMode: context.currentSettings.playbackOrder,
-    });
+    }, context.playbackSequencingState);
     const trackMetadataService = createTrackMetadataService({
         getTracks: () => context.tracks,
         setTrack: (index: number, track: Track) => {

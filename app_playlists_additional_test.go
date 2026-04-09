@@ -8,7 +8,8 @@ import (
 
 func TestPlaylistHelpersAndLoading(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
-	app := &App{activeLibraryRoots: []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}}
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
 	playlistPath := filepath.Join(fixture.tempDir, "playlists", "queue.m3u8")
 
 	if _, ok := playlistFilePathForWrite(""); ok {

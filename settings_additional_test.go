@@ -281,7 +281,8 @@ func TestSettingsPathAndLoadHelpers(t *testing.T) {
 		t.Fatalf("writeAppSettings(stored) error = %v", err)
 	}
 
-	app := &App{settingsPath: storedSettingsPath}
+	app := &App{}
+	app.settingsPath = storedSettingsPath
 	if got := app.ensureSettingsPath(); got != storedSettingsPath {
 		t.Fatalf("ensureSettingsPath(existing) = %q, want %q", got, storedSettingsPath)
 	}
@@ -296,7 +297,8 @@ func TestSettingsPathAndLoadHelpers(t *testing.T) {
 		t.Fatalf("ensureSettingsLoaded(second call) library path = %q, want original loaded value", app.settings.LibraryPath)
 	}
 
-	failingApp := &App{settingsPath: invalidJSONPath}
+	failingApp := &App{}
+	failingApp.settingsPath = invalidJSONPath
 	failingApp.loadStoredSettings()
 	if !failingApp.settingsLoaded {
 		t.Fatal("loadStoredSettings(error) should still mark settings as loaded")
@@ -313,7 +315,8 @@ func TestSettingsPathAndLoadHelpers(t *testing.T) {
 		t.Fatalf("ensureSettingsPath(default) = %q, want %q", got, filepath.Join(tempDir, "resolved", appSettingsFileName))
 	}
 
-	failingSaveApp := &App{settingsLoaded: true, settingsPath: blockedPath}
+	failingSaveApp := newTestAppWithSettingsLoaded()
+	failingSaveApp.settingsPath = blockedPath
 	if _, err := failingSaveApp.SaveSettings(AppSettings{}); err == nil {
 		t.Fatal("SaveSettings(write error) error = nil, want error")
 	}

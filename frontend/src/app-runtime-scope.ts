@@ -8,14 +8,17 @@ import type { SidebarController } from './controllers/sidebar-controller';
 import type { ExternalPlaybackAction, createMediaSessionController } from './controllers/media-session-controller';
 import type { ImageModalController } from './controllers/image-modal-controller';
 import type { LibraryController } from './controllers/library-controller';
+import type { LibraryControllerState } from './controllers/library-controller-types';
 import type { LoadedPlaylistData, PlaylistController } from './controllers/playlist-controller';
+import type { PlaylistControllerState } from './controllers/playlist-controller-state';
 import type { PlaylistTargetModalController } from './controllers/playlist-target-modal-controller';
 import type { ShareController, createShareController } from './controllers/share-controller';
 import type { SettingsController } from './controllers/settings-controller';
+import type { SettingsControllerState } from './controllers/settings-controller-types';
 import type { createCoverArtService } from './services/cover-art-service';
-import type { createPlaybackSequencingService } from './services/playback-sequencing-service';
-import type { createPlaybackStateService } from './services/playback-state-service';
-import type { createScrobbleService } from './services/scrobble-service';
+import type { createPlaybackSequencingService, PlaybackSequencingState } from './services/playback-sequencing-service';
+import type { createPlaybackStateService, PlaybackSessionState } from './services/playback-state-service';
+import type { createScrobbleService, ScrobbleSessionState } from './services/scrobble-service';
 import type { createTrackMetadataService } from './services/track-metadata-service';
 import type {
     AppSettings,
@@ -41,7 +44,7 @@ import type {
 
 export type TrackMetaActionKind = 'track' | 'album' | null;
 
-type AppShellElements = ReturnType<typeof getAppShellElements>;
+export type AppShellElements = ReturnType<typeof getAppShellElements>;
 type ShareElements = Parameters<typeof createShareController>[0]['elements'];
 type ArtistInfoElements = Parameters<typeof createArtistInfoController>[0]['elements'];
 type CoverArtService = ReturnType<typeof createCoverArtService>;
@@ -217,22 +220,19 @@ type ReturnedRuntimeMethods = {
     setBackgroundCover: (coverSrc?: string) => void;
 };
 
-export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods, ReturnedRuntimeMethods {
-    app: HTMLElement;
-    window: Window;
-    document: Document;
-    shareElements: ShareElements;
-    artistInfoElements: ArtistInfoElements;
-    isWindowsRuntime: boolean;
-    isMacRuntime: boolean;
-    isLinuxRuntime: boolean;
-    trackIndexByPath: Map<string, number>;
-    textFileIndexByPath: Map<string, number>;
-    imageFileIndexByPath: Map<string, number>;
+export type AppRuntimePorts = SharedRuntimeMethods & ReturnedRuntimeMethods;
+
+export interface AppRuntimeState {
     currentSettings: AppSettings;
     tracks: Track[];
     textFiles: TextLibraryFile[];
     imageFiles: ImageLibraryFile[];
+    libraryControllerState: LibraryControllerState;
+    playlistControllerState: PlaylistControllerState;
+    settingsControllerState: SettingsControllerState;
+    playbackSequencingState: PlaybackSequencingState;
+    playbackSessionState: PlaybackSessionState;
+    scrobbleSessionState: ScrobbleSessionState;
     currentTrackIndex: number;
     objectUrls: string[];
     tagRequestVersion: number;
@@ -251,8 +251,6 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     gaplessQueueRequestVersion: number;
     queuedGaplessTrackPath: string;
     activeReplayGainReleaseTrackPaths: string[];
-    replayGainReleaseDynamicRangeLabelByKey: Map<string, string>;
-    replayGainReleaseDynamicRangePendingByKey: Map<string, Promise<string>>;
     replayGainReleaseDynamicRangeRequestVersion: number;
     availableAudioOutputDevices: AudioOutputDevice[];
     currentMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
@@ -275,6 +273,23 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     trackMetaMenuTarget: HTMLElement | null;
     trackMetaMenuActionScope: CustomSendToActionScope | null;
     trackMetaMenuActionPath: string;
+    suppressCoverFrontClickUntil: number;
+}
+
+export interface AppRuntimeRefs {
+    app: HTMLElement;
+    window: Window;
+    document: Document;
+    shareElements: ShareElements;
+    artistInfoElements: ArtistInfoElements;
+    isWindowsRuntime: boolean;
+    isMacRuntime: boolean;
+    isLinuxRuntime: boolean;
+    trackIndexByPath: Map<string, number>;
+    textFileIndexByPath: Map<string, number>;
+    imageFileIndexByPath: Map<string, number>;
+    replayGainReleaseDynamicRangeLabelByKey: Map<string, string>;
+    replayGainReleaseDynamicRangePendingByKey: Map<string, Promise<string>>;
     selectedLibraryRootLabel: string;
     libraryIndexedFilePageSize: number;
     sidebarQueueDescendantPromptThreshold: number;
@@ -283,10 +298,12 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     technicalInfoModalTransitionMs: number;
     aboutModalTransitionMs: number;
     errorModalTransitionMs: number;
-    suppressCoverFrontClickUntil: number;
     coverFront: HTMLElement;
     volumeBtn: HTMLButtonElement;
     cardResizeObserver: ResizeObserver;
+}
+
+export interface AppRuntimeControllerRefs {
     settingsControllerRef: SettingsController;
     playlistControllerRef: PlaylistController;
     playlistTargetModalControllerRef: PlaylistTargetModalController;
@@ -294,6 +311,9 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     imageModalControllerRef: ImageModalController;
     libraryControllerRef: LibraryController;
     shareControllerRef: ShareController;
+}
+
+export interface AppRuntimeServiceRefs {
     coverArtService: CoverArtService;
     playbackStateService: PlaybackStateService;
     playbackSequencingService: PlaybackSequencingService;
@@ -304,3 +324,5 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     socialController: ListenBrainzSocialController;
     mediaSessionController: MediaSessionController;
 }
+
+export interface AppRuntimeScope extends AppShellElements, AppRuntimeState, AppRuntimeRefs, AppRuntimeControllerRefs, AppRuntimeServiceRefs, AppRuntimePorts {}

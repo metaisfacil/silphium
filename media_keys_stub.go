@@ -4,11 +4,11 @@ package main
 
 func (a *App) startMediaKeyWatcher() {
 	_ = mediaKeyEvent
-	_ = a.mediaKeyWatcherStop
-	_ = a.mediaKeyWatcherDone
+	_ = a.mediaKeyWatcherState().stopCh
+	_ = a.mediaKeyWatcherState().doneCh
 }
 
 func (a *App) stopMediaKeyWatcher() {
-	_ = a.mediaKeyWatcherStop
-	_ = a.mediaKeyWatcherDone
+	_ = a.mediaKeyWatcherState().stopCh
+	_ = a.mediaKeyWatcherState().doneCh
 }

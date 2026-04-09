@@ -158,7 +158,7 @@ func (a *App) AudioListOutputDevices() []AudioOutputDevice {
 func (a *App) AudioReinitializeBackend() (AudioPlaybackState, error) {
 	a.ensureSettingsLoaded()
 	backend := a.audioBackend()
-	backend.ApplyAudioSettings(a.settings.Audio)
+	backend.ApplyAudioSettings(a.settingsState().settings.Audio)
 	if err := backend.Reinitialize(); err != nil {
 		return AudioPlaybackState{}, err
 	}

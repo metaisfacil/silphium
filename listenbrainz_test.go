@@ -31,13 +31,10 @@ func TestSubmitListenBrainz(t *testing.T) {
 		}))
 		defer server.Close()
 
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				ListenBrainzUserToken: "token",
-				ListenBrainzServerURL: server.URL,
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			ListenBrainzUserToken: "token",
+			ListenBrainzServerURL: server.URL,
+		})
 
 		metadata := ListenBrainzTrackMetadata{
 			ArtistName:    "Duplicate Artist",
@@ -66,13 +63,10 @@ func TestSubmitListenBrainz(t *testing.T) {
 		}))
 		defer server.Close()
 
-		app := &App{
-			settingsLoaded: true,
-			settings: AppSettings{
-				ListenBrainzUserToken: "token",
-				ListenBrainzServerURL: server.URL,
-			},
-		}
+		app := newTestAppWithLoadedSettings(AppSettings{
+			ListenBrainzUserToken: "token",
+			ListenBrainzServerURL: server.URL,
+		})
 
 		if err := app.SubmitListenBrainz("single", ListenBrainzTrackMetadata{
 			ArtistName:  "Masato Kouda",

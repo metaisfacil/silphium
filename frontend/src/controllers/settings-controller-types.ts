@@ -64,6 +64,7 @@ export type SettingsTab = SettingsPrimaryTab | 'shortcuts';
 export type SettingsControllerOptions = {
     trigger: HTMLButtonElement;
     elements: SettingsModalElements;
+    state?: SettingsControllerState;
     getValues: () => SettingsViewValues;
     selectLibraryFolder: () => Promise<string>;
     selectPlaylistFile: () => Promise<string>;
@@ -109,3 +110,38 @@ export type SettingsControllerState = {
     draggedCoverPriorityIndex: number;
     musicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
 };
+
+export const createSettingsControllerState = (): SettingsControllerState => ({
+    favoritePlaylists: [],
+    selectedFavoritePlaylistIndex: -1,
+    scrobbleRules: [],
+    selectedScrobbleRuleIndex: -1,
+    customSendToActions: [],
+    selectedCustomSendToActionIndex: -1,
+    lastCustomSendToActionClickIndex: -1,
+    lastCustomSendToActionClickAt: Number.NEGATIVE_INFINITY,
+    lastScrobbleRuleClickIndex: -1,
+    lastScrobbleRuleClickAt: Number.NEGATIVE_INFINITY,
+    libraryFolders: [],
+    selectedLibraryFolderIndex: -1,
+    lastLibraryFolderClickIndex: -1,
+    lastLibraryFolderClickAt: Number.NEGATIVE_INFINITY,
+    forceReloadInProgress: false,
+    lastFmSessionFetchInProgress: false,
+    forceReloadEtaSeconds: null,
+    audioOutputDevices: [],
+    coverArtPriority: [...defaultCoverArtPriority],
+    coverArtPriorityOrder: [...allCoverArtPrioritySources],
+    draggedCoverPriorityIndex: -1,
+    musicBrainzTagWorkerProgress: {
+        enabled: false,
+        active: false,
+        progress: 0,
+        pendingTrackScans: 0,
+        totalTrackScans: 0,
+        completedTrackScans: 0,
+        pendingEntityLookups: 0,
+        totalEntityLookups: 0,
+        completedEntityLookups: 0,
+    },
+});

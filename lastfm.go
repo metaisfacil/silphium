@@ -333,9 +333,10 @@ func (a *App) GetLastFmSessionKey(apiKey string, apiSecret string, requestToken 
 func (a *App) lastFmCredentials() (string, string, string, error) {
 	a.ensureSettingsLoaded()
 
-	apiKey := strings.TrimSpace(a.settings.LastFmAPIKey)
-	apiSecret := strings.TrimSpace(a.settings.LastFmAPISecret)
-	sessionKey := strings.TrimSpace(a.settings.LastFmSessionKey)
+	settings := a.settingsState().settings
+	apiKey := strings.TrimSpace(settings.LastFmAPIKey)
+	apiSecret := strings.TrimSpace(settings.LastFmAPISecret)
+	sessionKey := strings.TrimSpace(settings.LastFmSessionKey)
 	if apiKey == "" || apiSecret == "" || sessionKey == "" {
 		return "", "", "", errors.New("last.fm scrobbling requires an API key, shared secret, and session key")
 	}
@@ -413,27 +414,28 @@ func (a *App) shouldSkipLastFmDuplicateScrobble(metadata LastFmTrackMetadata, li
 	duplicateKey := lastFmScrobbleFingerprint(metadata)
 
 	now := time.Now()
-	a.lastFmScrobbleMu.Lock()
-	defer a.lastFmScrobbleMu.Unlock()
+	scrobbleState := a.scrobbleState()
+	scrobbleState.lastFmScrobbleMu.Lock()
+	defer scrobbleState.lastFmScrobbleMu.Unlock()
 
-	if a.lastFmRecentScrobbles == nil {
-		a.lastFmRecentScrobbles = make(map[string]lastFmScrobbleDedupEntry)
+	if scrobbleState.lastFmRecentScrobbles == nil {
+		scrobbleState.lastFmRecentScrobbles = make(map[string]lastFmScrobbleDedupEntry)
 	}
 
 	cutoff := now.Add(-lastFmDuplicateScrobbleWindow)
-	for key, entry := range a.lastFmRecentScrobbles {
+	for key, entry := range scrobbleState.lastFmRecentScrobbles {
 		if entry.seenAt.Before(cutoff) {
-			delete(a.lastFmRecentScrobbles, key)
+			delete(scrobbleState.lastFmRecentScrobbles, key)
 		}
 	}
 
-	if entry, found := a.lastFmRecentScrobbles[duplicateKey]; found && !entry.seenAt.Before(cutoff) {
+	if entry, found := scrobbleState.lastFmRecentScrobbles[duplicateKey]; found && !entry.seenAt.Before(cutoff) {
 		if absInt64(entry.listenedAt-listenedAt) <= int64(lastFmDuplicateScrobbleWindow/time.Second) {
 			return true
 		}
 	}
 
-	a.lastFmRecentScrobbles[duplicateKey] = lastFmScrobbleDedupEntry{
+	scrobbleState.lastFmRecentScrobbles[duplicateKey] = lastFmScrobbleDedupEntry{
 		seenAt:     now,
 		listenedAt: listenedAt,
 	}
@@ -625,8 +627,9 @@ func (a *App) SubmitLastFmUnlove(metadata LastFmTrackMetadata) error {
 func (a *App) lastFmSessionCredentials() (string, string, error) {
 	a.ensureSettingsLoaded()
 
-	apiKey := strings.TrimSpace(a.settings.LastFmAPIKey)
-	sessionKey := strings.TrimSpace(a.settings.LastFmSessionKey)
+	settings := a.settingsState().settings
+	apiKey := strings.TrimSpace(settings.LastFmAPIKey)
+	sessionKey := strings.TrimSpace(settings.LastFmSessionKey)
 	if apiKey == "" || sessionKey == "" {
 		return "", "", errors.New("last.fm social feed requires an API key and session key")
 	}

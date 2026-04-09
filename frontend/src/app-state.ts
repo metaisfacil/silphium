@@ -7,19 +7,24 @@ import type {
     TextLibraryFile,
     Track,
 } from './types/app-types';
+import { createLibraryControllerState, type LibraryControllerState } from './controllers/library-controller-types';
+import { createPlaylistControllerState, type PlaylistControllerState } from './controllers/playlist-controller-state';
+import { createSettingsControllerState, type SettingsControllerState } from './controllers/settings-controller-types';
+import { createPlaybackSequencingState, type PlaybackSequencingState } from './services/playback-sequencing-service';
+import { createPlaybackSessionState, type PlaybackSessionState } from './services/playback-state-service';
+import { createScrobbleSessionState, type ScrobbleSessionState } from './services/scrobble-service';
 import { defaultAppSettings, defaultMusicBrainzTagWorkerProgress } from './utils/settings-normalization';
-import type { SettingsController } from './controllers/settings-controller';
-import type { PlaylistController } from './controllers/playlist-controller';
-import type { PlaylistTargetModalController } from './controllers/playlist-target-modal-controller';
-import type { ArtistInfoController } from './controllers/artist-info-controller';
-import type { ImageModalController } from './controllers/image-modal-controller';
-import type { LibraryController } from './controllers/library-controller';
-import type { ShareController } from './controllers/share-controller';
 
 export interface AppState {
     tracks: Track[];
     textFiles: TextLibraryFile[];
     imageFiles: ImageLibraryFile[];
+    libraryControllerState: LibraryControllerState;
+    playlistControllerState: PlaylistControllerState;
+    settingsControllerState: SettingsControllerState;
+    playbackSequencingState: PlaybackSequencingState;
+    playbackSessionState: PlaybackSessionState;
+    scrobbleSessionState: ScrobbleSessionState;
     trackIndexByPath: Map<string, number>;
     textFileIndexByPath: Map<string, number>;
     imageFileIndexByPath: Map<string, number>;
@@ -70,20 +75,18 @@ export interface AppState {
     pendingNowPlayingCoverRefreshHandle: number | null;
     hideToTrayOnMinimizeInFlight: boolean;
     hideToTrayRetryTimer: number | undefined;
-    // Controllers (late-init)
-    settingsController: SettingsController;
-    playlistController: PlaylistController;
-    playlistTargetModalController: PlaylistTargetModalController;
-    artistInfoController: ArtistInfoController;
-    imageModalController: ImageModalController;
-    libraryController: LibraryController;
-    shareController: ShareController;
 }
 
 export const createAppState = (): AppState => ({
     tracks: [],
     textFiles: [],
     imageFiles: [],
+    libraryControllerState: createLibraryControllerState(),
+    playlistControllerState: createPlaylistControllerState(),
+    settingsControllerState: createSettingsControllerState(),
+    playbackSequencingState: createPlaybackSequencingState(defaultAppSettings.playbackOrder),
+    playbackSessionState: createPlaybackSessionState(),
+    scrobbleSessionState: createScrobbleSessionState(),
     trackIndexByPath: new Map(),
     textFileIndexByPath: new Map(),
     imageFileIndexByPath: new Map(),
@@ -134,12 +137,4 @@ export const createAppState = (): AppState => ({
     pendingNowPlayingCoverRefreshHandle: null,
     hideToTrayOnMinimizeInFlight: false,
     hideToTrayRetryTimer: undefined,
-    // Controllers are set during initialization
-    settingsController: undefined as unknown as SettingsController,
-    playlistController: undefined as unknown as PlaylistController,
-    playlistTargetModalController: undefined as unknown as PlaylistTargetModalController,
-    artistInfoController: undefined as unknown as ArtistInfoController,
-    imageModalController: undefined as unknown as ImageModalController,
-    libraryController: undefined as unknown as LibraryController,
-    shareController: undefined as unknown as ShareController,
 });

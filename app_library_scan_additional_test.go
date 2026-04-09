@@ -184,7 +184,8 @@ func TestScanLibraryFoldersRestartWatcherAndWalkErrorBranches(t *testing.T) {
 	if cleared.TotalEntries != 0 || cleared.TrackCount != 0 || cleared.TextFileCount != 0 || cleared.ImageFileCount != 0 {
 		t.Fatalf("scanLibraryFolders(nil, true) = %#v, want cleared index", cleared)
 	}
-	if app.libraryWatcher != nil || app.watchStop != nil {
+	watcherState := app.libraryWatcherState()
+	if watcherState.watcher != nil || watcherState.stopCh != nil {
 		t.Fatal("scanLibraryFolders(nil, true) should stop and clear watcher state")
 	}
 

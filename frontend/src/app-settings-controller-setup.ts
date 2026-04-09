@@ -10,12 +10,14 @@ import type {
     PlayerCardLayout,
     Track,
 } from './types/app-types';
+import type { SettingsControllerState } from './controllers/settings-controller-types';
 import { normalizeLibraryFolders } from './utils/main-helpers';
 import { normalizeAppSettings } from './utils/settings-normalization';
 
 export interface AppSettingsControllerSetupContext {
     trigger: HTMLButtonElement;
     elements: SettingsModalElements;
+    settingsControllerState: SettingsControllerState;
     isWindowsRuntime: boolean;
     isMacRuntime: boolean;
     isLinuxRuntime: boolean;
@@ -183,6 +185,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
     return createSettingsController({
         trigger: context.trigger,
         elements: context.elements,
+        state: context.settingsControllerState,
         isWindows: context.isWindowsRuntime,
         isMac: context.isMacRuntime,
         isLinux: context.isLinuxRuntime,

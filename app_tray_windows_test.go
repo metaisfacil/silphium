@@ -85,7 +85,8 @@ func TestTrayManagerHelpersAndRefresh(t *testing.T) {
 		}
 	}
 
-	app := &App{ctx: context.Background(), settingsLoaded: true, settings: AppSettings{MinimizeToTrayOnClose: true}}
+	app := newTestAppWithLoadedSettings(AppSettings{MinimizeToTrayOnClose: true})
+	app.ctx = context.Background()
 	manager := &trayManager{}
 	manager.start(app)
 	select {
@@ -208,7 +209,8 @@ func TestTrayManagerHelpersAndRefresh(t *testing.T) {
 		t.Fatal("refreshSystemTrayForSettings(quitting) should stop the existing tray")
 	}
 
-	trayApp := &App{ctx: context.Background()}
+	trayApp := &App{}
+	trayApp.ctx = context.Background()
 	windowsTray = &trayManager{started: true, app: trayApp}
 	trayApp.stopSystemTray()
 	if quitCalls < 4 {

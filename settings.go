@@ -812,26 +812,28 @@ func writeAppSettings(path string, settings AppSettings) error {
 }
 
 func (a *App) ensureSettingsPath() string {
-	if strings.TrimSpace(a.settingsPath) == "" {
-		a.settingsPath = defaultSettingsPath()
+	settingsStorageState := a.settingsStorageState()
+	if strings.TrimSpace(settingsStorageState.settingsPath) == "" {
+		settingsStorageState.settingsPath = defaultSettingsPath()
 	}
 
-	return a.settingsPath
+	return settingsStorageState.settingsPath
 }
 
 func (a *App) loadStoredSettings() {
-	a.settingsLoaded = true
+	settingsState := a.settingsState()
+	settingsState.settingsLoaded = true
 	settingsPath := a.ensureSettingsPath()
 	settings, err := readAppSettings(settingsPath)
 	if err != nil {
 		return
 	}
 
-	a.settings = settings
+	settingsState.settings = settings
 }
 
 func (a *App) ensureSettingsLoaded() {
-	if a.settingsLoaded {
+	if a.settingsState().settingsLoaded {
 		return
 	}
 
@@ -841,11 +843,12 @@ func (a *App) ensureSettingsLoaded() {
 // GetSettings returns the currently persisted application settings.
 func (a *App) GetSettings() AppSettings {
 	a.ensureSettingsLoaded()
-	return a.settings
+	return a.settingsState().settings
 }
 
 // SaveSettings validates, persists, and returns normalized application settings.
 func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
+	settingsState := a.settingsState()
 	a.ensureSettingsLoaded()
 
 	normalized := normalizeAppSettings(settings)
@@ -853,7 +856,7 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 		return AppSettings{}, err
 	}
 
-	a.settings = normalized
+	settingsState.settings = normalized
 	a.audioBackend().SetFFmpegPath(normalized.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(normalized.Audio)
 	a.notifyMusicBrainzTagWorker()

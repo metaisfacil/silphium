@@ -19,7 +19,7 @@ func fetchMusicBrainzPayload(requestURL string, rateLimitMs int) (map[string]any
 
 func (a *App) musicBrainzServerURL() string {
 	a.ensureSettingsLoaded()
-	u := strings.TrimRight(strings.TrimSpace(a.settings.MusicBrainzServerURL), "/")
+	u := strings.TrimRight(strings.TrimSpace(a.settingsState().settings.MusicBrainzServerURL), "/")
 	if u == "" {
 		return musicBrainzPublicServerURL
 	}
@@ -33,7 +33,7 @@ func (a *App) musicBrainzAPIBaseURL() string {
 
 func (a *App) musicBrainzRequestRateMs() int {
 	a.ensureSettingsLoaded()
-	return a.settings.MusicBrainzRequestRateMs
+	return a.settingsState().settings.MusicBrainzRequestRateMs
 }
 
 func musicBrainzEntitySubtitle(entityType string) string {

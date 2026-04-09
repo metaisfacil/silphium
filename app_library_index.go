@@ -19,56 +19,61 @@ type libraryDerivedIndexData struct {
 }
 
 func (a *App) markLibraryDerivedIndexDirtyLocked() {
-	a.libraryDerivedIndexGeneration++
-	a.libraryDerivedIndexDirty = true
-	a.folderEntriesByFolder = nil
-	a.folderChildPathsByFolder = nil
-	a.trackFilesByFolder = nil
-	a.searchFolderEntries = nil
-	a.searchTrackEntries = nil
-	a.searchTextEntries = nil
-	a.searchImageEntries = nil
-	a.searchResultsByQuery = nil
-	a.searchCacheOrder = nil
-	a.searchLastQuery = ""
-	a.searchLastResults = nil
+	indexState := a.libraryIndexState()
+	indexState.libraryDerivedIndexGeneration++
+	indexState.libraryDerivedIndexDirty = true
+	indexState.folderEntriesByFolder = nil
+	indexState.folderChildPathsByFolder = nil
+	indexState.trackFilesByFolder = nil
+	indexState.searchFolderEntries = nil
+	indexState.searchTrackEntries = nil
+	indexState.searchTextEntries = nil
+	indexState.searchImageEntries = nil
+	indexState.searchResultsByQuery = nil
+	indexState.searchCacheOrder = nil
+	indexState.searchLastQuery = ""
+	indexState.searchLastResults = nil
 }
 
 func (a *App) isLibraryDerivedIndexReadyLocked() bool {
-	return !a.libraryDerivedIndexDirty &&
-		!a.libraryDerivedIndexBuilding &&
-		a.folderEntriesByFolder != nil &&
-		a.folderChildPathsByFolder != nil &&
-		a.trackFilesByFolder != nil &&
-		a.searchFolderEntries != nil &&
-		a.searchTrackEntries != nil &&
-		a.searchTextEntries != nil &&
-		a.searchImageEntries != nil &&
-		a.searchResultsByQuery != nil
+	indexState := a.libraryIndexState()
+	return !indexState.libraryDerivedIndexDirty &&
+		!indexState.libraryDerivedIndexBuilding &&
+		indexState.folderEntriesByFolder != nil &&
+		indexState.folderChildPathsByFolder != nil &&
+		indexState.trackFilesByFolder != nil &&
+		indexState.searchFolderEntries != nil &&
+		indexState.searchTrackEntries != nil &&
+		indexState.searchTextEntries != nil &&
+		indexState.searchImageEntries != nil &&
+		indexState.searchResultsByQuery != nil
 }
 
 func (a *App) maybeStartLibraryDerivedIndexRebuildLocked() {
-	if a.scanInProgress || a.libraryFileHydrationPending || !a.libraryDerivedIndexDirty || a.libraryDerivedIndexBuilding {
+	scanState := a.libraryScanState()
+	contentState := a.libraryContentState()
+	indexState := a.libraryIndexState()
+	if scanState.scanInProgress || indexState.libraryFileHydrationPending || !indexState.libraryDerivedIndexDirty || indexState.libraryDerivedIndexBuilding {
 		return
 	}
 
-	generation := a.libraryDerivedIndexGeneration
-	trackFiles := make([]LibraryIndexedFile, 0, len(a.trackByPath))
-	for _, indexed := range a.trackByPath {
+	generation := indexState.libraryDerivedIndexGeneration
+	trackFiles := make([]LibraryIndexedFile, 0, len(contentState.trackByPath))
+	for _, indexed := range contentState.trackByPath {
 		trackFiles = append(trackFiles, indexed)
 	}
 
-	textFiles := make([]LibraryIndexedFile, 0, len(a.textByPath))
-	for _, indexed := range a.textByPath {
+	textFiles := make([]LibraryIndexedFile, 0, len(contentState.textByPath))
+	for _, indexed := range contentState.textByPath {
 		textFiles = append(textFiles, indexed)
 	}
 
-	imageFiles := make([]LibraryIndexedFile, 0, len(a.imageByPath))
-	for _, indexed := range a.imageByPath {
+	imageFiles := make([]LibraryIndexedFile, 0, len(contentState.imageByPath))
+	for _, indexed := range contentState.imageByPath {
 		imageFiles = append(imageFiles, indexed)
 	}
 
-	a.libraryDerivedIndexBuilding = true
+	indexState.libraryDerivedIndexBuilding = true
 	a.logRescanEvent(
 		"rebuildLibraryDerivedIndex START (async): %d tracks, %d text, %d images",
 		len(trackFiles),
@@ -83,29 +88,32 @@ func (a *App) rebuildLibraryDerivedIndexAsync(generation uint64, trackFiles []Li
 	rebuildStartedAt := time.Now()
 	indexData := buildLibraryDerivedIndexData(trackFiles, textFiles, imageFiles)
 	rebuildDurationMs := time.Since(rebuildStartedAt).Seconds() * 1000
+	contentState := a.libraryContentState()
+	scanState := a.libraryScanState()
+	indexState := a.libraryIndexState()
 
-	a.indexMu.Lock()
-	defer a.indexMu.Unlock()
+	contentState.indexMu.Lock()
+	defer contentState.indexMu.Unlock()
 
-	if a.scanInProgress || generation != a.libraryDerivedIndexGeneration {
-		a.libraryDerivedIndexBuilding = false
+	if scanState.scanInProgress || generation != indexState.libraryDerivedIndexGeneration {
+		indexState.libraryDerivedIndexBuilding = false
 		a.maybeStartLibraryDerivedIndexRebuildLocked()
 		return
 	}
 
-	a.folderEntriesByFolder = indexData.folderEntriesByFolder
-	a.folderChildPathsByFolder = indexData.folderChildPathsByFolder
-	a.trackFilesByFolder = indexData.trackFilesByFolder
-	a.searchFolderEntries = indexData.searchFolderEntries
-	a.searchTrackEntries = indexData.searchTrackEntries
-	a.searchTextEntries = indexData.searchTextEntries
-	a.searchImageEntries = indexData.searchImageEntries
-	a.searchResultsByQuery = make(map[string][]LibraryBrowserEntry)
-	a.searchCacheOrder = make([]string, 0, librarySearchCacheLimit)
-	a.searchLastQuery = ""
-	a.searchLastResults = nil
-	a.libraryDerivedIndexDirty = false
-	a.libraryDerivedIndexBuilding = false
+	indexState.folderEntriesByFolder = indexData.folderEntriesByFolder
+	indexState.folderChildPathsByFolder = indexData.folderChildPathsByFolder
+	indexState.trackFilesByFolder = indexData.trackFilesByFolder
+	indexState.searchFolderEntries = indexData.searchFolderEntries
+	indexState.searchTrackEntries = indexData.searchTrackEntries
+	indexState.searchTextEntries = indexData.searchTextEntries
+	indexState.searchImageEntries = indexData.searchImageEntries
+	indexState.searchResultsByQuery = make(map[string][]LibraryBrowserEntry)
+	indexState.searchCacheOrder = make([]string, 0, librarySearchCacheLimit)
+	indexState.searchLastQuery = ""
+	indexState.searchLastResults = nil
+	indexState.libraryDerivedIndexDirty = false
+	indexState.libraryDerivedIndexBuilding = false
 
 	a.logRescanEvent(
 		"rebuildLibraryDerivedIndex END: %d folders, %d track files, %d text files, %d images in %.2fms",
@@ -332,54 +340,56 @@ func filterSearchEntries(entries []LibraryBrowserEntry, normalizedQuery string, 
 }
 
 func (a *App) rememberSearchResultLocked(normalizedQuery string, entries []LibraryBrowserEntry) {
-	if a.searchResultsByQuery == nil {
-		a.searchResultsByQuery = make(map[string][]LibraryBrowserEntry)
+	indexState := a.libraryIndexState()
+	if indexState.searchResultsByQuery == nil {
+		indexState.searchResultsByQuery = make(map[string][]LibraryBrowserEntry)
 	}
 
-	if _, exists := a.searchResultsByQuery[normalizedQuery]; !exists {
-		a.searchCacheOrder = append(a.searchCacheOrder, normalizedQuery)
+	if _, exists := indexState.searchResultsByQuery[normalizedQuery]; !exists {
+		indexState.searchCacheOrder = append(indexState.searchCacheOrder, normalizedQuery)
 	}
 
-	a.searchResultsByQuery[normalizedQuery] = entries
+	indexState.searchResultsByQuery[normalizedQuery] = entries
 
-	for len(a.searchCacheOrder) > librarySearchCacheLimit {
-		evictedQuery := a.searchCacheOrder[0]
-		a.searchCacheOrder = a.searchCacheOrder[1:]
-		delete(a.searchResultsByQuery, evictedQuery)
+	for len(indexState.searchCacheOrder) > librarySearchCacheLimit {
+		evictedQuery := indexState.searchCacheOrder[0]
+		indexState.searchCacheOrder = indexState.searchCacheOrder[1:]
+		delete(indexState.searchResultsByQuery, evictedQuery)
 	}
 }
 
 func (a *App) buildSearchResultsLocked(normalizedQuery string, shouldCancel func() bool) ([]LibraryBrowserEntry, string, bool) {
-	if cachedEntries, exists := a.searchResultsByQuery[normalizedQuery]; exists {
+	indexState := a.libraryIndexState()
+	if cachedEntries, exists := indexState.searchResultsByQuery[normalizedQuery]; exists {
 		return cachedEntries, "cache-hit", false
 	}
 
 	var entries []LibraryBrowserEntry
 	mode := "full-filter"
-	if a.searchLastQuery != "" && strings.HasPrefix(normalizedQuery, a.searchLastQuery) && len(a.searchLastResults) > 0 {
+	if indexState.searchLastQuery != "" && strings.HasPrefix(normalizedQuery, indexState.searchLastQuery) && len(indexState.searchLastResults) > 0 {
 		var canceled bool
-		entries, canceled = filterSearchEntries(a.searchLastResults, normalizedQuery, shouldCancel)
+		entries, canceled = filterSearchEntries(indexState.searchLastResults, normalizedQuery, shouldCancel)
 		if canceled {
 			return []LibraryBrowserEntry{}, mode, true
 		}
 		mode = "prefix-filter"
 	} else {
-		folderMatches, canceled := filterSearchEntries(a.searchFolderEntries, normalizedQuery, shouldCancel)
+		folderMatches, canceled := filterSearchEntries(indexState.searchFolderEntries, normalizedQuery, shouldCancel)
 		if canceled {
 			return []LibraryBrowserEntry{}, mode, true
 		}
 
-		trackMatches, canceled := filterSearchEntries(a.searchTrackEntries, normalizedQuery, shouldCancel)
+		trackMatches, canceled := filterSearchEntries(indexState.searchTrackEntries, normalizedQuery, shouldCancel)
 		if canceled {
 			return []LibraryBrowserEntry{}, mode, true
 		}
 
-		textMatches, canceled := filterSearchEntries(a.searchTextEntries, normalizedQuery, shouldCancel)
+		textMatches, canceled := filterSearchEntries(indexState.searchTextEntries, normalizedQuery, shouldCancel)
 		if canceled {
 			return []LibraryBrowserEntry{}, mode, true
 		}
 
-		imageMatches, canceled := filterSearchEntries(a.searchImageEntries, normalizedQuery, shouldCancel)
+		imageMatches, canceled := filterSearchEntries(indexState.searchImageEntries, normalizedQuery, shouldCancel)
 		if canceled {
 			return []LibraryBrowserEntry{}, mode, true
 		}
@@ -396,8 +406,8 @@ func (a *App) buildSearchResultsLocked(normalizedQuery string, shouldCancel func
 	}
 
 	a.rememberSearchResultLocked(normalizedQuery, entries)
-	a.searchLastQuery = normalizedQuery
-	a.searchLastResults = entries
+	indexState.searchLastQuery = normalizedQuery
+	indexState.searchLastResults = entries
 	return entries, mode, false
 }
 
@@ -407,13 +417,15 @@ func copyPagedLibraryEntries(entries []LibraryBrowserEntry, offset int, limit in
 }
 
 func (a *App) buildFolderEntriesFromMapsLocked(normalizedFolderPath string) []LibraryBrowserEntry {
+	contentState := a.libraryContentState()
+	scanState := a.libraryScanState()
 	folderEntriesByPath := make(map[string]LibraryBrowserEntry)
 	trackEntries := make([]LibraryBrowserEntry, 0)
 	textEntries := make([]LibraryBrowserEntry, 0)
 	imageEntries := make([]LibraryBrowserEntry, 0)
 
-	if a.scanInProgress && a.scanDiscoveredChildFoldersByParent != nil {
-		for childPath := range a.scanDiscoveredChildFoldersByParent[normalizedFolderPath] {
+	if scanState.scanInProgress && scanState.scanDiscoveredChildFoldersByParent != nil {
+		for childPath := range scanState.scanDiscoveredChildFoldersByParent[normalizedFolderPath] {
 			folderEntriesByPath[childPath] = folderBrowserEntry(childPath)
 		}
 	}
@@ -434,13 +446,13 @@ func (a *App) buildFolderEntriesFromMapsLocked(normalizedFolderPath string) []Li
 		}
 	}
 
-	for _, indexed := range a.trackByPath {
+	for _, indexed := range contentState.trackByPath {
 		appendEntry(indexed, "track", &trackEntries)
 	}
-	for _, indexed := range a.textByPath {
+	for _, indexed := range contentState.textByPath {
 		appendEntry(indexed, "text-file", &textEntries)
 	}
-	for _, indexed := range a.imageByPath {
+	for _, indexed := range contentState.imageByPath {
 		appendEntry(indexed, "image-file", &imageEntries)
 	}
 
@@ -463,6 +475,8 @@ func (a *App) buildFolderEntriesFromMapsLocked(normalizedFolderPath string) []Li
 }
 
 func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCancel func() bool) ([]LibraryBrowserEntry, bool) {
+	contentState := a.libraryContentState()
+	scanState := a.libraryScanState()
 	folderPaths := make(map[string]struct{})
 	folderMatchesByPath := make(map[string]LibraryBrowserEntry)
 	trackMatches := make([]LibraryBrowserEntry, 0)
@@ -500,12 +514,12 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCan
 		}
 	}
 
-	if a.scanInProgress && a.scanDiscoveredChildFoldersByParent != nil {
-		collectDiscoveredScanFolders(folderPaths, a.scanDiscoveredChildFoldersByParent)
+	if scanState.scanInProgress && scanState.scanDiscoveredChildFoldersByParent != nil {
+		collectDiscoveredScanFolders(folderPaths, scanState.scanDiscoveredChildFoldersByParent)
 	}
 
 	trackIndex := 0
-	for _, indexed := range a.trackByPath {
+	for _, indexed := range contentState.trackByPath {
 		if shouldCancel != nil && trackIndex%256 == 0 && shouldCancel() {
 			return []LibraryBrowserEntry{}, true
 		}
@@ -513,7 +527,7 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCan
 		matchIndexedFile(indexed, "track", &trackMatches)
 	}
 	textIndex := 0
-	for _, indexed := range a.textByPath {
+	for _, indexed := range contentState.textByPath {
 		if shouldCancel != nil && textIndex%256 == 0 && shouldCancel() {
 			return []LibraryBrowserEntry{}, true
 		}
@@ -521,7 +535,7 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCan
 		matchIndexedFile(indexed, "text-file", &textMatches)
 	}
 	imageIndex := 0
-	for _, indexed := range a.imageByPath {
+	for _, indexed := range contentState.imageByPath {
 		if shouldCancel != nil && imageIndex%256 == 0 && shouldCancel() {
 			return []LibraryBrowserEntry{}, true
 		}
@@ -565,13 +579,14 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCan
 }
 
 func (a *App) getFolderTrackPathsFromMapsLocked(normalizedFolderPath string) []string {
+	contentState := a.libraryContentState()
 	prefix := ""
 	if normalizedFolderPath != "" {
 		prefix = normalizedFolderPath + "/"
 	}
 
 	trackFiles := make([]LibraryIndexedFile, 0)
-	for _, indexed := range a.trackByPath {
+	for _, indexed := range contentState.trackByPath {
 		if normalizedFolderPath == "" || indexed.FolderPath == normalizedFolderPath || strings.HasPrefix(indexed.FolderPath, prefix) {
 			trackFiles = append(trackFiles, indexed)
 		}
@@ -592,13 +607,14 @@ func (a *App) getFolderTrackPathsFromMapsLocked(normalizedFolderPath string) []s
 }
 
 func (a *App) getFolderTrackCountFromMapsLocked(normalizedFolderPath string) int {
+	contentState := a.libraryContentState()
 	prefix := ""
 	if normalizedFolderPath != "" {
 		prefix = normalizedFolderPath + "/"
 	}
 
 	count := 0
-	for _, indexed := range a.trackByPath {
+	for _, indexed := range contentState.trackByPath {
 		if normalizedFolderPath == "" || indexed.FolderPath == normalizedFolderPath || strings.HasPrefix(indexed.FolderPath, prefix) {
 			count++
 		}
@@ -608,14 +624,15 @@ func (a *App) getFolderTrackCountFromMapsLocked(normalizedFolderPath string) int
 }
 
 func (a *App) getFolderTrackPathsFromDerivedIndexLocked(normalizedFolderPath string) []string {
-	if a.trackFilesByFolder == nil || a.folderChildPathsByFolder == nil {
+	indexState := a.libraryIndexState()
+	if indexState.trackFilesByFolder == nil || indexState.folderChildPathsByFolder == nil {
 		return []string{}
 	}
 
 	if normalizedFolderPath != "" {
-		_, hasFolderEntries := a.folderEntriesByFolder[normalizedFolderPath]
-		_, hasDirectTracks := a.trackFilesByFolder[normalizedFolderPath]
-		_, hasChildFolders := a.folderChildPathsByFolder[normalizedFolderPath]
+		_, hasFolderEntries := indexState.folderEntriesByFolder[normalizedFolderPath]
+		_, hasDirectTracks := indexState.trackFilesByFolder[normalizedFolderPath]
+		_, hasChildFolders := indexState.folderChildPathsByFolder[normalizedFolderPath]
 		if !hasFolderEntries && !hasDirectTracks && !hasChildFolders {
 			return []string{}
 		}
@@ -627,11 +644,11 @@ func (a *App) getFolderTrackPathsFromDerivedIndexLocked(normalizedFolderPath str
 		currentFolder := pendingFolders[len(pendingFolders)-1]
 		pendingFolders = pendingFolders[:len(pendingFolders)-1]
 
-		if directTrackFiles := a.trackFilesByFolder[currentFolder]; len(directTrackFiles) > 0 {
+		if directTrackFiles := indexState.trackFilesByFolder[currentFolder]; len(directTrackFiles) > 0 {
 			trackFiles = append(trackFiles, directTrackFiles...)
 		}
 
-		childFolders := a.folderChildPathsByFolder[currentFolder]
+		childFolders := indexState.folderChildPathsByFolder[currentFolder]
 		for index := len(childFolders) - 1; index >= 0; index-- {
 			pendingFolders = append(pendingFolders, childFolders[index])
 		}
@@ -652,14 +669,15 @@ func (a *App) getFolderTrackPathsFromDerivedIndexLocked(normalizedFolderPath str
 }
 
 func (a *App) getFolderTrackCountFromDerivedIndexLocked(normalizedFolderPath string) int {
-	if a.trackFilesByFolder == nil || a.folderChildPathsByFolder == nil {
+	indexState := a.libraryIndexState()
+	if indexState.trackFilesByFolder == nil || indexState.folderChildPathsByFolder == nil {
 		return 0
 	}
 
 	if normalizedFolderPath != "" {
-		_, hasFolderEntries := a.folderEntriesByFolder[normalizedFolderPath]
-		_, hasDirectTracks := a.trackFilesByFolder[normalizedFolderPath]
-		_, hasChildFolders := a.folderChildPathsByFolder[normalizedFolderPath]
+		_, hasFolderEntries := indexState.folderEntriesByFolder[normalizedFolderPath]
+		_, hasDirectTracks := indexState.trackFilesByFolder[normalizedFolderPath]
+		_, hasChildFolders := indexState.folderChildPathsByFolder[normalizedFolderPath]
 		if !hasFolderEntries && !hasDirectTracks && !hasChildFolders {
 			return 0
 		}
@@ -671,11 +689,11 @@ func (a *App) getFolderTrackCountFromDerivedIndexLocked(normalizedFolderPath str
 		currentFolder := pendingFolders[len(pendingFolders)-1]
 		pendingFolders = pendingFolders[:len(pendingFolders)-1]
 
-		if directTrackFiles := a.trackFilesByFolder[currentFolder]; len(directTrackFiles) > 0 {
+		if directTrackFiles := indexState.trackFilesByFolder[currentFolder]; len(directTrackFiles) > 0 {
 			count += len(directTrackFiles)
 		}
 
-		childFolders := a.folderChildPathsByFolder[currentFolder]
+		childFolders := indexState.folderChildPathsByFolder[currentFolder]
 		for index := len(childFolders) - 1; index >= 0; index-- {
 			pendingFolders = append(pendingFolders, childFolders[index])
 		}

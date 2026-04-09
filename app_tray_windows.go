@@ -33,11 +33,11 @@ var runtimeQuit = runtime.Quit
 
 func (a *App) shouldMinimizeToTrayOnClose() bool {
 	a.ensureSettingsLoaded()
-	return a.settings.MinimizeToTrayOnClose
+	return a.settingsState().settings.MinimizeToTrayOnClose
 }
 
 func (a *App) refreshSystemTrayForSettings() {
-	if a.quitRequested.Load() {
+	if a.runtimeState().quitRequested.Load() {
 		windowsTray.stop()
 		return
 	}

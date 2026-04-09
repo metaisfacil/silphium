@@ -63,3 +63,16 @@ func createLibraryTestFixture(t *testing.T) libraryTestFixture {
 
 	return fixture
 }
+
+func newTestAppWithLoadedSettings(settings AppSettings) *App {
+	app := &App{}
+	app.settings = settings
+	app.settingsLoaded = true
+	return app
+}
+
+func newTestAppWithSettingsLoaded() *App {
+	app := &App{}
+	app.settingsLoaded = true
+	return app
+}

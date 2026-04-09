@@ -126,7 +126,7 @@ func TestReadTrackTagsFromBlobsWithTaglibSeams(t *testing.T) {
 		return taglib.Properties{Length: 2 * time.Second, Channels: 2, SampleRate: 44100, Bitrate: 320}, nil
 	}
 
-	app := &App{settingsLoaded: true}
+	app := newTestAppWithSettingsLoaded()
 	results := app.ReadTrackTagsFromBlobs([]TrackBlob{
 		{Key: "blob-key", Name: "track.flac", Data: base64.StdEncoding.EncodeToString([]byte("blob-bytes"))},
 	})

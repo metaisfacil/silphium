@@ -12,24 +12,25 @@ import (
 )
 
 func (a *App) removePathAndDescendants(path string) {
-	delete(a.trackByPath, path)
-	delete(a.textByPath, path)
-	delete(a.imageByPath, path)
+	contentState := a.libraryContentState()
+	delete(contentState.trackByPath, path)
+	delete(contentState.textByPath, path)
+	delete(contentState.imageByPath, path)
 
 	prefix := path + string(filepath.Separator)
-	for candidatePath := range a.trackByPath {
+	for candidatePath := range contentState.trackByPath {
 		if strings.HasPrefix(candidatePath, prefix) {
-			delete(a.trackByPath, candidatePath)
+			delete(contentState.trackByPath, candidatePath)
 		}
 	}
-	for candidatePath := range a.textByPath {
+	for candidatePath := range contentState.textByPath {
 		if strings.HasPrefix(candidatePath, prefix) {
-			delete(a.textByPath, candidatePath)
+			delete(contentState.textByPath, candidatePath)
 		}
 	}
-	for candidatePath := range a.imageByPath {
+	for candidatePath := range contentState.imageByPath {
 		if strings.HasPrefix(candidatePath, prefix) {
-			delete(a.imageByPath, candidatePath)
+			delete(contentState.imageByPath, candidatePath)
 		}
 	}
 }
@@ -51,6 +52,7 @@ func indexFileForRoot(root libraryRootConfig, fullPath string, fileName string) 
 }
 
 func (a *App) addOrUpdateIndexedFile(root libraryRootConfig, fullPath string, fileName string) {
+	contentState := a.libraryContentState()
 	a.removePathAndDescendants(fullPath)
 
 	indexed, ok := indexFileForRoot(root, fullPath, fileName)
@@ -60,11 +62,11 @@ func (a *App) addOrUpdateIndexedFile(root libraryRootConfig, fullPath string, fi
 
 	switch {
 	case isAudioPath(fullPath):
-		a.trackByPath[fullPath] = indexed
+		contentState.trackByPath[fullPath] = indexed
 	case isTextPath(fullPath):
-		a.textByPath[fullPath] = indexed
+		contentState.textByPath[fullPath] = indexed
 	case isImagePath(fullPath):
-		a.imageByPath[fullPath] = indexed
+		contentState.imageByPath[fullPath] = indexed
 	}
 }
 
@@ -101,17 +103,19 @@ func (a *App) addOrUpdatePathRecursive(root libraryRootConfig, targetPath string
 func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScanResult, bool) {
 	startTime := time.Now()
 	a.logRescanEvent("applyIncrementalLibraryChanges START with %d paths", len(changedPaths))
+	contentState := a.libraryContentState()
+	indexState := a.libraryIndexState()
 
 	lockWaitStart := time.Now()
 	a.logRescanEvent("  - waiting for indexMu lock...")
-	a.indexMu.Lock()
+	contentState.indexMu.Lock()
 	a.logRescanEvent("  - acquired indexMu lock (waited %.2fms)", time.Since(lockWaitStart).Seconds()*1000)
-	defer a.indexMu.Unlock()
+	defer contentState.indexMu.Unlock()
 
 	if len(changedPaths) == 0 {
 		return LibraryScanResult{}, false
 	}
-	if a.libraryFileHydrationPending {
+	if indexState.libraryFileHydrationPending {
 		a.logRescanEvent("applyIncrementalLibraryChanges skipped: deferred hydration still pending")
 		return LibraryScanResult{}, false
 	}
@@ -150,10 +154,10 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 	// The file arrays are still valid (items may have been added/removed from the maps,
 	// but the snapshot lists are consistent for the event emission).
 	updateStartTime := time.Now()
-	a.libraryScan.TrackCount = len(a.trackByPath)
-	a.libraryScan.TextFileCount = len(a.textByPath)
-	a.libraryScan.ImageFileCount = len(a.imageByPath)
-	a.libraryScan.TotalEntries = a.libraryScan.TrackCount + a.libraryScan.TextFileCount + a.libraryScan.ImageFileCount
+	contentState.libraryScan.TrackCount = len(contentState.trackByPath)
+	contentState.libraryScan.TextFileCount = len(contentState.textByPath)
+	contentState.libraryScan.ImageFileCount = len(contentState.imageByPath)
+	contentState.libraryScan.TotalEntries = contentState.libraryScan.TrackCount + contentState.libraryScan.TextFileCount + contentState.libraryScan.ImageFileCount
 	a.markLibraryDerivedIndexDirtyLocked()
 	a.maybeStartLibraryDerivedIndexRebuildLocked()
 	a.notifyMusicBrainzTagWorker()
@@ -161,14 +165,14 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 	// Emit only the lightweight metadata — the frontend no longer uses the file arrays
 	// for incremental updates, and serializing 150K+ entries over IPC takes several seconds.
 	notification := LibraryScanResult{
-		RootPath:       a.libraryScan.RootPath,
-		RootName:       a.libraryScan.RootName,
-		TotalEntries:   a.libraryScan.TotalEntries,
-		TrackCount:     a.libraryScan.TrackCount,
-		TextFileCount:  a.libraryScan.TextFileCount,
-		ImageFileCount: a.libraryScan.ImageFileCount,
-		Truncated:      a.libraryScan.Truncated,
-		EntryLimit:     a.libraryScan.EntryLimit,
+		RootPath:       contentState.libraryScan.RootPath,
+		RootName:       contentState.libraryScan.RootName,
+		TotalEntries:   contentState.libraryScan.TotalEntries,
+		TrackCount:     contentState.libraryScan.TrackCount,
+		TextFileCount:  contentState.libraryScan.TextFileCount,
+		ImageFileCount: contentState.libraryScan.ImageFileCount,
+		Truncated:      contentState.libraryScan.Truncated,
+		EntryLimit:     contentState.libraryScan.EntryLimit,
 	}
 	a.logRescanEvent("applyIncrementalLibraryChanges update took %.2fms, total time %.2fms",
 		time.Since(updateStartTime).Seconds()*1000, time.Since(startTime).Seconds()*1000)
@@ -275,21 +279,22 @@ func collectWatchableLibraryDirectoryPaths(roots []libraryRootConfig, directoryP
 }
 
 func (a *App) stopLibraryWatcherReserved(generation uint64) {
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+	watcherState := a.libraryWatcherState()
+	if generation > 0 && watcherState.generation.Load() != generation {
 		return
 	}
 
-	a.watchMu.Lock()
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
-		a.watchMu.Unlock()
+	watcherState.mu.Lock()
+	if generation > 0 && watcherState.generation.Load() != generation {
+		watcherState.mu.Unlock()
 		return
 	}
 
-	watcher := a.libraryWatcher
-	stopCh := a.watchStop
-	a.libraryWatcher = nil
-	a.watchStop = nil
-	a.watchMu.Unlock()
+	watcher := watcherState.watcher
+	stopCh := watcherState.stopCh
+	watcherState.watcher = nil
+	watcherState.stopCh = nil
+	watcherState.mu.Unlock()
 
 	if stopCh != nil {
 		close(stopCh)
@@ -307,7 +312,8 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 		return false
 	}
 
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+	watcherState := a.libraryWatcherState()
+	if generation > 0 && watcherState.generation.Load() != generation {
 		return false
 	}
 
@@ -319,7 +325,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 		return false
 	}
 
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+	if generation > 0 && watcherState.generation.Load() != generation {
 		_ = watcher.Close()
 		return false
 	}
@@ -329,7 +335,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 		addLibraryWatchesFromDiscoveredDirectories(watcher, watchablePaths, onProgress)
 	} else {
 		for _, rootPath := range watchablePaths {
-			if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+			if generation > 0 && watcherState.generation.Load() != generation {
 				_ = watcher.Close()
 				return false
 			}
@@ -338,7 +344,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 		}
 	}
 
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
+	if generation > 0 && watcherState.generation.Load() != generation {
 		_ = watcher.Close()
 		return false
 	}
@@ -346,18 +352,18 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 	a.logRescanEvent("Watcher ready, listening for changes")
 	stopCh := make(chan struct{})
 
-	a.watchMu.Lock()
-	if generation > 0 && a.libraryWatcherGeneration.Load() != generation {
-		a.watchMu.Unlock()
+	watcherState.mu.Lock()
+	if generation > 0 && watcherState.generation.Load() != generation {
+		watcherState.mu.Unlock()
 		_ = watcher.Close()
 		return false
 	}
 
-	previousWatcher := a.libraryWatcher
-	previousStopCh := a.watchStop
-	a.libraryWatcher = watcher
-	a.watchStop = stopCh
-	a.watchMu.Unlock()
+	previousWatcher := watcherState.watcher
+	previousStopCh := watcherState.stopCh
+	watcherState.watcher = watcher
+	watcherState.stopCh = stopCh
+	watcherState.mu.Unlock()
 
 	if previousStopCh != nil {
 		close(previousStopCh)
@@ -367,6 +373,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 	}
 
 	go func(activeWatcher *fsnotify.Watcher, activeStopCh chan struct{}) {
+		runtimeState := a.runtimeState()
 		defer func() {
 			_ = activeWatcher.Close()
 		}()
@@ -431,10 +438,10 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 				a.logRescanEvent("Debounce timer fired, applying incremental changes to %d paths", len(changedPaths))
 
 				scan, changed := a.applyIncrementalLibraryChanges(changedPaths)
-				if changed && a.ctx != nil {
+				if changed && runtimeState.ctx != nil {
 					emitStartTime := time.Now()
 					a.logRescanEvent("EventsEmit START: sending scan update event")
-					runtimeEventsEmit(a.ctx, libraryScanUpdatedEvent, scan)
+					runtimeEventsEmit(runtimeState.ctx, libraryScanUpdatedEvent, scan)
 					a.logRescanEvent("EventsEmit END: took %.2fms", time.Since(emitStartTime).Seconds()*1000)
 				}
 
@@ -458,7 +465,7 @@ func (a *App) startLibraryWatcher(roots []libraryRootConfig, onProgress func()) 
 		return
 	}
 
-	generation := a.libraryWatcherGeneration.Add(1)
+	generation := a.libraryWatcherState().generation.Add(1)
 	if !a.startLibraryWatcherReserved(roots, nil, onProgress, generation) {
 		rootCount := len(collectWatchableLibraryRootPaths(roots))
 		if rootCount == 0 {
@@ -481,14 +488,15 @@ func (a *App) startLibraryWatcherAsyncWithDirectories(roots []libraryRootConfig,
 
 	rootsCopy := append([]libraryRootConfig(nil), roots...)
 	directoryPathsCopy := append([]string(nil), directoryPaths...)
-	generation := a.libraryWatcherGeneration.Add(1)
+	watcherState := a.libraryWatcherState()
+	generation := watcherState.generation.Add(1)
 	a.logRescanEvent("Scheduling asynchronous library watcher startup for %d roots", len(rootsCopy))
 
 	go func(activeRoots []libraryRootConfig, activeDirectoryPaths []string, activeGeneration uint64) {
 		startedAt := time.Now()
 		started := a.startLibraryWatcherReserved(activeRoots, activeDirectoryPaths, nil, activeGeneration)
 		if !started {
-			if a.libraryWatcherGeneration.Load() != activeGeneration {
+			if watcherState.generation.Load() != activeGeneration {
 				a.logRescanEvent("Asynchronous library watcher startup canceled as stale")
 				return
 			}
@@ -499,13 +507,15 @@ func (a *App) startLibraryWatcherAsyncWithDirectories(roots []libraryRootConfig,
 
 		watcherMs := float64(time.Since(startedAt).Milliseconds())
 		if watcherMs > 0 {
-			a.indexMu.Lock()
-			if a.scanWatcherMs <= 0 {
-				a.scanWatcherMs = watcherMs
+			contentState := a.libraryContentState()
+			scanState := a.libraryScanState()
+			contentState.indexMu.Lock()
+			if scanState.scanWatcherMs <= 0 {
+				scanState.scanWatcherMs = watcherMs
 			} else {
-				a.scanWatcherMs = (a.scanWatcherMs * 0.72) + (watcherMs * 0.28)
+				scanState.scanWatcherMs = (scanState.scanWatcherMs * 0.72) + (watcherMs * 0.28)
 			}
-			a.indexMu.Unlock()
+			contentState.indexMu.Unlock()
 		}
 
 		a.logRescanEvent("Asynchronous library watcher startup END: took %.2fms", watcherMs)
@@ -513,6 +523,6 @@ func (a *App) startLibraryWatcherAsyncWithDirectories(roots []libraryRootConfig,
 }
 
 func (a *App) stopLibraryWatcher() {
-	generation := a.libraryWatcherGeneration.Add(1)
+	generation := a.libraryWatcherState().generation.Add(1)
 	a.stopLibraryWatcherReserved(generation)
 }

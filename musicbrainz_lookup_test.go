@@ -31,7 +31,7 @@ func TestMusicBrainzLookupFunctions(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 
 	artistInfo := app.LookupArtistByMBID(artistID)
 	if !artistInfo.Found || artistInfo.Name != "Artist" || artistInfo.LifeSpan != "2001 – 2005" {
@@ -103,7 +103,7 @@ func TestMusicBrainzLookupEdgeCases(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 
 	artistInfo := app.LookupArtistByMBID(artistID)
 	if !artistInfo.Found || artistInfo.LifeSpan != "1999 –" || len(artistInfo.Genres) == 0 || artistInfo.Genres[0] != "Electronic" {
@@ -152,7 +152,7 @@ func TestMusicBrainzLookupInvalidJSONAndFallbacks(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 
 	if artistInfo := app.LookupArtistByMBID(artistID); artistInfo.Found {
 		t.Fatalf("LookupArtistByMBID(invalid json) = %#v, want not found", artistInfo)
@@ -195,7 +195,7 @@ func TestMusicBrainzLookupArtistAndMetadataEdgeBranches(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 
 	if info := app.LookupArtistByMBID(fetchFailArtistID); info.Found {
 		t.Fatalf("LookupArtistByMBID(fetch fail) = %#v, want not found", info)
@@ -279,7 +279,7 @@ func TestMusicBrainzLookupEntityFallbackTitlesAndFacts(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{settingsLoaded: true, settings: AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}}
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
 
 	recordingEntity := app.LookupMusicBrainzEntity("recording", recordingID)
 	if !recordingEntity.Found || recordingEntity.Title != "Recording info" {

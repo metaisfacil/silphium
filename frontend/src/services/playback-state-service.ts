@@ -10,39 +10,47 @@ export const createInitialPlaybackState = (): AudioPlaybackState => ({
     endEventId: 0,
 });
 
+export type PlaybackSessionState = {
+    playbackState: AudioPlaybackState;
+    backendReady: boolean;
+    lastHandledEndEventId: number;
+};
+
+export const createPlaybackSessionState = (initialState: AudioPlaybackState = createInitialPlaybackState()): PlaybackSessionState => ({
+    playbackState: initialState,
+    backendReady: false,
+    lastHandledEndEventId: 0,
+});
+
 export type PlaybackStateService = ReturnType<typeof createPlaybackStateService>;
 
-export const createPlaybackStateService = (initialState: AudioPlaybackState = createInitialPlaybackState()) => {
-    let playbackState: AudioPlaybackState = initialState;
-    let backendReady = false;
-    let lastHandledEndEventId = 0;
-
+export const createPlaybackStateService = (state: PlaybackSessionState = createPlaybackSessionState()) => {
     const normalizePathKey = (path: string): string => path.trim().toLowerCase();
 
     return {
         applyPlaybackState: (nextState: AudioPlaybackState, hasTracks: boolean): { trackEnded: boolean } => {
-            const previousSourcePathKey = normalizePathKey(playbackState.sourcePath || '');
+            const previousSourcePathKey = normalizePathKey(state.playbackState.sourcePath || '');
             const nextSourcePathKey = normalizePathKey(nextState.sourcePath || '');
             const sourcePathChanged = previousSourcePathKey !== ''
                 && nextSourcePathKey !== ''
                 && previousSourcePathKey !== nextSourcePathKey;
 
-            playbackState = nextState;
+            state.playbackState = nextState;
 
-            if (!hasTracks || nextState.endEventId <= lastHandledEndEventId || sourcePathChanged) {
+            if (!hasTracks || nextState.endEventId <= state.lastHandledEndEventId || sourcePathChanged) {
                 return { trackEnded: false };
             }
 
-            lastHandledEndEventId = nextState.endEventId;
+            state.lastHandledEndEventId = nextState.endEventId;
             return { trackEnded: true };
         },
-        getPlaybackState: (): AudioPlaybackState => playbackState,
-        isBackendReady: (): boolean => backendReady,
+        getPlaybackState: (): AudioPlaybackState => state.playbackState,
+        isBackendReady: (): boolean => state.backendReady,
         resetEndEventTracking: (): void => {
-            lastHandledEndEventId = 0;
+            state.lastHandledEndEventId = 0;
         },
         setBackendReady: (ready: boolean): void => {
-            backendReady = ready;
+            state.backendReady = ready;
         },
     };
 };

@@ -97,14 +97,11 @@ func TestGetListenBrainzFollowingAndFeed(t *testing.T) {
 	}))
 	defer server.Close()
 
-	app := &App{
-		settings: AppSettings{
-			ListenBrainzUserToken:     token,
-			ListenBrainzServerURL:     server.URL,
-			ListenBrainzRequestRateMs: 0,
-		},
-		settingsLoaded: true,
-	}
+	app := newTestAppWithLoadedSettings(AppSettings{
+		ListenBrainzUserToken:     token,
+		ListenBrainzServerURL:     server.URL,
+		ListenBrainzRequestRateMs: 0,
+	})
 
 	following, err := app.GetListenBrainzFollowing()
 	if err != nil {

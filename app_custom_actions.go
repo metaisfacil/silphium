@@ -22,12 +22,13 @@ func shellQuotePath(path string) string {
 }
 
 func (a *App) resolveAbsoluteLibraryPathFromVirtualPath(path string) (string, bool) {
+	contentState := a.libraryContentState()
 	normalizedPath, ok := normalizeLibraryRelativePath(path)
 	if !ok || normalizedPath == "" {
 		return "", false
 	}
 
-	for _, root := range a.activeLibraryRoots {
+	for _, root := range contentState.activeLibraryRoots {
 		rootName := strings.TrimSpace(root.Name)
 		if rootName == "" {
 			continue
@@ -60,6 +61,7 @@ func (a *App) resolveAbsoluteLibraryPathFromVirtualPath(path string) (string, bo
 }
 
 func (a *App) looksLikeVirtualLibraryPath(path string) bool {
+	contentState := a.libraryContentState()
 	normalizedPath, ok := normalizeLibraryRelativePath(path)
 	if !ok || normalizedPath == "" {
 		return false
@@ -70,7 +72,7 @@ func (a *App) looksLikeVirtualLibraryPath(path string) bool {
 		firstSegment = firstSegment[:separator]
 	}
 
-	for _, root := range a.activeLibraryRoots {
+	for _, root := range contentState.activeLibraryRoots {
 		if strings.TrimSpace(root.Name) == firstSegment {
 			return true
 		}

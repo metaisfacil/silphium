@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSettingsModalElements, renderSettingsModal } from '../components/overlays/settings-modal';
 import type { AudioOutputDevice, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout } from '../types/app-types';
 import { createSettingsController, type SettingsFormValues, type SettingsViewValues } from './settings-controller';
+import { createSettingsControllerState, type SettingsControllerState } from './settings-controller-types';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -76,6 +77,7 @@ const mountSettingsController = (options: {
     save?: (values: SettingsFormValues) => Promise<void>;
     forceReload?: (values: SettingsFormValues) => Promise<void>;
     fetchLastFmSessionKey?: (apiKey: string, apiSecret: string) => Promise<string>;
+    state?: SettingsControllerState;
 } = {}) => {
     document.body.innerHTML = renderSettingsModal();
     const trigger = document.createElement('button');
@@ -91,6 +93,7 @@ const mountSettingsController = (options: {
     const controller = createSettingsController({
         trigger,
         elements,
+        state: options.state,
         getValues: options.getValues ?? createSettingsViewValues,
         selectLibraryFolder: vi.fn(async () => ''),
         selectPlaylistFile: vi.fn(async () => ''),
@@ -232,6 +235,29 @@ describe('createSettingsController', () => {
         }));
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(false);
         expect(elements.settingsLissajousScaleValue.textContent).toBe('40%');
+    });
+
+    it('hydrates and mutates an injected settings draft state', () => {
+        const state = createSettingsControllerState();
+        const { controller, elements } = mountSettingsController({ state });
+
+        controller.open('playlists');
+
+        expect(state.libraryFolders).toEqual([{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }]);
+        expect(state.favoritePlaylists).toEqual(['/playlists/favorites.m3u8']);
+        expect(state.scrobbleRules).toEqual([{ field: 'path', operator: 'starts_with', value: '/music/private' }]);
+        expect(state.selectedLibraryFolderIndex).toBe(0);
+        expect(state.selectedFavoritePlaylistIndex).toBe(-1);
+
+        const favoriteButton = elements.settingsFavoritePlaylistList.querySelector('[data-favorite-playlist-index="0"]') as HTMLButtonElement;
+        favoriteButton.click();
+
+        expect(state.selectedFavoritePlaylistIndex).toBe(0);
+
+        elements.settingsRemoveFavoritePlaylist.click();
+
+        expect(state.favoritePlaylists).toEqual([]);
+        expect(state.selectedFavoritePlaylistIndex).toBe(-1);
     });
 
     it('shows the scale control only for lissajous mode and formats its value', () => {
