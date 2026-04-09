@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ImageLibraryFile, LibraryBrowserEntry, LibraryFolderPage, LibrarySearchPage, TextLibraryFile, Track } from '../types/app-types';
 import { createLibraryController } from './library-controller';
+import { createLibraryControllerState, type LibraryControllerState } from './library-controller-types';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -59,6 +60,7 @@ const createSearchPageSlice = (query: string, entries: LibraryBrowserEntry[], of
 
 const mountLibraryController = (overrides?: {
     searchLibrary?: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
+    state?: LibraryControllerState;
 }) => {
     document.body.innerHTML = `
         <div id="app">
@@ -162,6 +164,7 @@ const mountLibraryController = (overrides?: {
         libraryPath,
         librarySearch,
         libraryBrowser,
+        state: overrides?.state,
         getTracks: () => tracks,
         getTextFiles: () => textFiles,
         getImageFiles: () => imageFiles,
@@ -383,5 +386,40 @@ describe('createLibraryController', () => {
         expect(updatedPane).not.toBeNull();
         expect(updatedPane).toBe(firstPane);
         expect(updatedPane!.scrollTop).toBe(240);
+    });
+
+    it('persists library/search state through an injected controller substate', async () => {
+        const state = createLibraryControllerState();
+        const { controller, librarySearch } = mountLibraryController({ state });
+
+        controller.setLibraryRootName('Library');
+        controller.setCurrentFolderPath('Library/Artist One');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        librarySearch.value = 'intro';
+        librarySearch.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(state.libraryRootName).toBe('Library');
+        expect(state.currentFolderPath).toBe('Library/Artist One');
+        expect(state.sidebarOpen).toBe(true);
+        expect(state.librarySearchQuery).toBe('intro');
+        expect(state.librarySearchPending).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(180);
+        await flushPromises();
+
+        expect(state.activeSearchResult?.entries).toHaveLength(1);
+
+        controller.resetLibraryState();
+
+        expect(state.libraryRootName).toBe('');
+        expect(state.currentFolderPath).toBe('');
+        expect(state.sidebarAutoFolderPath).toBe('');
+        expect(state.librarySearchQuery).toBe('');
+        expect(state.librarySearchPending).toBe(false);
+        expect(state.activeSearchResult).toBeNull();
+        expect(Array.from(state.expandedSearchFolders)).toEqual([]);
     });
 });

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createSettingsControllerState } from './controllers/settings-controller-types';
 import { defaultAppSettings } from './utils/settings-normalization';
 import type { AppControllerSetupContext } from './app-bootstrap-setup';
 
@@ -110,6 +111,30 @@ const createContext = () => {
         tracks,
         textFiles,
         imageFiles,
+        libraryControllerState: {
+            sidebarOpen: false,
+            libraryRootName: '',
+            currentFolderPath: '',
+            sidebarAutoFolderPath: '',
+            libraryIndexTruncated: false,
+            libraryLoading: false,
+            libraryLoadingEtaSeconds: null,
+            libraryLoadingStatusLabel: '',
+            librarySearchQuery: '',
+            librarySearchPending: false,
+            activeSearchResult: null,
+            expandedSearchFolders: new Set<string>(),
+        },
+        playlistControllerState: {
+            loadedPlaylistTrackIndexes: null,
+            loadedPlaylistName: '',
+            loadedPlaylistPath: '',
+            editableQueueTrackIndexes: null,
+            selectedSource: 'queue',
+            selectedFavoriteIndex: null,
+            playbackSource: 'queue',
+        },
+        settingsControllerState: createSettingsControllerState(),
         ffmpegConfigurationRequired: true,
         artistInfoRequestVersion: 9,
         validateConfiguredFFmpegPath: vi.fn(async () => ({ available: true })),
@@ -258,6 +283,9 @@ describe('app-controller-setup', () => {
         });
 
         expect(settingsConfig.getValues().favoritePlaylists).toEqual(['favorites.m3u']);
+        expect(settingsConfig.state).toBe(context.settingsControllerState);
+        expect(libraryConfig.state).toBe(context.libraryControllerState);
+        expect(playlistConfig.state).toBe(context.playlistControllerState);
 
         const saveValues = {
             libraryFolders: [{ path: '/music/library', label: 'Library', releaseDepth: 1 }],

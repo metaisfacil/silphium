@@ -41,6 +41,36 @@ export type SearchResultState = {
     errorMessage: string | null;
 };
 
+export type LibraryControllerState = {
+    sidebarOpen: boolean;
+    libraryRootName: string;
+    currentFolderPath: string;
+    sidebarAutoFolderPath: string;
+    libraryIndexTruncated: boolean;
+    libraryLoading: boolean;
+    libraryLoadingEtaSeconds: number | null;
+    libraryLoadingStatusLabel: string;
+    librarySearchQuery: string;
+    librarySearchPending: boolean;
+    activeSearchResult: SearchResultState | null;
+    expandedSearchFolders: Set<string>;
+};
+
+export const createLibraryControllerState = (): LibraryControllerState => ({
+    sidebarOpen: false,
+    libraryRootName: '',
+    currentFolderPath: '',
+    sidebarAutoFolderPath: '',
+    libraryIndexTruncated: false,
+    libraryLoading: false,
+    libraryLoadingEtaSeconds: null,
+    libraryLoadingStatusLabel: '',
+    librarySearchQuery: '',
+    librarySearchPending: false,
+    activeSearchResult: null,
+    expandedSearchFolders: new Set<string>(),
+});
+
 export type LibrarySearchStateSnapshot = {
     query: string;
     pending: boolean;
@@ -63,6 +93,7 @@ export type LibraryControllerOptions = {
     libraryPath: HTMLParagraphElement;
     librarySearch: HTMLInputElement;
     libraryBrowser: HTMLElement;
+    state?: LibraryControllerState;
     getTracks: () => Track[];
     getTextFiles: () => TextLibraryFile[];
     getImageFiles: () => ImageLibraryFile[];

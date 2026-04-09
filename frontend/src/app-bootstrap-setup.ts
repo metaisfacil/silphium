@@ -18,6 +18,9 @@ type AppControllerSetupScope = RuntimeScope<
     | 'tracks'
     | 'textFiles'
     | 'imageFiles'
+    | 'libraryControllerState'
+    | 'playlistControllerState'
+    | 'settingsControllerState'
     | 'ffmpegConfigurationRequired'
     | 'validateConfiguredFFmpegPath'
     | 'missingFFmpegMessage'
@@ -305,6 +308,9 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
     get imageFiles() {
         return scope.imageFiles;
     },
+    libraryControllerState: scope.libraryControllerState,
+    playlistControllerState: scope.playlistControllerState,
+    settingsControllerState: scope.settingsControllerState,
     get ffmpegConfigurationRequired() {
         return scope.ffmpegConfigurationRequired;
     },

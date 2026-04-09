@@ -7,12 +7,18 @@ import type {
     TextLibraryFile,
     Track,
 } from './types/app-types';
+import { createLibraryControllerState, type LibraryControllerState } from './controllers/library-controller-types';
+import { createPlaylistControllerState, type PlaylistControllerState } from './controllers/playlist-controller-state';
+import { createSettingsControllerState, type SettingsControllerState } from './controllers/settings-controller-types';
 import { defaultAppSettings, defaultMusicBrainzTagWorkerProgress } from './utils/settings-normalization';
 
 export interface AppState {
     tracks: Track[];
     textFiles: TextLibraryFile[];
     imageFiles: ImageLibraryFile[];
+    libraryControllerState: LibraryControllerState;
+    playlistControllerState: PlaylistControllerState;
+    settingsControllerState: SettingsControllerState;
     trackIndexByPath: Map<string, number>;
     textFileIndexByPath: Map<string, number>;
     imageFileIndexByPath: Map<string, number>;
@@ -69,6 +75,9 @@ export const createAppState = (): AppState => ({
     tracks: [],
     textFiles: [],
     imageFiles: [],
+    libraryControllerState: createLibraryControllerState(),
+    playlistControllerState: createPlaylistControllerState(),
+    settingsControllerState: createSettingsControllerState(),
     trackIndexByPath: new Map(),
     textFileIndexByPath: new Map(),
     imageFileIndexByPath: new Map(),

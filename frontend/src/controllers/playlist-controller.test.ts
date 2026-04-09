@@ -4,6 +4,7 @@ import { getPlaylistMenuElements, renderPlaylistMenu } from '../components/overl
 import { getPlaylistModalElements, renderPlaylistModal } from '../components/overlays/playlist-modal';
 import type { PlaylistTrackView } from './playlist-controller';
 import { createPlaylistController } from './playlist-controller';
+import { createPlaylistControllerState, type PlaylistControllerState } from './playlist-controller-state';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -17,7 +18,7 @@ const createTrackView = (index: number): PlaylistTrackView => ({
     tagsResolved: true,
 });
 
-const mountPlaylistController = () => {
+const mountPlaylistController = (options: { state?: PlaylistControllerState } = {}) => {
     document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
     const trigger = document.createElement('button');
     document.body.append(trigger);
@@ -55,6 +56,7 @@ const mountPlaylistController = () => {
         trigger,
         menu,
         modal,
+        state: options.state,
         getTrack: (index: number) => trackViews[index],
         getTrackPath: (index: number) => `/music/track-${index}.flac`,
         getTrackCount: () => trackViews.length,
@@ -197,6 +199,25 @@ describe('createPlaylistController', () => {
         expect(elements.playlistSource.value).toBe('playlist');
         expect(elements.playlistList.textContent).toContain('No tracks available');
         expect(controller.getAvailablePlaylistTargets()).toContainEqual({ path: '/playlists/empty.m3u8', label: 'empty.m3u8' });
+    });
+
+    it('persists playlist source state through an injected controller substate', async () => {
+        const state = createPlaylistControllerState();
+        const { controller, elements } = mountPlaylistController({ state });
+
+        const loaded = await controller.loadPlaylistByPath('/playlists/demo.m3u8');
+
+        expect(loaded).toBe(true);
+        expect(state.loadedPlaylistTrackIndexes).toEqual([2, 1]);
+        expect(state.loadedPlaylistName).toBe('demo.m3u8');
+        expect(state.loadedPlaylistPath).toBe('/playlists/demo.m3u8');
+        expect(state.selectedSource).toBe('playlist');
+        expect(state.playbackSource).toBe('queue');
+        expect(elements.playlistSource.value).toBe('playlist');
+
+        controller.resetState();
+
+        expect(state).toEqual(createPlaylistControllerState());
     });
 
     it('creates an empty playlist target and exposes it to the custom modal flow', async () => {

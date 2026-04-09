@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createSettingsControllerState } from './controllers/settings-controller-types';
 const {
     setupAppControllersMock,
     setupAppEventBindingsMock,
@@ -32,6 +33,30 @@ const createScope = () => {
         tracks: [{ path: '/music/track-1.flac' }],
         textFiles: [{ path: '/docs/info.txt' }],
         imageFiles: [{ path: '/art/cover.jpg' }],
+        libraryControllerState: {
+            sidebarOpen: false,
+            libraryRootName: '',
+            currentFolderPath: '',
+            sidebarAutoFolderPath: '',
+            libraryIndexTruncated: false,
+            libraryLoading: false,
+            libraryLoadingEtaSeconds: null,
+            libraryLoadingStatusLabel: '',
+            librarySearchQuery: '',
+            librarySearchPending: false,
+            activeSearchResult: null,
+            expandedSearchFolders: new Set<string>(),
+        },
+        playlistControllerState: {
+            loadedPlaylistTrackIndexes: null,
+            loadedPlaylistName: '',
+            loadedPlaylistPath: '',
+            editableQueueTrackIndexes: null,
+            selectedSource: 'queue',
+            selectedFavoriteIndex: null,
+            playbackSource: 'queue',
+        },
+        settingsControllerState: createSettingsControllerState(),
         ffmpegConfigurationRequired: false,
         artistInfoRequestVersion: 4,
         fullLibraryScanLoadActive: false,
@@ -292,6 +317,9 @@ describe('app-bootstrap-setup wrappers', () => {
 
         expect(runtime).toEqual({ context });
         expect(context.currentSettings).toBe(scope.currentSettings);
+        expect(context.libraryControllerState).toBe(scope.libraryControllerState);
+        expect(context.playlistControllerState).toBe(scope.playlistControllerState);
+        expect(context.settingsControllerState).toBe(scope.settingsControllerState);
 
         context.currentSettings = { playbackOrder: 'shuffle-library' };
         context.currentMusicBrainzTagWorkerProgress = { progress: 0.75 };

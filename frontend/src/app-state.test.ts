@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createAppState } from './app-state';
+import { createSettingsControllerState } from './controllers/settings-controller-types';
 import { defaultAppSettings, defaultMusicBrainzTagWorkerProgress } from './utils/settings-normalization';
 
 describe('createAppState', () => {
@@ -12,6 +13,30 @@ describe('createAppState', () => {
         expect(first.textFiles).toEqual([]);
         expect(first.imageFiles).toEqual([]);
         expect(first.currentTrackIndex).toBe(-1);
+        expect(first.libraryControllerState).toEqual({
+            sidebarOpen: false,
+            libraryRootName: '',
+            currentFolderPath: '',
+            sidebarAutoFolderPath: '',
+            libraryIndexTruncated: false,
+            libraryLoading: false,
+            libraryLoadingEtaSeconds: null,
+            libraryLoadingStatusLabel: '',
+            librarySearchQuery: '',
+            librarySearchPending: false,
+            activeSearchResult: null,
+            expandedSearchFolders: new Set(),
+        });
+        expect(first.playlistControllerState).toEqual({
+            loadedPlaylistTrackIndexes: null,
+            loadedPlaylistName: '',
+            loadedPlaylistPath: '',
+            editableQueueTrackIndexes: null,
+            selectedSource: 'queue',
+            selectedFavoriteIndex: null,
+            playbackSource: 'queue',
+        });
+        expect(first.settingsControllerState).toEqual(createSettingsControllerState());
         expect(first.currentSettings).toEqual(defaultAppSettings);
         expect(first.currentSettings).not.toBe(defaultAppSettings);
         expect(first.currentMusicBrainzTagWorkerProgress).toEqual(defaultMusicBrainzTagWorkerProgress);
@@ -21,10 +46,16 @@ describe('createAppState', () => {
         await expect(first.trackNavigationChain).resolves.toBeUndefined();
 
         first.trackIndexByPath.set('/music/test.flac', 1);
+        first.libraryControllerState.libraryRootName = 'Library';
+        first.playlistControllerState.loadedPlaylistName = 'demo.m3u8';
+        first.settingsControllerState.favoritePlaylists.push('/playlists/demo.m3u8');
         first.currentSettings.libraryPath = '/music';
         first.currentMusicBrainzTagWorkerProgress.progress = 0.5;
 
         expect(second.trackIndexByPath.size).toBe(0);
+        expect(second.libraryControllerState.libraryRootName).toBe('');
+        expect(second.playlistControllerState.loadedPlaylistName).toBe('');
+        expect(second.settingsControllerState.favoritePlaylists).toEqual([]);
         expect(second.currentSettings.libraryPath).toBe('');
         expect(second.currentMusicBrainzTagWorkerProgress.progress).toBe(0);
     });
