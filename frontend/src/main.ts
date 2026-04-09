@@ -3,13 +3,6 @@ import './style.css';
 import './app.css';
 import './components/overlays/overlays.css';
 import './components/overlays/exploration-modal.css';
-import type { ArtistInfoController } from './controllers/artist-info-controller';
-import type { ImageModalController } from './controllers/image-modal-controller';
-import type { LibraryController } from './controllers/library-controller';
-import type { PlaylistController } from './controllers/playlist-controller';
-import type { PlaylistTargetModalController } from './controllers/playlist-target-modal-controller';
-import type { ShareController } from './controllers/share-controller';
-import type { SettingsController } from './controllers/settings-controller';
 import { UI_TIMINGS_MS } from './constants/ui-timings';
 import {
     ScanConfiguredLibraryFolders,
@@ -45,20 +38,19 @@ import {
     ValidateFFmpegPath,
 } from '../wailsjs/go/main/App';
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
+import { createAppState, type AppState } from './app-state';
 import type {
     AppSettings,
     AudioOutputDevice,
     AudioPlaybackState,
     CustomSendToActionScope,
     FFmpegPathStatus,
-    ImageLibraryFile,
     LibraryFolderPage,
     LibraryIndexedFilePage,
     LibraryScanResult,
     LibrarySearchPage,
     MusicBrainzTagWorkerProgress,
     PlaybackOrderMode,
-    TextLibraryFile,
     Track,
 } from './types/app-types';
 import {
@@ -68,8 +60,6 @@ import {
 import { installHmrFullReset } from './utils/hmr-full-reset';
 import { scheduleMusicBrainzRequest } from './utils/musicbrainz-request-scheduler';
 import {
-    defaultAppSettings,
-    defaultMusicBrainzTagWorkerProgress,
     normalizeMusicBrainzTagWorkerProgress,
     normalizeAppSettings,
 } from './utils/settings-normalization';
@@ -99,56 +89,16 @@ installHmrFullReset(import.meta);
 
 renderAppShell(app);
 
+const state = createAppState();
 
 setupExplorationButton(document, {
-    getActiveTrack: () => (currentTrackIndex >= 0 && currentTrackIndex < tracks.length ? tracks[currentTrackIndex] : undefined),
+    getActiveTrack: () => (
+        state.currentTrackIndex >= 0 && state.currentTrackIndex < state.tracks.length
+            ? state.tracks[state.currentTrackIndex]
+            : undefined
+    ),
 });
 
-let tracks: Track[] = [];
-let textFiles: TextLibraryFile[] = [];
-let imageFiles: ImageLibraryFile[] = [];
-const trackIndexByPath = new Map<string, number>();
-const textFileIndexByPath = new Map<string, number>();
-const imageFileIndexByPath = new Map<string, number>();
-let currentTrackIndex = -1;
-let objectUrls: string[] = [];
-let tagRequestVersion = 0;
-let artistInfoRequestVersion = 0;
-let activeBackgroundLayer = 0;
-let coverFlipped = false;
-let playbackPollHandle: number | undefined;
-let musicBrainzEntityModalHideTimer: number | undefined;
-let technicalInfoModalHideTimer: number | undefined;
-let aboutModalHideTimer: number | undefined;
-let errorModalHideTimer: number | undefined;
-let isSeeking = false;
-let playbackMutationVersion = 0;
-let playPauseToggleInFlight = false;
-let trackNavigationChain: Promise<void> = Promise.resolve();
-let gaplessQueueRequestVersion = 0;
-let queuedGaplessTrackPath = '';
-let activeReplayGainReleaseTrackPaths: string[] = [];
-const replayGainReleaseDynamicRangeLabelByKey = new Map<string, string>();
-const replayGainReleaseDynamicRangePendingByKey = new Map<string, Promise<string>>();
-let replayGainReleaseDynamicRangeRequestVersion = 0;
-let availableAudioOutputDevices: AudioOutputDevice[] = [];
-let currentMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress = { ...defaultMusicBrainzTagWorkerProgress };
-let currentSettings: AppSettings = { ...defaultAppSettings };
-let startupInitializationComplete = false;
-let ffmpegConfigurationRequired = false;
-let trackMetaMenuTarget: HTMLElement | null = null;
-let trackMetaMenuActionScope: CustomSendToActionScope | null = null;
-let trackMetaMenuActionPath = '';
-let sidebarQueueTrackIndexes: number[] = [];
-let sidebarQueueFeedbackTrackIndex: number | null = null;
-let sidebarQueueFolderPath = '';
-let sidebarQueueFolderLabel = '';
-let sidebarQueueFolderTarget = false;
-let sidebarQueueTrackIndexesScopedToSelection = false;
-let sidebarQueueFileActionPath = '';
-let sidebarQueueIncludeFileActions = false;
-let sidebarQueueSendToActionScope: CustomSendToActionScope | null = null;
-let queueConfirmResolver: ((confirmed: boolean) => void) | null = null;
 const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const technicalInfoModalTransitionMs = UI_TIMINGS_MS.modalTransition;
 const aboutModalTransitionMs = UI_TIMINGS_MS.modalTransition;
@@ -157,7 +107,7 @@ const sidebarQueueDescendantPromptThreshold = 200;
 const selectedLibraryRootLabel = 'Selected folders';
 
 const applyUiDitheringSetting = (): void => {
-    app.classList.toggle('ui-dithering-disabled', currentSettings.uiDitheringEnabled === false);
+    app.classList.toggle('ui-dithering-disabled', state.currentSettings.uiDitheringEnabled === false);
 };
 
 const validateConfiguredFFmpegPath = async (ffmpegPath: string): Promise<FFmpegPathStatus> => await ValidateFFmpegPath(ffmpegPath) as FFmpegPathStatus;
@@ -171,34 +121,34 @@ const missingFFmpegMessage = (status: FFmpegPathStatus): string => {
 };
 
 const promptForMissingFFmpeg = (status: FFmpegPathStatus): void => {
-    ffmpegConfigurationRequired = true;
+    state.ffmpegConfigurationRequired = true;
     playbackStateService.setBackendReady(false);
-    libraryController.renderFolder('none');
+    state.libraryController.renderFolder('none');
     openErrorModal('FFmpeg Required', missingFFmpegMessage(status));
-    settingsController.open('general');
+    state.settingsController.open('general');
 };
 
 const completeStartupIfReady = async (): Promise<void> => {
-    if (startupInitializationComplete) {
+    if (state.startupInitializationComplete) {
         return;
     }
 
-    const ffmpegStatus = await validateConfiguredFFmpegPath(currentSettings.ffmpegPath);
+    const ffmpegStatus = await validateConfiguredFFmpegPath(state.currentSettings.ffmpegPath);
     if (!ffmpegStatus.available) {
         promptForMissingFFmpeg(ffmpegStatus);
         return;
     }
 
-    ffmpegConfigurationRequired = false;
+    state.ffmpegConfigurationRequired = false;
     await initializeBackendPlayback();
 
-    if (currentSettings.libraryFolders.length > 0) {
+    if (state.currentSettings.libraryFolders.length > 0) {
         await scanConfiguredLibraryFolders();
     } else {
-        libraryController.renderFolder('none');
+        state.libraryController.renderFolder('none');
     }
 
-    startupInitializationComplete = true;
+    state.startupInitializationComplete = true;
     void refreshListenBrainzFeedbackForCurrentTrack(true);
 };
 
@@ -206,66 +156,54 @@ const LIBRARY_CLIENT_FINALIZE_MS_KEY = 'libraryClientFinalizeEstimateMs';
 
 const shell = getAppShellElements(document);
 const { coverFrame } = shell;
-let settingsController: SettingsController;
-let playlistController: PlaylistController;
-let playlistTargetModalController: PlaylistTargetModalController;
-let artistInfoController: ArtistInfoController;
-let imageModalController: ImageModalController;
-let libraryController: LibraryController;
-let shareController: ShareController;
-let libraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
-let activeLibraryLoadScanResolvedAtMs: number | null = null;
-let fullLibraryScanLoadActive = false;
-let suppressAutoSelectAfterFullLibraryScan = false;
+state.libraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
 const libraryIndexedFilePageSize = 1000;
 const libraryIncrementalRefreshDebounceMs = 180;
-let pendingLibraryIncrementalRefreshHandle: number | null = null;
 const nowPlayingCoverRefreshDebounceMs = 220;
-let pendingNowPlayingCoverRefreshHandle: number | null = null;
 
 const beginLibraryLoadTracking = (): void => {
-    activeLibraryLoadScanResolvedAtMs = null;
+    state.activeLibraryLoadScanResolvedAtMs = null;
 };
 
 const markLibraryScanResolved = (): void => {
-    activeLibraryLoadScanResolvedAtMs = performance.now();
+    state.activeLibraryLoadScanResolvedAtMs = performance.now();
 };
 
 const finishLibraryLoadTracking = (): void => {
-    if (activeLibraryLoadScanResolvedAtMs === null) {
+    if (state.activeLibraryLoadScanResolvedAtMs === null) {
         return;
     }
 
-    const clientFinalizeMs = Math.max(0, performance.now() - activeLibraryLoadScanResolvedAtMs);
-    activeLibraryLoadScanResolvedAtMs = null;
+    const clientFinalizeMs = Math.max(0, performance.now() - state.activeLibraryLoadScanResolvedAtMs);
+    state.activeLibraryLoadScanResolvedAtMs = null;
     if (!Number.isFinite(clientFinalizeMs) || clientFinalizeMs <= 0) {
         return;
     }
 
-    if (libraryClientFinalizeEstimateMs <= 0) {
-        libraryClientFinalizeEstimateMs = clientFinalizeMs;
+    if (state.libraryClientFinalizeEstimateMs <= 0) {
+        state.libraryClientFinalizeEstimateMs = clientFinalizeMs;
     } else {
-        libraryClientFinalizeEstimateMs = (libraryClientFinalizeEstimateMs * 0.7) + (clientFinalizeMs * 0.3);
+        state.libraryClientFinalizeEstimateMs = (state.libraryClientFinalizeEstimateMs * 0.7) + (clientFinalizeMs * 0.3);
     }
 
-    localStorage.setItem(LIBRARY_CLIENT_FINALIZE_MS_KEY, String(libraryClientFinalizeEstimateMs));
+    localStorage.setItem(LIBRARY_CLIENT_FINALIZE_MS_KEY, String(state.libraryClientFinalizeEstimateMs));
 };
 
 const scheduleLibraryIncrementalFolderRefresh = (): void => {
-    if (pendingLibraryIncrementalRefreshHandle !== null) {
+    if (state.pendingLibraryIncrementalRefreshHandle !== null) {
         return;
     }
 
-    pendingLibraryIncrementalRefreshHandle = window.setTimeout(() => {
-        pendingLibraryIncrementalRefreshHandle = null;
-        const currentFolderPath = libraryController.getCurrentFolderPath();
+    state.pendingLibraryIncrementalRefreshHandle = window.setTimeout(() => {
+        state.pendingLibraryIncrementalRefreshHandle = null;
+        const currentFolderPath = state.libraryController.getCurrentFolderPath();
         logRescan('Refreshing current folder: %s', currentFolderPath || '(root)');
-        libraryController.refreshCurrentFolder();
+        state.libraryController.refreshCurrentFolder();
     }, libraryIncrementalRefreshDebounceMs);
 };
 
 const releaseDepthForTrack = (track: Pick<Track, 'rootPath'>): number => {
-    const folder = findLibraryFolderForFilePath(track.rootPath || '', currentSettings.libraryFolders);
+    const folder = findLibraryFolderForFilePath(track.rootPath || '', state.currentSettings.libraryFolders);
     return folder ? asReleaseDepth(folder.releaseDepth) : 0;
 };
 
@@ -275,68 +213,62 @@ const createScopeAccessor = <T>(getter: () => T, setter?: (value: T) => void) =>
         : { configurable: true, enumerable: true, get: getter }
 );
 
+const createStateAccessor = <K extends keyof AppState>(key: K) => createScopeAccessor(() => state[key], (value: AppState[K]) => {
+    state[key] = value;
+});
+
 const runtimeScope = Object.create(shell, {
-    currentSettings: createScopeAccessor(() => currentSettings, (value) => {
-        currentSettings = value;
-    }),
-    tracks: createScopeAccessor(() => tracks, (value) => {
-        tracks = value;
-    }),
-    textFiles: createScopeAccessor(() => textFiles, (value) => {
-        textFiles = value;
-    }),
-    imageFiles: createScopeAccessor(() => imageFiles, (value) => {
-        imageFiles = value;
-    }),
-    currentTrackIndex: createScopeAccessor(() => currentTrackIndex, (value) => {
-        currentTrackIndex = value;
-    }),
-    objectUrls: createScopeAccessor(() => objectUrls, (value) => { objectUrls = value; }),
-    tagRequestVersion: createScopeAccessor(() => tagRequestVersion, (value) => { tagRequestVersion = value; }),
-    artistInfoRequestVersion: createScopeAccessor(() => artistInfoRequestVersion, (value) => { artistInfoRequestVersion = value; }),
-    activeBackgroundLayer: createScopeAccessor(() => activeBackgroundLayer, (value) => { activeBackgroundLayer = value; }),
-    coverFlipped: createScopeAccessor(() => coverFlipped, (value) => { coverFlipped = value; }),
-    playbackPollHandle: createScopeAccessor(() => playbackPollHandle, (value) => { playbackPollHandle = value; }),
-    musicBrainzEntityModalHideTimer: createScopeAccessor(() => musicBrainzEntityModalHideTimer, (value) => { musicBrainzEntityModalHideTimer = value; }),
-    technicalInfoModalHideTimer: createScopeAccessor(() => technicalInfoModalHideTimer, (value) => { technicalInfoModalHideTimer = value; }),
-    aboutModalHideTimer: createScopeAccessor(() => aboutModalHideTimer, (value) => { aboutModalHideTimer = value; }),
-    errorModalHideTimer: createScopeAccessor(() => errorModalHideTimer, (value) => { errorModalHideTimer = value; }),
-    isSeeking: createScopeAccessor(() => isSeeking, (value) => { isSeeking = value; }),
-    playbackMutationVersion: createScopeAccessor(() => playbackMutationVersion, (value) => { playbackMutationVersion = value; }),
-    playPauseToggleInFlight: createScopeAccessor(() => playPauseToggleInFlight, (value) => { playPauseToggleInFlight = value; }),
-    trackNavigationChain: createScopeAccessor(() => trackNavigationChain, (value) => { trackNavigationChain = value; }),
-    gaplessQueueRequestVersion: createScopeAccessor(() => gaplessQueueRequestVersion, (value) => { gaplessQueueRequestVersion = value; }),
-    queuedGaplessTrackPath: createScopeAccessor(() => queuedGaplessTrackPath, (value) => { queuedGaplessTrackPath = value; }),
-    activeReplayGainReleaseTrackPaths: createScopeAccessor(() => activeReplayGainReleaseTrackPaths, (value) => { activeReplayGainReleaseTrackPaths = value; }),
-    replayGainReleaseDynamicRangeRequestVersion: createScopeAccessor(() => replayGainReleaseDynamicRangeRequestVersion, (value) => { replayGainReleaseDynamicRangeRequestVersion = value; }),
-    availableAudioOutputDevices: createScopeAccessor(() => availableAudioOutputDevices, (value) => { availableAudioOutputDevices = value; }),
-    currentMusicBrainzTagWorkerProgress: createScopeAccessor(() => currentMusicBrainzTagWorkerProgress, (value) => { currentMusicBrainzTagWorkerProgress = value; }),
-    ffmpegConfigurationRequired: createScopeAccessor(() => ffmpegConfigurationRequired, (value) => { ffmpegConfigurationRequired = value; }),
-    libraryClientFinalizeEstimateMs: createScopeAccessor(() => libraryClientFinalizeEstimateMs, (value) => { libraryClientFinalizeEstimateMs = value; }),
-    activeLibraryLoadScanResolvedAtMs: createScopeAccessor(() => activeLibraryLoadScanResolvedAtMs, (value) => { activeLibraryLoadScanResolvedAtMs = value; }),
-    fullLibraryScanLoadActive: createScopeAccessor(() => fullLibraryScanLoadActive, (value) => { fullLibraryScanLoadActive = value; }),
-    suppressAutoSelectAfterFullLibraryScan: createScopeAccessor(() => suppressAutoSelectAfterFullLibraryScan, (value) => { suppressAutoSelectAfterFullLibraryScan = value; }),
-    pendingNowPlayingCoverRefreshHandle: createScopeAccessor(() => pendingNowPlayingCoverRefreshHandle, (value) => { pendingNowPlayingCoverRefreshHandle = value; }),
-    sidebarQueueTrackIndexes: createScopeAccessor(() => sidebarQueueTrackIndexes, (value) => { sidebarQueueTrackIndexes = value; }),
-    sidebarQueueFeedbackTrackIndex: createScopeAccessor(() => sidebarQueueFeedbackTrackIndex, (value) => { sidebarQueueFeedbackTrackIndex = value; }),
-    sidebarQueueFolderPath: createScopeAccessor(() => sidebarQueueFolderPath, (value) => { sidebarQueueFolderPath = value; }),
-    sidebarQueueFolderLabel: createScopeAccessor(() => sidebarQueueFolderLabel, (value) => { sidebarQueueFolderLabel = value; }),
-    sidebarQueueFolderTarget: createScopeAccessor(() => sidebarQueueFolderTarget, (value) => { sidebarQueueFolderTarget = value; }),
-    sidebarQueueTrackIndexesScopedToSelection: createScopeAccessor(() => sidebarQueueTrackIndexesScopedToSelection, (value) => { sidebarQueueTrackIndexesScopedToSelection = value; }),
-    sidebarQueueFileActionPath: createScopeAccessor(() => sidebarQueueFileActionPath, (value) => { sidebarQueueFileActionPath = value; }),
-    sidebarQueueIncludeFileActions: createScopeAccessor(() => sidebarQueueIncludeFileActions, (value) => { sidebarQueueIncludeFileActions = value; }),
-    sidebarQueueSendToActionScope: createScopeAccessor(() => sidebarQueueSendToActionScope, (value) => { sidebarQueueSendToActionScope = value; }),
-    queueConfirmResolver: createScopeAccessor(() => queueConfirmResolver, (value) => { queueConfirmResolver = value; }),
-    trackMetaMenuTarget: createScopeAccessor(() => trackMetaMenuTarget, (value) => { trackMetaMenuTarget = value; }),
-    trackMetaMenuActionScope: createScopeAccessor(() => trackMetaMenuActionScope, (value) => { trackMetaMenuActionScope = value; }),
-    trackMetaMenuActionPath: createScopeAccessor(() => trackMetaMenuActionPath, (value) => { trackMetaMenuActionPath = value; }),
-    settingsControllerRef: createScopeAccessor(() => settingsController),
-    playlistControllerRef: createScopeAccessor(() => playlistController),
-    playlistTargetModalControllerRef: createScopeAccessor(() => playlistTargetModalController),
-    artistInfoControllerRef: createScopeAccessor(() => artistInfoController),
-    imageModalControllerRef: createScopeAccessor(() => imageModalController),
-    libraryControllerRef: createScopeAccessor(() => libraryController),
-    shareControllerRef: createScopeAccessor(() => shareController),
+    currentSettings: createStateAccessor('currentSettings'),
+    tracks: createStateAccessor('tracks'),
+    textFiles: createStateAccessor('textFiles'),
+    imageFiles: createStateAccessor('imageFiles'),
+    currentTrackIndex: createStateAccessor('currentTrackIndex'),
+    objectUrls: createStateAccessor('objectUrls'),
+    tagRequestVersion: createStateAccessor('tagRequestVersion'),
+    artistInfoRequestVersion: createStateAccessor('artistInfoRequestVersion'),
+    activeBackgroundLayer: createStateAccessor('activeBackgroundLayer'),
+    coverFlipped: createStateAccessor('coverFlipped'),
+    playbackPollHandle: createStateAccessor('playbackPollHandle'),
+    musicBrainzEntityModalHideTimer: createStateAccessor('musicBrainzEntityModalHideTimer'),
+    technicalInfoModalHideTimer: createStateAccessor('technicalInfoModalHideTimer'),
+    aboutModalHideTimer: createStateAccessor('aboutModalHideTimer'),
+    errorModalHideTimer: createStateAccessor('errorModalHideTimer'),
+    isSeeking: createStateAccessor('isSeeking'),
+    playbackMutationVersion: createStateAccessor('playbackMutationVersion'),
+    playPauseToggleInFlight: createStateAccessor('playPauseToggleInFlight'),
+    trackNavigationChain: createStateAccessor('trackNavigationChain'),
+    gaplessQueueRequestVersion: createStateAccessor('gaplessQueueRequestVersion'),
+    queuedGaplessTrackPath: createStateAccessor('queuedGaplessTrackPath'),
+    activeReplayGainReleaseTrackPaths: createStateAccessor('activeReplayGainReleaseTrackPaths'),
+    replayGainReleaseDynamicRangeRequestVersion: createStateAccessor('replayGainReleaseDynamicRangeRequestVersion'),
+    availableAudioOutputDevices: createStateAccessor('availableAudioOutputDevices'),
+    currentMusicBrainzTagWorkerProgress: createStateAccessor('currentMusicBrainzTagWorkerProgress'),
+    ffmpegConfigurationRequired: createStateAccessor('ffmpegConfigurationRequired'),
+    libraryClientFinalizeEstimateMs: createStateAccessor('libraryClientFinalizeEstimateMs'),
+    activeLibraryLoadScanResolvedAtMs: createStateAccessor('activeLibraryLoadScanResolvedAtMs'),
+    fullLibraryScanLoadActive: createStateAccessor('fullLibraryScanLoadActive'),
+    suppressAutoSelectAfterFullLibraryScan: createStateAccessor('suppressAutoSelectAfterFullLibraryScan'),
+    pendingNowPlayingCoverRefreshHandle: createStateAccessor('pendingNowPlayingCoverRefreshHandle'),
+    sidebarQueueTrackIndexes: createStateAccessor('sidebarQueueTrackIndexes'),
+    sidebarQueueFeedbackTrackIndex: createStateAccessor('sidebarQueueFeedbackTrackIndex'),
+    sidebarQueueFolderPath: createStateAccessor('sidebarQueueFolderPath'),
+    sidebarQueueFolderLabel: createStateAccessor('sidebarQueueFolderLabel'),
+    sidebarQueueFolderTarget: createStateAccessor('sidebarQueueFolderTarget'),
+    sidebarQueueTrackIndexesScopedToSelection: createStateAccessor('sidebarQueueTrackIndexesScopedToSelection'),
+    sidebarQueueFileActionPath: createStateAccessor('sidebarQueueFileActionPath'),
+    sidebarQueueIncludeFileActions: createStateAccessor('sidebarQueueIncludeFileActions'),
+    sidebarQueueSendToActionScope: createStateAccessor('sidebarQueueSendToActionScope'),
+    queueConfirmResolver: createStateAccessor('queueConfirmResolver'),
+    trackMetaMenuTarget: createStateAccessor('trackMetaMenuTarget'),
+    trackMetaMenuActionScope: createStateAccessor('trackMetaMenuActionScope'),
+    trackMetaMenuActionPath: createStateAccessor('trackMetaMenuActionPath'),
+    settingsControllerRef: createScopeAccessor(() => state.settingsController),
+    playlistControllerRef: createScopeAccessor(() => state.playlistController),
+    playlistTargetModalControllerRef: createScopeAccessor(() => state.playlistTargetModalController),
+    artistInfoControllerRef: createScopeAccessor(() => state.artistInfoController),
+    imageModalControllerRef: createScopeAccessor(() => state.imageModalController),
+    libraryControllerRef: createScopeAccessor(() => state.libraryController),
+    shareControllerRef: createScopeAccessor(() => state.shareController),
 });
 
 Object.assign(runtimeScope, {
@@ -346,11 +278,11 @@ Object.assign(runtimeScope, {
     isWindowsRuntime,
     isMacRuntime,
     isLinuxRuntime,
-    trackIndexByPath,
-    textFileIndexByPath,
-    imageFileIndexByPath,
-    replayGainReleaseDynamicRangeLabelByKey,
-    replayGainReleaseDynamicRangePendingByKey,
+    trackIndexByPath: state.trackIndexByPath,
+    textFileIndexByPath: state.textFileIndexByPath,
+    imageFileIndexByPath: state.imageFileIndexByPath,
+    replayGainReleaseDynamicRangeLabelByKey: state.replayGainReleaseDynamicRangeLabelByKey,
+    replayGainReleaseDynamicRangePendingByKey: state.replayGainReleaseDynamicRangePendingByKey,
     selectedLibraryRootLabel,
     libraryIndexedFilePageSize,
     sidebarQueueDescendantPromptThreshold,
@@ -524,19 +456,19 @@ const {
     setPlaybackOrderMode,
 } = createPlaybackOrderPlaylistRuntime({
     get currentSettings() {
-        return currentSettings;
+        return state.currentSettings;
     },
     set currentSettings(value) {
-        currentSettings = value;
+        state.currentSettings = value;
     },
     get tracks() {
-        return tracks;
+        return state.tracks;
     },
     set tracks(value) {
-        tracks = value;
+        state.tracks = value;
     },
     get playlistController() {
-        return playlistController;
+        return state.playlistController;
     },
     playbackSequencingService,
     updatePlayOrderMenuState,
@@ -593,25 +525,25 @@ const initializeSettings = async (): Promise<void> => {
         await refreshAvailableAudioOutputDevices();
 
         const settings = await GetSettings() as unknown as AppSettings;
-        currentSettings = normalizeAppSettings(settings);
-        visualizerController.setMode(currentSettings.visualizerMode);
-        visualizerController.setEqualizerPosition(currentSettings.equalizerPosition);
-        visualizerController.setLissajousScale(currentSettings.lissajousScale);
-        visualizerController.setEnabled(currentSettings.lissajousEnabled);
+        state.currentSettings = normalizeAppSettings(settings);
+        visualizerController.setMode(state.currentSettings.visualizerMode);
+        visualizerController.setEqualizerPosition(state.currentSettings.equalizerPosition);
+        visualizerController.setLissajousScale(state.currentSettings.lissajousScale);
+        visualizerController.setEnabled(state.currentSettings.lissajousEnabled);
         applyUiDitheringSetting();
         socialController.handleSettingsChanged();
-        currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(
+        state.currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(
             await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
         );
-        settingsController.setMusicBrainzTagWorkerProgress(currentMusicBrainzTagWorkerProgress);
-        setPlaybackOrderMode(currentSettings.playbackOrder);
+        state.settingsController.setMusicBrainzTagWorkerProgress(state.currentMusicBrainzTagWorkerProgress);
+        setPlaybackOrderMode(state.currentSettings.playbackOrder);
         await completeStartupIfReady();
         return;
     } catch (error) {
         console.error(error);
     }
 
-    libraryController.renderFolder('none');
+    state.libraryController.renderFolder('none');
     void refreshListenBrainzFeedbackForCurrentTrack(true);
 };
 
@@ -624,26 +556,18 @@ Object.assign(runtimeScope, {
     lookupArtistByMBID: (mbid: string) => scheduleMusicBrainzRequest(async () => (
         await LookupArtistByMBID(mbid)
     ), {
-        server: currentSettings.musicBrainzServerUrl || defaultMusicBrainzServerUrl,
+        server: state.currentSettings.musicBrainzServerUrl || defaultMusicBrainzServerUrl,
         path: `/ws/2/artist/${mbid}?fmt=json&inc=genres+tags+url-rels`,
     }),
 });
 
-({
-    settingsController,
-    playlistController,
-    playlistTargetModalController,
-    shareController,
-    imageModalController,
-    artistInfoController,
-    libraryController,
-} = setupControllersFromScope(runtimeScope));
+Object.assign(state, setupControllersFromScope(runtimeScope));
 
 const coverFront = coverFrame.querySelector('.cover-front') as HTMLElement;
 const coverFlipRuntime = createCoverFlipRuntime({
     coverFrame,
     get coverFlipped() {
-        return coverFlipped;
+        return state.coverFlipped;
     },
     setCoverFlipped,
 });
@@ -676,7 +600,7 @@ bindEventHandlersFromScope(runtimeScope);
 updatePlayButton();
 updateTrackLabels();
 updatePlayOrderMenuState();
-libraryController.refreshSidebarToggleState();
+state.libraryController.refreshSidebarToggleState();
 refreshLyricsPanel();
 resetListenBrainzFeedbackState();
 initializeMediaSessionIntegration();
