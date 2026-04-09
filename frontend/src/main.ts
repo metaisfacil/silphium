@@ -56,6 +56,7 @@ import type {
 import {
     asReleaseDepth,
     findLibraryFolderForFilePath,
+    formatTime,
 } from './utils/main-helpers'; 
 import { installHmrFullReset } from './utils/hmr-full-reset';
 import { scheduleMusicBrainzRequest } from './utils/musicbrainz-request-scheduler';
@@ -90,6 +91,7 @@ installHmrFullReset(import.meta);
 renderAppShell(app);
 
 const state = createAppState();
+const runtimeControllerRefs = {} as ReturnType<typeof setupControllersFromScope>;
 
 setupExplorationButton(document, {
     getActiveTrack: () => (
@@ -123,9 +125,9 @@ const missingFFmpegMessage = (status: FFmpegPathStatus): string => {
 const promptForMissingFFmpeg = (status: FFmpegPathStatus): void => {
     state.ffmpegConfigurationRequired = true;
     playbackStateService.setBackendReady(false);
-    state.libraryController.renderFolder('none');
+    runtimeControllerRefs.libraryController.renderFolder('none');
     openErrorModal('FFmpeg Required', missingFFmpegMessage(status));
-    state.settingsController.open('general');
+    runtimeControllerRefs.settingsController.open('general');
 };
 
 const completeStartupIfReady = async (): Promise<void> => {
@@ -145,7 +147,7 @@ const completeStartupIfReady = async (): Promise<void> => {
     if (state.currentSettings.libraryFolders.length > 0) {
         await scanConfiguredLibraryFolders();
     } else {
-        state.libraryController.renderFolder('none');
+        runtimeControllerRefs.libraryController.renderFolder('none');
     }
 
     state.startupInitializationComplete = true;
@@ -196,9 +198,9 @@ const scheduleLibraryIncrementalFolderRefresh = (): void => {
 
     state.pendingLibraryIncrementalRefreshHandle = window.setTimeout(() => {
         state.pendingLibraryIncrementalRefreshHandle = null;
-        const currentFolderPath = state.libraryController.getCurrentFolderPath();
+        const currentFolderPath = runtimeControllerRefs.libraryController.getCurrentFolderPath();
         logRescan('Refreshing current folder: %s', currentFolderPath || '(root)');
-        state.libraryController.refreshCurrentFolder();
+        runtimeControllerRefs.libraryController.refreshCurrentFolder();
     }, libraryIncrementalRefreshDebounceMs);
 };
 
@@ -216,6 +218,89 @@ const createScopeAccessor = <T>(getter: () => T, setter?: (value: T) => void) =>
 const createStateAccessor = <K extends keyof AppState>(key: K) => createScopeAccessor(() => state[key], (value: AppState[K]) => {
     state[key] = value;
 });
+
+const runtimeRefs = {
+    app,
+    window,
+    document,
+    isWindowsRuntime,
+    isMacRuntime,
+    isLinuxRuntime,
+    trackIndexByPath: state.trackIndexByPath,
+    textFileIndexByPath: state.textFileIndexByPath,
+    imageFileIndexByPath: state.imageFileIndexByPath,
+    replayGainReleaseDynamicRangeLabelByKey: state.replayGainReleaseDynamicRangeLabelByKey,
+    replayGainReleaseDynamicRangePendingByKey: state.replayGainReleaseDynamicRangePendingByKey,
+    selectedLibraryRootLabel,
+    libraryIndexedFilePageSize,
+    sidebarQueueDescendantPromptThreshold,
+    nowPlayingCoverRefreshDebounceMs,
+    musicBrainzEntityModalTransitionMs,
+    technicalInfoModalTransitionMs,
+    aboutModalTransitionMs,
+    errorModalTransitionMs,
+    shareElements: {
+        shareModal: shell.shareModal,
+        shareBackdrop: shell.shareBackdrop,
+        shareDialog: shell.shareDialog,
+        shareClose: shell.shareClose,
+        sharePreview: shell.sharePreview,
+        shareCommentInput: shell.shareCommentInput,
+        shareStatus: shell.shareStatus,
+        shareSave: shell.shareSave,
+        shareCopy: shell.shareCopy,
+    },
+    artistInfoElements: {
+        artistInfoName: shell.artistInfoName,
+        artistInfoType: shell.artistInfoType,
+        artistInfoCountry: shell.artistInfoCountry,
+        artistInfoLifeSpan: shell.artistInfoLifeSpan,
+        artistInfoGenres: shell.artistInfoGenres,
+        artistInfoSummary: shell.artistInfoSummary,
+        artistInfoLinks: shell.artistInfoLinks,
+    },
+};
+
+const runtimePorts = {
+    validateConfiguredFFmpegPath,
+    missingFFmpegMessage,
+    applyUiDitheringSetting,
+    beginLibraryLoadTracking,
+    markLibraryScanResolved,
+    finishLibraryLoadTracking,
+    scheduleLibraryIncrementalFolderRefresh,
+    saveSettingsBackend: async (settings: unknown): Promise<AppSettings> => await SaveSettings(settings as Parameters<typeof SaveSettings>[0]) as unknown as AppSettings,
+    scanConfiguredLibraryFoldersBackend: async (): Promise<LibraryScanResult> => await ScanConfiguredLibraryFolders() as LibraryScanResult,
+    audioStop: async (): Promise<AudioPlaybackState> => await AudioStop() as AudioPlaybackState,
+    listAudioOutputDevices: async (): Promise<AudioOutputDevice[]> => await AudioListOutputDevices() as AudioOutputDevice[],
+    getSettings: async (): Promise<AppSettings> => await GetSettings() as unknown as AppSettings,
+    getMusicBrainzTagWorkerProgress: async (): Promise<MusicBrainzTagWorkerProgress> => await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
+    getAppVersion: async (): Promise<string> => await GetAppVersion(),
+    loadIndexedFilePage: async (kind: string, offset: number, limit: number): Promise<LibraryIndexedFilePage> => await GetLibraryIndexedFilePage(kind, offset, limit) as LibraryIndexedFilePage,
+    savePlaylistData: (playlistPath: string, trackPaths: string[]) => SavePlaylistFile(playlistPath, trackPaths),
+    appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => AppendTracksToPlaylistFile(playlistPath, trackPaths),
+    audioQueueNextTrack: async (currentPath: string, nextPath: string) => await AudioQueueNextTrack(currentPath, nextPath),
+    getLastFmRequestToken: async (apiKey: string, apiSecret: string): Promise<string> => await GetLastFmRequestToken(apiKey, apiSecret) as string,
+    getLastFmSessionKey: async (apiKey: string, apiSecret: string, requestToken: string): Promise<string> => await GetLastFmSessionKey(apiKey, apiSecret, requestToken) as string,
+    browserOpenUrl: BrowserOpenURL,
+    selectLibraryFolder: SelectLibraryFolder,
+    selectPlaylistFile: SelectPlaylistFile,
+    selectPlaylistSaveFile: SelectPlaylistSaveFile,
+    selectShareImageSaveFile: SelectShareImageSaveFile,
+    saveShareImageFile: SaveShareImageFile,
+    copyShareImageToClipboard: CopyShareImageToClipboard,
+    readFileBase64: ReadFileBase64,
+    readImageThumbnail: ReadImageThumbnail,
+    loadFolderPage: async (folderPath: string, offset: number, limit: number): Promise<LibraryFolderPage> => await GetLibraryFolderPage(folderPath, offset, limit) as LibraryFolderPage,
+    resolveLibraryFolderForAbsolutePath: async (path: string): Promise<string> => await ResolveLibraryFolderForPath(path),
+    isFolderImmediateDescendantsEnumerated: async (folderPath: string): Promise<boolean> => await IsLibraryFolderImmediateDescendantsEnumerated(folderPath),
+    searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => await SearchLibrary(query, offset, limit) as LibrarySearchPage,
+    fetchVisualizationFrame: async (frameCount: number) => await AudioGetVisualizationFrame(frameCount),
+    logFrontendMessage: LogFrontendMessage,
+    audioSeek: async (seconds: number) => await AudioSeek(seconds) as AudioPlaybackState,
+    audioSetVolume: async (volumeValue: number) => await AudioSetVolume(volumeValue) as AudioPlaybackState,
+    formatTime,
+};
 
 const runtimeScope = Object.create(shell, {
     currentSettings: createStateAccessor('currentSettings'),
@@ -262,90 +347,16 @@ const runtimeScope = Object.create(shell, {
     trackMetaMenuTarget: createStateAccessor('trackMetaMenuTarget'),
     trackMetaMenuActionScope: createStateAccessor('trackMetaMenuActionScope'),
     trackMetaMenuActionPath: createStateAccessor('trackMetaMenuActionPath'),
-    settingsControllerRef: createScopeAccessor(() => state.settingsController),
-    playlistControllerRef: createScopeAccessor(() => state.playlistController),
-    playlistTargetModalControllerRef: createScopeAccessor(() => state.playlistTargetModalController),
-    artistInfoControllerRef: createScopeAccessor(() => state.artistInfoController),
-    imageModalControllerRef: createScopeAccessor(() => state.imageModalController),
-    libraryControllerRef: createScopeAccessor(() => state.libraryController),
-    shareControllerRef: createScopeAccessor(() => state.shareController),
+    settingsControllerRef: createScopeAccessor(() => runtimeControllerRefs.settingsController),
+    playlistControllerRef: createScopeAccessor(() => runtimeControllerRefs.playlistController),
+    playlistTargetModalControllerRef: createScopeAccessor(() => runtimeControllerRefs.playlistTargetModalController),
+    artistInfoControllerRef: createScopeAccessor(() => runtimeControllerRefs.artistInfoController),
+    imageModalControllerRef: createScopeAccessor(() => runtimeControllerRefs.imageModalController),
+    libraryControllerRef: createScopeAccessor(() => runtimeControllerRefs.libraryController),
+    shareControllerRef: createScopeAccessor(() => runtimeControllerRefs.shareController),
 });
 
-Object.assign(runtimeScope, {
-    app,
-    window,
-    document,
-    isWindowsRuntime,
-    isMacRuntime,
-    isLinuxRuntime,
-    trackIndexByPath: state.trackIndexByPath,
-    textFileIndexByPath: state.textFileIndexByPath,
-    imageFileIndexByPath: state.imageFileIndexByPath,
-    replayGainReleaseDynamicRangeLabelByKey: state.replayGainReleaseDynamicRangeLabelByKey,
-    replayGainReleaseDynamicRangePendingByKey: state.replayGainReleaseDynamicRangePendingByKey,
-    selectedLibraryRootLabel,
-    libraryIndexedFilePageSize,
-    sidebarQueueDescendantPromptThreshold,
-    nowPlayingCoverRefreshDebounceMs,
-    musicBrainzEntityModalTransitionMs,
-    technicalInfoModalTransitionMs,
-    aboutModalTransitionMs,
-    errorModalTransitionMs,
-    validateConfiguredFFmpegPath,
-    missingFFmpegMessage,
-    applyUiDitheringSetting,
-    beginLibraryLoadTracking,
-    markLibraryScanResolved,
-    finishLibraryLoadTracking,
-    scheduleLibraryIncrementalFolderRefresh,
-    shareElements: {
-        shareModal: shell.shareModal,
-        shareBackdrop: shell.shareBackdrop,
-        shareDialog: shell.shareDialog,
-        shareClose: shell.shareClose,
-        sharePreview: shell.sharePreview,
-        shareCommentInput: shell.shareCommentInput,
-        shareStatus: shell.shareStatus,
-        shareSave: shell.shareSave,
-        shareCopy: shell.shareCopy,
-    },
-    artistInfoElements: {
-        artistInfoName: shell.artistInfoName,
-        artistInfoType: shell.artistInfoType,
-        artistInfoCountry: shell.artistInfoCountry,
-        artistInfoLifeSpan: shell.artistInfoLifeSpan,
-        artistInfoGenres: shell.artistInfoGenres,
-        artistInfoSummary: shell.artistInfoSummary,
-        artistInfoLinks: shell.artistInfoLinks,
-    },
-    saveSettingsBackend: async (settings: unknown): Promise<AppSettings> => await SaveSettings(settings as Parameters<typeof SaveSettings>[0]) as unknown as AppSettings,
-    scanConfiguredLibraryFoldersBackend: async (): Promise<LibraryScanResult> => await ScanConfiguredLibraryFolders() as LibraryScanResult,
-    audioStop: async (): Promise<AudioPlaybackState> => await AudioStop() as AudioPlaybackState,
-    listAudioOutputDevices: async (): Promise<AudioOutputDevice[]> => await AudioListOutputDevices() as AudioOutputDevice[],
-    getSettings: async (): Promise<AppSettings> => await GetSettings() as unknown as AppSettings,
-    getMusicBrainzTagWorkerProgress: async (): Promise<MusicBrainzTagWorkerProgress> => await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
-    getAppVersion: async (): Promise<string> => await GetAppVersion(),
-    loadIndexedFilePage: async (kind: string, offset: number, limit: number): Promise<LibraryIndexedFilePage> => await GetLibraryIndexedFilePage(kind, offset, limit) as LibraryIndexedFilePage,
-    savePlaylistData: (playlistPath: string, trackPaths: string[]) => SavePlaylistFile(playlistPath, trackPaths),
-    appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => AppendTracksToPlaylistFile(playlistPath, trackPaths),
-    audioQueueNextTrack: async (currentPath: string, nextPath: string) => await AudioQueueNextTrack(currentPath, nextPath),
-    getLastFmRequestToken: async (apiKey: string, apiSecret: string): Promise<string> => await GetLastFmRequestToken(apiKey, apiSecret) as string,
-    getLastFmSessionKey: async (apiKey: string, apiSecret: string, requestToken: string): Promise<string> => await GetLastFmSessionKey(apiKey, apiSecret, requestToken) as string,
-    browserOpenUrl: BrowserOpenURL,
-    selectLibraryFolder: SelectLibraryFolder,
-    selectPlaylistFile: SelectPlaylistFile,
-    selectPlaylistSaveFile: SelectPlaylistSaveFile,
-    selectShareImageSaveFile: SelectShareImageSaveFile,
-    saveShareImageFile: SaveShareImageFile,
-    copyShareImageToClipboard: CopyShareImageToClipboard,
-    readFileBase64: ReadFileBase64,
-    readImageThumbnail: ReadImageThumbnail,
-    loadFolderPage: async (folderPath: string, offset: number, limit: number): Promise<LibraryFolderPage> => await GetLibraryFolderPage(folderPath, offset, limit) as LibraryFolderPage,
-    resolveLibraryFolderForAbsolutePath: async (path: string): Promise<string> => await ResolveLibraryFolderForPath(path),
-    isFolderImmediateDescendantsEnumerated: async (folderPath: string): Promise<boolean> => await IsLibraryFolderImmediateDescendantsEnumerated(folderPath),
-    searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => await SearchLibrary(query, offset, limit) as LibrarySearchPage,
-    fetchVisualizationFrame: async (frameCount: number) => await AudioGetVisualizationFrame(frameCount),
-});
+Object.assign(runtimeScope, runtimeRefs, runtimePorts);
 
 Object.assign(runtimeScope, setupCoreServicesRuntime(Object.assign(Object.create(runtimeScope), {
     releaseDepthForTrack: (track: Pick<Track, 'rootPath'>) => releaseDepthForTrack(track),
@@ -468,7 +479,7 @@ const {
         state.tracks = value;
     },
     get playlistController() {
-        return state.playlistController;
+        return runtimeControllerRefs.playlistController;
     },
     playbackSequencingService,
     updatePlayOrderMenuState,
@@ -535,7 +546,7 @@ const initializeSettings = async (): Promise<void> => {
         state.currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(
             await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
         );
-        state.settingsController.setMusicBrainzTagWorkerProgress(state.currentMusicBrainzTagWorkerProgress);
+        runtimeControllerRefs.settingsController.setMusicBrainzTagWorkerProgress(state.currentMusicBrainzTagWorkerProgress);
         setPlaybackOrderMode(state.currentSettings.playbackOrder);
         await completeStartupIfReady();
         return;
@@ -543,7 +554,7 @@ const initializeSettings = async (): Promise<void> => {
         console.error(error);
     }
 
-    state.libraryController.renderFolder('none');
+    runtimeControllerRefs.libraryController.renderFolder('none');
     void refreshListenBrainzFeedbackForCurrentTrack(true);
 };
 
@@ -561,7 +572,7 @@ Object.assign(runtimeScope, {
     }),
 });
 
-Object.assign(state, setupControllersFromScope(runtimeScope));
+Object.assign(runtimeControllerRefs, setupControllersFromScope(runtimeScope));
 
 const coverFront = coverFrame.querySelector('.cover-front') as HTMLElement;
 const coverFlipRuntime = createCoverFlipRuntime({
@@ -583,24 +594,27 @@ const cardResizeObserver = new ResizeObserver(() => {
     updateLyricsPanelVisibility();
 });
 
-Object.defineProperty(runtimeScope, 'suppressCoverFrontClickUntil', createScopeAccessor(() => coverFlipRuntime.suppressCoverFrontClickUntil));
-Object.assign(runtimeScope, {
+const lateRuntimeRefs = {
     coverFront,
     volumeBtn,
     cardResizeObserver,
+};
+
+const lateRuntimePorts = {
     logRescan,
     toggleCoverFlipFromSecondaryInput,
     toggleCoverFlipFromContextMenu,
-    audioSeek: async (seconds: number) => await AudioSeek(seconds) as AudioPlaybackState,
-    audioSetVolume: async (volumeValue: number) => await AudioSetVolume(volumeValue) as AudioPlaybackState,
-});
+};
+
+Object.defineProperty(runtimeScope, 'suppressCoverFrontClickUntil', createScopeAccessor(() => coverFlipRuntime.suppressCoverFrontClickUntil));
+Object.assign(runtimeScope, lateRuntimeRefs, lateRuntimePorts);
 
 bindEventHandlersFromScope(runtimeScope);
 
 updatePlayButton();
 updateTrackLabels();
 updatePlayOrderMenuState();
-state.libraryController.refreshSidebarToggleState();
+runtimeControllerRefs.libraryController.refreshSidebarToggleState();
 refreshLyricsPanel();
 resetListenBrainzFeedbackState();
 initializeMediaSessionIntegration();

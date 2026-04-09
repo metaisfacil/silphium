@@ -18,9 +18,6 @@ describe('createAppState', () => {
         expect(first.currentMusicBrainzTagWorkerProgress).not.toBe(defaultMusicBrainzTagWorkerProgress);
         expect(first.queueConfirmResolver).toBeNull();
         expect(first.hideToTrayRetryTimer).toBeUndefined();
-        expect(first.settingsController).toBeUndefined();
-        expect(first.playlistController).toBeUndefined();
-        expect(first.libraryController).toBeUndefined();
         await expect(first.trackNavigationChain).resolves.toBeUndefined();
 
         first.trackIndexByPath.set('/music/test.flac', 1);

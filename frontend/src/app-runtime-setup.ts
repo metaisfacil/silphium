@@ -9,7 +9,353 @@ import type { AudioPlaybackState, CustomSendToActionScope, ImageLibraryFile, Lib
 import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import type { LibrarySearchStateSnapshot } from './controllers/library-controller-types';
 
-const createCoreServicesRuntimeContext = (scope: AppRuntimeScope) => ({
+type RuntimeScope<K extends keyof AppRuntimeScope> = Pick<AppRuntimeScope, K>;
+
+type AppCoreServicesRuntimeScope = RuntimeScope<
+    | 'app'
+    | 'currentSettings'
+    | 'tracks'
+    | 'currentTrackIndex'
+    | 'releaseDepthForTrack'
+    | 'tagRequestVersion'
+    | 'objectUrls'
+    | 'playerVisualizerCanvas'
+    | 'coverArt'
+    | 'playerCard'
+    | 'listenBrainzLoveBtn'
+    | 'listenBrainzFeedbackMenu'
+    | 'listenBrainzFeedbackLoveBtn'
+    | 'listenBrainzFeedbackHateBtn'
+    | 'closePlayOrderMenu'
+    | 'closeTrackMetaMenu'
+    | 'closeSidebarQueueMenu'
+    | 'playlistControllerRef'
+    | 'sidebarToggle'
+    | 'sidebarSectionTrigger'
+    | 'sidebarSectionTriggerLabel'
+    | 'sidebarSectionMenu'
+    | 'sidebarSectionOptionLibrary'
+    | 'sidebarSectionOptionSocial'
+    | 'sidebarPaneLibrary'
+    | 'sidebarPaneSocial'
+    | 'socialFeedStatus'
+    | 'socialFeedList'
+    | 'trackTitle'
+    | 'trackAlbum'
+    | 'trackArtist'
+    | 'trackTitleInline'
+    | 'trackReleaseAlbum'
+    | 'trackReleaseLabel'
+    | 'trackArtistHeader'
+    | 'openMusicBrainzEntityForCurrentTrack'
+    | 'trackMetaMenuTarget'
+    | 'openTrackMetaMenu'
+>;
+
+type AppNowPlayingRuntimeScope = RuntimeScope<
+    | 'pendingNowPlayingCoverRefreshHandle'
+    | 'nowPlayingCoverRefreshDebounceMs'
+    | 'currentTrackIndex'
+    | 'tracks'
+    | 'textFiles'
+    | 'imageFiles'
+    | 'trackIndexByPath'
+    | 'textFileIndexByPath'
+    | 'imageFileIndexByPath'
+    | 'currentSettings'
+    | 'activeReplayGainReleaseTrackPaths'
+    | 'replayGainReleaseDynamicRangeLabelByKey'
+    | 'replayGainReleaseDynamicRangePendingByKey'
+    | 'replayGainReleaseDynamicRangeRequestVersion'
+    | 'playlistControllerRef'
+    | 'gaplessQueueRequestVersion'
+    | 'queuedGaplessTrackPath'
+    | 'fullLibraryScanLoadActive'
+    | 'scrobbleService'
+    | 'libraryControllerRef'
+    | 'tagRequestVersion'
+    | 'hydrateCurrentTrackTag'
+    | 'artistInfoRequestVersion'
+    | 'hydrateCurrentArtistInfo'
+    | 'refreshListenBrainzFeedbackForCurrentTrack'
+    | 'playbackStateService'
+    | 'hasListenBrainzScrobbling'
+    | 'playPause'
+    | 'currentTimeLabel'
+    | 'trackDurationLabel'
+    | 'seek'
+    | 'isSeeking'
+    | 'updateMediaSessionMetadata'
+    | 'updateMediaSessionPlaybackState'
+    | 'updateMediaSessionPositionState'
+    | 'visualizerController'
+    | 'goToTrack'
+    | 'playbackMutationVersion'
+    | 'playbackPollHandle'
+    | 'volume'
+    | 'playerShell'
+    | 'playerLane'
+    | 'playerCard'
+    | 'lyricsPanel'
+    | 'lyricsContent'
+    | 'trackTechnical'
+    | 'trackTechnicalAlt'
+    | 'trackTitle'
+    | 'trackAlbum'
+    | 'trackPosition'
+    | 'trackArtist'
+    | 'trackReleaseAlbum'
+    | 'trackTitleInline'
+    | 'trackPositionInline'
+    | 'trackReleaseLabel'
+    | 'trackReleaseCat'
+    | 'trackReleaseYear'
+    | 'trackGenreInline'
+    | 'trackArtistHeader'
+    | 'trackMetadataService'
+    | 'resolveCoverForTrack'
+    | 'coverArtBackground'
+    | 'coverArt'
+    | 'setBackgroundCover'
+    | 'coverFlipped'
+    | 'coverFlipper'
+    | 'playbackSequencingService'
+    | 'coverArtService'
+>;
+
+type AppQueueMenuRuntimeScope = RuntimeScope<
+    | 'currentSettings'
+    | 'tracks'
+    | 'currentTrackIndex'
+    | 'fullLibraryScanLoadActive'
+    | 'suppressAutoSelectAfterFullLibraryScan'
+    | 'sidebarQueueTrackIndexes'
+    | 'sidebarQueueFeedbackTrackIndex'
+    | 'sidebarQueueFolderPath'
+    | 'sidebarQueueFolderLabel'
+    | 'sidebarQueueFolderTarget'
+    | 'sidebarQueueTrackIndexesScopedToSelection'
+    | 'sidebarQueueFileActionPath'
+    | 'sidebarQueueIncludeFileActions'
+    | 'sidebarQueueSendToActionScope'
+    | 'queueConfirmResolver'
+    | 'trackMetaMenuTarget'
+    | 'trackMetaMenuActionScope'
+    | 'trackMetaMenuActionPath'
+    | 'playOrderMenu'
+    | 'trackMetaMenu'
+    | 'trackMetaSendToList'
+    | 'trackMetaSendToDivider'
+    | 'trackMetaCopyFilePathBtn'
+    | 'trackMetaCopyFolderPathBtn'
+    | 'trackMetaCopyDivider'
+    | 'trackMetaParentFolderBtn'
+    | 'trackMetaBrowserFolderBtn'
+    | 'sidebarQueueMenu'
+    | 'sidebarQueueSendToList'
+    | 'sidebarQueueSendToDivider'
+    | 'sidebarQueueFeedbackDivider'
+    | 'sidebarQueueLove'
+    | 'sidebarQueueHate'
+    | 'playPause'
+    | 'queueConfirmModal'
+    | 'queueConfirmTitle'
+    | 'queueConfirmMessage'
+    | 'libraryBrowser'
+    | 'libraryControllerRef'
+    | 'playlistControllerRef'
+    | 'playlistTargetModalControllerRef'
+    | 'sidebarController'
+    | 'socialController'
+    | 'playbackSequencingService'
+    | 'sidebarQueueDescendantPromptThreshold'
+    | 'closeListenBrainzFeedbackMenu'
+    | 'hasListenBrainzScrobbling'
+    | 'ensureTrackIndexForPath'
+    | 'ensureTrackTagsResolved'
+    | 'submitListenBrainzFeedbackForTrack'
+    | 'openErrorModal'
+    | 'logFrontendMessage'
+    | 'loadTrack'
+    | 'queueGaplessNextTrack'
+    | 'playCurrentTrack'
+>;
+
+type AppModalRuntimeScope = RuntimeScope<
+    | 'artistInfoControllerRef'
+    | 'activeBackgroundLayer'
+    | 'bgLayerA'
+    | 'bgLayerB'
+    | 'trackMetadataService'
+    | 'currentTrackIndex'
+    | 'refreshNowPlayingLabel'
+    | 'libraryControllerRef'
+    | 'applyCoverArtForTrack'
+    | 'artistInfoRequestVersion'
+    | 'textFileModal'
+    | 'textFileTitle'
+    | 'textFileCode'
+    | 'coverArt'
+    | 'tracks'
+    | 'coverArtService'
+    | 'imageModalControllerRef'
+    | 'collectReleaseImageFiles'
+    | 'indexOfImageByPath'
+    | 'aboutModal'
+    | 'aboutModalHideTimer'
+    | 'aboutModalTransitionMs'
+    | 'errorModal'
+    | 'errorTitle'
+    | 'errorModalMessage'
+    | 'errorModalHideTimer'
+    | 'errorModalTransitionMs'
+    | 'musicBrainzEntityModal'
+    | 'musicBrainzEntityDialog'
+    | 'musicBrainzEntityTitle'
+    | 'musicBrainzEntityContent'
+    | 'musicBrainzEntityModalHideTimer'
+    | 'musicBrainzEntityModalTransitionMs'
+    | 'ensureTrackTagsResolved'
+    | 'technicalInfoModal'
+    | 'technicalInfoTitle'
+    | 'technicalInfoContent'
+    | 'technicalInfoModalHideTimer'
+    | 'technicalInfoModalTransitionMs'
+>;
+
+type AppLibraryLoadRuntimeScope = RuntimeScope<
+    | 'libraryIndexedFilePageSize'
+    | 'selectedLibraryRootLabel'
+    | 'objectUrls'
+    | 'tracks'
+    | 'textFiles'
+    | 'imageFiles'
+    | 'currentTrackIndex'
+    | 'currentSettings'
+    | 'currentMusicBrainzTagWorkerProgress'
+    | 'availableAudioOutputDevices'
+    | 'libraryClientFinalizeEstimateMs'
+    | 'activeLibraryLoadScanResolvedAtMs'
+    | 'fullLibraryScanLoadActive'
+    | 'suppressAutoSelectAfterFullLibraryScan'
+    | 'trackIndexByPath'
+    | 'textFileIndexByPath'
+    | 'imageFileIndexByPath'
+    | 'trackTitle'
+    | 'trackAlbum'
+    | 'trackPosition'
+    | 'trackArtist'
+    | 'trackTechnical'
+    | 'trackTechnicalAlt'
+    | 'trackArtistHeader'
+    | 'trackReleaseAlbum'
+    | 'trackReleaseLabel'
+    | 'trackReleaseCat'
+    | 'trackReleaseYear'
+    | 'trackTitleInline'
+    | 'trackGenreInline'
+    | 'lyricsContent'
+    | 'playerLane'
+    | 'lyricsPanel'
+    | 'coverArt'
+    | 'coverArtBackground'
+    | 'aboutVersion'
+    | 'closeSidebarQueueMenu'
+    | 'closeListenBrainzFeedbackMenu'
+    | 'closeMusicBrainzEntityModal'
+    | 'closeTechnicalInfoModal'
+    | 'clearReplayGainReleaseDynamicRangeCache'
+    | 'audioStop'
+    | 'applyPlaybackState'
+    | 'handleAudioError'
+    | 'coverArtService'
+    | 'artistInfoControllerRef'
+    | 'imageModalControllerRef'
+    | 'libraryControllerRef'
+    | 'playlistControllerRef'
+    | 'scrobbleService'
+    | 'resetShuffleHistory'
+    | 'setBackgroundCover'
+    | 'setCoverFlipped'
+    | 'resetArtistInfoPanel'
+    | 'updateMediaSessionMetadata'
+    | 'beginLibraryLoadTracking'
+    | 'markLibraryScanResolved'
+    | 'finishLibraryLoadTracking'
+    | 'scanConfiguredLibraryFoldersBackend'
+    | 'playbackStateService'
+    | 'loadTrack'
+    | 'updatePlayButton'
+    | 'scheduleLibraryIncrementalFolderRefresh'
+    | 'scheduleNowPlayingCoverRefresh'
+    | 'applyPlayerCardLayout'
+    | 'getStoredLayout'
+    | 'resetListenBrainzFeedbackState'
+    | 'listAudioOutputDevices'
+    | 'getSettings'
+    | 'visualizerController'
+    | 'applyUiDitheringSetting'
+    | 'socialController'
+    | 'getMusicBrainzTagWorkerProgress'
+    | 'settingsControllerRef'
+    | 'setPlaybackOrderMode'
+    | 'completeStartupIfReady'
+    | 'refreshListenBrainzFeedbackForCurrentTrack'
+    | 'getAppVersion'
+    | 'ensureTrackIndexForPath'
+    | 'rebuildTrackPathIndex'
+    | 'rebuildTextFilePathIndex'
+    | 'rebuildImageFilePathIndex'
+    | 'logRescan'
+    | 'loadIndexedFilePage'
+>;
+
+type AppPlaybackControlsRuntimeScope = RuntimeScope<
+    | 'availableAudioOutputDevices'
+    | 'aboutVersion'
+    | 'coverArtService'
+    | 'gaplessQueueRequestVersion'
+    | 'queuedGaplessTrackPath'
+    | 'playbackSequencingService'
+    | 'playlistControllerRef'
+    | 'resetShuffleHistory'
+    | 'currentTrackIndex'
+    | 'tracks'
+    | 'scrobbleService'
+    | 'currentSettings'
+    | 'libraryControllerRef'
+    | 'logPlaybackDebug'
+    | 'collectReplayGainReleaseTrackPathsForIndex'
+    | 'setActiveReplayGainReleaseTrackPaths'
+    | 'applyPlaybackState'
+    | 'setCoverFlipped'
+    | 'hasConfiguredLibraryFolders'
+    | 'beginLibraryLoadTracking'
+    | 'markLibraryScanResolved'
+    | 'libraryClientFinalizeEstimateMs'
+    | 'loadLibraryScan'
+    | 'finishLibraryLoadTracking'
+    | 'handleAudioError'
+    | 'refreshNowPlayingLabel'
+    | 'applyCoverArtForTrack'
+    | 'tagRequestVersion'
+    | 'hydrateCurrentTrackTag'
+    | 'artistInfoRequestVersion'
+    | 'hydrateCurrentArtistInfo'
+    | 'playbackStateService'
+    | 'playPauseToggleInFlight'
+    | 'shouldSkipLoadedTrack'
+    | 'playbackMutationVersion'
+    | 'nextTrackIndexForDirection'
+    | 'trackNavigationChain'
+    | 'coverArt'
+    | 'librarySearch'
+    | 'sidebarController'
+    | 'socialController'
+    | 'settingsControllerRef'
+>;
+
+const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) => ({
     app: scope.app,
     get currentSettings() {
         return scope.currentSettings;
@@ -78,9 +424,9 @@ const createCoreServicesRuntimeContext = (scope: AppRuntimeScope) => ({
 
 export type AppCoreServicesRuntimeContext = ReturnType<typeof createCoreServicesRuntimeContext>;
 
-export const setupCoreServicesRuntime = (scope: AppRuntimeScope) => createAppCoreServicesRuntime(createCoreServicesRuntimeContext(scope));
+export const setupCoreServicesRuntime = (scope: AppCoreServicesRuntimeScope) => createAppCoreServicesRuntime(createCoreServicesRuntimeContext(scope));
 
-const createNowPlayingRuntimeContext = (scope: AppRuntimeScope) => ({
+const createNowPlayingRuntimeContext = (scope: AppNowPlayingRuntimeScope) => ({
     get pendingNowPlayingCoverRefreshHandle() {
         return scope.pendingNowPlayingCoverRefreshHandle;
     },
@@ -245,9 +591,9 @@ const createNowPlayingRuntimeContext = (scope: AppRuntimeScope) => ({
 
 export type AppNowPlayingRuntimeContext = ReturnType<typeof createNowPlayingRuntimeContext>;
 
-export const setupNowPlayingRuntime = (scope: AppRuntimeScope) => createAppNowPlayingRuntime(createNowPlayingRuntimeContext(scope));
+export const setupNowPlayingRuntime = (scope: AppNowPlayingRuntimeScope) => createAppNowPlayingRuntime(createNowPlayingRuntimeContext(scope));
 
-const createQueueMenuRuntimeContext = (scope: AppRuntimeScope) => ({
+const createQueueMenuRuntimeContext = (scope: AppQueueMenuRuntimeScope) => ({
     get currentSettings() {
         return scope.currentSettings;
     },
@@ -411,9 +757,9 @@ const createQueueMenuRuntimeContext = (scope: AppRuntimeScope) => ({
 
 export type AppQueueMenuRuntimeContext = ReturnType<typeof createQueueMenuRuntimeContext>;
 
-export const setupQueueMenuRuntime = (scope: AppRuntimeScope) => createAppQueueMenuRuntime(createQueueMenuRuntimeContext(scope));
+export const setupQueueMenuRuntime = (scope: AppQueueMenuRuntimeScope) => createAppQueueMenuRuntime(createQueueMenuRuntimeContext(scope));
 
-const createModalRuntimeContext = (scope: AppRuntimeScope) => ({
+const createModalRuntimeContext = (scope: AppModalRuntimeScope) => ({
     get artistInfoController() {
         return scope.artistInfoControllerRef;
     },
@@ -501,9 +847,9 @@ const createModalRuntimeContext = (scope: AppRuntimeScope) => ({
 
 export type AppModalRuntimeContext = ReturnType<typeof createModalRuntimeContext>;
 
-export const setupModalRuntime = (scope: AppRuntimeScope) => createAppModalRuntime(createModalRuntimeContext(scope));
+export const setupModalRuntime = (scope: AppModalRuntimeScope) => createAppModalRuntime(createModalRuntimeContext(scope));
 
-export const setupLibraryLoadRuntime = (scope: AppRuntimeScope) => createAppLibraryLoadRuntime({
+export const setupLibraryLoadRuntime = (scope: AppLibraryLoadRuntimeScope) => createAppLibraryLoadRuntime({
     libraryIndexedFilePageSize: scope.libraryIndexedFilePageSize,
     selectedLibraryRootLabel: scope.selectedLibraryRootLabel,
     get objectUrls() {
@@ -730,7 +1076,7 @@ export const setupLibraryLoadRuntime = (scope: AppRuntimeScope) => createAppLibr
     },
 });
 
-const createPlaybackControlsRuntimeContext = (scope: AppRuntimeScope) => ({
+const createPlaybackControlsRuntimeContext = (scope: AppPlaybackControlsRuntimeScope) => ({
     get availableAudioOutputDevices() {
         return scope.availableAudioOutputDevices;
     },
@@ -834,4 +1180,4 @@ const createPlaybackControlsRuntimeContext = (scope: AppRuntimeScope) => ({
 
 export type AppPlaybackControlsRuntimeContext = ReturnType<typeof createPlaybackControlsRuntimeContext>;
 
-export const setupPlaybackControlsRuntime = (scope: AppRuntimeScope) => createAppPlaybackControlsRuntime(createPlaybackControlsRuntimeContext(scope));
+export const setupPlaybackControlsRuntime = (scope: AppPlaybackControlsRuntimeScope) => createAppPlaybackControlsRuntime(createPlaybackControlsRuntimeContext(scope));

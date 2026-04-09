@@ -245,6 +245,7 @@ vi.mock('./app-cover-flip-runtime', () => ({
 vi.mock('./utils/main-helpers', () => ({
     asReleaseDepth: vi.fn(() => 0),
     findLibraryFolderForFilePath: vi.fn(() => null),
+    formatTime: vi.fn((value: number) => `${value}`),
 }));
 
 vi.mock('./utils/musicbrainz-request-scheduler', () => ({

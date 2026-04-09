@@ -41,7 +41,7 @@ import type {
 
 export type TrackMetaActionKind = 'track' | 'album' | null;
 
-type AppShellElements = ReturnType<typeof getAppShellElements>;
+export type AppShellElements = ReturnType<typeof getAppShellElements>;
 type ShareElements = Parameters<typeof createShareController>[0]['elements'];
 type ArtistInfoElements = Parameters<typeof createArtistInfoController>[0]['elements'];
 type CoverArtService = ReturnType<typeof createCoverArtService>;
@@ -217,18 +217,9 @@ type ReturnedRuntimeMethods = {
     setBackgroundCover: (coverSrc?: string) => void;
 };
 
-export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods, ReturnedRuntimeMethods {
-    app: HTMLElement;
-    window: Window;
-    document: Document;
-    shareElements: ShareElements;
-    artistInfoElements: ArtistInfoElements;
-    isWindowsRuntime: boolean;
-    isMacRuntime: boolean;
-    isLinuxRuntime: boolean;
-    trackIndexByPath: Map<string, number>;
-    textFileIndexByPath: Map<string, number>;
-    imageFileIndexByPath: Map<string, number>;
+export type AppRuntimePorts = SharedRuntimeMethods & ReturnedRuntimeMethods;
+
+export interface AppRuntimeState {
     currentSettings: AppSettings;
     tracks: Track[];
     textFiles: TextLibraryFile[];
@@ -251,8 +242,6 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     gaplessQueueRequestVersion: number;
     queuedGaplessTrackPath: string;
     activeReplayGainReleaseTrackPaths: string[];
-    replayGainReleaseDynamicRangeLabelByKey: Map<string, string>;
-    replayGainReleaseDynamicRangePendingByKey: Map<string, Promise<string>>;
     replayGainReleaseDynamicRangeRequestVersion: number;
     availableAudioOutputDevices: AudioOutputDevice[];
     currentMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
@@ -275,6 +264,23 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     trackMetaMenuTarget: HTMLElement | null;
     trackMetaMenuActionScope: CustomSendToActionScope | null;
     trackMetaMenuActionPath: string;
+    suppressCoverFrontClickUntil: number;
+}
+
+export interface AppRuntimeRefs {
+    app: HTMLElement;
+    window: Window;
+    document: Document;
+    shareElements: ShareElements;
+    artistInfoElements: ArtistInfoElements;
+    isWindowsRuntime: boolean;
+    isMacRuntime: boolean;
+    isLinuxRuntime: boolean;
+    trackIndexByPath: Map<string, number>;
+    textFileIndexByPath: Map<string, number>;
+    imageFileIndexByPath: Map<string, number>;
+    replayGainReleaseDynamicRangeLabelByKey: Map<string, string>;
+    replayGainReleaseDynamicRangePendingByKey: Map<string, Promise<string>>;
     selectedLibraryRootLabel: string;
     libraryIndexedFilePageSize: number;
     sidebarQueueDescendantPromptThreshold: number;
@@ -283,10 +289,12 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     technicalInfoModalTransitionMs: number;
     aboutModalTransitionMs: number;
     errorModalTransitionMs: number;
-    suppressCoverFrontClickUntil: number;
     coverFront: HTMLElement;
     volumeBtn: HTMLButtonElement;
     cardResizeObserver: ResizeObserver;
+}
+
+export interface AppRuntimeControllerRefs {
     settingsControllerRef: SettingsController;
     playlistControllerRef: PlaylistController;
     playlistTargetModalControllerRef: PlaylistTargetModalController;
@@ -294,6 +302,9 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     imageModalControllerRef: ImageModalController;
     libraryControllerRef: LibraryController;
     shareControllerRef: ShareController;
+}
+
+export interface AppRuntimeServiceRefs {
     coverArtService: CoverArtService;
     playbackStateService: PlaybackStateService;
     playbackSequencingService: PlaybackSequencingService;
@@ -304,3 +315,5 @@ export interface AppRuntimeScope extends AppShellElements, SharedRuntimeMethods,
     socialController: ListenBrainzSocialController;
     mediaSessionController: MediaSessionController;
 }
+
+export interface AppRuntimeScope extends AppShellElements, AppRuntimeState, AppRuntimeRefs, AppRuntimeControllerRefs, AppRuntimeServiceRefs, AppRuntimePorts {}
