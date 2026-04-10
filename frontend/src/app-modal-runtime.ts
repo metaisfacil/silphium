@@ -34,6 +34,8 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
             replayGainStatusTone?: 'pending' | 'success' | 'error';
         } = {},
     ): void => {
+        void options;
+
         const track = context.tracks[trackIndex];
         if (!track) {
             context.technicalInfoContent.innerHTML = '<p class="technical-info-empty">No technical information available for this track.</p>';
@@ -90,6 +92,8 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
             openErrorModal('ReplayGain Write Failed', message);
         }
     };
+
+    void writeReplayGainTags;
 
     const resetArtistInfoPanel = (): void => {
         context.artistInfoController.reset();
