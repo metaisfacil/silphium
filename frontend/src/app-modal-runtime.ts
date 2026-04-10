@@ -42,13 +42,8 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
             return;
         }
 
-        const content = document.createElement('div');
-        renderTechnicalInfoContent(content, track);
-
-        context.technicalInfoContent.innerHTML = '';
         // Manual ReplayGain tag writing is intentionally hidden for now.
-
-        context.technicalInfoContent.append(content);
+        renderTechnicalInfoContent(context.technicalInfoContent, track);
     };
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
