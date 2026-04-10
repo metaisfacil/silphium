@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
 import { AudioWriteReplayGainTags, ReadTextFile } from '../wailsjs/go/main/App';
 import type { AppModalRuntimeContext } from './app-runtime-setup';
 import { renderTechnicalInfoContent } from './utils/main-helpers';
@@ -9,6 +10,7 @@ import {
 import type { MusicBrainzEntityType, TextLibraryFile } from './types/app-types';
 
 export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
     const replayGainTargetPathsForIndex = (trackIndex: number): string[] => {
         const track = context.tracks[trackIndex];
         if (!track) {
@@ -23,6 +25,7 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
         return track.path.trim() ? [track.path] : [];
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
     const renderTechnicalInfoModalContent = (
         trackIndex: number,
         options: {
@@ -37,46 +40,16 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
             return;
         }
 
-        const targetPaths = replayGainTargetPathsForIndex(trackIndex);
         const content = document.createElement('div');
         renderTechnicalInfoContent(content, track);
 
         context.technicalInfoContent.innerHTML = '';
-
-        if (targetPaths.length > 0) {
-            const actionSection = document.createElement('section');
-            actionSection.className = 'technical-info-action-section';
-
-            const actionCopy = document.createElement('p');
-            actionCopy.className = 'technical-info-action-copy';
-            actionCopy.textContent = targetPaths.length > 1
-                ? `Write track and album ReplayGain tags for this release (${targetPaths.length} files).`
-                : 'Write ReplayGain tags for this file.';
-
-            const actionButton = document.createElement('button');
-            actionButton.className = 'technical-info-action-btn';
-            actionButton.type = 'button';
-            actionButton.disabled = !!options.replayGainBusy;
-            actionButton.textContent = options.replayGainBusy ? 'Writing ReplayGain Tags…' : 'Write ReplayGain Tags';
-            actionButton.addEventListener('click', () => {
-                void writeReplayGainTags(trackIndex);
-            });
-
-            actionSection.append(actionCopy, actionButton);
-
-            if (options.replayGainStatus) {
-                const status = document.createElement('p');
-                status.className = `technical-info-action-status is-${options.replayGainStatusTone || 'success'}`;
-                status.textContent = options.replayGainStatus;
-                actionSection.append(status);
-            }
-
-            context.technicalInfoContent.append(actionSection);
-        }
+        // Manual ReplayGain tag writing is intentionally hidden for now.
 
         context.technicalInfoContent.append(content);
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
     const writeReplayGainTags = async (trackIndex: number): Promise<void> => {
         const targetPaths = replayGainTargetPathsForIndex(trackIndex);
         if (targetPaths.length === 0) {

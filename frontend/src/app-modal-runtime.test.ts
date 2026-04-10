@@ -183,31 +183,15 @@ describe('createAppModalRuntime', () => {
         expect(context.imageModalController.openGallery).not.toHaveBeenCalled();
     });
 
-    it('writes ReplayGain tags from the technical-info modal and refreshes the affected tracks', async () => {
+    it('keeps the manual ReplayGain write option hidden in the technical-info modal', async () => {
         const context = createContext();
         const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
 
         await runtime.openTechnicalInfoModal();
 
         const actionButton = context.technicalInfoContent.querySelector('.technical-info-action-btn');
-        if (!(actionButton instanceof HTMLButtonElement)) {
-            throw new Error('ReplayGain action button not rendered');
-        }
-
-        actionButton.click();
-        await Promise.resolve();
-        await Promise.resolve();
-
-        expect(audioWriteReplayGainTagsMock).toHaveBeenCalledWith([
-            '/music/Artist/Album/track.flac',
-            '/music/Artist/Album/track-02.flac',
-        ]);
-        expect(context.trackMetadataService.refreshTrackTags).toHaveBeenCalledWith([
-            '/music/Artist/Album/track.flac',
-            '/music/Artist/Album/track-02.flac',
-        ]);
-        await vi.waitFor(() => {
-            expect(context.technicalInfoContent.textContent).toContain('ReplayGain tags written for 2 files.');
-        });
+        expect(actionButton).toBeNull();
+        expect(audioWriteReplayGainTagsMock).not.toHaveBeenCalled();
+        expect(context.trackMetadataService.refreshTrackTags).not.toHaveBeenCalled();
     });
 });

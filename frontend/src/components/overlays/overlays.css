@@ -1840,6 +1840,7 @@
     --technical-info-first-column-width: 0;
 }
 
+/*
 .technical-info-action-section {
     display: flex;
     flex-wrap: wrap;
@@ -1894,6 +1895,7 @@
 .technical-info-action-status.is-error {
     color: rgba(255, 169, 169, 0.96);
 }
+*/
 
 .technical-info-grid {
     display: grid;
