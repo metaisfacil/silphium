@@ -126,6 +126,8 @@ export interface AppLibraryLoadRuntimeContext {
 export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContext) => {
     let deferredHydrationPending = false;
     let deferredHydrationLoadInFlight = false;
+    let libraryScanLoadInFlight = false;
+    let queuedDeferredHydrationScanResult: LibraryScanResult | null = null;
     let historicalTotalLoadEtaHandle: number | null = null;
     let historicalTotalLoadEtaStartedAtMs: number | null = null;
 
@@ -182,7 +184,43 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             || (scanResult.imageFileCount || 0) > 0;
     };
 
+    const loadLibraryScanWithExclusion = async (
+        scanResult: LibraryScanResult,
+        options?: { autoSelectStartingTrack?: boolean; preserveFolderView?: boolean; currentFolderPath?: string },
+    ): Promise<void> => {
+        libraryScanLoadInFlight = true;
+        try {
+            await loadLibraryScan(scanResult, options);
+        } finally {
+            libraryScanLoadInFlight = false;
+        }
+    };
+
+    const completeDeferredHydrationLoad = async (scanResult: LibraryScanResult): Promise<void> => {
+        deferredHydrationLoadInFlight = true;
+        queuedDeferredHydrationScanResult = null;
+        try {
+            context.markLibraryScanResolved();
+            context.setLibraryLoadingStatusLabel('');
+            stopHistoricalTotalLoadEtaCountdown();
+            if (context.libraryClientFinalizeEstimateMs > 0) {
+                const finalizeEtaSeconds = Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000));
+                context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
+                context.setForceReloadEtaSeconds(finalizeEtaSeconds);
+            }
+            await loadLibraryScanWithExclusion(scanResult);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            finishActiveLibraryLoad();
+        }
+    };
+
     const finishActiveLibraryLoad = (): void => {
+        if (!context.fullLibraryScanLoadActive && !deferredHydrationPending && !deferredHydrationLoadInFlight) {
+            return;
+        }
+
         deferredHydrationPending = false;
         deferredHydrationLoadInFlight = false;
         stopHistoricalTotalLoadEtaCountdown();
@@ -575,8 +613,13 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
                 context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
                 context.setForceReloadEtaSeconds(finalizeEtaSeconds);
             }
-            await loadLibraryScan(scanResult);
             keepLoadingForDeferredHydration = hasDeferredHydrationWork(scanResult);
+            deferredHydrationPending = keepLoadingForDeferredHydration;
+            await loadLibraryScanWithExclusion(scanResult);
+            if (keepLoadingForDeferredHydration && queuedDeferredHydrationScanResult && !queuedDeferredHydrationScanResult.deferredFiles) {
+                keepLoadingForDeferredHydration = false;
+                await completeDeferredHydrationLoad(queuedDeferredHydrationScanResult);
+            }
             deferredHydrationPending = keepLoadingForDeferredHydration;
         } finally {
             if (!keepLoadingForDeferredHydration) {
@@ -595,22 +638,13 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         }
 
         if (deferredHydrationPending && !scanResult.deferredFiles && !deferredHydrationLoadInFlight) {
-            deferredHydrationLoadInFlight = true;
-            try {
-                context.markLibraryScanResolved();
-                context.setLibraryLoadingStatusLabel('');
-                stopHistoricalTotalLoadEtaCountdown();
-                if (context.libraryClientFinalizeEstimateMs > 0) {
-                    const finalizeEtaSeconds = Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000));
-                    context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
-                    context.setForceReloadEtaSeconds(finalizeEtaSeconds);
-                }
-                await loadLibraryScan(scanResult);
-            } catch (error) {
-                console.error(error);
-            } finally {
-                finishActiveLibraryLoad();
+            if (libraryScanLoadInFlight) {
+                queuedDeferredHydrationScanResult = scanResult;
+                context.logRescan('Queued deferred hydration completion while the initial scan load is still in flight');
+                return;
             }
+
+            await completeDeferredHydrationLoad(scanResult);
 
             context.logRescan('handleLibraryScanUpdatedEvent END: took %.2fms (hydration complete)', performance.now() - startTime);
             return;
