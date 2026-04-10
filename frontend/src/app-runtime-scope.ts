@@ -119,6 +119,7 @@ type ReturnedRuntimeMethods = {
     clearReplayGainReleaseDynamicRangeCache: () => void;
     collectReleaseImageFiles: (track: Track) => ImageLibraryFile[];
     collectReplayGainReleaseTrackPathsForIndex: (trackIndex: number, sequenceOverrideIndexes?: number[]) => string[];
+    replayGainReleaseTrackPathsForIndex: (trackIndex: number) => string[];
     ensureTrackIndexForPath: (path: string) => number;
     ensureTextFileIndexForPath?: (path: string) => number;
     ensureImageFileIndexForPath?: (path: string) => number;

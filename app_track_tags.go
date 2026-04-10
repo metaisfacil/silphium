@@ -17,6 +17,7 @@ import (
 )
 
 var readTaglibTags = taglib.ReadTags
+var writeTaglibTags = taglib.WriteTags
 
 // TrackTags contains resolved textual, technical, and MusicBrainz metadata for a track.
 type TrackTags struct {
@@ -676,6 +677,17 @@ func (a *App) touchTrackTagsCacheOrderLocked(path string) {
 	cacheState := a.trackTagsCacheState()
 	a.removeTrackTagsCacheOrderEntryLocked(path)
 	cacheState.order = append(cacheState.order, path)
+}
+
+func (a *App) invalidateTrackTagsCachePaths(paths []string) {
+	cacheState := a.trackTagsCacheState()
+	cacheState.mu.Lock()
+	defer cacheState.mu.Unlock()
+
+	for _, path := range paths {
+		delete(cacheState.byPath, path)
+		a.removeTrackTagsCacheOrderEntryLocked(path)
+	}
 }
 
 func (a *App) getTrackTagsCache(path string, signature trackTagsFileSignature) (TrackTags, bool, bool) {

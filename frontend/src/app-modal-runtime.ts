@@ -1,4 +1,5 @@
-import { ReadTextFile } from '../wailsjs/go/main/App';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
+import { AudioWriteReplayGainTags, ReadTextFile } from '../wailsjs/go/main/App';
 import type { AppModalRuntimeContext } from './app-runtime-setup';
 import { renderTechnicalInfoContent } from './utils/main-helpers';
 import {
@@ -9,6 +10,86 @@ import {
 import type { MusicBrainzEntityType, TextLibraryFile } from './types/app-types';
 
 export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
+    const replayGainTargetPathsForIndex = (trackIndex: number): string[] => {
+        const track = context.tracks[trackIndex];
+        if (!track) {
+            return [];
+        }
+
+        const releasePaths = context.replayGainReleaseTrackPathsForIndex(trackIndex);
+        if (releasePaths.length > 1) {
+            return releasePaths;
+        }
+
+        return track.path.trim() ? [track.path] : [];
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
+    const renderTechnicalInfoModalContent = (
+        trackIndex: number,
+        options: {
+            replayGainBusy?: boolean;
+            replayGainStatus?: string;
+            replayGainStatusTone?: 'pending' | 'success' | 'error';
+        } = {},
+    ): void => {
+        void options;
+
+        const track = context.tracks[trackIndex];
+        if (!track) {
+            context.technicalInfoContent.innerHTML = '<p class="technical-info-empty">No technical information available for this track.</p>';
+            return;
+        }
+
+        // Manual ReplayGain tag writing is intentionally hidden for now.
+        renderTechnicalInfoContent(context.technicalInfoContent, track);
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
+    const writeReplayGainTags = async (trackIndex: number): Promise<void> => {
+        const targetPaths = replayGainTargetPathsForIndex(trackIndex);
+        if (targetPaths.length === 0) {
+            return;
+        }
+
+        renderTechnicalInfoModalContent(trackIndex, {
+            replayGainBusy: true,
+            replayGainStatus: 'Writing ReplayGain tags…',
+            replayGainStatusTone: 'pending',
+        });
+
+        try {
+            await AudioWriteReplayGainTags(targetPaths);
+            await context.trackMetadataService.refreshTrackTags(targetPaths);
+
+            if (trackIndex === context.currentTrackIndex) {
+                context.refreshNowPlayingLabel();
+                context.libraryController.renderFolder('none');
+            }
+
+            renderTechnicalInfoModalContent(trackIndex, {
+                replayGainStatus: targetPaths.length > 1
+                    ? `ReplayGain tags written for ${targetPaths.length} files.`
+                    : 'ReplayGain tags written for this file.',
+                replayGainStatusTone: 'success',
+            });
+        } catch (error) {
+            console.error(error);
+            const message = error instanceof Error && error.message.trim() !== ''
+                ? error.message.trim()
+                : 'Unable to write ReplayGain tags.';
+
+            renderTechnicalInfoModalContent(trackIndex, {
+                replayGainStatus: message,
+                replayGainStatusTone: 'error',
+            });
+            openErrorModal('ReplayGain Write Failed', message);
+        }
+    };
+
+    void writeReplayGainTags;
+
     const resetArtistInfoPanel = (): void => {
         context.artistInfoController.reset();
     };
@@ -322,7 +403,7 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
             return;
         }
 
-        renderTechnicalInfoContent(context.technicalInfoContent, context.tracks[selectedTrackIndex]);
+        renderTechnicalInfoModalContent(selectedTrackIndex);
     };
 
     return {

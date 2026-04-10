@@ -1840,6 +1840,63 @@
     --technical-info-first-column-width: 0;
 }
 
+/*
+.technical-info-action-section {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem 0.75rem;
+    margin-bottom: 0.9rem;
+    padding-bottom: 0.8rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.technical-info-action-copy {
+    flex: 1 1 16rem;
+    margin: 0;
+    font-size: 0.77rem;
+    line-height: 1.4;
+    opacity: 0.78;
+}
+
+.technical-info-action-btn {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    color: inherit;
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.58rem 0.9rem;
+    cursor: pointer;
+}
+
+.technical-info-action-btn:disabled {
+    opacity: 0.56;
+    cursor: progress;
+}
+
+.technical-info-action-status {
+    flex-basis: 100%;
+    margin: 0;
+    font-size: 0.74rem;
+    line-height: 1.4;
+}
+
+.technical-info-action-status.is-pending {
+    opacity: 0.74;
+}
+
+.technical-info-action-status.is-success {
+    color: rgba(154, 232, 189, 0.95);
+}
+
+.technical-info-action-status.is-error {
+    color: rgba(255, 169, 169, 0.96);
+}
+*/
+
 .technical-info-grid {
     display: grid;
     grid-template-columns: var(--technical-info-first-column-width) minmax(0, 1fr);

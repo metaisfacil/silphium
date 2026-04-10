@@ -148,6 +148,37 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
         }
     };
 
+    const refreshTrackTags = async (paths: string[]): Promise<void> => {
+        const normalizedPaths = Array.from(new Set(paths.map((path) => path.trim()).filter((path) => path !== '')));
+        if (normalizedPaths.length === 0) {
+            return;
+        }
+
+        try {
+            const tagByPath = await options.readTrackTags(normalizedPaths);
+            const pathSet = new Set(normalizedPaths);
+            options.getTracks().forEach((track, index) => {
+                if (!pathSet.has(track.path)) {
+                    return;
+                }
+
+                const tags = tagByPath[track.path] as TrackTags | undefined;
+                options.setTrack(index, {
+                    ...track,
+                    displayLyrics: normalizeTrackLyrics(tags),
+                    displayTrackNumber: tags?.trackNumber?.trim() || '',
+                    displayTrackTotal: tags?.trackTotal?.trim() || '',
+                    displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec, tags?.overallBitRate ?? tags?.bitRate),
+                    technicalDetails: technicalDetailsFromTags(tags),
+                    allFileTags: allFileTagsFromTags(tags),
+                    tagsResolved: true,
+                });
+            });
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     const hydrateMusicBrainzMetadata = async (index: number, requestVersion: number): Promise<boolean> => {
         if (!options.getPreferMusicBrainzMetadata()) {
             return false;
@@ -213,6 +244,7 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
         ensureTrackTagsResolvedBatch: async (indexes: number[]): Promise<void> => {
             await ensureTrackTagsBatchInternal(indexes);
         },
+        refreshTrackTags,
         hydrateTrack: async (index: number, requestVersion: number): Promise<HydrateTrackResult> => {
             const { resolved, updated: updatedTags } = await ensureTrackTagsInternal(index, requestVersion);
             if (!resolved) {

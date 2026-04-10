@@ -60,6 +60,21 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
         }))
         .map((candidate: Track) => candidate.path);
 
+    const replayGainReleaseTrackPathsForIndex = (trackIndex: number): string[] => {
+        const track = context.tracks[trackIndex];
+        if (!track) {
+            return [];
+        }
+
+        const releaseKey = replayGainReleaseKeyForTrack(track);
+        if (!releaseKey) {
+            return [];
+        }
+
+        const releasePaths = replayGainReleaseTrackPaths(releaseKey);
+        return releasePaths.length > 1 ? releasePaths : [];
+    };
+
     const normalizeReplayGainSequenceIndexes = (indexes: number[]): number[] => {
         const normalized: number[] = [];
         const seen = new Set<number>();
@@ -279,5 +294,6 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
         replayGainReleaseDynamicRangeCacheKey,
         replayGainReleaseKeyForTrack,
         replayGainReleaseTrackPaths,
+        replayGainReleaseTrackPathsForIndex,
     };
 };

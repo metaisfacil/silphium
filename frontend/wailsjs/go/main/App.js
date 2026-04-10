@@ -62,6 +62,10 @@ export function AudioStop() {
   return window['go']['main']['App']['AudioStop']();
 }
 
+export function AudioWriteReplayGainTags(arg1) {
+  return window['go']['main']['App']['AudioWriteReplayGainTags'](arg1);
+}
+
 export function CopyShareImageToClipboard(arg1) {
   return window['go']['main']['App']['CopyShareImageToClipboard'](arg1);
 }

@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { readTextFileMock } = vi.hoisted(() => ({
+const { readTextFileMock, audioWriteReplayGainTagsMock } = vi.hoisted(() => ({
     readTextFileMock: vi.fn(),
+    audioWriteReplayGainTagsMock: vi.fn(),
 }));
 
 vi.mock('../wailsjs/go/main/App', () => ({
     ReadTextFile: readTextFileMock,
+    AudioWriteReplayGainTags: audioWriteReplayGainTagsMock,
 }));
 
 import { createAppModalRuntime } from './app-modal-runtime';
@@ -21,6 +23,7 @@ const createContext = () => ({
     bgLayerB: document.createElement('div'),
     trackMetadataService: {
         hydrateTrack: vi.fn(async () => ({ updatedTags: false, updatedMusicBrainz: false })),
+        refreshTrackTags: vi.fn(async () => undefined),
     },
     currentTrackIndex: 0,
     refreshNowPlayingLabel: vi.fn(),
@@ -34,8 +37,27 @@ const createContext = () => ({
     textFileCode: document.createElement('pre'),
     coverArt: Object.assign(document.createElement('img'), { src: '/cover/current.jpg' }),
     tracks: [{
+        title: 'Track',
+        name: 'track.flac',
         path: '/music/Artist/Album/track.flac',
+        relativePath: 'Library/Artist/Album/track.flac',
         folderPath: '/music/Artist/Album',
+        rootPath: '/music',
+        rootName: 'Library',
+        displayTitle: 'Track',
+        displayAlbum: 'Album',
+        displayArtist: 'Artist',
+        displayTrackNumber: '1',
+        displayTrackTotal: '1',
+        displayTechnical: '',
+        displayLyrics: '',
+        tagsResolved: true,
+        mbMetadataResolved: false,
+        technicalDetails: {},
+        allFileTags: {},
+        mbIds: {},
+        artistMbids: [],
+        mbArtistCredits: [],
     }],
     coverArtService: {
         getResolvedSourceForTrack: vi.fn(() => 'file'),
@@ -48,6 +70,10 @@ const createContext = () => ({
     },
     collectReleaseImageFiles: vi.fn(() => [{ path: '/music/Artist/Album/front.jpg' }]),
     indexOfImageByPath: vi.fn(() => 0),
+    replayGainReleaseTrackPathsForIndex: vi.fn(() => [
+        '/music/Artist/Album/track.flac',
+        '/music/Artist/Album/track-02.flac',
+    ]),
     aboutModal: Object.assign(document.createElement('div'), { hidden: true }),
     aboutModalHideTimer: undefined,
     aboutModalTransitionMs: 180,
@@ -155,5 +181,17 @@ describe('createAppModalRuntime', () => {
             context.coverArt,
         );
         expect(context.imageModalController.openGallery).not.toHaveBeenCalled();
+    });
+
+    it('keeps the manual ReplayGain write option hidden in the technical-info modal', async () => {
+        const context = createContext();
+        const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
+
+        await runtime.openTechnicalInfoModal();
+
+        const actionButton = context.technicalInfoContent.querySelector('.technical-info-action-btn');
+        expect(actionButton).toBeNull();
+        expect(audioWriteReplayGainTagsMock).not.toHaveBeenCalled();
+        expect(context.trackMetadataService.refreshTrackTags).not.toHaveBeenCalled();
     });
 });
