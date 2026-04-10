@@ -232,4 +232,59 @@ describe('app-library-load-runtime', () => {
         expect(context.setLibraryLoading).toHaveBeenLastCalledWith(false);
         expect(context.fullLibraryScanLoadActive).toBe(false);
     });
+
+    it('queues hydration completion that arrives during the initial deferred scan load', async () => {
+        const quickScanResult = createScanResult({
+            deferredFiles: true,
+            totalEntries: 42,
+            trackCount: 1,
+        });
+        const hydratedScanResult = createScanResult({
+            deferredFiles: false,
+            totalEntries: 42,
+            trackCount: 1,
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        let resolveInitialRebuild!: () => void;
+        let rebuildCallCount = 0;
+        context.rebuildLibraryTree = vi.fn(() => {
+            rebuildCallCount += 1;
+            if (rebuildCallCount === 1) {
+                return new Promise<undefined>((resolve) => {
+                    resolveInitialRebuild = () => resolve(undefined);
+                });
+            }
+
+            return Promise.resolve(undefined);
+        });
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+        const scanPromise = runtime.scanConfiguredLibraryFolders();
+
+        await vi.waitFor(() => {
+            expect(context.rebuildLibraryTree).toHaveBeenCalledTimes(1);
+        });
+
+        await runtime.handleLibraryScanUpdatedEvent(hydratedScanResult);
+
+        expect(context.loadIndexedFilePage).not.toHaveBeenCalledWith('track', 0, 1000);
+
+        resolveInitialRebuild();
+        await scanPromise;
+
+        expect(context.rebuildLibraryTree).toHaveBeenCalledTimes(2);
+        expect(context.loadIndexedFilePage).toHaveBeenCalledWith('track', 0, 1000);
+        expect(context.tracks).toHaveLength(1);
+        expect(context.finishLibraryLoadTracking).toHaveBeenCalledTimes(1);
+        expect(context.setLibraryLoading).toHaveBeenLastCalledWith(false);
+        expect(context.fullLibraryScanLoadActive).toBe(false);
+    });
 });
