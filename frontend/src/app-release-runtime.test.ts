@@ -102,6 +102,11 @@ describe('createAppReleaseRuntime', () => {
             '/music/library/artist/album/disc-2/03.flac',
         ]);
         expect(runtime.collectReplayGainReleaseTrackPathsForIndex(1, [0, 1, 3])).toEqual([]);
+        expect(runtime.replayGainReleaseTrackPathsForIndex(1)).toEqual([
+            '/music/library/artist/album/disc-1/01.flac',
+            '/music/library/artist/album/disc-1/02.flac',
+            '/music/library/artist/album/disc-2/03.flac',
+        ]);
     });
 
     it('caches dynamic-range lookups and reuses them for the current release', async () => {

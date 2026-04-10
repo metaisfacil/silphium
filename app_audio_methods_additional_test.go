@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/base64"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/metaisfacil/oto/v3"
+	taglib "go.senan.xyz/taglib"
 )
 
 func newAudioTestApp(t *testing.T) (*App, libraryTestFixture, string) {
@@ -183,5 +185,90 @@ func TestAudioReinitializeBackendError(t *testing.T) {
 
 	if _, err := app.AudioReinitializeBackend(); err == nil {
 		t.Fatal("AudioReinitializeBackend(missing ffmpeg) error = nil, want error")
+	}
+}
+
+func TestAudioWriteReplayGainTags(t *testing.T) {
+	originalWriteTaglibTags := writeTaglibTags
+	t.Cleanup(func() {
+		writeTaglibTags = originalWriteTaglibTags
+	})
+
+	app, fixture, _ := newAudioTestApp(t)
+	secondTrack := filepath.Join(fixture.albumOneFolder, "02 Song.flac")
+	writeTestFile(t, secondTrack, "track two")
+
+	writtenTagsByPath := make(map[string]map[string][]string)
+	writeTaglibTags = func(path string, tags map[string][]string, _ taglib.WriteOption) error {
+		copied := make(map[string][]string, len(tags))
+		for key, values := range tags {
+			copied[key] = append([]string(nil), values...)
+		}
+		writtenTagsByPath[path] = copied
+		return nil
+	}
+
+	trackOneSignature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
+	}
+	trackTwoSignature, ok := trackTagsFileSignatureForPath(secondTrack)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", secondTrack)
+	}
+	app.audioBackend().putReplayGainCache(fixture.trackOne, trackOneSignature, ReplayGainInfo{GainDB: -2, Peak: 0.6}, true)
+	app.audioBackend().putReplayGainCache(secondTrack, trackTwoSignature, ReplayGainInfo{GainDB: -3, Peak: 0.7}, true)
+	releaseCacheKey, ok := buildReplayGainReleaseCacheKey([]string{fixture.trackOne, secondTrack})
+	if !ok {
+		t.Fatal("buildReplayGainReleaseCacheKey(two tracks) = false, want true")
+	}
+	app.audioBackend().putReplayGainReleaseCache(releaseCacheKey, ReplayGainInfo{GainDB: -4, Peak: 0.8}, true)
+	app.putTrackTagsCache(fixture.trackOne, trackOneSignature, TrackTags{Title: "Cached One"}, true)
+	app.putTrackTagsCache(secondTrack, trackTwoSignature, TrackTags{Title: "Cached Two"}, true)
+
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "[Parsed_replaygain_0 @ 0] track_gain = -5.00 dB\n[Parsed_replaygain_0 @ 0] track_peak = 0.70")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDERR", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
+
+	if err := app.AudioWriteReplayGainTags([]string{fixture.trackOne, secondTrack}); err != nil {
+		t.Fatalf("AudioWriteReplayGainTags() error = %v", err)
+	}
+
+	if len(writtenTagsByPath) != 2 {
+		t.Fatalf("AudioWriteReplayGainTags() wrote %d paths, want 2", len(writtenTagsByPath))
+	}
+	for _, path := range []string{fixture.trackOne, secondTrack} {
+		writtenTags := writtenTagsByPath[path]
+		if writtenTags == nil {
+			t.Fatalf("AudioWriteReplayGainTags() missing write for %q", path)
+		}
+		if got := strings.Join(writtenTags["REPLAYGAIN_TRACK_GAIN"], "|"); got != "-5.00 dB" {
+			t.Fatalf("REPLAYGAIN_TRACK_GAIN for %q = %q, want -5.00 dB", path, got)
+		}
+		if got := strings.Join(writtenTags["REPLAYGAIN_TRACK_PEAK"], "|"); got != "0.700000" {
+			t.Fatalf("REPLAYGAIN_TRACK_PEAK for %q = %q, want 0.700000", path, got)
+		}
+		if got := strings.Join(writtenTags["REPLAYGAIN_ALBUM_GAIN"], "|"); got != "-5.00 dB" {
+			t.Fatalf("REPLAYGAIN_ALBUM_GAIN for %q = %q, want -5.00 dB", path, got)
+		}
+		if got := strings.Join(writtenTags["REPLAYGAIN_ALBUM_PEAK"], "|"); got != "0.700000" {
+			t.Fatalf("REPLAYGAIN_ALBUM_PEAK for %q = %q, want 0.700000", path, got)
+		}
+	}
+
+	if _, _, cacheHit := app.audioBackend().getReplayGainCache(fixture.trackOne, trackOneSignature); cacheHit {
+		t.Fatal("getReplayGainCache(track one) hit after AudioWriteReplayGainTags(), want invalidated cache")
+	}
+	if _, _, cacheHit := app.audioBackend().getReplayGainCache(secondTrack, trackTwoSignature); cacheHit {
+		t.Fatal("getReplayGainCache(track two) hit after AudioWriteReplayGainTags(), want invalidated cache")
+	}
+	if _, _, cacheHit := app.audioBackend().getReplayGainReleaseCache(releaseCacheKey); cacheHit {
+		t.Fatal("getReplayGainReleaseCache() hit after AudioWriteReplayGainTags(), want invalidated release cache")
+	}
+	if _, _, cacheHit := app.getTrackTagsCache(fixture.trackOne, trackOneSignature); cacheHit {
+		t.Fatal("getTrackTagsCache(track one) hit after AudioWriteReplayGainTags(), want invalidated cache")
+	}
+	if _, _, cacheHit := app.getTrackTagsCache(secondTrack, trackTwoSignature); cacheHit {
+		t.Fatal("getTrackTagsCache(track two) hit after AudioWriteReplayGainTags(), want invalidated cache")
 	}
 }

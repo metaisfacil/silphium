@@ -121,6 +121,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         replayGainReleaseDynamicRangeCacheKey,
         replayGainReleaseKeyForTrack,
         replayGainReleaseTrackPaths,
+        replayGainReleaseTrackPathsForIndex,
     } = createAppReleaseRuntime({
         get tracks() {
             return context.tracks;
@@ -897,6 +898,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         replayGainReleaseDynamicRangeCacheKey,
         replayGainReleaseKeyForTrack,
         replayGainReleaseTrackPaths,
+        replayGainReleaseTrackPathsForIndex,
         resetShuffleHistory,
         scheduleNowPlayingCoverRefresh,
         setActiveReplayGainReleaseTrackPaths,

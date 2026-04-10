@@ -325,7 +325,7 @@ export const renderSettingsModal = (): string => `
                         ${renderSettingsCheckboxLabel('settings-gapless-playback', 'Enable gapless playback', 'When supported, trims encoder delay/padding and prequeues the next track for seamless transitions.')}
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-replaygain', 'Enable ReplayGain', 'Reads ReplayGain tags when present and scans tracks without them before playback. The gain is applied before the volume slider and never written back to files.')}
+                        ${renderSettingsCheckboxLabel('settings-replaygain', 'Enable ReplayGain', 'Reads ReplayGain tags when present and scans individual tracks without them before playback. Album ReplayGain should be written to tags ahead of time from Technical info.')}
                     </div>
                 </div>
                 <div id="settings-panel-ui" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-ui" hidden>

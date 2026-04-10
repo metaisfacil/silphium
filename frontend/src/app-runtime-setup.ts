@@ -204,6 +204,7 @@ type AppModalRuntimeScope = RuntimeScope<
     | 'imageModalControllerRef'
     | 'collectReleaseImageFiles'
     | 'indexOfImageByPath'
+    | 'replayGainReleaseTrackPathsForIndex'
     | 'aboutModal'
     | 'aboutModalHideTimer'
     | 'aboutModalTransitionMs'
@@ -808,6 +809,7 @@ const createModalRuntimeContext = (scope: AppModalRuntimeScope) => ({
     },
     collectReleaseImageFiles: scope.collectReleaseImageFiles,
     indexOfImageByPath: scope.indexOfImageByPath,
+    replayGainReleaseTrackPathsForIndex: scope.replayGainReleaseTrackPathsForIndex,
     aboutModal: scope.aboutModal,
     get aboutModalHideTimer() {
         return scope.aboutModalHideTimer;

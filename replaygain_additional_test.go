@@ -319,17 +319,17 @@ func TestReplayGainResolveBranchesForCachesAndAlbumPreference(t *testing.T) {
 		t.Fatalf("resolveAlbumReplayGainInfo(cached miss) = (%#v, %t), want empty false", info, ok)
 	}
 
-	backendWithCalculatedAlbum := NewAudioBackend()
-	backendWithCalculatedAlbum.ffmpegPath = ffmpegPath
+	backendWithoutAlbumFallback := NewAudioBackend()
+	backendWithoutAlbumFallback.ffmpegPath = ffmpegPath
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "[Parsed_replaygain_0 @ 0] track_gain = -5.00 dB\n[Parsed_replaygain_0 @ 0] track_peak = 0.70")
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDERR", "")
 	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
-	albumInfo, ok := backendWithCalculatedAlbum.resolveAlbumReplayGainInfo(nil, []string{trackOne, trackTwo})
-	if !ok || albumInfo.Source != string(replayGainSourceAlbumCalc) {
-		t.Fatalf("resolveAlbumReplayGainInfo(calculated) = (%#v, %t), want calculated album info", albumInfo, ok)
+	albumInfo, ok := backendWithoutAlbumFallback.resolveAlbumReplayGainInfo(nil, []string{trackOne, trackTwo})
+	if ok || albumInfo != (ReplayGainInfo{}) {
+		t.Fatalf("resolveAlbumReplayGainInfo(no tag fallback) = (%#v, %t), want empty false", albumInfo, ok)
 	}
-	if cachedInfo, hasValue, cacheHit := backendWithCalculatedAlbum.getReplayGainReleaseCache(cacheKey); !cacheHit || !hasValue || cachedInfo.Source != string(replayGainSourceAlbumCalc) {
-		t.Fatalf("getReplayGainReleaseCache(calculated) = (%#v, %t, %t), want cached calculated album info", cachedInfo, hasValue, cacheHit)
+	if cachedInfo, hasValue, cacheHit := backendWithoutAlbumFallback.getReplayGainReleaseCache(cacheKey); !cacheHit || hasValue || cachedInfo != (ReplayGainInfo{}) {
+		t.Fatalf("getReplayGainReleaseCache(no tag fallback) = (%#v, %t, %t), want cached miss", cachedInfo, hasValue, cacheHit)
 	}
 
 	signature, ok := trackTagsFileSignatureForPath(trackOne)

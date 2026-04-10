@@ -1,4 +1,4 @@
-import { ReadTextFile } from '../wailsjs/go/main/App';
+import { AudioWriteReplayGainTags, ReadTextFile } from '../wailsjs/go/main/App';
 import type { AppModalRuntimeContext } from './app-runtime-setup';
 import { renderTechnicalInfoContent } from './utils/main-helpers';
 import {
@@ -9,6 +9,115 @@ import {
 import type { MusicBrainzEntityType, TextLibraryFile } from './types/app-types';
 
 export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
+    const replayGainTargetPathsForIndex = (trackIndex: number): string[] => {
+        const track = context.tracks[trackIndex];
+        if (!track) {
+            return [];
+        }
+
+        const releasePaths = context.replayGainReleaseTrackPathsForIndex(trackIndex);
+        if (releasePaths.length > 1) {
+            return releasePaths;
+        }
+
+        return track.path.trim() ? [track.path] : [];
+    };
+
+    const renderTechnicalInfoModalContent = (
+        trackIndex: number,
+        options: {
+            replayGainBusy?: boolean;
+            replayGainStatus?: string;
+            replayGainStatusTone?: 'pending' | 'success' | 'error';
+        } = {},
+    ): void => {
+        const track = context.tracks[trackIndex];
+        if (!track) {
+            context.technicalInfoContent.innerHTML = '<p class="technical-info-empty">No technical information available for this track.</p>';
+            return;
+        }
+
+        const targetPaths = replayGainTargetPathsForIndex(trackIndex);
+        const content = document.createElement('div');
+        renderTechnicalInfoContent(content, track);
+
+        context.technicalInfoContent.innerHTML = '';
+
+        if (targetPaths.length > 0) {
+            const actionSection = document.createElement('section');
+            actionSection.className = 'technical-info-action-section';
+
+            const actionCopy = document.createElement('p');
+            actionCopy.className = 'technical-info-action-copy';
+            actionCopy.textContent = targetPaths.length > 1
+                ? `Write track and album ReplayGain tags for this release (${targetPaths.length} files).`
+                : 'Write ReplayGain tags for this file.';
+
+            const actionButton = document.createElement('button');
+            actionButton.className = 'technical-info-action-btn';
+            actionButton.type = 'button';
+            actionButton.disabled = !!options.replayGainBusy;
+            actionButton.textContent = options.replayGainBusy ? 'Writing ReplayGain Tags…' : 'Write ReplayGain Tags';
+            actionButton.addEventListener('click', () => {
+                void writeReplayGainTags(trackIndex);
+            });
+
+            actionSection.append(actionCopy, actionButton);
+
+            if (options.replayGainStatus) {
+                const status = document.createElement('p');
+                status.className = `technical-info-action-status is-${options.replayGainStatusTone || 'success'}`;
+                status.textContent = options.replayGainStatus;
+                actionSection.append(status);
+            }
+
+            context.technicalInfoContent.append(actionSection);
+        }
+
+        context.technicalInfoContent.append(content);
+    };
+
+    const writeReplayGainTags = async (trackIndex: number): Promise<void> => {
+        const targetPaths = replayGainTargetPathsForIndex(trackIndex);
+        if (targetPaths.length === 0) {
+            return;
+        }
+
+        renderTechnicalInfoModalContent(trackIndex, {
+            replayGainBusy: true,
+            replayGainStatus: 'Writing ReplayGain tags…',
+            replayGainStatusTone: 'pending',
+        });
+
+        try {
+            await AudioWriteReplayGainTags(targetPaths);
+            await context.trackMetadataService.refreshTrackTags(targetPaths);
+
+            if (trackIndex === context.currentTrackIndex) {
+                context.refreshNowPlayingLabel();
+                context.libraryController.renderFolder('none');
+            }
+
+            renderTechnicalInfoModalContent(trackIndex, {
+                replayGainStatus: targetPaths.length > 1
+                    ? `ReplayGain tags written for ${targetPaths.length} files.`
+                    : 'ReplayGain tags written for this file.',
+                replayGainStatusTone: 'success',
+            });
+        } catch (error) {
+            console.error(error);
+            const message = error instanceof Error && error.message.trim() !== ''
+                ? error.message.trim()
+                : 'Unable to write ReplayGain tags.';
+
+            renderTechnicalInfoModalContent(trackIndex, {
+                replayGainStatus: message,
+                replayGainStatusTone: 'error',
+            });
+            openErrorModal('ReplayGain Write Failed', message);
+        }
+    };
+
     const resetArtistInfoPanel = (): void => {
         context.artistInfoController.reset();
     };
@@ -322,7 +431,7 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
             return;
         }
 
-        renderTechnicalInfoContent(context.technicalInfoContent, context.tracks[selectedTrackIndex]);
+        renderTechnicalInfoModalContent(selectedTrackIndex);
     };
 
     return {

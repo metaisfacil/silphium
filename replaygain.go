@@ -465,6 +465,16 @@ func (b *AudioBackend) touchReplayGainCacheOrderLocked(path string) {
 	b.replayGainCacheOrder = append(b.replayGainCacheOrder, path)
 }
 
+func (b *AudioBackend) invalidateReplayGainCachePaths(paths []string) {
+	b.replayGainCacheMu.Lock()
+	defer b.replayGainCacheMu.Unlock()
+
+	for _, path := range paths {
+		delete(b.replayGainCacheByPath, path)
+		b.removeReplayGainCacheOrderEntryLocked(path)
+	}
+}
+
 func (b *AudioBackend) getReplayGainCache(path string, signature trackTagsFileSignature) (ReplayGainInfo, bool, bool) {
 	b.replayGainCacheMu.Lock()
 	defer b.replayGainCacheMu.Unlock()
@@ -548,6 +558,25 @@ func (b *AudioBackend) putReplayGainReleaseCache(key string, info ReplayGainInfo
 	}
 }
 
+func (b *AudioBackend) removeReplayGainReleaseCacheOrderEntryLocked(key string) {
+	for index, cachedKey := range b.replayGainReleaseCacheOrder {
+		if cachedKey != key {
+			continue
+		}
+
+		b.replayGainReleaseCacheOrder = append(b.replayGainReleaseCacheOrder[:index], b.replayGainReleaseCacheOrder[index+1:]...)
+		return
+	}
+}
+
+func (b *AudioBackend) invalidateReplayGainReleaseCacheKey(key string) {
+	b.replayGainReleaseCacheMu.Lock()
+	defer b.replayGainReleaseCacheMu.Unlock()
+
+	delete(b.replayGainReleaseCacheByKey, key)
+	b.removeReplayGainReleaseCacheOrderEntryLocked(key)
+}
+
 func (b *AudioBackend) getReplayGainReleaseDynamicRangeCache(key string) (int, bool, bool) {
 	b.replayGainReleaseCacheMu.Lock()
 	defer b.replayGainReleaseCacheMu.Unlock()
@@ -626,16 +655,6 @@ func (b *AudioBackend) resolveAlbumReplayGainInfo(preloadedTags map[string][]str
 			return info, true
 		}
 	}
-
-	info, err := calculateAlbumReplayGainWithFFmpeg(normalizedReleasePaths, b.ffmpegPath)
-	if err == nil {
-		if hasCacheKey {
-			b.putReplayGainReleaseCache(cacheKey, info, true)
-		}
-		return info, true
-	}
-
-	logAudioEvent("Album ReplayGain scan failed releaseSize=%d error=%v", len(normalizedReleasePaths), err)
 	if hasCacheKey {
 		b.putReplayGainReleaseCache(cacheKey, ReplayGainInfo{}, false)
 	}
