@@ -11,6 +11,104 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+var beforeIncrementalLibraryPathScanHook func(string)
+
+type preparedIncrementalLibraryChange struct {
+	targetPath string
+	trackFiles []LibraryIndexedFile
+	textFiles  []LibraryIndexedFile
+	imageFiles []LibraryIndexedFile
+}
+
+func activeLibraryRootForPathInRoots(roots []libraryRootConfig, path string) (libraryRootConfig, bool) {
+	absolutePath, ok := absoluteNormalizedPath(path)
+	if !ok {
+		return libraryRootConfig{}, false
+	}
+
+	bestMatch := libraryRootConfig{}
+	bestMatchLength := -1
+	for _, root := range roots {
+		if !pathWithinRoot(root.Path, absolutePath) {
+			continue
+		}
+
+		if len(root.Path) <= bestMatchLength {
+			continue
+		}
+
+		bestMatch = root
+		bestMatchLength = len(root.Path)
+	}
+
+	if bestMatchLength < 0 {
+		return libraryRootConfig{}, false
+	}
+
+	return bestMatch, true
+}
+
+func appendPreparedIncrementalLibraryFile(prepared *preparedIncrementalLibraryChange, indexed LibraryIndexedFile) {
+	switch {
+	case isAudioPath(indexed.Path):
+		prepared.trackFiles = append(prepared.trackFiles, indexed)
+	case isTextPath(indexed.Path):
+		prepared.textFiles = append(prepared.textFiles, indexed)
+	case isImagePath(indexed.Path):
+		prepared.imageFiles = append(prepared.imageFiles, indexed)
+	}
+}
+
+func (a *App) prepareIncrementalLibraryChange(root libraryRootConfig, targetPath string) preparedIncrementalLibraryChange {
+	if beforeIncrementalLibraryPathScanHook != nil {
+		beforeIncrementalLibraryPathScanHook(targetPath)
+	}
+
+	startTime := time.Now()
+	prepared := preparedIncrementalLibraryChange{targetPath: targetPath}
+	info, err := os.Stat(targetPath)
+	if err != nil {
+		return prepared
+	}
+
+	if !info.IsDir() {
+		if indexed, ok := indexFileForRoot(root, targetPath, info.Name()); ok {
+			appendPreparedIncrementalLibraryFile(&prepared, indexed)
+		}
+		a.logRescanEvent("  - processed single file: %s", targetPath)
+		return prepared
+	}
+
+	fileCount := 0
+	_ = filepath.WalkDir(targetPath, func(currentPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return nil
+		}
+
+		if indexed, ok := indexFileForRoot(root, currentPath, entry.Name()); ok {
+			appendPreparedIncrementalLibraryFile(&prepared, indexed)
+		}
+		fileCount++
+		return nil
+	})
+	a.logRescanEvent("  - processed directory: %s (%d files in %.2fms)", targetPath, fileCount, time.Since(startTime).Seconds()*1000)
+	return prepared
+}
+
+func (a *App) applyPreparedIncrementalLibraryChange(prepared preparedIncrementalLibraryChange) {
+	contentState := a.libraryContentState()
+	a.removePathAndDescendants(prepared.targetPath)
+	for _, indexed := range prepared.trackFiles {
+		contentState.trackByPath[indexed.Path] = indexed
+	}
+	for _, indexed := range prepared.textFiles {
+		contentState.textByPath[indexed.Path] = indexed
+	}
+	for _, indexed := range prepared.imageFiles {
+		contentState.imageByPath[indexed.Path] = indexed
+	}
+}
+
 func (a *App) removePathAndDescendants(path string) {
 	contentState := a.libraryContentState()
 	delete(contentState.trackByPath, path)
@@ -71,31 +169,8 @@ func (a *App) addOrUpdateIndexedFile(root libraryRootConfig, fullPath string, fi
 }
 
 func (a *App) addOrUpdatePathRecursive(root libraryRootConfig, targetPath string) {
-	startTime := time.Now()
-	info, err := os.Stat(targetPath)
-	if err != nil {
-		a.removePathAndDescendants(targetPath)
-		return
-	}
-
-	if !info.IsDir() {
-		a.addOrUpdateIndexedFile(root, targetPath, info.Name())
-		a.logRescanEvent("  - processed single file: %s", targetPath)
-		return
-	}
-
-	a.removePathAndDescendants(targetPath)
-	fileCount := 0
-	_ = filepath.WalkDir(targetPath, func(currentPath string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil || entry.IsDir() {
-			return nil
-		}
-
-		a.addOrUpdateIndexedFile(root, currentPath, entry.Name())
-		fileCount++
-		return nil
-	})
-	a.logRescanEvent("  - processed directory: %s (%d files in %.2fms)", targetPath, fileCount, time.Since(startTime).Seconds()*1000)
+	prepared := a.prepareIncrementalLibraryChange(root, targetPath)
+	a.applyPreparedIncrementalLibraryChange(prepared)
 }
 
 // applyIncrementalLibraryChanges resolves the owning root for each changed path
@@ -104,24 +179,31 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 	startTime := time.Now()
 	a.logRescanEvent("applyIncrementalLibraryChanges START with %d paths", len(changedPaths))
 	contentState := a.libraryContentState()
+	scanState := a.libraryScanState()
+	generationState := a.libraryGenerationState()
 	indexState := a.libraryIndexState()
 
 	lockWaitStart := time.Now()
 	a.logRescanEvent("  - waiting for indexMu lock...")
 	contentState.indexMu.Lock()
 	a.logRescanEvent("  - acquired indexMu lock (waited %.2fms)", time.Since(lockWaitStart).Seconds()*1000)
-	defer contentState.indexMu.Unlock()
 
 	if len(changedPaths) == 0 {
+		contentState.indexMu.Unlock()
 		return LibraryScanResult{}, false
 	}
-	if indexState.libraryFileHydrationPending {
+	if indexState.libraryFileHydrationPending || scanState.scanInProgress {
 		a.logRescanEvent("applyIncrementalLibraryChanges skipped: deferred hydration still pending")
+		contentState.indexMu.Unlock()
 		return LibraryScanResult{}, false
 	}
+	expectedGeneration := generationState.libraryScanGeneration.Load()
+	rootsSnapshot := append([]libraryRootConfig(nil), contentState.activeLibraryRoots...)
+	contentState.indexMu.Unlock()
 
 	hasChanges := false
 	processStartTime := time.Now()
+	preparedChanges := make([]preparedIncrementalLibraryChange, 0, len(changedPaths))
 	for _, changedPath := range changedPaths {
 		cleanChangedPath := normalizePath(changedPath)
 		if cleanChangedPath == "" {
@@ -134,12 +216,12 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 		}
 
 		normalizedChangedPath := filepath.Clean(absoluteChangedPath)
-		root, ok := a.activeLibraryRootForPath(normalizedChangedPath)
+		root, ok := activeLibraryRootForPathInRoots(rootsSnapshot, normalizedChangedPath)
 		if !ok {
 			continue
 		}
 
-		a.addOrUpdatePathRecursive(root, normalizedChangedPath)
+		preparedChanges = append(preparedChanges, a.prepareIncrementalLibraryChange(root, normalizedChangedPath))
 		hasChanges = true
 	}
 	a.logRescanEvent("applyIncrementalLibraryChanges path processing took %.2fms for %d paths",
@@ -147,6 +229,22 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 
 	if !hasChanges {
 		return LibraryScanResult{}, false
+	}
+
+	contentState.indexMu.Lock()
+	defer contentState.indexMu.Unlock()
+	if generationState.libraryScanGeneration.Load() != expectedGeneration || indexState.libraryFileHydrationPending || scanState.scanInProgress {
+		a.logRescanEvent(
+			"applyIncrementalLibraryChanges skipped before commit: generation=%d active=%d hydrationPending=%t scanInProgress=%t",
+			expectedGeneration,
+			generationState.libraryScanGeneration.Load(),
+			indexState.libraryFileHydrationPending,
+			scanState.scanInProgress,
+		)
+		return LibraryScanResult{}, false
+	}
+	for _, prepared := range preparedChanges {
+		a.applyPreparedIncrementalLibraryChange(prepared)
 	}
 
 	// Avoid expensive full snapshot rebuild for incremental changes.

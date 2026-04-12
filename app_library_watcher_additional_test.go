@@ -402,3 +402,96 @@ func TestAsyncLibraryWatcherStartupDoesNotRestoreStoppedWatcher(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+func TestIncrementalLibraryChangesDoNotBlockFolderQueries(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	t.Cleanup(func() {
+		app.stopLibraryWatcher()
+	})
+
+	app.scanLibraryFolder(fixture.rootOne, false)
+	app.indexMu.Lock()
+	existingTrack, ok := app.trackByPath[normalizePath(fixture.trackOne)]
+	app.indexMu.Unlock()
+	if !ok {
+		t.Fatalf("scanLibraryFolder() did not index %q", fixture.trackOne)
+	}
+	existingAlbumFolder := existingTrack.FolderPath
+	blockedPath := filepath.Join(fixture.rootOne, "Artist One", "Singles")
+	newTrack := filepath.Join(blockedPath, "03 Bonus.flac")
+	writeTestFile(t, newTrack, "bonus")
+
+	hookEntered := make(chan string, 1)
+	releaseHook := make(chan struct{})
+	beforeIncrementalLibraryPathScanHook = func(path string) {
+		select {
+		case hookEntered <- path:
+		default:
+		}
+		<-releaseHook
+	}
+	t.Cleanup(func() {
+		beforeIncrementalLibraryPathScanHook = nil
+		select {
+		case <-releaseHook:
+		default:
+			close(releaseHook)
+		}
+	})
+
+	applyResultCh := make(chan struct {
+		notification LibraryScanResult
+		changed      bool
+	}, 1)
+	go func() {
+		notification, changed := app.applyIncrementalLibraryChanges([]string{blockedPath})
+		applyResultCh <- struct {
+			notification LibraryScanResult
+			changed      bool
+		}{notification: notification, changed: changed}
+	}()
+
+	select {
+	case path := <-hookEntered:
+		if normalizePath(path) != normalizePath(blockedPath) {
+			close(releaseHook)
+			t.Fatalf("incremental scan hook path = %q, want %q", path, blockedPath)
+		}
+	case <-time.After(time.Second):
+		close(releaseHook)
+		t.Fatal("incremental scan hook was not reached before timeout")
+	}
+
+	pageCh := make(chan LibraryFolderPage, 1)
+	go func() {
+		pageCh <- app.GetLibraryFolderPage(existingAlbumFolder, 0, 10)
+	}()
+
+	select {
+	case page := <-pageCh:
+		if page.TotalEntries != 4 {
+			close(releaseHook)
+			t.Fatalf("GetLibraryFolderPage() during incremental update = %#v, want existing album entries", page)
+		}
+	case <-time.After(time.Second):
+		close(releaseHook)
+		t.Fatal("GetLibraryFolderPage() blocked while incremental watcher work was in progress")
+	}
+
+	close(releaseHook)
+	result := <-applyResultCh
+	if !result.changed {
+		t.Fatal("applyIncrementalLibraryChanges() = false, want true")
+	}
+	if result.notification.TrackCount != len(app.trackByPath) {
+		t.Fatalf("applyIncrementalLibraryChanges() notification = %#v, want updated track count", result.notification)
+	}
+
+	app.indexMu.Lock()
+	_, exists := app.trackByPath[normalizePath(newTrack)]
+	app.indexMu.Unlock()
+	if !exists {
+		t.Fatalf("applyIncrementalLibraryChanges() did not index %q", newTrack)
+	}
+}
