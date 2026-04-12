@@ -6,16 +6,16 @@ export type SettingsModalElements = {
     settingsTabsScrollLeft: HTMLButtonElement;
     settingsTabsScrollRight: HTMLButtonElement;
     settingsTabGeneral: HTMLButtonElement;
+    settingsTabLibrary: HTMLButtonElement;
     settingsTabNetwork: HTMLButtonElement;
-    settingsTabDatabase: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
     settingsTabScrobbling: HTMLButtonElement;
     settingsTabAudio: HTMLButtonElement;
     settingsTabUi: HTMLButtonElement;
     settingsTabActions: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
+    settingsPanelLibrary: HTMLDivElement;
     settingsPanelNetwork: HTMLDivElement;
-    settingsPanelDatabase: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
     settingsPanelScrobbling: HTMLDivElement;
     settingsPanelAudio: HTMLDivElement;
@@ -70,6 +70,10 @@ export type SettingsModalElements = {
     settingsSendToActionCancel: HTMLButtonElement;
     settingsSendToActionConfirm: HTMLButtonElement;
     settingsFFmpegPath: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseEnabled: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseLoadOnStartup: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseListenHistoryEnabled: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseListenHistoryLimit: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
     settingsLastFmApiKey: HTMLInputElement;
     settingsLastFmApiSecret: HTMLInputElement;
@@ -178,11 +182,11 @@ export const renderSettingsModal = (): string => `
                     <button id="settings-tabs-scroll-left" class="settings-tabs-scroll" type="button" aria-label="Scroll settings tabs left" title="Scroll tabs left">&#x2039;</button>
                     <div id="settings-tabs" class="settings-tabs" role="tablist" aria-label="Settings sections">
                         <button id="settings-tab-general" class="settings-tab is-active" type="button" role="tab" aria-controls="settings-panel-general" aria-selected="true">General</button>
+                        <button id="settings-tab-library" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-library" aria-selected="false">Database</button>
                         <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
                         <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
                         <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
                         <button id="settings-tab-scrobbling" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-scrobbling" aria-selected="false">Scrobbling</button>
-                        <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Database</button>
                         <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
                         <button id="settings-tab-actions" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-actions" aria-selected="false">Actions</button>
                     </div>
@@ -206,6 +210,55 @@ export const renderSettingsModal = (): string => `
                     </div>
                     <div id="settings-minimize-to-tray-field" class="settings-field settings-toggle-field">
                         ${renderSettingsCheckboxLabel('settings-minimize-to-tray-on-close', 'Minimize to system tray', 'Disabled by default. When enabled, closing the window hides Silphium to the system tray instead of quitting.')}
+                    </div>
+                </div>
+                <div id="settings-panel-library" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-library" hidden>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-local-library-files-database-enabled', 'Enable local library snapshot database', 'Stores a local snapshot of indexed library files so Silphium can reopen large libraries faster after a restart.')}
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-local-library-files-database-load-on-startup', 'Load from local snapshot on startup', 'Restores the last saved local library snapshot immediately on startup, then refreshes it from disk in the background. Disable this to keep writing the snapshot without using it during startup.')}
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-local-library-files-database-listen-history-enabled', 'Store listen history in the local database', 'Keeps a local history of completed listens in the same SQLite database as the library snapshot and exposes it as a read-only playlist view.')}
+                    </div>
+                    <div class="settings-field">
+                        ${renderSettingsLabel('settings-local-library-files-database-listen-history-limit', 'Stored listen history limit', 'Set 0 to keep all stored listens. Positive values discard the oldest listens once the limit is reached.')}
+                        <input id="settings-local-library-files-database-listen-history-limit" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
+                    </div>
+                    <hr class="settings-section-divider" aria-hidden="true">
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-database-enabled', 'Enable MusicBrainz tag database', 'Builds a background MusicBrainz tag index for <code>mbtag:</code> searches. Direct user lookups still take priority over the background worker.')}
+                    </div>
+                    <div class="settings-field settings-worker-progress-field">
+                        <div class="settings-worker-progress-header">
+                            <span class="settings-label">Metadata worker progress</span>
+                            <span id="settings-musicbrainz-tag-worker-progress-value" class="settings-worker-progress-value">0%</span>
+                        </div>
+                        <div id="settings-musicbrainz-tag-worker-progress-bar" class="settings-worker-progress-bar" role="progressbar" aria-label="Metadata worker progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete">
+                            <span id="settings-musicbrainz-tag-worker-progress-fill" class="settings-worker-progress-fill"></span>
+                        </div>
+                        <p id="settings-musicbrainz-tag-worker-progress-remaining" class="settings-hint">0 entities processed • 0 entities still to look up.</p>
+                        <p id="settings-musicbrainz-tag-worker-progress-status" class="settings-hint settings-worker-progress-status">MusicBrainz tag worker idle.</p>
+                    </div>
+                    <div class="settings-field settings-field-compact-grid">
+                        <div class="settings-subfield">
+                            ${renderSettingsLabel('settings-musicbrainz-tag-stale-days', 'Metadata stale after', 'Default is 30 days. Set 0 to never automatically refetch cached MusicBrainz metadata.')}
+                            <div class="settings-server-rate-group">
+                                <input id="settings-musicbrainz-tag-stale-days" class="settings-input settings-server-rate-input" type="number" min="0" max="36500" step="1" inputmode="numeric" aria-label="MusicBrainz metadata stale days" placeholder="30">
+                                <span class="settings-server-rate-unit">days</span>
+                            </div>
+                        </div>
+                        <div class="settings-subfield">
+                            ${renderSettingsLabel('settings-musicbrainz-tag-worker-cores', 'MusicBrainz tag worker cores', 'Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.', 'end')}
+                            <input id="settings-musicbrainz-tag-worker-cores" class="settings-input settings-server-rate-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
+                        </div>
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-request-staggering-enabled', 'Stagger background refetches', 'Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.')}
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-highlight-musicbrainz-tagged-album-folders', 'Highlight MusicBrainz-tagged album folders', 'When enabled, album folders tagged with MusicBrainz IDs use a subtle orange folder icon in the library browser.', 'end')}
                     </div>
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
@@ -247,39 +300,6 @@ export const renderSettingsModal = (): string => `
                                 <span class="settings-server-rate-unit">ms</span>
                             </div>
                         </div>
-                    </div>
-                </div>
-                <div id="settings-panel-database" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-database" hidden>
-                    <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-database-enabled', 'Enable MusicBrainz tag database', 'Builds a background MusicBrainz tag index for <code>mbtag:</code> searches. Direct user lookups still take priority over the background worker.')}
-                    </div>
-                    <div class="settings-field settings-worker-progress-field">
-                        <div class="settings-worker-progress-header">
-                            <span class="settings-label">Metadata worker progress</span>
-                            <span id="settings-musicbrainz-tag-worker-progress-value" class="settings-worker-progress-value">0%</span>
-                        </div>
-                        <div id="settings-musicbrainz-tag-worker-progress-bar" class="settings-worker-progress-bar" role="progressbar" aria-label="Metadata worker progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete">
-                            <span id="settings-musicbrainz-tag-worker-progress-fill" class="settings-worker-progress-fill"></span>
-                        </div>
-                        <p id="settings-musicbrainz-tag-worker-progress-remaining" class="settings-hint">0 entities processed • 0 entities still to look up.</p>
-                        <p id="settings-musicbrainz-tag-worker-progress-status" class="settings-hint settings-worker-progress-status">MusicBrainz tag worker idle.</p>
-                    </div>
-                    <div class="settings-field">
-                        ${renderSettingsLabel('settings-musicbrainz-tag-stale-days', 'Metadata stale after', 'Default is 30 days. Set 0 to never automatically refetch cached MusicBrainz metadata.')}
-                        <div class="settings-server-rate-group">
-                            <input id="settings-musicbrainz-tag-stale-days" class="settings-input settings-server-rate-input" type="number" min="0" max="36500" step="1" inputmode="numeric" aria-label="MusicBrainz metadata stale days" placeholder="30">
-                            <span class="settings-server-rate-unit">days</span>
-                        </div>
-                    </div>
-                    <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-request-staggering-enabled', 'Stagger background refetches', 'Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.')}
-                    </div>
-                    <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-highlight-musicbrainz-tagged-album-folders', 'Highlight MusicBrainz-tagged album folders', 'When enabled, album folders tagged with MusicBrainz IDs use a subtle orange folder icon in the library browser.', 'end')}
-                    </div>
-                    <div class="settings-field">
-                        ${renderSettingsLabel('settings-musicbrainz-tag-worker-cores', 'MusicBrainz tag worker cores', 'Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.')}
-                        <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
@@ -530,16 +550,16 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsTabsScrollLeft: root.querySelector('#settings-tabs-scroll-left') as HTMLButtonElement,
     settingsTabsScrollRight: root.querySelector('#settings-tabs-scroll-right') as HTMLButtonElement,
     settingsTabGeneral: root.querySelector('#settings-tab-general') as HTMLButtonElement,
+    settingsTabLibrary: root.querySelector('#settings-tab-library') as HTMLButtonElement,
     settingsTabNetwork: root.querySelector('#settings-tab-network') as HTMLButtonElement,
-    settingsTabDatabase: root.querySelector('#settings-tab-database') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
     settingsTabScrobbling: root.querySelector('#settings-tab-scrobbling') as HTMLButtonElement,
     settingsTabAudio: root.querySelector('#settings-tab-audio') as HTMLButtonElement,
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
     settingsTabActions: root.querySelector('#settings-tab-actions') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
+    settingsPanelLibrary: root.querySelector('#settings-panel-library') as HTMLDivElement,
     settingsPanelNetwork: root.querySelector('#settings-panel-network') as HTMLDivElement,
-    settingsPanelDatabase: root.querySelector('#settings-panel-database') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
     settingsPanelScrobbling: root.querySelector('#settings-panel-scrobbling') as HTMLDivElement,
     settingsPanelAudio: root.querySelector('#settings-panel-audio') as HTMLDivElement,
@@ -594,6 +614,10 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsSendToActionCancel: root.querySelector('#settings-send-to-action-cancel') as HTMLButtonElement,
     settingsSendToActionConfirm: root.querySelector('#settings-send-to-action-confirm') as HTMLButtonElement,
     settingsFFmpegPath: root.querySelector('#settings-ffmpeg-path') as HTMLInputElement,
+    settingsLocalLibraryFilesDatabaseEnabled: root.querySelector('#settings-local-library-files-database-enabled') as HTMLInputElement,
+    settingsLocalLibraryFilesDatabaseLoadOnStartup: root.querySelector('#settings-local-library-files-database-load-on-startup') as HTMLInputElement,
+    settingsLocalLibraryFilesDatabaseListenHistoryEnabled: root.querySelector('#settings-local-library-files-database-listen-history-enabled') as HTMLInputElement,
+    settingsLocalLibraryFilesDatabaseListenHistoryLimit: root.querySelector('#settings-local-library-files-database-listen-history-limit') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsLastFmApiKey: root.querySelector('#settings-lastfm-api-key') as HTMLInputElement,
     settingsLastFmApiSecret: root.querySelector('#settings-lastfm-api-secret') as HTMLInputElement,

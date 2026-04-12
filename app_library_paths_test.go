@@ -283,9 +283,12 @@ func TestFolderAndPagingEntryHelpers(t *testing.T) {
 		t.Fatal("directChildFolderPath(double slash remainder) = ok, want false")
 	}
 
-	folderEntry := folderBrowserEntry("Library/Artist/Album")
+	folderEntry := folderBrowserEntry("Library/Artist/Album", 123)
 	if folderEntry.Kind != "folder" || folderEntry.Name != "Album" || folderEntry.FolderPath != "Library/Artist" {
 		t.Fatalf("folderBrowserEntry() = %#v, want folder metadata", folderEntry)
+	}
+	if folderEntry.ModifiedAtMs != 123 {
+		t.Fatalf("folderBrowserEntry() modifiedAtMs = %d, want 123", folderEntry.ModifiedAtMs)
 	}
 
 	browserEntry := browserEntryFromIndexedFile("track", indexed)

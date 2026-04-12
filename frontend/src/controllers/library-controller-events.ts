@@ -1,3 +1,4 @@
+import type { LibraryBrowserSortMode } from '../types/app-types';
 import type { LibraryControllerOptions, SearchTreeNode } from './library-controller-types';
 import {
     hoverKeyForButton,
@@ -22,6 +23,8 @@ export type LibraryEventDeps = {
     setSuppressNextLibrarySearchPasteInput: (value: boolean) => void;
     getLibrarySearchQuery: () => string;
     setLibrarySearchQueryValue: (value: string) => void;
+    getLibraryBrowserSortMode: () => LibraryBrowserSortMode;
+    setLibraryBrowserSortMode: (value: LibraryBrowserSortMode) => void;
     getCurrentFolderPath: () => string;
     setCurrentFolderPath: (path: string) => void;
     isLibrarySearchActive: () => boolean;
@@ -48,6 +51,8 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
         setSuppressNextLibrarySearchPasteInput,
         getLibrarySearchQuery,
         setLibrarySearchQueryValue,
+        getLibraryBrowserSortMode,
+        setLibraryBrowserSortMode,
         getCurrentFolderPath,
         setCurrentFolderPath,
         isLibrarySearchActive,
@@ -69,8 +74,11 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
         libraryBack,
         libraryPath,
         librarySearch,
+        librarySort,
         libraryBrowser,
     } = options;
+
+    librarySort.value = getLibraryBrowserSortMode();
 
     sidebarToggle.addEventListener('click', () => {
         setSidebarOpen(!isSidebarOpen());
@@ -140,6 +148,21 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
 
         clearLibrarySearch();
         renderFolder('none');
+    });
+
+    librarySort.addEventListener('change', () => {
+        const nextValue = librarySort.value === 'date-asc' || librarySort.value === 'date-desc'
+            ? librarySort.value
+            : 'name';
+
+        if (nextValue === getLibraryBrowserSortMode()) {
+            return;
+        }
+
+        setLibraryBrowserSortMode(nextValue);
+        if (!isLibrarySearchActive()) {
+            renderFolder('none');
+        }
     });
 
     libraryBrowser.addEventListener('click', (event) => {

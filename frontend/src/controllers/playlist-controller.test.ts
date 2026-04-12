@@ -2,13 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getPlaylistMenuElements, renderPlaylistMenu } from '../components/overlays/playlist-menu';
 import { getPlaylistModalElements, renderPlaylistModal } from '../components/overlays/playlist-modal';
-import type { PlaylistTrackView } from './playlist-controller';
+import type { LoadedPlaylistData, PlaylistTrackView } from './playlist-controller';
 import { createPlaylistController } from './playlist-controller';
 import { createPlaylistControllerState, type PlaylistControllerState } from './playlist-controller-state';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
     await Promise.resolve();
+};
+
+const selectCustomPlaylistSource = async (
+    elements: ReturnType<typeof getPlaylistModalElements>,
+    value: string,
+): Promise<void> => {
+    elements.playlistSourceButton.click();
+    const optionButton = elements.playlistSourceMenu.querySelector(`[data-value="${value}"]`) as HTMLButtonElement | null;
+    expect(optionButton).not.toBeNull();
+    optionButton?.click();
+    await flushPromises();
 };
 
 const createTrackView = (index: number): PlaylistTrackView => ({
@@ -28,13 +39,14 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState } = 
     const trackViews = [createTrackView(0), createTrackView(1), createTrackView(2)];
     let currentTrackIndex = 0;
     let favoritePlaylists = ['/playlists/favorite.m3u8'];
+    let listenHistoryEnabled = true;
     let selectedPlaylistPath = '';
     let selectedPlaylistSavePath = '';
 
     const onTrackChosen = vi.fn(async (trackIndex: number) => {
         currentTrackIndex = trackIndex;
     });
-    const loadPlaylistData = vi.fn(async (playlistPath: string) => {
+    const loadPlaylistData = vi.fn(async (playlistPath: string): Promise<LoadedPlaylistData | null> => {
         if (playlistPath.endsWith('demo.m3u8')) {
             return { name: 'demo.m3u8', trackIndexes: [2, 1] };
         }
@@ -50,6 +62,16 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState } = 
         return null;
     });
     const appendTracksToPlaylistData = vi.fn(async () => true);
+    const loadListenHistoryData = vi.fn(async () => ({
+        name: 'Listen History',
+        trackIndexes: [2, 0],
+        historyItems: [
+            { listenedAt: 1_699_963_200 },
+            { listenedAt: 1_698_840_000 },
+        ],
+    }));
+    const ensureTrackTagsResolvedBatch = vi.fn(async () => undefined);
+    const savePlaylistTrackMetadataCache = vi.fn(async () => true);
     const savePlaylistData = vi.fn(async () => true);
 
     const controller = createPlaylistController({
@@ -66,13 +88,16 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState } = 
             indexes: [0, 1, 2],
             currentPosition: Math.max(0, [0, 1, 2].indexOf(currentTrackIndex)),
         }),
-        ensureTrackTagsResolvedBatch: vi.fn(async () => undefined),
+        ensureTrackTagsResolvedBatch,
         selectPlaylistFile: vi.fn(async () => selectedPlaylistPath),
         selectPlaylistSaveFile: vi.fn(async () => selectedPlaylistSavePath),
+        loadListenHistoryData,
         loadPlaylistData,
+        savePlaylistTrackMetadataCache,
         savePlaylistData,
         appendTracksToPlaylistData,
         getFavoritePlaylists: () => favoritePlaylists,
+        hasListenHistoryPlaylist: () => listenHistoryEnabled,
         onTrackChosen,
         onExternalPlaylistLoaded: vi.fn(() => undefined),
     });
@@ -81,9 +106,15 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState } = 
         controller,
         elements: modal,
         appendTracksToPlaylistData,
+        ensureTrackTagsResolvedBatch,
+        loadListenHistoryData,
         loadPlaylistData,
         onTrackChosen,
+        savePlaylistTrackMetadataCache,
         savePlaylistData,
+        setListenHistoryEnabled: (enabled: boolean) => {
+            listenHistoryEnabled = enabled;
+        },
         setSelectedPlaylistPath: (nextPath: string) => {
             selectedPlaylistPath = nextPath;
         },
@@ -112,15 +143,20 @@ describe('createPlaylistController', () => {
     });
 
     it('loads an external playlist and commits it into the queue view when a track is chosen', async () => {
-        const { controller, elements, onTrackChosen } = mountPlaylistController();
+        const { controller, elements, onTrackChosen, savePlaylistTrackMetadataCache } = mountPlaylistController();
 
         const loaded = await controller.loadPlaylistByPath('/playlists/demo.m3u8');
+        await flushPromises();
 
         expect(loaded).toBe(true);
         expect(elements.playlistModal.hidden).toBe(false);
         expect(elements.playlistSource.value).toBe('playlist');
         expect(controller.getSequenceOverride()).toBeNull();
         expect(onTrackChosen).not.toHaveBeenCalled();
+        expect(savePlaylistTrackMetadataCache).toHaveBeenCalledWith([
+            { trackPath: '/music/track-2.flac', trackName: 'Track 2', artistName: 'Artist 2' },
+            { trackPath: '/music/track-1.flac', trackName: 'Track 1', artistName: 'Artist 1' },
+        ]);
 
         const playlistTrackButton = elements.playlistList.querySelector('[data-playlist-track-index="1"]') as HTMLButtonElement | null;
         expect(playlistTrackButton).not.toBeNull();
@@ -145,13 +181,13 @@ describe('createPlaylistController', () => {
         const firstQueueTrackButton = elements.playlistList.querySelector('[data-playlist-track-index]') as HTMLButtonElement | null;
         expect(firstQueueTrackButton?.dataset.playlistTrackIndex).toBe('0');
 
-        elements.playlistSource.value = 'favorite:0';
-        elements.playlistSource.dispatchEvent(new Event('change', { bubbles: true }));
-        await flushPromises();
+        await selectCustomPlaylistSource(elements, 'favorite:0');
 
         expect(loadPlaylistData).toHaveBeenCalledWith('/playlists/favorite.m3u8');
         expect(elements.playlistSource.value).toBe('favorite:0');
+        expect(elements.playlistSourceLabel.textContent).toBe('Favorite: favorite.m3u8');
         expect(onTrackChosen).not.toHaveBeenCalled();
+        expect(elements.playlistList.classList.contains('is-view-switching')).toBe(true);
 
         const firstFavoriteTrackButton = elements.playlistList.querySelector('[data-playlist-track-index]') as HTMLButtonElement | null;
         expect(firstFavoriteTrackButton?.dataset.playlistTrackIndex).toBe('1');
@@ -161,6 +197,58 @@ describe('createPlaylistController', () => {
 
         expect(controller.getSequenceOverride()).toBeNull();
         expect(elements.playlistSource.value).toBe('queue');
+    });
+
+    it('loads listen history as a read-only playlist source', async () => {
+        const { controller, elements, loadListenHistoryData, onTrackChosen } = mountPlaylistController();
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2023-11-15T12:00:00Z'));
+
+        controller.openModal();
+        await selectCustomPlaylistSource(elements, 'history');
+
+        expect(loadListenHistoryData).toHaveBeenCalledTimes(1);
+        expect(elements.playlistSource.value).toBe('history');
+        expect(elements.playlistSourceLabel.textContent).toBe('Listen History');
+        expect(elements.playlistSourceIcon.innerHTML).toContain('<svg');
+        expect(Array.from(elements.playlistSource.options).map((option) => option.text)).toEqual([
+            'Playback Queue',
+            'Listen History',
+            'Favorite: favorite.m3u8',
+        ]);
+        expect(elements.playlistList.querySelector('[data-playlist-remove-position]')).toBeNull();
+        expect(elements.playlistList.querySelector('.playlist-drag-handle')).toBeNull();
+        expect(elements.playlistList.querySelector('.playlist-row-read-only')).not.toBeNull();
+        expect(elements.playlistList.classList.contains('is-view-switching')).toBe(true);
+        expect(elements.playlistList.textContent).toContain('1 day ago');
+        expect(elements.playlistList.textContent).toContain('2 weeks ago');
+
+        const historyTrackButton = elements.playlistList.querySelector('[data-playlist-track-index="2"]') as HTMLButtonElement | null;
+        expect(historyTrackButton).not.toBeNull();
+        historyTrackButton?.click();
+        await flushPromises();
+
+        expect(onTrackChosen).toHaveBeenLastCalledWith(2, {
+            source: 'history',
+            userInitiated: true,
+        });
+        expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 0], currentPosition: 0 });
+        vi.useRealTimers();
+    });
+
+    it('renders svg icons for queue and history inside the custom source menu', () => {
+        const { controller, elements } = mountPlaylistController();
+
+        controller.openModal();
+        elements.playlistSourceButton.click();
+
+        const queueOption = elements.playlistSourceMenu.querySelector('[data-value="queue"] .playlist-source-option-icon') as HTMLSpanElement | null;
+        const historyOption = elements.playlistSourceMenu.querySelector('[data-value="history"] .playlist-source-option-icon') as HTMLSpanElement | null;
+        const favoriteOption = elements.playlistSourceMenu.querySelector('[data-value="favorite:0"] .playlist-source-option-icon') as HTMLSpanElement | null;
+
+        expect(queueOption?.innerHTML).toContain('<svg');
+        expect(historyOption?.innerHTML).toContain('<svg');
+        expect(favoriteOption?.classList.contains('is-empty')).toBe(true);
     });
 
     it('lists playlist targets without the queue and appends to the loaded playlist state', async () => {
@@ -206,11 +294,18 @@ describe('createPlaylistController', () => {
         const { controller, elements } = mountPlaylistController({ state });
 
         const loaded = await controller.loadPlaylistByPath('/playlists/demo.m3u8');
+        await flushPromises();
 
         expect(loaded).toBe(true);
         expect(state.loadedPlaylistTrackIndexes).toEqual([2, 1]);
         expect(state.loadedPlaylistName).toBe('demo.m3u8');
         expect(state.loadedPlaylistPath).toBe('/playlists/demo.m3u8');
+        expect(state.loadedPlaylistReadOnly).toBe(false);
+        expect(state.loadedPlaylistHistoryItems).toBeNull();
+        expect(state.loadedPlaylistCachedItems).toEqual([
+            { cachedArtistName: 'Artist 2', cachedTrackTitle: 'Track 2' },
+            { cachedArtistName: 'Artist 1', cachedTrackTitle: 'Track 1' },
+        ]);
         expect(state.selectedSource).toBe('playlist');
         expect(state.playbackSource).toBe('queue');
         expect(elements.playlistSource.value).toBe('playlist');
@@ -218,6 +313,24 @@ describe('createPlaylistController', () => {
         controller.resetState();
 
         expect(state).toEqual(createPlaylistControllerState());
+    });
+
+    it('skips hydration and cache writes for playlist rows that already have cached labels', async () => {
+        const { controller, ensureTrackTagsResolvedBatch, loadPlaylistData, savePlaylistTrackMetadataCache } = mountPlaylistController();
+        loadPlaylistData.mockResolvedValueOnce({
+            name: 'cached.m3u8',
+            trackIndexes: [0, 2],
+            cachedItems: [
+                { cachedTrackTitle: 'Cached Track 0', cachedArtistName: 'Cached Artist 0' },
+                { cachedTrackTitle: 'Cached Track 2', cachedArtistName: 'Cached Artist 2' },
+            ],
+        });
+
+        await expect(controller.loadPlaylistByPath('/playlists/cached.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        expect(ensureTrackTagsResolvedBatch).not.toHaveBeenCalled();
+        expect(savePlaylistTrackMetadataCache).not.toHaveBeenCalled();
     });
 
     it('creates an empty playlist target and exposes it to the custom modal flow', async () => {

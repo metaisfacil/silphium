@@ -16,7 +16,7 @@ import {
     AudioSetVolume,
     AudioStop,
     GetAppVersion,
-    GetLibraryFolderPage,
+    GetLibraryFolderPageSorted,
     GetLastFmRequestToken,
     GetLastFmSessionKey,
     GetLibraryIndexedFilePage,
@@ -321,7 +321,7 @@ const runtimePorts = {
     copyShareImageToClipboard: CopyShareImageToClipboard,
     readFileBase64: ReadFileBase64,
     readImageThumbnail: ReadImageThumbnail,
-    loadFolderPage: async (folderPath: string, offset: number, limit: number): Promise<LibraryFolderPage> => await GetLibraryFolderPage(folderPath, offset, limit) as LibraryFolderPage,
+    loadFolderPage: async (folderPath: string, sortMode: import('./types/app-types').LibraryBrowserSortMode, offset: number, limit: number): Promise<LibraryFolderPage> => await GetLibraryFolderPageSorted(folderPath, sortMode, offset, limit) as LibraryFolderPage,
     resolveLibraryFolderForAbsolutePath: async (path: string): Promise<string> => await ResolveLibraryFolderForPath(path),
     isFolderImmediateDescendantsEnumerated: async (folderPath: string): Promise<boolean> => await IsLibraryFolderImmediateDescendantsEnumerated(folderPath),
     searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => await SearchLibrary(query, offset, limit) as LibrarySearchPage,
@@ -499,7 +499,9 @@ const {
 } = runtimeScope;
 
 const {
+    loadListenHistoryData,
     loadPlaylistData,
+    savePlaylistTrackMetadataCache,
     savePlaybackOrderSetting,
     setPlaybackOrderMode,
 } = createPlaybackOrderPlaylistRuntime({
@@ -526,7 +528,9 @@ const {
 });
 
 Object.assign(runtimeScope, {
+    loadListenHistoryData,
     loadPlaylistData,
+    savePlaylistTrackMetadataCache,
     savePlaybackOrderSetting,
     setPlaybackOrderMode,
 });

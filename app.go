@@ -69,6 +69,7 @@ type appLibraryState struct {
 	appLibraryScanState
 	appLibraryGenerationState
 	appLibraryIndexState
+	appLibraryDatabaseState
 }
 
 type appLibraryContentState struct {
@@ -120,6 +121,13 @@ type appLibraryIndexState struct {
 	libraryDerivedIndexBuilding   bool
 	libraryDerivedIndexGeneration uint64
 	libraryFileHydrationPending   bool
+}
+
+type appLibraryDatabaseState struct {
+	mu     sync.Mutex
+	wakeCh chan struct{}
+	stopCh chan struct{}
+	doneCh chan struct{}
 }
 
 type appLibraryWatcherState struct {
@@ -204,6 +212,7 @@ func (a *App) shutdown(context.Context) {
 	a.stopSystemTray()
 	a.stopMediaKeyWatcher()
 	a.stopLibraryWatcher()
+	a.stopLibraryFilesDatabaseWorker()
 	if err := a.audioBackend().Close(); err != nil {
 		log.Printf("failed to close audio backend: %v", err)
 	}
@@ -253,6 +262,10 @@ func (a *App) libraryGenerationState() *appLibraryGenerationState {
 
 func (a *App) libraryIndexState() *appLibraryIndexState {
 	return &a.libraryState().appLibraryIndexState
+}
+
+func (a *App) libraryDatabaseState() *appLibraryDatabaseState {
+	return &a.libraryState().appLibraryDatabaseState
 }
 
 func (a *App) libraryWatcherState() *appLibraryWatcherState {

@@ -1,6 +1,7 @@
 import type {
     ImageLibraryFile,
     LibraryBrowserEntry,
+    LibraryBrowserSortMode,
     LibraryFolderPage,
     LibrarySearchPage,
     TextLibraryFile,
@@ -10,7 +11,7 @@ import type {
 export type RenderDirection = 'none' | 'forward' | 'back';
 
 export type PaneSource =
-    | { kind: 'folder'; folderPath: string }
+    | { kind: 'folder'; folderPath: string; sortMode: LibraryBrowserSortMode }
     | { kind: 'search'; query: string };
 
 export type PaneState = {
@@ -50,6 +51,7 @@ export type LibraryControllerState = {
     libraryLoading: boolean;
     libraryLoadingEtaSeconds: number | null;
     libraryLoadingStatusLabel: string;
+    libraryBrowserSortMode: LibraryBrowserSortMode;
     librarySearchQuery: string;
     librarySearchPending: boolean;
     activeSearchResult: SearchResultState | null;
@@ -65,6 +67,7 @@ export const createLibraryControllerState = (): LibraryControllerState => ({
     libraryLoading: false,
     libraryLoadingEtaSeconds: null,
     libraryLoadingStatusLabel: '',
+    libraryBrowserSortMode: 'name',
     librarySearchQuery: '',
     librarySearchPending: false,
     activeSearchResult: null,
@@ -92,13 +95,14 @@ export type LibraryControllerOptions = {
     libraryBack: HTMLButtonElement;
     libraryPath: HTMLParagraphElement;
     librarySearch: HTMLInputElement;
+    librarySort: HTMLSelectElement;
     libraryBrowser: HTMLElement;
     state?: LibraryControllerState;
     getTracks: () => Track[];
     getTextFiles: () => TextLibraryFile[];
     getImageFiles: () => ImageLibraryFile[];
     getCurrentTrackIndex: () => number;
-    loadFolderPage: (folderPath: string, offset: number, limit: number) => Promise<LibraryFolderPage>;
+    loadFolderPage: (folderPath: string, sortMode: LibraryBrowserSortMode, offset: number, limit: number) => Promise<LibraryFolderPage>;
     resolveLibraryFolderForAbsolutePath: (path: string) => Promise<string>;
     isFolderImmediateDescendantsEnumerated: (folderPath: string) => Promise<boolean>;
     searchLibrary: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;

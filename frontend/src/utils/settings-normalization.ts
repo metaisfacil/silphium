@@ -39,6 +39,10 @@ export const defaultCustomSendToActions: CustomSendToAction[] = [];
 export const defaultAppSettings: AppSettings = {
     libraryFolders: [],
     libraryPath: '',
+    localLibraryFilesDatabaseEnabled: true,
+    localLibraryFilesDatabaseLoadOnStartup: true,
+    localLibraryFilesDatabaseListenHistoryEnabled: false,
+    localLibraryFilesDatabaseListenHistoryLimit: 0,
     ffmpegPath: '',
     listenBrainzUserToken: '',
     lastFmApiKey: '',
@@ -212,6 +216,14 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
     return {
         libraryFolders,
         libraryPath: libraryFolders[0]?.path || '',
+        localLibraryFilesDatabaseEnabled: settings.localLibraryFilesDatabaseEnabled !== false,
+        localLibraryFilesDatabaseLoadOnStartup: settings.localLibraryFilesDatabaseLoadOnStartup !== false,
+        localLibraryFilesDatabaseListenHistoryEnabled: settings.localLibraryFilesDatabaseListenHistoryEnabled === true,
+        localLibraryFilesDatabaseListenHistoryLimit: typeof settings.localLibraryFilesDatabaseListenHistoryLimit === 'number'
+            && Number.isFinite(settings.localLibraryFilesDatabaseListenHistoryLimit)
+            && settings.localLibraryFilesDatabaseListenHistoryLimit > 0
+            ? Math.floor(settings.localLibraryFilesDatabaseListenHistoryLimit)
+            : 0,
         ffmpegPath: (settings.ffmpegPath || '').trim(),
         listenBrainzUserToken: settings.listenBrainzUserToken || '',
         lastFmApiKey: (settings.lastFmApiKey || '').trim(),

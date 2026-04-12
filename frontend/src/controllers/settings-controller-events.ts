@@ -59,6 +59,7 @@ export interface SettingsControllerEventContext {
     scrollShortcutAccordionIntoView: () => void;
     scrollCoverArtPriorityAccordionIntoView: () => void;
     refreshLastFmSessionFetchButton: () => void;
+    refreshLocalLibraryFilesDatabaseControls: () => void;
     refreshMusicBrainzTagWorkerControls: () => void;
     refreshMusicBrainzRateControls: () => void;
     refreshListenBrainzRateControls: () => void;
@@ -107,6 +108,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         scrollShortcutAccordionIntoView,
         scrollCoverArtPriorityAccordionIntoView,
         refreshLastFmSessionFetchButton,
+        refreshLocalLibraryFilesDatabaseControls,
         refreshMusicBrainzTagWorkerControls,
         refreshMusicBrainzRateControls,
         refreshListenBrainzRateControls,
@@ -153,8 +155,8 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsTabsScrollLeft,
         settingsTabsScrollRight,
         settingsTabGeneral,
+        settingsTabLibrary,
         settingsTabNetwork,
-        settingsTabDatabase,
         settingsTabPlaylists,
         settingsTabScrobbling,
         settingsTabAudio,
@@ -195,6 +197,8 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsSendToActionCommandInput,
         settingsSendToActionCancel,
         settingsFFmpegPath,
+        settingsLocalLibraryFilesDatabaseEnabled,
+        settingsLocalLibraryFilesDatabaseListenHistoryEnabled,
         settingsListenBrainzToken,
         settingsLastFmApiKey,
         settingsLastFmApiSecret,
@@ -438,14 +442,14 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsAddLibraryFolder.focus();
     });
 
+    settingsTabLibrary.addEventListener('click', () => {
+        setActiveTab('library');
+        settingsLocalLibraryFilesDatabaseEnabled.focus();
+    });
+
     settingsTabNetwork.addEventListener('click', () => {
         setActiveTab('network');
         settingsListenBrainzToken.focus();
-    });
-
-    settingsTabDatabase.addEventListener('click', () => {
-        setActiveTab('database');
-        settingsMusicBrainzTagDatabaseEnabled.focus();
     });
 
     settingsTabPlaylists.addEventListener('click', () => {
@@ -501,6 +505,14 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
 
     settingsMusicBrainzTagDatabaseEnabled.addEventListener('change', () => {
         refreshMusicBrainzTagWorkerControls();
+    });
+
+    settingsLocalLibraryFilesDatabaseEnabled.addEventListener('change', () => {
+        refreshLocalLibraryFilesDatabaseControls();
+    });
+
+    settingsLocalLibraryFilesDatabaseListenHistoryEnabled.addEventListener('change', () => {
+        refreshLocalLibraryFilesDatabaseControls();
     });
 
     settingsMusicBrainzServerUrl.addEventListener('input', () => {

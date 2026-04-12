@@ -164,6 +164,32 @@ describe('library data service', () => {
         }));
     });
 
+    it('applies cached listen-history labels to unresolved tracks', async () => {
+        const tracks = [createTrack({
+            path: '/music/history-track.flac',
+            name: 'history-track.flac',
+            title: 'history-track.flac',
+            displayTitle: 'history-track.flac',
+            displayArtist: 'Unknown Artist',
+            tagsResolved: false,
+        })];
+
+        const merged = await mergePlaylistFilesIntoTracks(tracks, [
+            createIndexedFile('/music/history-track.flac', 'history-track.flac', {
+                cachedTrackTitle: 'Cached History Title',
+                cachedArtistName: 'Cached History Artist',
+                listenedAt: 1_700_000_000,
+            }),
+        ]);
+
+        expect(merged.trackIndexes).toEqual([0]);
+        expect(merged.tracks[0]).toEqual(expect.objectContaining({
+            title: 'Cached History Title',
+            displayTitle: 'Cached History Title',
+            displayArtist: 'Cached History Artist',
+        }));
+    });
+
     it('clears runtime data and optional caches', () => {
         const clearCoverArtCache = vi.fn();
         const clearArtistInfoCache = vi.fn();

@@ -320,7 +320,7 @@ func directChildFolderPath(parentPath string, candidateFolderPath string) (strin
 	return normalizedParent + "/" + segments[0], true
 }
 
-func folderBrowserEntry(path string) LibraryBrowserEntry {
+func folderBrowserEntry(path string, modifiedAtMs int64) LibraryBrowserEntry {
 	segments := strings.Split(path, "/")
 	name := path
 	parentPath := ""
@@ -337,6 +337,7 @@ func folderBrowserEntry(path string) LibraryBrowserEntry {
 		Path:         path,
 		FolderPath:   parentPath,
 		RelativePath: path,
+		ModifiedAtMs: modifiedAtMs,
 	}
 }
 
@@ -347,6 +348,7 @@ func browserEntryFromIndexedFile(kind string, indexed LibraryIndexedFile) Librar
 		Path:         indexed.Path,
 		FolderPath:   indexed.FolderPath,
 		RelativePath: indexed.RelativePath,
+		ModifiedAtMs: indexed.ModifiedAtMs,
 	}
 }
 

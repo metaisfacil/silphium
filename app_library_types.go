@@ -2,12 +2,16 @@ package main
 
 // LibraryIndexedFile represents a discovered file with normalized library-relative metadata.
 type LibraryIndexedFile struct {
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	RelativePath string `json:"relativePath"`
-	FolderPath   string `json:"folderPath"`
-	RootPath     string `json:"rootPath"`
-	RootName     string `json:"rootName"`
+	Name             string `json:"name"`
+	Path             string `json:"path"`
+	RelativePath     string `json:"relativePath"`
+	FolderPath       string `json:"folderPath"`
+	RootPath         string `json:"rootPath"`
+	RootName         string `json:"rootName"`
+	CachedTrackTitle string `json:"cachedTrackTitle,omitempty"`
+	CachedArtistName string `json:"cachedArtistName,omitempty"`
+	ListenedAt       int64  `json:"listenedAt,omitempty"`
+	ModifiedAtMs     int64  `json:"modifiedAtMs,omitempty"`
 }
 
 // LibraryScanResult contains indexed library content and scan metadata.
@@ -44,6 +48,7 @@ type LibraryBrowserEntry struct {
 	Path                      string `json:"path"`
 	FolderPath                string `json:"folderPath"`
 	RelativePath              string `json:"relativePath"`
+	ModifiedAtMs              int64  `json:"modifiedAtMs,omitempty"`
 	MusicBrainzTaggedAlbumDir bool   `json:"musicBrainzTaggedAlbumDir,omitempty"`
 }
 

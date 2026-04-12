@@ -88,7 +88,7 @@ func buildFolderSearchEntriesFromChildPaths(folderChildPathsByFolder map[string]
 
 	entries := make([]LibraryBrowserEntry, 0, len(folderPaths))
 	for _, folderPath := range folderPaths {
-		entries = append(entries, folderBrowserEntry(folderPath))
+		entries = append(entries, folderBrowserEntry(folderPath, 0))
 	}
 	sortBrowserEntriesByPath(entries)
 	return entries
@@ -134,7 +134,11 @@ func listLibraryFolderEntriesFromFilesystem(roots []libraryRootConfig, folderPat
 	if normalizedFolderPath == "" {
 		entries := make([]LibraryBrowserEntry, 0, len(roots))
 		for _, root := range roots {
-			entries = append(entries, folderBrowserEntry(root.Name))
+			rootModifiedAtMs := int64(0)
+			if info, err := os.Stat(root.Path); err == nil {
+				rootModifiedAtMs = modifiedAtMsFromFileInfo(info)
+			}
+			entries = append(entries, folderBrowserEntry(root.Name, rootModifiedAtMs))
 		}
 		sortBrowserEntriesByPath(entries)
 		return entries, nil
@@ -162,8 +166,13 @@ func listLibraryFolderEntriesFromFilesystem(roots []libraryRootConfig, folderPat
 			continue
 		}
 
+		entryInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			continue
+		}
+
 		if entry.IsDir() {
-			folderEntries = append(folderEntries, folderBrowserEntry(relativePath))
+			folderEntries = append(folderEntries, folderBrowserEntry(relativePath, modifiedAtMsFromFileInfo(entryInfo)))
 			continue
 		}
 
@@ -174,6 +183,7 @@ func listLibraryFolderEntriesFromFilesystem(roots []libraryRootConfig, folderPat
 			FolderPath:   currentFolderPath,
 			RootPath:     root.Path,
 			RootName:     root.Name,
+			ModifiedAtMs: modifiedAtMsFromFileInfo(entryInfo),
 		}
 
 		switch {
@@ -212,7 +222,12 @@ func collectLibraryFolderTrackPathsFromFilesystem(roots []libraryRootConfig, fol
 				return nil
 			}
 
-			indexed, indexedOK := indexFileForRoot(root, currentPath, entry.Name())
+			entryInfo, infoErr := entry.Info()
+			if infoErr != nil {
+				return nil
+			}
+
+			indexed, indexedOK := indexFileForRootWithModifiedAt(root, currentPath, entry.Name(), modifiedAtMsFromFileInfo(entryInfo))
 			if !indexedOK {
 				return nil
 			}
@@ -392,6 +407,11 @@ func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bo
 			currentPath := filepath.Join(absolutePath, entry.Name())
 			result.TotalEntries++
 
+			entryInfo, infoErr := entry.Info()
+			if infoErr != nil {
+				continue
+			}
+
 			folderPathForEntry, relativePath, relativeOK := folderAndRelativeForLibraryRoot(root, currentPath)
 			if !relativeOK {
 				continue
@@ -411,6 +431,7 @@ func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bo
 				FolderPath:   folderPathForEntry,
 				RootPath:     root.Path,
 				RootName:     root.Name,
+				ModifiedAtMs: modifiedAtMsFromFileInfo(entryInfo),
 			}
 
 			switch {
@@ -677,6 +698,7 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 			runtimeEventsEmit(runtimeState.ctx, libraryScanUpdatedEvent, payload)
 		}
 		a.notifyMusicBrainzTagWorker()
+		a.notifyLibraryFilesDatabaseWorker()
 		a.emitDeferredHydrationProgress(result.RootPath, totalEntries, startedAt, 0)
 
 		a.logRescanEvent(
@@ -732,6 +754,7 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 		contentState.indexMu.Unlock()
 		a.setLibraryIndexFromScan(result, scanGeneration)
 		a.notifyMusicBrainzTagWorker()
+		a.notifyLibraryFilesDatabaseWorker()
 		return result
 	}
 
@@ -768,6 +791,41 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 		scanState.scanDiscoveredChildFoldersByParent = nil
 		contentState.indexMu.Unlock()
 	}()
+
+	if a.localLibraryFilesDatabaseLoadOnStartupEnabled() {
+		if snapshot, ok := loadLibraryFilesDatabaseSnapshot(a.libraryFilesDatabasePath(), roots); ok {
+			persistedResult := snapshot.scanResult()
+			if !a.setLibraryIndexFromScan(persistedResult, scanGeneration) {
+				return scanCanceledResponse()
+			}
+
+			contentState.indexMu.Lock()
+			if generationState.libraryScanGeneration.Load() != scanGeneration {
+				contentState.indexMu.Unlock()
+				return scanCanceledResponse()
+			}
+			indexState.libraryFolderEntriesCache = nil
+			indexState.libraryWatchDirectoryPaths = nil
+			contentState.indexMu.Unlock()
+
+			a.notifyMusicBrainzTagWorker()
+			if restartWatcher {
+				a.startLibraryWatcherAsync(roots)
+			}
+			a.startLibraryFilesRefreshAsync(roots, scanGeneration)
+
+			response := compactLibraryScanResult(persistedResult)
+			a.logRescanEvent(
+				"scanLibraryFolders deferred END (database): totalEntries=%d tracks=%d text=%d images=%d took %.2fms",
+				response.TotalEntries,
+				response.TrackCount,
+				response.TextFileCount,
+				response.ImageFileCount,
+				time.Since(scanStartedAt).Seconds()*1000,
+			)
+			return response
+		}
+	}
 
 	quickBuild, quickErr := buildFilesystemQuickScan(roots, isScanCanceled)
 	if quickErr != nil {

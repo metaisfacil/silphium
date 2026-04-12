@@ -120,6 +120,7 @@ const createContext = () => {
             libraryLoading: false,
             libraryLoadingEtaSeconds: null,
             libraryLoadingStatusLabel: '',
+            libraryBrowserSortMode: 'name',
             librarySearchQuery: '',
             librarySearchPending: false,
             activeSearchResult: null,
@@ -129,6 +130,9 @@ const createContext = () => {
             loadedPlaylistTrackIndexes: null,
             loadedPlaylistName: '',
             loadedPlaylistPath: '',
+            loadedPlaylistReadOnly: false,
+            loadedPlaylistHistoryItems: null,
+            loadedPlaylistCachedItems: null,
             editableQueueTrackIndexes: null,
             selectedSource: 'queue',
             selectedFavoriteIndex: null,
@@ -180,7 +184,9 @@ const createContext = () => {
         getBaseSequence: vi.fn(() => [0, 1]),
         ensureTrackTagsResolvedBatch: vi.fn(async () => undefined),
         selectPlaylistSaveFile: vi.fn(async () => '/playlists/output.m3u'),
+        loadListenHistoryData: vi.fn(async () => ({ name: 'Listen History', trackIndexes: [0] })),
         loadPlaylistData: vi.fn(async () => ['/music/library/track-1.flac']),
+        savePlaylistTrackMetadataCache: vi.fn(async () => true),
         savePlaylistData: vi.fn(() => undefined),
         appendTracksToPlaylistData: vi.fn(() => undefined),
         loadTrack: vi.fn(async () => undefined),
@@ -219,6 +225,7 @@ const createContext = () => {
         libraryBack: document.createElement('button'),
         libraryPath: document.createElement('p'),
         librarySearch: document.createElement('input'),
+        librarySort: document.createElement('select'),
         libraryBrowser: document.createElement('div'),
         libraryScanYieldIndicator: document.createElement('span'),
         loadFolderPage: vi.fn(async () => ({ folderPath: '/music/library', offset: 0, limit: 100, totalEntries: 0, entries: [] })),
@@ -289,6 +296,10 @@ describe('app-controller-setup', () => {
 
         const saveValues = {
             libraryFolders: [{ path: '/music/library', label: 'Library', releaseDepth: 1 }],
+            localLibraryFilesDatabaseEnabled: true,
+            localLibraryFilesDatabaseLoadOnStartup: true,
+            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryLimit: 0,
             ffmpegPath: 'ffmpeg',
             listenBrainzUserToken: 'token',
             lastFmApiKey: 'key',
@@ -349,7 +360,10 @@ describe('app-controller-setup', () => {
         expect(playlistConfig.getTrackCount()).toBe(2);
         expect(playlistConfig.getCurrentTrackIndex()).toBe(0);
         expect(playlistConfig.getFavoritePlaylists()).toEqual(['favorites.m3u']);
+        expect(playlistConfig.hasListenHistoryPlaylist()).toBe(false);
+        await playlistConfig.loadListenHistoryData();
         await playlistConfig.loadPlaylistData('/playlists/favorites.m3u');
+        await playlistConfig.savePlaylistTrackMetadataCache([{ trackPath: '/music/library/track-1.flac', trackName: 'Track 1', artistName: 'Artist' }]);
         playlistConfig.savePlaylistData('/playlists/favorites.m3u', ['/music/library/track-1.flac']);
         playlistConfig.appendTracksToPlaylistData('/playlists/favorites.m3u', ['/music/library/track-1.flac']);
         await playlistConfig.onTrackChosen(1, { userInitiated: true, source: 'library' });
@@ -406,6 +420,7 @@ describe('app-controller-setup', () => {
         expect(context.applyUiDitheringSetting).toHaveBeenCalled();
         expect(context.handleSocialSettingsChanged).toHaveBeenCalled();
         expect(context.setPlaybackOrderMode).toHaveBeenCalledWith('shuffle-library');
+        expect(context.savePlaylistTrackMetadataCache).toHaveBeenCalledWith([{ trackPath: '/music/library/track-1.flac', trackName: 'Track 1', artistName: 'Artist' }]);
         expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
         expect(playlistController.refreshFavorites).toHaveBeenCalled();
         expect(context.resetShuffleHistory).toHaveBeenCalled();

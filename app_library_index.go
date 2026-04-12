@@ -191,9 +191,35 @@ func collectDiscoveredScanFolders(folderPaths map[string]struct{}, discoveredByP
 	}
 }
 
+func noteFolderModifiedAt(folderModifiedAtByPath map[string]int64, folderPath string, modifiedAtMs int64) {
+	cleanFolderPath := strings.TrimSpace(folderPath)
+	if cleanFolderPath == "" || modifiedAtMs <= 0 {
+		return
+	}
+
+	segments := strings.Split(cleanFolderPath, "/")
+	currentPath := ""
+	for _, segment := range segments {
+		if segment == "" {
+			continue
+		}
+
+		if currentPath == "" {
+			currentPath = segment
+		} else {
+			currentPath += "/" + segment
+		}
+
+		if modifiedAtMs > folderModifiedAtByPath[currentPath] {
+			folderModifiedAtByPath[currentPath] = modifiedAtMs
+		}
+	}
+}
+
 func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []LibraryIndexedFile, imageFiles []LibraryIndexedFile) libraryDerivedIndexData {
 	folderChildSetByParent := make(map[string]map[string]struct{})
 	folderPaths := map[string]struct{}{}
+	folderModifiedAtByPath := make(map[string]int64)
 
 	trackEntriesByFolder := make(map[string][]LibraryBrowserEntry)
 	textEntriesByFolder := make(map[string][]LibraryBrowserEntry)
@@ -206,6 +232,7 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 
 	for _, indexed := range trackFiles {
 		addFolderAncestorsToIndex(indexed.FolderPath, folderChildSetByParent, folderPaths)
+		noteFolderModifiedAt(folderModifiedAtByPath, indexed.FolderPath, indexed.ModifiedAtMs)
 		entry := browserEntryFromIndexedFile("track", indexed)
 		trackEntriesByFolder[indexed.FolderPath] = append(trackEntriesByFolder[indexed.FolderPath], entry)
 		trackFilesByFolder[indexed.FolderPath] = append(trackFilesByFolder[indexed.FolderPath], indexed)
@@ -214,6 +241,7 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 
 	for _, indexed := range textFiles {
 		addFolderAncestorsToIndex(indexed.FolderPath, folderChildSetByParent, folderPaths)
+		noteFolderModifiedAt(folderModifiedAtByPath, indexed.FolderPath, indexed.ModifiedAtMs)
 		entry := browserEntryFromIndexedFile("text-file", indexed)
 		textEntriesByFolder[indexed.FolderPath] = append(textEntriesByFolder[indexed.FolderPath], entry)
 		searchTextEntries = append(searchTextEntries, entry)
@@ -221,6 +249,7 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 
 	for _, indexed := range imageFiles {
 		addFolderAncestorsToIndex(indexed.FolderPath, folderChildSetByParent, folderPaths)
+		noteFolderModifiedAt(folderModifiedAtByPath, indexed.FolderPath, indexed.ModifiedAtMs)
 		entry := browserEntryFromIndexedFile("image-file", indexed)
 		imageEntriesByFolder[indexed.FolderPath] = append(imageEntriesByFolder[indexed.FolderPath], entry)
 		searchImageEntries = append(searchImageEntries, entry)
@@ -256,7 +285,7 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 			childEntries = make([]LibraryBrowserEntry, 0, len(childSet))
 			for childPath := range childSet {
 				childPaths = append(childPaths, childPath)
-				childEntries = append(childEntries, folderBrowserEntry(childPath))
+				childEntries = append(childEntries, folderBrowserEntry(childPath, folderModifiedAtByPath[childPath]))
 			}
 			sortPathsCaseInsensitive(childPaths)
 			sortBrowserEntriesByPath(childEntries)
@@ -290,7 +319,7 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 
 	searchFolderEntries := make([]LibraryBrowserEntry, 0, len(folderPaths))
 	for folderPath := range folderPaths {
-		searchFolderEntries = append(searchFolderEntries, folderBrowserEntry(folderPath))
+		searchFolderEntries = append(searchFolderEntries, folderBrowserEntry(folderPath, folderModifiedAtByPath[folderPath]))
 	}
 
 	sortBrowserEntriesByPath(searchFolderEntries)
@@ -420,17 +449,19 @@ func (a *App) buildFolderEntriesFromMapsLocked(normalizedFolderPath string) []Li
 	contentState := a.libraryContentState()
 	scanState := a.libraryScanState()
 	folderEntriesByPath := make(map[string]LibraryBrowserEntry)
+	folderModifiedAtByPath := make(map[string]int64)
 	trackEntries := make([]LibraryBrowserEntry, 0)
 	textEntries := make([]LibraryBrowserEntry, 0)
 	imageEntries := make([]LibraryBrowserEntry, 0)
 
 	if scanState.scanInProgress && scanState.scanDiscoveredChildFoldersByParent != nil {
 		for childPath := range scanState.scanDiscoveredChildFoldersByParent[normalizedFolderPath] {
-			folderEntriesByPath[childPath] = folderBrowserEntry(childPath)
+			folderEntriesByPath[childPath] = folderBrowserEntry(childPath, 0)
 		}
 	}
 
 	appendEntry := func(indexed LibraryIndexedFile, kind string, destination *[]LibraryBrowserEntry) {
+		noteFolderModifiedAt(folderModifiedAtByPath, indexed.FolderPath, indexed.ModifiedAtMs)
 		if indexed.FolderPath == normalizedFolderPath {
 			*destination = append(*destination, browserEntryFromIndexedFile(kind, indexed))
 			return
@@ -442,7 +473,7 @@ func (a *App) buildFolderEntriesFromMapsLocked(normalizedFolderPath string) []Li
 		}
 
 		if _, exists := folderEntriesByPath[childFolderPath]; !exists {
-			folderEntriesByPath[childFolderPath] = folderBrowserEntry(childFolderPath)
+			folderEntriesByPath[childFolderPath] = folderBrowserEntry(childFolderPath, 0)
 		}
 	}
 
@@ -457,7 +488,8 @@ func (a *App) buildFolderEntriesFromMapsLocked(normalizedFolderPath string) []Li
 	}
 
 	folderEntries := make([]LibraryBrowserEntry, 0, len(folderEntriesByPath))
-	for _, entry := range folderEntriesByPath {
+	for folderPath, entry := range folderEntriesByPath {
+		entry.ModifiedAtMs = folderModifiedAtByPath[folderPath]
 		folderEntries = append(folderEntries, entry)
 	}
 
@@ -479,6 +511,7 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCan
 	scanState := a.libraryScanState()
 	folderPaths := make(map[string]struct{})
 	folderMatchesByPath := make(map[string]LibraryBrowserEntry)
+	folderModifiedAtByPath := make(map[string]int64)
 	trackMatches := make([]LibraryBrowserEntry, 0)
 	textMatches := make([]LibraryBrowserEntry, 0)
 	imageMatches := make([]LibraryBrowserEntry, 0)
@@ -507,6 +540,7 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCan
 
 	matchIndexedFile := func(indexed LibraryIndexedFile, kind string, destination *[]LibraryBrowserEntry) {
 		collectFolderAncestors(indexed.FolderPath)
+		noteFolderModifiedAt(folderModifiedAtByPath, indexed.FolderPath, indexed.ModifiedAtMs)
 		candidateName := strings.ToLower(indexed.Name)
 		candidateRelativePath := strings.ToLower(indexed.RelativePath)
 		if strings.Contains(candidateName, normalizedQuery) || strings.Contains(candidateRelativePath, normalizedQuery) {
@@ -556,7 +590,7 @@ func (a *App) buildSearchEntriesFromMapsLocked(normalizedQuery string, shouldCan
 		}
 
 		if strings.Contains(strings.ToLower(folderPath), normalizedQuery) || strings.Contains(strings.ToLower(folderName), normalizedQuery) {
-			folderMatchesByPath[folderPath] = folderBrowserEntry(folderPath)
+			folderMatchesByPath[folderPath] = folderBrowserEntry(folderPath, folderModifiedAtByPath[folderPath])
 		}
 	}
 

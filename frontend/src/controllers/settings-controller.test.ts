@@ -37,6 +37,10 @@ const createMusicBrainzTagWorkerProgress = (): MusicBrainzTagWorkerProgress => (
 
 const createSettingsViewValues = (): SettingsViewValues => ({
     libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
+    localLibraryFilesDatabaseEnabled: true,
+    localLibraryFilesDatabaseLoadOnStartup: true,
+    localLibraryFilesDatabaseListenHistoryEnabled: false,
+    localLibraryFilesDatabaseListenHistoryLimit: 0,
     ffmpegPath: '',
     listenBrainzUserToken: '',
     lastFmApiKey: '',
@@ -144,6 +148,7 @@ describe('createSettingsController', () => {
     it('renders settings titles in sentence case', () => {
         document.body.innerHTML = renderSettingsModal();
 
+        expect(document.querySelector('#settings-tab-database')).toBeNull();
         expect(document.querySelector('label[for="settings-library-folder-list"]')?.textContent).toBe('Library folders');
         expect(document.querySelector('label[for="settings-ffmpeg-path"]')?.textContent).toBe('FFmpeg executable path');
         expect(document.querySelector('label[for="settings-listenbrainz-token"]')?.textContent).toBe('ListenBrainz user token');
@@ -175,6 +180,18 @@ describe('createSettingsController', () => {
         expect(document.querySelector('#settings-library-depth-title')?.textContent).toBe('Library folder settings');
         expect(document.querySelector('label[for="settings-library-depth-label-input"]')?.textContent).toBe('Custom label');
         expect(document.querySelector('label[for="settings-library-depth-input"]')?.textContent).toBe('Release folder depth');
+    });
+
+    it('renders metadata settings beneath the database settings with a shared compact row', () => {
+        document.body.innerHTML = renderSettingsModal();
+
+        const divider = document.querySelector('.settings-section-divider');
+        const compactRow = document.querySelector('#settings-musicbrainz-tag-stale-days')?.closest('.settings-field-compact-grid');
+
+        expect(divider).not.toBeNull();
+        expect(document.querySelector('#settings-panel-library #settings-musicbrainz-tag-database-enabled')).not.toBeNull();
+        expect(compactRow).not.toBeNull();
+        expect(document.querySelector('#settings-musicbrainz-tag-worker-cores')?.closest('.settings-field-compact-grid')).toBe(compactRow);
     });
 
     it('hydrates the modal and saves the edited form state', async () => {
@@ -219,6 +236,10 @@ describe('createSettingsController', () => {
         expect(save).toHaveBeenCalledTimes(1);
         expect(save).toHaveBeenCalledWith(expect.objectContaining({
             libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
+            localLibraryFilesDatabaseEnabled: true,
+            localLibraryFilesDatabaseLoadOnStartup: true,
+            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryLimit: 0,
             ffmpegPath: 'D:/tools/ffmpeg.exe',
             scrobbleFilterMode: 'blacklist',
             scrobbleRules: [{ field: 'path', operator: 'starts_with', value: '/music/private' }],
@@ -360,6 +381,10 @@ describe('createSettingsController', () => {
 
         controller.open('database');
 
+        expect(elements.settingsTabLibrary.classList.contains('is-active')).toBe(true);
+        expect(elements.settingsPanelLibrary.hidden).toBe(false);
+        expect(document.activeElement).toBe(elements.settingsMusicBrainzTagDatabaseEnabled);
+
         elements.settingsMusicBrainzTagStaleDays.value = '0';
         elements.settingsMusicBrainzTagRequestStaggeringEnabled.checked = true;
         elements.settingsSave.click();
@@ -369,6 +394,42 @@ describe('createSettingsController', () => {
         expect(save).toHaveBeenCalledWith(expect.objectContaining({
             musicBrainzTagStaleDays: 0,
             musicBrainzTagRequestStaggeringEnabled: true,
+        }));
+    });
+
+    it('focuses the library snapshot controls when opened on the library tab', () => {
+        const { controller, elements } = mountSettingsController();
+
+        controller.open('library');
+
+        expect(elements.settingsTabLibrary.classList.contains('is-active')).toBe(true);
+        expect(elements.settingsPanelLibrary.hidden).toBe(false);
+        expect(document.activeElement).toBe(elements.settingsLocalLibraryFilesDatabaseEnabled);
+    });
+
+    it('disables startup snapshot loading when the local library database is disabled', async () => {
+        const { controller, elements, save } = mountSettingsController();
+
+        controller.open('library');
+
+        expect(elements.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled).toBe(false);
+        expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.disabled).toBe(false);
+
+        elements.settingsLocalLibraryFilesDatabaseEnabled.checked = false;
+        elements.settingsLocalLibraryFilesDatabaseEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+
+        expect(elements.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled).toBe(true);
+        expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.disabled).toBe(true);
+        expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryLimit.disabled).toBe(true);
+
+        elements.settingsSave.click();
+        await flushPromises();
+
+        expect(save).toHaveBeenCalledWith(expect.objectContaining({
+            localLibraryFilesDatabaseEnabled: false,
+            localLibraryFilesDatabaseLoadOnStartup: true,
+            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryLimit: 0,
         }));
     });
 
@@ -456,6 +517,8 @@ describe('createSettingsController', () => {
         const { controller, elements } = mountSettingsController();
 
         controller.open('database');
+
+        expect(elements.settingsPanelLibrary.hidden).toBe(false);
 
         expect(elements.settingsMusicBrainzTagWorkerProgressValue.textContent).toBe('25%');
         expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('8 entities processed • 12 entities still to look up.');

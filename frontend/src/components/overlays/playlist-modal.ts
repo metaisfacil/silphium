@@ -1,9 +1,15 @@
 export type PlaylistModalElements = {
     playlistModal: HTMLDivElement;
     playlistBackdrop: HTMLDivElement;
+    playlistDialog: HTMLElement;
     playlistClose: HTMLButtonElement;
     playlistTitle: HTMLParagraphElement;
+    playlistSourceWrap: HTMLDivElement;
+    playlistSourceButton: HTMLButtonElement;
+    playlistSourceIcon: HTMLSpanElement;
+    playlistSourceLabel: HTMLSpanElement;
     playlistSource: HTMLSelectElement;
+    playlistSourceMenu: HTMLDivElement;
     playlistHydrationProgress: HTMLParagraphElement;
     playlistHydrationCount: HTMLSpanElement;
     playlistList: HTMLUListElement;
@@ -19,7 +25,15 @@ export const renderPlaylistModal = (): string => `
         <section class="playlist-dialog" role="dialog" aria-modal="true" aria-label="Playlist viewer">
             <header class="playlist-header">
                 <p id="playlist-title" class="playlist-title">Playlist</p>
-                <select id="playlist-source" class="playlist-source" aria-label="Select playlist view" hidden></select>
+                <div id="playlist-source-wrap" class="playlist-source-wrap" hidden>
+                    <button id="playlist-source-button" class="playlist-source-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="playlist-source-menu">
+                        <span id="playlist-source-icon" class="playlist-source-icon" aria-hidden="true"></span>
+                        <span id="playlist-source-label" class="playlist-source-label">Playback Queue</span>
+                        <span class="playlist-source-chevron" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M7.41 8.91C7.74 8.58 8.26 8.58 8.59 8.91L12 12.33L15.41 8.91C15.74 8.58 16.26 8.58 16.59 8.91C16.92 9.24 16.92 9.76 16.59 10.09L12.59 14.09C12.26 14.42 11.74 14.42 11.41 14.09L7.41 10.09C7.08 9.76 7.08 9.24 7.41 8.91Z"/></svg></span>
+                    </button>
+                    <div id="playlist-source-menu" class="playlist-source-menu" role="listbox" hidden></div>
+                    <select id="playlist-source" class="playlist-source-native" aria-label="Select playlist view" tabindex="-1" hidden></select>
+                </div>
                 <div class="playlist-header-actions">
                     <p id="playlist-hydration-progress" class="playlist-hydration-progress" hidden aria-live="polite">
                         <span class="playlist-hydration-spinner" aria-hidden="true"></span>
@@ -46,9 +60,15 @@ export const renderPlaylistModal = (): string => `
 export const getPlaylistModalElements = (root: ParentNode): PlaylistModalElements => ({
     playlistModal: root.querySelector('#playlist-modal') as HTMLDivElement,
     playlistBackdrop: root.querySelector('#playlist-backdrop') as HTMLDivElement,
+    playlistDialog: root.querySelector('.playlist-dialog') as HTMLElement,
     playlistClose: root.querySelector('#playlist-close') as HTMLButtonElement,
     playlistTitle: root.querySelector('#playlist-title') as HTMLParagraphElement,
+    playlistSourceWrap: root.querySelector('#playlist-source-wrap') as HTMLDivElement,
+    playlistSourceButton: root.querySelector('#playlist-source-button') as HTMLButtonElement,
+    playlistSourceIcon: root.querySelector('#playlist-source-icon') as HTMLSpanElement,
+    playlistSourceLabel: root.querySelector('#playlist-source-label') as HTMLSpanElement,
     playlistSource: root.querySelector('#playlist-source') as HTMLSelectElement,
+    playlistSourceMenu: root.querySelector('#playlist-source-menu') as HTMLDivElement,
     playlistHydrationProgress: root.querySelector('#playlist-hydration-progress') as HTMLParagraphElement,
     playlistHydrationCount: root.querySelector('#playlist-hydration-count') as HTMLSpanElement,
     playlistList: root.querySelector('#playlist-list') as HTMLUListElement,

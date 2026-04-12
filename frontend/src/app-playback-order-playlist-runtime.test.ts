@@ -4,19 +4,25 @@ import type { AppSettings, PlaybackOrderMode, Track } from './types/app-types';
 import { createPlaybackOrderPlaylistRuntime } from './app-playback-order-playlist-runtime';
 
 const {
+    loadListenHistoryPlaylistMock,
     loadPlaylistFileMock,
     mergePlaylistFilesIntoTracksMock,
     normalizeAppSettingsMock,
+    savePlaylistTrackMetadataCacheMock,
     saveSettingsMock,
 } = vi.hoisted(() => ({
+    loadListenHistoryPlaylistMock: vi.fn(),
     loadPlaylistFileMock: vi.fn(),
     mergePlaylistFilesIntoTracksMock: vi.fn(),
     normalizeAppSettingsMock: vi.fn((value) => value),
+    savePlaylistTrackMetadataCacheMock: vi.fn(),
     saveSettingsMock: vi.fn(),
 }));
 
 vi.mock('../wailsjs/go/main/App', () => ({
+    LoadListenHistoryPlaylist: loadListenHistoryPlaylistMock,
     LoadPlaylistFile: loadPlaylistFileMock,
+    SavePlaylistTrackMetadataCache: savePlaylistTrackMetadataCacheMock,
     SaveSettings: saveSettingsMock,
 }));
 
@@ -31,6 +37,10 @@ vi.mock('./utils/settings-normalization', () => ({
 const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     libraryFolders: [{ path: '/music', label: 'Library', releaseDepth: 2 }],
     libraryPath: '/music',
+    localLibraryFilesDatabaseEnabled: true,
+    localLibraryFilesDatabaseLoadOnStartup: true,
+    localLibraryFilesDatabaseListenHistoryEnabled: false,
+    localLibraryFilesDatabaseListenHistoryLimit: 0,
     ffmpegPath: '/tools/ffmpeg',
     listenBrainzUserToken: 'lb-token',
     lastFmApiKey: 'lastfm-key',
@@ -221,6 +231,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         const runtime = createPlaybackOrderPlaylistRuntime(context);
 
         await expect(runtime.loadPlaylistData('/playlists/road-trip.m3u8')).resolves.toEqual({
+            cachedItems: [{ cachedArtistName: undefined, cachedTrackTitle: undefined }],
             name: 'Road Trip',
             trackIndexes: [1, 0],
         });
@@ -231,5 +242,81 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         );
         expect(context.tracks).toBe(mergedTracks);
         expect(context.rebuildTrackPathIndex).toHaveBeenCalledTimes(1);
+    });
+
+    it('loads listen-history tracks through the same merge pipeline', async () => {
+        loadListenHistoryPlaylistMock.mockResolvedValue({
+            name: 'Listen History',
+            trackFiles: [{
+                path: '/music/history-track.flac',
+                listenedAt: 1_700_000_000,
+                cachedTrackTitle: 'Cached History Title',
+                cachedArtistName: 'Cached History Artist',
+            }],
+        });
+        const mergedTracks = [
+            createTrack({ path: '/music/history-track.flac', name: 'History Track', title: 'History Track', relativePath: 'Library/history-track.flac' }),
+        ];
+        mergePlaylistFilesIntoTracksMock.mockResolvedValue({
+            tracks: mergedTracks,
+            trackIndexes: [0],
+        });
+        const context = {
+            currentSettings: createSettings(),
+            tracks: [],
+            playbackSequencingService: {
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
+            },
+            playlistController: {
+                clearEditableQueue: vi.fn(),
+            },
+            updatePlayOrderMenuState: vi.fn(),
+            rebuildTrackPathIndex: vi.fn(),
+        };
+
+        const runtime = createPlaybackOrderPlaylistRuntime(context);
+
+        await expect(runtime.loadListenHistoryData()).resolves.toEqual({
+            cachedItems: [{ cachedArtistName: 'Cached History Artist', cachedTrackTitle: 'Cached History Title' }],
+            historyItems: [{ listenedAt: 1_700_000_000 }],
+            name: 'Listen History',
+            trackIndexes: [0],
+        });
+        expect(loadListenHistoryPlaylistMock).toHaveBeenCalledTimes(1);
+        expect(mergePlaylistFilesIntoTracksMock).toHaveBeenCalledWith([], [{
+            path: '/music/history-track.flac',
+            listenedAt: 1_700_000_000,
+            cachedTrackTitle: 'Cached History Title',
+            cachedArtistName: 'Cached History Artist',
+        }]);
+        expect(context.tracks).toBe(mergedTracks);
+        expect(context.rebuildTrackPathIndex).toHaveBeenCalledTimes(1);
+    });
+
+    it('persists playlist metadata cache entries through the backend binding', async () => {
+        savePlaylistTrackMetadataCacheMock.mockResolvedValue(true);
+        const context = {
+            currentSettings: createSettings(),
+            tracks: [],
+            playbackSequencingService: {
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
+            },
+            playlistController: {
+                clearEditableQueue: vi.fn(),
+            },
+            updatePlayOrderMenuState: vi.fn(),
+        };
+
+        const runtime = createPlaybackOrderPlaylistRuntime(context);
+        const entries = [{
+            trackPath: '/music/history-track.flac',
+            trackName: 'Cached Title',
+            artistName: 'Cached Artist',
+        }];
+
+        await expect(runtime.savePlaylistTrackMetadataCache(entries)).resolves.toBe(true);
+        expect(savePlaylistTrackMetadataCacheMock).toHaveBeenCalledWith(entries);
     });
 });

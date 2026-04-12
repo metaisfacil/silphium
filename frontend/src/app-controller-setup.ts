@@ -6,7 +6,7 @@ import { createPlaylistTargetModalController } from './controllers/playlist-targ
 import { createShareController } from './controllers/share-controller';
 import type { AppControllerSetupContext } from './app-bootstrap-setup';
 import { setupSettingsController } from './app-settings-controller-setup';
-import type { AppSettings, AudioPlaybackState, AudioVisualizationFrame, Track } from './types/app-types';
+import type { AppSettings, AudioPlaybackState, AudioVisualizationFrame, LibraryBrowserSortMode, Track } from './types/app-types';
 
 export const setupAppControllers = (context: AppControllerSetupContext) => {
     let playlistController: PlaylistController | undefined;
@@ -133,12 +133,22 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         },
         selectPlaylistFile: context.selectPlaylistFile,
         selectPlaylistSaveFile: context.selectPlaylistSaveFile,
+        loadListenHistoryData: async () => {
+            return await context.loadListenHistoryData();
+        },
         loadPlaylistData: async (playlistPath: string) => {
             return await context.loadPlaylistData(playlistPath);
+        },
+        savePlaylistTrackMetadataCache: async (entries) => {
+            return await context.savePlaylistTrackMetadataCache(entries);
         },
         savePlaylistData: (playlistPath: string, trackPaths: string[]) => context.savePlaylistData(playlistPath, trackPaths),
         appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => context.appendTracksToPlaylistData(playlistPath, trackPaths),
         getFavoritePlaylists: () => context.currentSettings.favoritePlaylists,
+        hasListenHistoryPlaylist: () => (
+            context.currentSettings.localLibraryFilesDatabaseEnabled
+            && context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled
+        ),
         onTrackChosen: async (index: number, selectionContext: PlaylistTrackChosenContext) => {
             const manualTrackSelection = selectionContext.userInitiated && selectionContext.source !== 'queue';
             await context.loadTrack(index, true, undefined, manualTrackSelection);
@@ -201,6 +211,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         libraryBack: context.libraryBack,
         libraryPath: context.libraryPath,
         librarySearch: context.librarySearch,
+        librarySort: context.librarySort,
         libraryBrowser: context.libraryBrowser,
         libraryScanYieldIndicator: context.libraryScanYieldIndicator,
         state: context.libraryControllerState,
@@ -208,8 +219,8 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         getTextFiles: () => context.textFiles,
         getImageFiles: () => context.imageFiles,
         getCurrentTrackIndex: () => context.currentTrackIndex,
-        loadFolderPage: async (folderPath: string, offset: number, limit: number) => {
-            return await context.loadFolderPage(folderPath, offset, limit);
+        loadFolderPage: async (folderPath: string, sortMode: LibraryBrowserSortMode, offset: number, limit: number) => {
+            return await context.loadFolderPage(folderPath, sortMode, offset, limit);
         },
         resolveLibraryFolderForAbsolutePath: async (path: string) => {
             return await context.resolveLibraryFolderForAbsolutePath(path);

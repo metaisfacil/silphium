@@ -35,16 +35,16 @@ const BATCH_SIZES = {
 } as const;
 
 const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
-    title: file.name,
+    title: file.cachedTrackTitle || file.name,
     name: file.name,
     path: file.path,
     relativePath: file.relativePath || file.name,
     folderPath: file.folderPath || '',
     rootPath: file.rootPath || '',
     rootName: file.rootName || '',
-    displayTitle: file.name,
+    displayTitle: file.cachedTrackTitle || file.name,
     displayAlbum: 'Unknown Album',
-    displayArtist: 'Unknown Artist',
+    displayArtist: file.cachedArtistName || 'Unknown Artist',
     displayTrackNumber: '',
     displayTrackTotal: '',
     displayTechnical: '',
@@ -58,10 +58,24 @@ const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
     mbArtistCredits: [],
 });
 
+const applyCachedHistoryMetadata = (track: Track, file: LibraryIndexedFile): Track => {
+    if (track.tagsResolved) {
+        return track;
+    }
+
+    return {
+        ...track,
+        title: file.cachedTrackTitle || track.title,
+        displayTitle: file.cachedTrackTitle || track.displayTitle,
+        displayArtist: file.cachedArtistName || track.displayArtist,
+    };
+};
+
 const ensureTrackIndexForPath = (tracks: Track[], file: LibraryIndexedFile, trackIndexByPath: Map<string, number>): number => {
     const normalizedPath = file.path.toLowerCase();
     const existingIndex = trackIndexByPath.get(normalizedPath);
     if (existingIndex !== undefined) {
+        tracks[existingIndex] = applyCachedHistoryMetadata(tracks[existingIndex], file);
         return existingIndex;
     }
 

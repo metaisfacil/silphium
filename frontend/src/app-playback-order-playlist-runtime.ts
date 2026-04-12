@@ -1,8 +1,15 @@
-import { LoadPlaylistFile, SaveSettings } from '../wailsjs/go/main/App';
-import type { LoadedPlaylistData } from './controllers/playlist-controller';
+import { LoadListenHistoryPlaylist, LoadPlaylistFile, SavePlaylistTrackMetadataCache, SaveSettings } from '../wailsjs/go/main/App';
+import type { LoadedPlaylistData, PlaylistTrackMetadataCacheEntry } from './controllers/playlist-controller';
 import { mergePlaylistFilesIntoTracks } from './services/library-data-service';
 import { normalizeAppSettings } from './utils/settings-normalization';
 import type { AppSettings, PlaybackOrderMode, PlaylistLoadResult, Track } from './types/app-types';
+
+const mapLoadedPlaylistCachedItems = (loaded: PlaylistLoadResult): NonNullable<LoadedPlaylistData['cachedItems']> => (
+    (loaded.trackFiles || []).map((file) => ({
+        cachedTrackTitle: file.cachedTrackTitle,
+        cachedArtistName: file.cachedArtistName,
+    }))
+);
 
 type PlaybackOrderPlaylistRuntimeContext = {
     currentSettings: AppSettings;
@@ -43,6 +50,10 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
             const savedSettings = await SaveSettings({
                 libraryFolders: context.currentSettings.libraryFolders,
                 libraryPath: context.currentSettings.libraryPath,
+                localLibraryFilesDatabaseEnabled: context.currentSettings.localLibraryFilesDatabaseEnabled,
+                localLibraryFilesDatabaseLoadOnStartup: context.currentSettings.localLibraryFilesDatabaseLoadOnStartup,
+                localLibraryFilesDatabaseListenHistoryEnabled: context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled,
+                localLibraryFilesDatabaseListenHistoryLimit: context.currentSettings.localLibraryFilesDatabaseListenHistoryLimit,
                 ffmpegPath: context.currentSettings.ffmpegPath,
                 listenBrainzUserToken: context.currentSettings.listenBrainzUserToken,
                 lastFmApiKey: context.currentSettings.lastFmApiKey,
@@ -93,12 +104,35 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
 
         return {
             name: loaded.name || '',
+            cachedItems: mapLoadedPlaylistCachedItems(loaded),
             trackIndexes: mergeResult.trackIndexes,
         };
     };
 
+    const loadListenHistoryData = async (): Promise<LoadedPlaylistData | null> => {
+        const loaded = await LoadListenHistoryPlaylist() as PlaylistLoadResult;
+        const mergeResult = await mergePlaylistFilesIntoTracks(context.tracks || [], loaded.trackFiles || []);
+        context.tracks = mergeResult.tracks;
+        context.rebuildTrackPathIndex?.();
+
+        return {
+            cachedItems: mapLoadedPlaylistCachedItems(loaded),
+            name: loaded.name || 'Listen History',
+            historyItems: (loaded.trackFiles || []).map((file) => ({
+                listenedAt: Number.isFinite(file.listenedAt || 0) ? Math.floor(file.listenedAt || 0) : 0,
+            })),
+            trackIndexes: mergeResult.trackIndexes,
+        };
+    };
+
+    const savePlaylistTrackMetadataCache = async (entries: PlaylistTrackMetadataCacheEntry[]): Promise<boolean> => {
+        return await SavePlaylistTrackMetadataCache(entries);
+    };
+
     return {
+        loadListenHistoryData,
         loadPlaylistData,
+        savePlaylistTrackMetadataCache,
         savePlaybackOrderSetting,
         setPlaybackOrderMode,
     };

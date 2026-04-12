@@ -94,6 +94,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		contentState.indexMu.Unlock()
 		a.setLibraryIndexFromScan(result, scanGeneration)
 		a.notifyMusicBrainzTagWorker()
+		a.notifyLibraryFilesDatabaseWorker()
 		return result
 	}
 
@@ -435,6 +436,11 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 				continue
 			}
 
+			entryInfo, infoErr := entry.Info()
+			if infoErr != nil {
+				continue
+			}
+
 			indexed := LibraryIndexedFile{
 				Name:         entry.Name(),
 				Path:         currentPath,
@@ -442,6 +448,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 				FolderPath:   folderPathForEntry,
 				RootPath:     root.Path,
 				RootName:     root.Name,
+				ModifiedAtMs: modifiedAtMsFromFileInfo(entryInfo),
 			}
 
 			kind := ""
@@ -611,6 +618,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		return scanCanceledResponse()
 	}
 	a.notifyMusicBrainzTagWorker()
+	a.notifyLibraryFilesDatabaseWorker()
 	emitScanUpdated(true)
 
 	sortIndexMs := float64(time.Since(finalizationStartedAt).Milliseconds())

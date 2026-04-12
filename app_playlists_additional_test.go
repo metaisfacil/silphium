@@ -141,6 +141,27 @@ func TestPlaylistHelpersAndLoading(t *testing.T) {
 	if loadedPlaylist.TrackFiles[0].RootName != "Library" {
 		t.Fatalf("LoadPlaylistFile(allowed) rootName = %q, want %q", loadedPlaylist.TrackFiles[0].RootName, "Library")
 	}
+	appWithCache := NewApp()
+	appWithCache.settingsPath = filepath.Join(fixture.tempDir, "settings.json")
+	appWithCache.settingsLoaded = true
+	appWithCache.settings = normalizeAppSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled: boolPointer(true),
+	})
+	appWithCache.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
+	if ok := appWithCache.SavePlaylistTrackMetadataCache([]PlaylistTrackMetadataCacheEntry{{
+		TrackPath:  fixture.trackOne,
+		TrackName:  "Cached Intro",
+		ArtistName: "Cached Artist",
+	}}); !ok {
+		t.Fatal("SavePlaylistTrackMetadataCache(valid) = false, want true")
+	}
+	loadedPlaylist = appWithCache.LoadPlaylistFile(allowedPlaylist)
+	if got := loadedPlaylist.TrackFiles[0].CachedTrackTitle; got != "Cached Intro" {
+		t.Fatalf("LoadPlaylistFile(allowed cached) title = %q, want %q", got, "Cached Intro")
+	}
+	if got := loadedPlaylist.TrackFiles[0].CachedArtistName; got != "Cached Artist" {
+		t.Fatalf("LoadPlaylistFile(allowed cached) artist = %q, want %q", got, "Cached Artist")
+	}
 
 	relativeAllowedPlaylist := filepath.Join(fixture.albumOneFolder, "relative-allowed.m3u8")
 	if err := os.WriteFile(relativeAllowedPlaylist, []byte("#EXTM3U\n01 Intro.flac\n"), 0o644); err != nil {

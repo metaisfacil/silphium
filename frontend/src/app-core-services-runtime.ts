@@ -1,4 +1,5 @@
 import {
+    AddListenHistoryEntry,
     AudioGetVisualizationFrame,
     GetLastFmFollowing,
     GetLastFmFollowingFeed,
@@ -80,6 +81,17 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             server: defaultLastFmServerUrl,
             path: eventType === 'playing_now' ? 'track.updateNowPlaying' : 'track.scrobble',
         }),
+        submitListenHistory: async (trackPath, payload, listenedAt) => await AddListenHistoryEntry(
+            trackPath,
+            payload.trackName,
+            payload.artistName,
+            payload.releaseName,
+            listenedAt,
+        ),
+        hasListenHistoryEnabled: () => (
+            context.currentSettings.localLibraryFilesDatabaseEnabled
+            && context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled
+        ),
     }, context.scrobbleSessionState);
     const playbackSequencingService = createPlaybackSequencingService({
         getTracks: () => context.tracks,

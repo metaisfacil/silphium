@@ -9,7 +9,7 @@ import type { ExternalPlaybackAction, createMediaSessionController } from './con
 import type { ImageModalController } from './controllers/image-modal-controller';
 import type { LibraryController } from './controllers/library-controller';
 import type { LibraryControllerState } from './controllers/library-controller-types';
-import type { LoadedPlaylistData, PlaylistController } from './controllers/playlist-controller';
+import type { LoadedPlaylistData, PlaylistController, PlaylistTrackMetadataCacheEntry } from './controllers/playlist-controller';
 import type { PlaylistControllerState } from './controllers/playlist-controller-state';
 import type { PlaylistTargetModalController } from './controllers/playlist-target-modal-controller';
 import type { ShareController, createShareController } from './controllers/share-controller';
@@ -29,6 +29,7 @@ import type {
     CustomSendToActionScope,
     FFmpegPathStatus,
     ImageLibraryFile,
+    LibraryBrowserSortMode,
     LibraryFolderPage,
     LibraryIndexedFilePage,
     LibraryScanProgress,
@@ -82,7 +83,7 @@ type SharedRuntimeMethods = {
     copyShareImageToClipboard: (base64: string) => Promise<boolean>;
     readFileBase64: (path: string) => Promise<string>;
     readImageThumbnail: (path: string, maxEdge: number) => Promise<{ base64?: string; mimeType?: string }>;
-    loadFolderPage: (folderPath: string, offset: number, limit: number) => Promise<LibraryFolderPage>;
+    loadFolderPage: (folderPath: string, sortMode: LibraryBrowserSortMode, offset: number, limit: number) => Promise<LibraryFolderPage>;
     resolveLibraryFolderForAbsolutePath: (path: string) => Promise<string>;
     isFolderImmediateDescendantsEnumerated: (folderPath: string) => Promise<boolean>;
     searchLibrary: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
@@ -151,7 +152,9 @@ type ReturnedRuntimeMethods = {
     updateNowPlayingTechnicalLabels: () => void;
     updatePlayButton: () => void;
     updateTrackLabels: () => void;
+    loadListenHistoryData: () => Promise<LoadedPlaylistData | null>;
     loadPlaylistData: (playlistPath: string) => Promise<LoadedPlaylistData | null>;
+    savePlaylistTrackMetadataCache: (entries: PlaylistTrackMetadataCacheEntry[]) => Promise<boolean>;
     savePlaybackOrderSetting: () => Promise<void>;
     setPlaybackOrderMode: (mode: PlaybackOrderMode) => void;
     hasConfiguredLibraryFolders: () => boolean;

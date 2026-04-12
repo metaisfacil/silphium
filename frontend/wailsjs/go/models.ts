@@ -91,6 +91,10 @@ export namespace main {
 	export class AppSettings {
 	    libraryFolders?: AppLibraryFolder[];
 	    libraryPath?: string;
+	    localLibraryFilesDatabaseEnabled?: boolean;
+	    localLibraryFilesDatabaseLoadOnStartup?: boolean;
+	    localLibraryFilesDatabaseListenHistoryEnabled?: boolean;
+	    localLibraryFilesDatabaseListenHistoryLimit?: number;
 	    ffmpegPath?: string;
 	    listenBrainzUserToken: string;
 	    lastFmApiKey: string;
@@ -131,6 +135,10 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.libraryFolders = this.convertValues(source["libraryFolders"], AppLibraryFolder);
 	        this.libraryPath = source["libraryPath"];
+	        this.localLibraryFilesDatabaseEnabled = source["localLibraryFilesDatabaseEnabled"];
+	        this.localLibraryFilesDatabaseLoadOnStartup = source["localLibraryFilesDatabaseLoadOnStartup"];
+	        this.localLibraryFilesDatabaseListenHistoryEnabled = source["localLibraryFilesDatabaseListenHistoryEnabled"];
+	        this.localLibraryFilesDatabaseListenHistoryLimit = source["localLibraryFilesDatabaseListenHistoryLimit"];
 	        this.ffmpegPath = source["ffmpegPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	        this.lastFmApiKey = source["lastFmApiKey"];
@@ -317,6 +325,7 @@ export namespace main {
 	    path: string;
 	    folderPath: string;
 	    relativePath: string;
+	    modifiedAtMs?: number;
 	    musicBrainzTaggedAlbumDir?: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -330,6 +339,7 @@ export namespace main {
 	        this.path = source["path"];
 	        this.folderPath = source["folderPath"];
 	        this.relativePath = source["relativePath"];
+	        this.modifiedAtMs = source["modifiedAtMs"];
 	        this.musicBrainzTaggedAlbumDir = source["musicBrainzTaggedAlbumDir"];
 	    }
 	}
@@ -378,6 +388,10 @@ export namespace main {
 	    folderPath: string;
 	    rootPath: string;
 	    rootName: string;
+	    cachedTrackTitle?: string;
+	    cachedArtistName?: string;
+	    listenedAt?: number;
+	    modifiedAtMs?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new LibraryIndexedFile(source);
@@ -391,6 +405,10 @@ export namespace main {
 	        this.folderPath = source["folderPath"];
 	        this.rootPath = source["rootPath"];
 	        this.rootName = source["rootName"];
+	        this.cachedTrackTitle = source["cachedTrackTitle"];
+	        this.cachedArtistName = source["cachedArtistName"];
+	        this.listenedAt = source["listenedAt"];
+	        this.modifiedAtMs = source["modifiedAtMs"];
 	    }
 	}
 	export class LibraryIndexedFilePage {
@@ -989,6 +1007,22 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class PlaylistTrackMetadataCacheEntry {
+	    trackPath: string;
+	    trackName: string;
+	    artistName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlaylistTrackMetadataCacheEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.trackPath = source["trackPath"];
+	        this.trackName = source["trackName"];
+	        this.artistName = source["artistName"];
+	    }
 	}
 	
 	export class TrackBlob {
