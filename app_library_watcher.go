@@ -259,6 +259,7 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 	a.markLibraryDerivedIndexDirtyLocked()
 	a.maybeStartLibraryDerivedIndexRebuildLocked()
 	a.notifyMusicBrainzTagWorker()
+	a.notifyLibraryFilesDatabaseWorker()
 
 	// Emit only the lightweight metadata — the frontend no longer uses the file arrays
 	// for incremental updates, and serializing 150K+ entries over IPC takes several seconds.

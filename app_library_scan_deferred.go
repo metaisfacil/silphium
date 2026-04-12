@@ -677,6 +677,7 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 			runtimeEventsEmit(runtimeState.ctx, libraryScanUpdatedEvent, payload)
 		}
 		a.notifyMusicBrainzTagWorker()
+		a.notifyLibraryFilesDatabaseWorker()
 		a.emitDeferredHydrationProgress(result.RootPath, totalEntries, startedAt, 0)
 
 		a.logRescanEvent(
@@ -732,6 +733,7 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 		contentState.indexMu.Unlock()
 		a.setLibraryIndexFromScan(result, scanGeneration)
 		a.notifyMusicBrainzTagWorker()
+		a.notifyLibraryFilesDatabaseWorker()
 		return result
 	}
 
@@ -768,6 +770,39 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 		scanState.scanDiscoveredChildFoldersByParent = nil
 		contentState.indexMu.Unlock()
 	}()
+
+	if snapshot, ok := loadLibraryFilesDatabaseSnapshot(a.libraryFilesDatabasePath(), roots); ok {
+		persistedResult := snapshot.scanResult()
+		if !a.setLibraryIndexFromScan(persistedResult, scanGeneration) {
+			return scanCanceledResponse()
+		}
+
+		contentState.indexMu.Lock()
+		if generationState.libraryScanGeneration.Load() != scanGeneration {
+			contentState.indexMu.Unlock()
+			return scanCanceledResponse()
+		}
+		indexState.libraryFolderEntriesCache = nil
+		indexState.libraryWatchDirectoryPaths = nil
+		contentState.indexMu.Unlock()
+
+		a.notifyMusicBrainzTagWorker()
+		if restartWatcher {
+			a.startLibraryWatcherAsync(roots)
+		}
+		a.startLibraryFilesRefreshAsync(roots, scanGeneration)
+
+		response := compactLibraryScanResult(persistedResult)
+		a.logRescanEvent(
+			"scanLibraryFolders deferred END (database): totalEntries=%d tracks=%d text=%d images=%d took %.2fms",
+			response.TotalEntries,
+			response.TrackCount,
+			response.TextFileCount,
+			response.ImageFileCount,
+			time.Since(scanStartedAt).Seconds()*1000,
+		)
+		return response
+	}
 
 	quickBuild, quickErr := buildFilesystemQuickScan(roots, isScanCanceled)
 	if quickErr != nil {

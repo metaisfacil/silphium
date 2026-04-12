@@ -94,6 +94,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		contentState.indexMu.Unlock()
 		a.setLibraryIndexFromScan(result, scanGeneration)
 		a.notifyMusicBrainzTagWorker()
+		a.notifyLibraryFilesDatabaseWorker()
 		return result
 	}
 
@@ -611,6 +612,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		return scanCanceledResponse()
 	}
 	a.notifyMusicBrainzTagWorker()
+	a.notifyLibraryFilesDatabaseWorker()
 	emitScanUpdated(true)
 
 	sortIndexMs := float64(time.Since(finalizationStartedAt).Milliseconds())
