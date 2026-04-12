@@ -59,6 +59,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabsScrollLeft,
         settingsTabsScrollRight,
         settingsTabGeneral,
+        settingsTabLibrary,
         settingsTabNetwork,
         settingsTabDatabase,
         settingsTabPlaylists,
@@ -67,6 +68,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabUi,
         settingsTabActions,
         settingsPanelGeneral,
+        settingsPanelLibrary,
         settingsPanelNetwork,
         settingsPanelDatabase,
         settingsPanelPlaylists,
@@ -121,6 +123,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsSendToActionCancel,
         settingsSendToActionConfirm,
         settingsFFmpegPath,
+        settingsLocalLibraryFilesDatabaseEnabled,
+        settingsLocalLibraryFilesDatabaseLoadOnStartup,
         settingsListenBrainzToken,
         settingsLastFmApiKey,
         settingsLastFmApiSecret,
@@ -288,6 +292,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         normalizedMusicBrainzRequestRateMs,
         refreshForceReloadStatus,
         refreshLastFmSessionFetchButton,
+        refreshLocalLibraryFilesDatabaseControls,
         refreshListenBrainzRateControls,
         refreshMusicBrainzRateControls,
         refreshMusicBrainzTagWorkerControls,
@@ -316,6 +321,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzRequestRateMs,
         settingsListenBrainzServerUrl,
         settingsListenBrainzRequestRateMs,
+        settingsLocalLibraryFilesDatabaseEnabled,
+        settingsLocalLibraryFilesDatabaseLoadOnStartup,
         settingsMusicBrainzTagDatabaseEnabled,
         settingsHighlightMusicBrainzTaggedAlbumFolders,
         settingsMusicBrainzTagStaleDays,
@@ -517,6 +524,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     const settingsTabButtons: Record<SettingsPrimaryTab, HTMLButtonElement> = {
         general: settingsTabGeneral,
+        library: settingsTabLibrary,
         network: settingsTabNetwork,
         database: settingsTabDatabase,
         playlists: settingsTabPlaylists,
@@ -533,6 +541,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabButtons,
         settingsTabPanels: {
             general: settingsPanelGeneral,
+            library: settingsPanelLibrary,
             network: settingsPanelNetwork,
             database: settingsPanelDatabase,
             playlists: settingsPanelPlaylists,
@@ -545,6 +554,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     const buildFormValues = (): SettingsFormValues => ({
         libraryFolders: controllerState.libraryFolders.map((folder) => ({ ...folder })),
+        localLibraryFilesDatabaseEnabled: settingsLocalLibraryFilesDatabaseEnabled.checked,
+        localLibraryFilesDatabaseLoadOnStartup: settingsLocalLibraryFilesDatabaseLoadOnStartup.checked,
         ffmpegPath: settingsFFmpegPath.value,
         listenBrainzUserToken: settingsListenBrainzToken.value,
         lastFmApiKey: settingsLastFmApiKey.value,
@@ -707,6 +718,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
         const values = options.getValues();
         controllerState.libraryFolders = normalizeLibraryFolders(values.libraryFolders);
+        settingsLocalLibraryFilesDatabaseEnabled.checked = values.localLibraryFilesDatabaseEnabled !== false;
+        settingsLocalLibraryFilesDatabaseLoadOnStartup.checked = values.localLibraryFilesDatabaseLoadOnStartup !== false;
         settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         settingsLastFmApiKey.value = values.lastFmApiKey || '';
@@ -737,6 +750,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         refreshEqualizerPositionControls();
         settingsUiDitheringEnabled.checked = values.uiDitheringEnabled !== false;
         settingsMinimizeToTrayOnClose.checked = !!values.minimizeToTrayOnClose;
+        refreshLocalLibraryFilesDatabaseControls();
         refreshMusicBrainzTagWorkerControls();
         renderMusicBrainzTagWorkerProgress(values.musicBrainzTagWorkerProgress);
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
@@ -790,6 +804,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             }
 
             settingsAddLibraryFolder.focus();
+            return;
+        }
+        if (primaryTab === 'library') {
+            settingsLocalLibraryFilesDatabaseEnabled.focus();
             return;
         }
         if (primaryTab === 'network') {
@@ -961,6 +979,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         scrollShortcutAccordionIntoView,
         scrollCoverArtPriorityAccordionIntoView,
         refreshLastFmSessionFetchButton,
+        refreshLocalLibraryFilesDatabaseControls,
         refreshMusicBrainzTagWorkerControls,
         refreshMusicBrainzRateControls,
         refreshListenBrainzRateControls,

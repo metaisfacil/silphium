@@ -20,6 +20,8 @@ export type SendToActionDialogValues = {
 
 export type SettingsFormValues = {
     libraryFolders: AppLibraryFolder[];
+    localLibraryFilesDatabaseEnabled: boolean;
+    localLibraryFilesDatabaseLoadOnStartup: boolean;
     ffmpegPath: string;
     listenBrainzUserToken: string;
     lastFmApiKey: string;
@@ -58,7 +60,7 @@ export type SettingsViewValues = SettingsFormValues & {
     musicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
 };
 
-export type SettingsPrimaryTab = 'general' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui' | 'actions';
+export type SettingsPrimaryTab = 'general' | 'library' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui' | 'actions';
 export type SettingsTab = SettingsPrimaryTab | 'shortcuts';
 
 export type SettingsControllerOptions = {

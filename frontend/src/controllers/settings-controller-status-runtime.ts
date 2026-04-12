@@ -16,6 +16,8 @@ export interface SettingsControllerStatusRuntimeContext {
     settingsMusicBrainzRequestRateMs: HTMLInputElement;
     settingsListenBrainzServerUrl: HTMLInputElement;
     settingsListenBrainzRequestRateMs: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseEnabled: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseLoadOnStartup: HTMLInputElement;
     settingsMusicBrainzTagDatabaseEnabled: HTMLInputElement;
     settingsHighlightMusicBrainzTaggedAlbumFolders: HTMLInputElement;
     settingsMusicBrainzTagStaleDays: HTMLInputElement;
@@ -161,6 +163,11 @@ export const createSettingsControllerStatusRuntime = (context: SettingsControlle
         context.settingsMusicBrainzTagWorkerCores.disabled = disabled;
     };
 
+    const refreshLocalLibraryFilesDatabaseControls = (): void => {
+        const disabled = !context.settingsLocalLibraryFilesDatabaseEnabled.checked;
+        context.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled = disabled;
+    };
+
     const refreshForceReloadStatus = (): void => {
         if (!context.forceReloadInProgress) {
             return;
@@ -221,6 +228,7 @@ export const createSettingsControllerStatusRuntime = (context: SettingsControlle
         normalizedMusicBrainzRequestRateMs,
         refreshForceReloadStatus,
         refreshLastFmSessionFetchButton,
+        refreshLocalLibraryFilesDatabaseControls,
         refreshListenBrainzRateControls,
         refreshMusicBrainzRateControls,
         refreshMusicBrainzTagWorkerControls,

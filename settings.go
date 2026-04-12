@@ -60,6 +60,8 @@ type CustomSendToAction struct {
 type AppSettings struct {
 	LibraryFolders                         []AppLibraryFolder       `json:"libraryFolders,omitempty"`
 	LibraryPath                            string                   `json:"libraryPath,omitempty"`
+	LocalLibraryFilesDatabaseEnabled       *bool                    `json:"localLibraryFilesDatabaseEnabled,omitempty"`
+	LocalLibraryFilesDatabaseLoadOnStartup *bool                    `json:"localLibraryFilesDatabaseLoadOnStartup,omitempty"`
 	FFmpegPath                             string                   `json:"ffmpegPath,omitempty"`
 	ListenBrainzUserToken                  string                   `json:"listenBrainzUserToken"`
 	LastFmAPIKey                           string                   `json:"lastFmApiKey"`
@@ -691,6 +693,14 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	lastFmSessionKey := strings.TrimSpace(settings.LastFmSessionKey)
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
 	libraryFolders := normalizeLibraryFolders(settings.LibraryFolders, settings.LibraryPath, settings.ReleaseDepth)
+	localLibraryFilesDatabaseEnabled := true
+	if settings.LocalLibraryFilesDatabaseEnabled != nil {
+		localLibraryFilesDatabaseEnabled = *settings.LocalLibraryFilesDatabaseEnabled
+	}
+	localLibraryFilesDatabaseLoadOnStartup := true
+	if settings.LocalLibraryFilesDatabaseLoadOnStartup != nil {
+		localLibraryFilesDatabaseLoadOnStartup = *settings.LocalLibraryFilesDatabaseLoadOnStartup
+	}
 	coverArtPriority := normalizeCoverArtPriority(settings.CoverArtPriority)
 	preferMusicBrainzMetadata := settings.PreferMusicBrainzMetadata
 	musicBrainzTagStaleDays := normalizeMusicBrainzTagStaleDays(settings.MusicBrainzTagStaleDays)
@@ -742,6 +752,8 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	return AppSettings{
 		LibraryFolders:                         libraryFolders,
 		LibraryPath:                            legacyLibraryPath,
+		LocalLibraryFilesDatabaseEnabled:       boolPointer(localLibraryFilesDatabaseEnabled),
+		LocalLibraryFilesDatabaseLoadOnStartup: boolPointer(localLibraryFilesDatabaseLoadOnStartup),
 		FFmpegPath:                             normalizeFFmpegPath(settings.FFmpegPath),
 		ListenBrainzUserToken:                  token,
 		LastFmAPIKey:                           lastFmAPIKey,
@@ -859,6 +871,9 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	settingsState.settings = normalized
 	a.audioBackend().SetFFmpegPath(normalized.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(normalized.Audio)
+	if normalized.LocalLibraryFilesDatabaseEnabled != nil && !*normalized.LocalLibraryFilesDatabaseEnabled {
+		a.stopLibraryFilesDatabaseWorker()
+	}
 	a.notifyMusicBrainzTagWorker()
 	a.refreshSystemTrayForSettings()
 	return normalized, nil

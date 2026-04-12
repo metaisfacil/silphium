@@ -31,6 +31,8 @@ vi.mock('./utils/settings-normalization', () => ({
 const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     libraryFolders: [{ path: '/music', label: 'Library', releaseDepth: 2 }],
     libraryPath: '/music',
+    localLibraryFilesDatabaseEnabled: true,
+    localLibraryFilesDatabaseLoadOnStartup: true,
     ffmpegPath: '/tools/ffmpeg',
     listenBrainzUserToken: 'lb-token',
     lastFmApiKey: 'lastfm-key',

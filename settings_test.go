@@ -263,11 +263,43 @@ func TestNormalizeListenBrainzRequestRateMs(t *testing.T) {
 
 func TestNormalizeAppSettingsDefaultsLissajousEnabledToTrue(t *testing.T) {
 	settings := normalizeAppSettings(AppSettings{})
+	if settings.LocalLibraryFilesDatabaseEnabled == nil {
+		t.Fatal("LocalLibraryFilesDatabaseEnabled should be populated")
+	}
+	if !*settings.LocalLibraryFilesDatabaseEnabled {
+		t.Fatal("LocalLibraryFilesDatabaseEnabled should default to true")
+	}
+	if settings.LocalLibraryFilesDatabaseLoadOnStartup == nil {
+		t.Fatal("LocalLibraryFilesDatabaseLoadOnStartup should be populated")
+	}
+	if !*settings.LocalLibraryFilesDatabaseLoadOnStartup {
+		t.Fatal("LocalLibraryFilesDatabaseLoadOnStartup should default to true")
+	}
 	if settings.LissajousEnabled == nil {
 		t.Fatal("LissajousEnabled should be populated")
 	}
 	if !*settings.LissajousEnabled {
 		t.Fatal("LissajousEnabled should default to true")
+	}
+}
+
+func TestNormalizeAppSettingsPreservesDisabledLocalLibraryDatabase(t *testing.T) {
+	disabled := false
+	settings := normalizeAppSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled:       &disabled,
+		LocalLibraryFilesDatabaseLoadOnStartup: &disabled,
+	})
+	if settings.LocalLibraryFilesDatabaseEnabled == nil {
+		t.Fatal("LocalLibraryFilesDatabaseEnabled should be populated")
+	}
+	if *settings.LocalLibraryFilesDatabaseEnabled {
+		t.Fatal("LocalLibraryFilesDatabaseEnabled should remain false when explicitly disabled")
+	}
+	if settings.LocalLibraryFilesDatabaseLoadOnStartup == nil {
+		t.Fatal("LocalLibraryFilesDatabaseLoadOnStartup should be populated")
+	}
+	if *settings.LocalLibraryFilesDatabaseLoadOnStartup {
+		t.Fatal("LocalLibraryFilesDatabaseLoadOnStartup should remain false when explicitly disabled")
 	}
 }
 

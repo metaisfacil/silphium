@@ -39,6 +39,8 @@ export const defaultCustomSendToActions: CustomSendToAction[] = [];
 export const defaultAppSettings: AppSettings = {
     libraryFolders: [],
     libraryPath: '',
+    localLibraryFilesDatabaseEnabled: true,
+    localLibraryFilesDatabaseLoadOnStartup: true,
     ffmpegPath: '',
     listenBrainzUserToken: '',
     lastFmApiKey: '',
@@ -212,6 +214,8 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
     return {
         libraryFolders,
         libraryPath: libraryFolders[0]?.path || '',
+        localLibraryFilesDatabaseEnabled: settings.localLibraryFilesDatabaseEnabled !== false,
+        localLibraryFilesDatabaseLoadOnStartup: settings.localLibraryFilesDatabaseLoadOnStartup !== false,
         ffmpegPath: (settings.ffmpegPath || '').trim(),
         listenBrainzUserToken: settings.listenBrainzUserToken || '',
         lastFmApiKey: (settings.lastFmApiKey || '').trim(),

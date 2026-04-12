@@ -52,6 +52,7 @@ func TestScanLibraryFoldersDeferredLoadsFromDatabaseBeforeFilesystemRefresh(t *t
 	app := NewApp()
 	app.settingsPath = filepath.Join(t.TempDir(), "settings.json")
 	app.settingsLoaded = true
+	app.settings = normalizeAppSettings(AppSettings{})
 	t.Cleanup(func() {
 		app.stopLibraryFilesDatabaseWorker()
 	})
@@ -90,6 +91,50 @@ func TestScanLibraryFoldersDeferredLoadsFromDatabaseBeforeFilesystemRefresh(t *t
 	}
 	if got := app.ResolveLibraryFolderForPath(fixture.noteOne); got != "Library/Artist One/Album One" {
 		t.Fatalf("ResolveLibraryFolderForPath(database) = %q, want %q", got, "Library/Artist One/Album One")
+	}
+
+	app.libraryScanGeneration.Add(1)
+}
+
+func TestScanLibraryFoldersDeferredSkipsDatabaseWhenStartupLoadDisabled(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	app.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	app.settingsLoaded = true
+	disabled := false
+	app.settings = normalizeAppSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled:       boolPointer(true),
+		LocalLibraryFilesDatabaseLoadOnStartup: &disabled,
+	})
+	t.Cleanup(func() {
+		app.stopLibraryFilesDatabaseWorker()
+	})
+
+	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
+	snapshot := libraryFilesDatabaseSnapshot{
+		Roots:        roots,
+		TotalEntries: 6,
+		TrackFiles:   []LibraryIndexedFile{{Name: "01 Intro.flac", Path: fixture.trackOne, RelativePath: "Library/Artist One/Album One/01 Intro.flac", FolderPath: "Library/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library"}},
+		TextFiles:    []LibraryIndexedFile{{Name: "notes.txt", Path: fixture.noteOne, RelativePath: "Library/Artist One/Album One/notes.txt", FolderPath: "Library/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library"}},
+		ImageFiles: []LibraryIndexedFile{
+			{Name: "cover.jpg", Path: fixture.coverOne, RelativePath: "Library/Artist One/Album One/cover.jpg", FolderPath: "Library/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library"},
+			{Name: "folder.jpg", Path: fixture.folderCoverOne, RelativePath: "Library/Artist One/Album One/folder.jpg", FolderPath: "Library/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library"},
+		},
+	}
+
+	if err := writeLibraryFilesDatabaseSnapshotToSQLite(app.libraryFilesDatabasePath(), snapshot); err != nil {
+		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite() error = %v", err)
+	}
+	if err := os.Remove(fixture.trackOne); err != nil {
+		t.Fatalf("Remove(%q) error = %v", fixture.trackOne, err)
+	}
+
+	result := app.scanLibraryFoldersDeferred([]AppLibraryFolder{{Path: fixture.rootOne, Label: "Library", ReleaseDepth: 0}}, false)
+	if result.TrackCount != 0 || result.TextFileCount != 1 || result.ImageFileCount != 2 {
+		t.Fatalf("scanLibraryFoldersDeferred(filesystem) = %#v, want refreshed filesystem counts", result)
+	}
+	if got := app.GetLibraryFolderTrackCount("Library/Artist One/Album One"); got != 0 {
+		t.Fatalf("GetLibraryFolderTrackCount(filesystem) = %d, want 0", got)
 	}
 
 	app.libraryScanGeneration.Add(1)

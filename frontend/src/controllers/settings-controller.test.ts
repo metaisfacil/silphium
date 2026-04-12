@@ -37,6 +37,8 @@ const createMusicBrainzTagWorkerProgress = (): MusicBrainzTagWorkerProgress => (
 
 const createSettingsViewValues = (): SettingsViewValues => ({
     libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
+    localLibraryFilesDatabaseEnabled: true,
+    localLibraryFilesDatabaseLoadOnStartup: true,
     ffmpegPath: '',
     listenBrainzUserToken: '',
     lastFmApiKey: '',
@@ -219,6 +221,8 @@ describe('createSettingsController', () => {
         expect(save).toHaveBeenCalledTimes(1);
         expect(save).toHaveBeenCalledWith(expect.objectContaining({
             libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
+            localLibraryFilesDatabaseEnabled: true,
+            localLibraryFilesDatabaseLoadOnStartup: true,
             ffmpegPath: 'D:/tools/ffmpeg.exe',
             scrobbleFilterMode: 'blacklist',
             scrobbleRules: [{ field: 'path', operator: 'starts_with', value: '/music/private' }],
@@ -369,6 +373,37 @@ describe('createSettingsController', () => {
         expect(save).toHaveBeenCalledWith(expect.objectContaining({
             musicBrainzTagStaleDays: 0,
             musicBrainzTagRequestStaggeringEnabled: true,
+        }));
+    });
+
+    it('focuses the library snapshot controls when opened on the library tab', () => {
+        const { controller, elements } = mountSettingsController();
+
+        controller.open('library');
+
+        expect(elements.settingsTabLibrary.classList.contains('is-active')).toBe(true);
+        expect(elements.settingsPanelLibrary.hidden).toBe(false);
+        expect(document.activeElement).toBe(elements.settingsLocalLibraryFilesDatabaseEnabled);
+    });
+
+    it('disables startup snapshot loading when the local library database is disabled', async () => {
+        const { controller, elements, save } = mountSettingsController();
+
+        controller.open('library');
+
+        expect(elements.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled).toBe(false);
+
+        elements.settingsLocalLibraryFilesDatabaseEnabled.checked = false;
+        elements.settingsLocalLibraryFilesDatabaseEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+
+        expect(elements.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled).toBe(true);
+
+        elements.settingsSave.click();
+        await flushPromises();
+
+        expect(save).toHaveBeenCalledWith(expect.objectContaining({
+            localLibraryFilesDatabaseEnabled: false,
+            localLibraryFilesDatabaseLoadOnStartup: true,
         }));
     });
 

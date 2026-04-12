@@ -146,6 +146,8 @@ describe('settings normalization', () => {
             replayGainEnabled: true,
         });
         expect(normalized.preferMusicBrainzMetadata).toBe(true);
+        expect(normalized.localLibraryFilesDatabaseEnabled).toBe(true);
+        expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(true);
         expect(normalized.musicBrainzTagDatabaseEnabled).toBe(true);
         expect(normalized.highlightMusicBrainzTaggedAlbumFolders).toBe(true);
         expect(normalized.musicBrainzTagStaleDays).toBe(maxMusicBrainzTagStaleDays);
@@ -232,8 +234,10 @@ describe('settings normalization', () => {
         });
 
         expect(normalized.favoritePlaylists).toEqual([]);
+        expect(normalized.localLibraryFilesDatabaseEnabled).toBe(true);
+        expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(true);
         expect(normalized.lissajousEnabled).toBe(true);
-    expect(normalized.lissajousScale).toBe(defaultLissajousScale);
+        expect(normalized.lissajousScale).toBe(defaultLissajousScale);
         expect(normalized.visualizerMode).toBe('lissajous');
         expect(normalized.equalizerPosition).toBe('bottom');
         expect(normalized.uiDitheringEnabled).toBe(true);
@@ -250,8 +254,20 @@ describe('settings normalization', () => {
         expect(normalized.musicBrainzRequestRateMs).toBe(0);
         expect(normalized.listenBrainzRequestRateMs).toBe(0);
         expect(normalized.audio).toEqual(defaultAppSettings.audio);
+        expect(normalized.localLibraryFilesDatabaseEnabled).toBe(true);
+        expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(true);
         expect(normalized.musicBrainzTagStaleDays).toBe(defaultMusicBrainzTagStaleDays);
         expect(normalized.customSendToActions).toEqual([]);
         expect(normalized.visualizerMode).toBe(defaultAppSettings.visualizerMode);
+    });
+
+    it('preserves disabled local library database settings', () => {
+        const normalized = normalizeAppSettings({
+            localLibraryFilesDatabaseEnabled: false,
+            localLibraryFilesDatabaseLoadOnStartup: false,
+        });
+
+        expect(normalized.localLibraryFilesDatabaseEnabled).toBe(false);
+        expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(false);
     });
 });

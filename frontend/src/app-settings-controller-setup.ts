@@ -69,6 +69,8 @@ export interface AppSettingsControllerSetupContext {
 export const setupSettingsController = (context: AppSettingsControllerSetupContext): SettingsController => {
     const saveNormalizedSettings = async (values: {
         libraryFolders: AppLibraryFolder[];
+        localLibraryFilesDatabaseEnabled: boolean;
+        localLibraryFilesDatabaseLoadOnStartup: boolean;
         ffmpegPath: string;
         listenBrainzUserToken: string;
         lastFmApiKey: string;
@@ -111,6 +113,8 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         const savedSettings = await context.saveSettings({
             libraryFolders: normalizedLibraryFolders,
             libraryPath: primaryLibraryFolder?.path || '',
+            localLibraryFilesDatabaseEnabled: values.localLibraryFilesDatabaseEnabled,
+            localLibraryFilesDatabaseLoadOnStartup: values.localLibraryFilesDatabaseLoadOnStartup,
             ffmpegPath: values.ffmpegPath,
             listenBrainzUserToken: values.listenBrainzUserToken,
             lastFmApiKey: values.lastFmApiKey,
@@ -191,6 +195,8 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         isLinux: context.isLinuxRuntime,
         getValues: () => ({
             libraryFolders: context.currentSettings.libraryFolders,
+            localLibraryFilesDatabaseEnabled: context.currentSettings.localLibraryFilesDatabaseEnabled,
+            localLibraryFilesDatabaseLoadOnStartup: context.currentSettings.localLibraryFilesDatabaseLoadOnStartup,
             ffmpegPath: context.currentSettings.ffmpegPath,
             listenBrainzUserToken: context.currentSettings.listenBrainzUserToken,
             lastFmApiKey: context.currentSettings.lastFmApiKey,

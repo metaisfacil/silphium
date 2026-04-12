@@ -73,6 +73,28 @@ func (snapshot libraryFilesDatabaseSnapshot) scanResult() LibraryScanResult {
 	}
 }
 
+func (a *App) localLibraryFilesDatabaseEnabled() bool {
+	a.ensureSettingsLoaded()
+	if a.settingsState().settings.LocalLibraryFilesDatabaseEnabled == nil {
+		return true
+	}
+
+	return *a.settingsState().settings.LocalLibraryFilesDatabaseEnabled
+}
+
+func (a *App) localLibraryFilesDatabaseLoadOnStartupEnabled() bool {
+	if !a.localLibraryFilesDatabaseEnabled() {
+		return false
+	}
+
+	a.ensureSettingsLoaded()
+	if a.settingsState().settings.LocalLibraryFilesDatabaseLoadOnStartup == nil {
+		return true
+	}
+
+	return *a.settingsState().settings.LocalLibraryFilesDatabaseLoadOnStartup
+}
+
 func (a *App) libraryFilesDatabasePath() string {
 	settingsPath := a.ensureSettingsPath()
 	return filepath.Join(filepath.Dir(settingsPath), libraryFilesDatabaseFileName)
@@ -132,6 +154,10 @@ func (a *App) ensureLibraryFilesDatabaseWorker() chan struct{} {
 }
 
 func (a *App) notifyLibraryFilesDatabaseWorker() {
+	if !a.localLibraryFilesDatabaseEnabled() {
+		return
+	}
+
 	wakeCh := a.ensureLibraryFilesDatabaseWorker()
 	select {
 	case wakeCh <- struct{}{}:

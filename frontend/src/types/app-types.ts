@@ -329,6 +329,8 @@ export type AppLibraryFolder = {
 export type AppSettings = {
     libraryFolders: AppLibraryFolder[];
     libraryPath: string;
+    localLibraryFilesDatabaseEnabled: boolean;
+    localLibraryFilesDatabaseLoadOnStartup: boolean;
     ffmpegPath: string;
     listenBrainzUserToken: string;
     lastFmApiKey: string;

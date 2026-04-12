@@ -91,6 +91,8 @@ export namespace main {
 	export class AppSettings {
 	    libraryFolders?: AppLibraryFolder[];
 	    libraryPath?: string;
+	    localLibraryFilesDatabaseEnabled?: boolean;
+	    localLibraryFilesDatabaseLoadOnStartup?: boolean;
 	    ffmpegPath?: string;
 	    listenBrainzUserToken: string;
 	    lastFmApiKey: string;
@@ -131,6 +133,8 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.libraryFolders = this.convertValues(source["libraryFolders"], AppLibraryFolder);
 	        this.libraryPath = source["libraryPath"];
+	        this.localLibraryFilesDatabaseEnabled = source["localLibraryFilesDatabaseEnabled"];
+	        this.localLibraryFilesDatabaseLoadOnStartup = source["localLibraryFilesDatabaseLoadOnStartup"];
 	        this.ffmpegPath = source["ffmpegPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	        this.lastFmApiKey = source["lastFmApiKey"];

@@ -6,6 +6,7 @@ export type SettingsModalElements = {
     settingsTabsScrollLeft: HTMLButtonElement;
     settingsTabsScrollRight: HTMLButtonElement;
     settingsTabGeneral: HTMLButtonElement;
+    settingsTabLibrary: HTMLButtonElement;
     settingsTabNetwork: HTMLButtonElement;
     settingsTabDatabase: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
@@ -14,6 +15,7 @@ export type SettingsModalElements = {
     settingsTabUi: HTMLButtonElement;
     settingsTabActions: HTMLButtonElement;
     settingsPanelGeneral: HTMLDivElement;
+    settingsPanelLibrary: HTMLDivElement;
     settingsPanelNetwork: HTMLDivElement;
     settingsPanelDatabase: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
@@ -70,6 +72,8 @@ export type SettingsModalElements = {
     settingsSendToActionCancel: HTMLButtonElement;
     settingsSendToActionConfirm: HTMLButtonElement;
     settingsFFmpegPath: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseEnabled: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseLoadOnStartup: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
     settingsLastFmApiKey: HTMLInputElement;
     settingsLastFmApiSecret: HTMLInputElement;
@@ -178,11 +182,12 @@ export const renderSettingsModal = (): string => `
                     <button id="settings-tabs-scroll-left" class="settings-tabs-scroll" type="button" aria-label="Scroll settings tabs left" title="Scroll tabs left">&#x2039;</button>
                     <div id="settings-tabs" class="settings-tabs" role="tablist" aria-label="Settings sections">
                         <button id="settings-tab-general" class="settings-tab is-active" type="button" role="tab" aria-controls="settings-panel-general" aria-selected="true">General</button>
+                        <button id="settings-tab-library" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-library" aria-selected="false">Database</button>
                         <button id="settings-tab-ui" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-ui" aria-selected="false">UI</button>
                         <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
                         <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
                         <button id="settings-tab-scrobbling" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-scrobbling" aria-selected="false">Scrobbling</button>
-                        <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Database</button>
+                        <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Metadata</button>
                         <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
                         <button id="settings-tab-actions" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-actions" aria-selected="false">Actions</button>
                     </div>
@@ -206,6 +211,14 @@ export const renderSettingsModal = (): string => `
                     </div>
                     <div id="settings-minimize-to-tray-field" class="settings-field settings-toggle-field">
                         ${renderSettingsCheckboxLabel('settings-minimize-to-tray-on-close', 'Minimize to system tray', 'Disabled by default. When enabled, closing the window hides Silphium to the system tray instead of quitting.')}
+                    </div>
+                </div>
+                <div id="settings-panel-library" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-library" hidden>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-local-library-files-database-enabled', 'Enable local library snapshot database', 'Stores a local snapshot of indexed library files so Silphium can reopen large libraries faster after a restart.')}
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-local-library-files-database-load-on-startup', 'Load from local snapshot on startup', 'Restores the last saved local library snapshot immediately on startup, then refreshes it from disk in the background. Disable this to keep writing the snapshot without using it during startup.')}
                     </div>
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
@@ -530,6 +543,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsTabsScrollLeft: root.querySelector('#settings-tabs-scroll-left') as HTMLButtonElement,
     settingsTabsScrollRight: root.querySelector('#settings-tabs-scroll-right') as HTMLButtonElement,
     settingsTabGeneral: root.querySelector('#settings-tab-general') as HTMLButtonElement,
+    settingsTabLibrary: root.querySelector('#settings-tab-library') as HTMLButtonElement,
     settingsTabNetwork: root.querySelector('#settings-tab-network') as HTMLButtonElement,
     settingsTabDatabase: root.querySelector('#settings-tab-database') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
@@ -538,6 +552,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsTabUi: root.querySelector('#settings-tab-ui') as HTMLButtonElement,
     settingsTabActions: root.querySelector('#settings-tab-actions') as HTMLButtonElement,
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
+    settingsPanelLibrary: root.querySelector('#settings-panel-library') as HTMLDivElement,
     settingsPanelNetwork: root.querySelector('#settings-panel-network') as HTMLDivElement,
     settingsPanelDatabase: root.querySelector('#settings-panel-database') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
@@ -594,6 +609,8 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsSendToActionCancel: root.querySelector('#settings-send-to-action-cancel') as HTMLButtonElement,
     settingsSendToActionConfirm: root.querySelector('#settings-send-to-action-confirm') as HTMLButtonElement,
     settingsFFmpegPath: root.querySelector('#settings-ffmpeg-path') as HTMLInputElement,
+    settingsLocalLibraryFilesDatabaseEnabled: root.querySelector('#settings-local-library-files-database-enabled') as HTMLInputElement,
+    settingsLocalLibraryFilesDatabaseLoadOnStartup: root.querySelector('#settings-local-library-files-database-load-on-startup') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsLastFmApiKey: root.querySelector('#settings-lastfm-api-key') as HTMLInputElement,
     settingsLastFmApiSecret: root.querySelector('#settings-lastfm-api-secret') as HTMLInputElement,

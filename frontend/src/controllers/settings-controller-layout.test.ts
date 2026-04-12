@@ -25,6 +25,7 @@ const createRuntime = () => {
 
     const settingsTabButtons: Record<SettingsPrimaryTab, HTMLButtonElement> = {
         general: createTabButton(),
+        library: createTabButton(),
         network: createTabButton(),
         database: createTabButton(),
         playlists: createTabButton(),
@@ -36,6 +37,7 @@ const createRuntime = () => {
 
     const settingsTabPanels: Record<SettingsPrimaryTab, HTMLDivElement> = {
         general: createPanel(),
+        library: createPanel(),
         network: createPanel(),
         database: createPanel(),
         playlists: createPanel(),

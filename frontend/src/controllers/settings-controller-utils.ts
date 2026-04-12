@@ -283,4 +283,4 @@ export const labelForCoverArtPriority = (source: CoverArtPrioritySource): string
     return 'Separate image file in release folder';
 };
 
-export const resolvePrimaryTab = (tab: 'general' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui' | 'actions' | 'shortcuts'): 'general' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui' | 'actions' => (tab === 'shortcuts' ? 'ui' : tab);
+export const resolvePrimaryTab = (tab: 'general' | 'library' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui' | 'actions' | 'shortcuts'): 'general' | 'library' | 'network' | 'database' | 'playlists' | 'scrobbling' | 'audio' | 'ui' | 'actions' => (tab === 'shortcuts' ? 'ui' : tab);

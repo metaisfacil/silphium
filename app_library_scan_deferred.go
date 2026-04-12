@@ -792,37 +792,39 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 		contentState.indexMu.Unlock()
 	}()
 
-	if snapshot, ok := loadLibraryFilesDatabaseSnapshot(a.libraryFilesDatabasePath(), roots); ok {
-		persistedResult := snapshot.scanResult()
-		if !a.setLibraryIndexFromScan(persistedResult, scanGeneration) {
-			return scanCanceledResponse()
-		}
+	if a.localLibraryFilesDatabaseLoadOnStartupEnabled() {
+		if snapshot, ok := loadLibraryFilesDatabaseSnapshot(a.libraryFilesDatabasePath(), roots); ok {
+			persistedResult := snapshot.scanResult()
+			if !a.setLibraryIndexFromScan(persistedResult, scanGeneration) {
+				return scanCanceledResponse()
+			}
 
-		contentState.indexMu.Lock()
-		if generationState.libraryScanGeneration.Load() != scanGeneration {
+			contentState.indexMu.Lock()
+			if generationState.libraryScanGeneration.Load() != scanGeneration {
+				contentState.indexMu.Unlock()
+				return scanCanceledResponse()
+			}
+			indexState.libraryFolderEntriesCache = nil
+			indexState.libraryWatchDirectoryPaths = nil
 			contentState.indexMu.Unlock()
-			return scanCanceledResponse()
-		}
-		indexState.libraryFolderEntriesCache = nil
-		indexState.libraryWatchDirectoryPaths = nil
-		contentState.indexMu.Unlock()
 
-		a.notifyMusicBrainzTagWorker()
-		if restartWatcher {
-			a.startLibraryWatcherAsync(roots)
-		}
-		a.startLibraryFilesRefreshAsync(roots, scanGeneration)
+			a.notifyMusicBrainzTagWorker()
+			if restartWatcher {
+				a.startLibraryWatcherAsync(roots)
+			}
+			a.startLibraryFilesRefreshAsync(roots, scanGeneration)
 
-		response := compactLibraryScanResult(persistedResult)
-		a.logRescanEvent(
-			"scanLibraryFolders deferred END (database): totalEntries=%d tracks=%d text=%d images=%d took %.2fms",
-			response.TotalEntries,
-			response.TrackCount,
-			response.TextFileCount,
-			response.ImageFileCount,
-			time.Since(scanStartedAt).Seconds()*1000,
-		)
-		return response
+			response := compactLibraryScanResult(persistedResult)
+			a.logRescanEvent(
+				"scanLibraryFolders deferred END (database): totalEntries=%d tracks=%d text=%d images=%d took %.2fms",
+				response.TotalEntries,
+				response.TrackCount,
+				response.TextFileCount,
+				response.ImageFileCount,
+				time.Since(scanStartedAt).Seconds()*1000,
+			)
+			return response
+		}
 	}
 
 	quickBuild, quickErr := buildFilesystemQuickScan(roots, isScanCanceled)
