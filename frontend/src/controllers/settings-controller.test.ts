@@ -39,6 +39,8 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
     localLibraryFilesDatabaseEnabled: true,
     localLibraryFilesDatabaseLoadOnStartup: true,
+    localLibraryFilesDatabaseListenHistoryEnabled: false,
+    localLibraryFilesDatabaseListenHistoryLimit: 0,
     ffmpegPath: '',
     listenBrainzUserToken: '',
     lastFmApiKey: '',
@@ -223,6 +225,8 @@ describe('createSettingsController', () => {
             libraryFolders: [{ path: '/music/main', label: 'Main Library', releaseDepth: 2 }],
             localLibraryFilesDatabaseEnabled: true,
             localLibraryFilesDatabaseLoadOnStartup: true,
+            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryLimit: 0,
             ffmpegPath: 'D:/tools/ffmpeg.exe',
             scrobbleFilterMode: 'blacklist',
             scrobbleRules: [{ field: 'path', operator: 'starts_with', value: '/music/private' }],
@@ -392,11 +396,14 @@ describe('createSettingsController', () => {
         controller.open('library');
 
         expect(elements.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled).toBe(false);
+        expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.disabled).toBe(false);
 
         elements.settingsLocalLibraryFilesDatabaseEnabled.checked = false;
         elements.settingsLocalLibraryFilesDatabaseEnabled.dispatchEvent(new Event('change', { bubbles: true }));
 
         expect(elements.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled).toBe(true);
+        expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.disabled).toBe(true);
+        expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryLimit.disabled).toBe(true);
 
         elements.settingsSave.click();
         await flushPromises();
@@ -404,6 +411,8 @@ describe('createSettingsController', () => {
         expect(save).toHaveBeenCalledWith(expect.objectContaining({
             localLibraryFilesDatabaseEnabled: false,
             localLibraryFilesDatabaseLoadOnStartup: true,
+            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryLimit: 0,
         }));
     });
 

@@ -58,41 +58,43 @@ type CustomSendToAction struct {
 
 // AppSettings stores persisted user configuration shared between frontend and backend.
 type AppSettings struct {
-	LibraryFolders                         []AppLibraryFolder       `json:"libraryFolders,omitempty"`
-	LibraryPath                            string                   `json:"libraryPath,omitempty"`
-	LocalLibraryFilesDatabaseEnabled       *bool                    `json:"localLibraryFilesDatabaseEnabled,omitempty"`
-	LocalLibraryFilesDatabaseLoadOnStartup *bool                    `json:"localLibraryFilesDatabaseLoadOnStartup,omitempty"`
-	FFmpegPath                             string                   `json:"ffmpegPath,omitempty"`
-	ListenBrainzUserToken                  string                   `json:"listenBrainzUserToken"`
-	LastFmAPIKey                           string                   `json:"lastFmApiKey"`
-	LastFmAPISecret                        string                   `json:"lastFmApiSecret"`
-	LastFmSessionKey                       string                   `json:"lastFmSessionKey"`
-	ScrobbleFilterMode                     string                   `json:"scrobbleFilterMode,omitempty"`
-	ScrobbleRules                          []ScrobbleRule           `json:"scrobbleRules,omitempty"`
-	ScrobbleFolders                        []string                 `json:"scrobbleFolders,omitempty"`
-	MusicBrainzServerURL                   string                   `json:"musicBrainzServerUrl,omitempty"`
-	MusicBrainzRequestRateMs               int                      `json:"musicBrainzRequestRateMs,omitempty"`
-	ListenBrainzServerURL                  string                   `json:"listenBrainzServerUrl,omitempty"`
-	ListenBrainzRequestRateMs              int                      `json:"listenBrainzRequestRateMs,omitempty"`
-	PlaybackOrder                          string                   `json:"playbackOrder"`
-	ReleaseDepth                           int                      `json:"releaseDepth,omitempty"`
-	FavoritePlaylists                      []string                 `json:"favoritePlaylists,omitempty"`
-	CoverArtPriority                       []string                 `json:"coverArtPriority,omitempty"`
-	Audio                                  AudioSettings            `json:"audio,omitempty"`
-	PreferMusicBrainzMetadata              bool                     `json:"preferMusicBrainzMetadata"`
-	MusicBrainzTagDatabaseEnabled          bool                     `json:"musicBrainzTagDatabaseEnabled,omitempty"`
-	HighlightMusicBrainzTaggedAlbumFolders bool                     `json:"highlightMusicBrainzTaggedAlbumFolders,omitempty"`
-	MusicBrainzTagStaleDays                *int                     `json:"musicBrainzTagStaleDays,omitempty"`
-	MusicBrainzTagRequestStaggeringEnabled bool                     `json:"musicBrainzTagRequestStaggeringEnabled,omitempty"`
-	MusicBrainzTagWorkerCores              int                      `json:"musicBrainzTagWorkerCores,omitempty"`
-	LissajousEnabled                       *bool                    `json:"lissajousEnabled,omitempty"`
-	LissajousScale                         float64                  `json:"lissajousScale,omitempty"`
-	VisualizerMode                         string                   `json:"visualizerMode,omitempty"`
-	EqualizerPosition                      string                   `json:"equalizerPosition,omitempty"`
-	UIDitheringEnabled                     *bool                    `json:"uiDitheringEnabled,omitempty"`
-	MinimizeToTrayOnClose                  bool                     `json:"minimizeToTrayOnClose,omitempty"`
-	CustomSendToActions                    []CustomSendToAction     `json:"customSendToActions,omitempty"`
-	KeyboardShortcuts                      FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
+	LibraryFolders                                []AppLibraryFolder       `json:"libraryFolders,omitempty"`
+	LibraryPath                                   string                   `json:"libraryPath,omitempty"`
+	LocalLibraryFilesDatabaseEnabled              *bool                    `json:"localLibraryFilesDatabaseEnabled,omitempty"`
+	LocalLibraryFilesDatabaseLoadOnStartup        *bool                    `json:"localLibraryFilesDatabaseLoadOnStartup,omitempty"`
+	LocalLibraryFilesDatabaseListenHistoryEnabled *bool                    `json:"localLibraryFilesDatabaseListenHistoryEnabled,omitempty"`
+	LocalLibraryFilesDatabaseListenHistoryLimit   int                      `json:"localLibraryFilesDatabaseListenHistoryLimit,omitempty"`
+	FFmpegPath                                    string                   `json:"ffmpegPath,omitempty"`
+	ListenBrainzUserToken                         string                   `json:"listenBrainzUserToken"`
+	LastFmAPIKey                                  string                   `json:"lastFmApiKey"`
+	LastFmAPISecret                               string                   `json:"lastFmApiSecret"`
+	LastFmSessionKey                              string                   `json:"lastFmSessionKey"`
+	ScrobbleFilterMode                            string                   `json:"scrobbleFilterMode,omitempty"`
+	ScrobbleRules                                 []ScrobbleRule           `json:"scrobbleRules,omitempty"`
+	ScrobbleFolders                               []string                 `json:"scrobbleFolders,omitempty"`
+	MusicBrainzServerURL                          string                   `json:"musicBrainzServerUrl,omitempty"`
+	MusicBrainzRequestRateMs                      int                      `json:"musicBrainzRequestRateMs,omitempty"`
+	ListenBrainzServerURL                         string                   `json:"listenBrainzServerUrl,omitempty"`
+	ListenBrainzRequestRateMs                     int                      `json:"listenBrainzRequestRateMs,omitempty"`
+	PlaybackOrder                                 string                   `json:"playbackOrder"`
+	ReleaseDepth                                  int                      `json:"releaseDepth,omitempty"`
+	FavoritePlaylists                             []string                 `json:"favoritePlaylists,omitempty"`
+	CoverArtPriority                              []string                 `json:"coverArtPriority,omitempty"`
+	Audio                                         AudioSettings            `json:"audio,omitempty"`
+	PreferMusicBrainzMetadata                     bool                     `json:"preferMusicBrainzMetadata"`
+	MusicBrainzTagDatabaseEnabled                 bool                     `json:"musicBrainzTagDatabaseEnabled,omitempty"`
+	HighlightMusicBrainzTaggedAlbumFolders        bool                     `json:"highlightMusicBrainzTaggedAlbumFolders,omitempty"`
+	MusicBrainzTagStaleDays                       *int                     `json:"musicBrainzTagStaleDays,omitempty"`
+	MusicBrainzTagRequestStaggeringEnabled        bool                     `json:"musicBrainzTagRequestStaggeringEnabled,omitempty"`
+	MusicBrainzTagWorkerCores                     int                      `json:"musicBrainzTagWorkerCores,omitempty"`
+	LissajousEnabled                              *bool                    `json:"lissajousEnabled,omitempty"`
+	LissajousScale                                float64                  `json:"lissajousScale,omitempty"`
+	VisualizerMode                                string                   `json:"visualizerMode,omitempty"`
+	EqualizerPosition                             string                   `json:"equalizerPosition,omitempty"`
+	UIDitheringEnabled                            *bool                    `json:"uiDitheringEnabled,omitempty"`
+	MinimizeToTrayOnClose                         bool                     `json:"minimizeToTrayOnClose,omitempty"`
+	CustomSendToActions                           []CustomSendToAction     `json:"customSendToActions,omitempty"`
+	KeyboardShortcuts                             FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
 
 const defaultPlaybackOrder = "ordered-library"
@@ -701,6 +703,14 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	if settings.LocalLibraryFilesDatabaseLoadOnStartup != nil {
 		localLibraryFilesDatabaseLoadOnStartup = *settings.LocalLibraryFilesDatabaseLoadOnStartup
 	}
+	localLibraryFilesDatabaseListenHistoryEnabled := false
+	if settings.LocalLibraryFilesDatabaseListenHistoryEnabled != nil {
+		localLibraryFilesDatabaseListenHistoryEnabled = *settings.LocalLibraryFilesDatabaseListenHistoryEnabled
+	}
+	localLibraryFilesDatabaseListenHistoryLimit := settings.LocalLibraryFilesDatabaseListenHistoryLimit
+	if localLibraryFilesDatabaseListenHistoryLimit < 0 {
+		localLibraryFilesDatabaseListenHistoryLimit = 0
+	}
 	coverArtPriority := normalizeCoverArtPriority(settings.CoverArtPriority)
 	preferMusicBrainzMetadata := settings.PreferMusicBrainzMetadata
 	musicBrainzTagStaleDays := normalizeMusicBrainzTagStaleDays(settings.MusicBrainzTagStaleDays)
@@ -750,10 +760,12 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	customSendToActions := normalizeCustomSendToActions(settings.CustomSendToActions)
 
 	return AppSettings{
-		LibraryFolders:                         libraryFolders,
-		LibraryPath:                            legacyLibraryPath,
-		LocalLibraryFilesDatabaseEnabled:       boolPointer(localLibraryFilesDatabaseEnabled),
-		LocalLibraryFilesDatabaseLoadOnStartup: boolPointer(localLibraryFilesDatabaseLoadOnStartup),
+		LibraryFolders:                                libraryFolders,
+		LibraryPath:                                   legacyLibraryPath,
+		LocalLibraryFilesDatabaseEnabled:              boolPointer(localLibraryFilesDatabaseEnabled),
+		LocalLibraryFilesDatabaseLoadOnStartup:        boolPointer(localLibraryFilesDatabaseLoadOnStartup),
+		LocalLibraryFilesDatabaseListenHistoryEnabled: boolPointer(localLibraryFilesDatabaseListenHistoryEnabled),
+		LocalLibraryFilesDatabaseListenHistoryLimit:   localLibraryFilesDatabaseListenHistoryLimit,
 		FFmpegPath:                             normalizeFFmpegPath(settings.FFmpegPath),
 		ListenBrainzUserToken:                  token,
 		LastFmAPIKey:                           lastFmAPIKey,
@@ -874,6 +886,7 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	if normalized.LocalLibraryFilesDatabaseEnabled != nil && !*normalized.LocalLibraryFilesDatabaseEnabled {
 		a.stopLibraryFilesDatabaseWorker()
 	}
+	a.trimLocalLibraryListenHistory()
 	a.notifyMusicBrainzTagWorker()
 	a.refreshSystemTrayForSettings()
 	return normalized, nil

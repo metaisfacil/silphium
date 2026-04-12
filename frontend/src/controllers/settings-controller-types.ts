@@ -22,6 +22,8 @@ export type SettingsFormValues = {
     libraryFolders: AppLibraryFolder[];
     localLibraryFilesDatabaseEnabled: boolean;
     localLibraryFilesDatabaseLoadOnStartup: boolean;
+    localLibraryFilesDatabaseListenHistoryEnabled: boolean;
+    localLibraryFilesDatabaseListenHistoryLimit: number;
     ffmpegPath: string;
     listenBrainzUserToken: string;
     lastFmApiKey: string;

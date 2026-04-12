@@ -93,6 +93,8 @@ export namespace main {
 	    libraryPath?: string;
 	    localLibraryFilesDatabaseEnabled?: boolean;
 	    localLibraryFilesDatabaseLoadOnStartup?: boolean;
+	    localLibraryFilesDatabaseListenHistoryEnabled?: boolean;
+	    localLibraryFilesDatabaseListenHistoryLimit?: number;
 	    ffmpegPath?: string;
 	    listenBrainzUserToken: string;
 	    lastFmApiKey: string;
@@ -135,6 +137,8 @@ export namespace main {
 	        this.libraryPath = source["libraryPath"];
 	        this.localLibraryFilesDatabaseEnabled = source["localLibraryFilesDatabaseEnabled"];
 	        this.localLibraryFilesDatabaseLoadOnStartup = source["localLibraryFilesDatabaseLoadOnStartup"];
+	        this.localLibraryFilesDatabaseListenHistoryEnabled = source["localLibraryFilesDatabaseListenHistoryEnabled"];
+	        this.localLibraryFilesDatabaseListenHistoryLimit = source["localLibraryFilesDatabaseListenHistoryLimit"];
 	        this.ffmpegPath = source["ffmpegPath"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	        this.lastFmApiKey = source["lastFmApiKey"];
@@ -384,6 +388,9 @@ export namespace main {
 	    folderPath: string;
 	    rootPath: string;
 	    rootName: string;
+	    cachedTrackTitle?: string;
+	    cachedArtistName?: string;
+	    listenedAt?: number;
 	    modifiedAtMs?: number;
 	
 	    static createFrom(source: any = {}) {
@@ -398,6 +405,9 @@ export namespace main {
 	        this.folderPath = source["folderPath"];
 	        this.rootPath = source["rootPath"];
 	        this.rootName = source["rootName"];
+	        this.cachedTrackTitle = source["cachedTrackTitle"];
+	        this.cachedArtistName = source["cachedArtistName"];
+	        this.listenedAt = source["listenedAt"];
 	        this.modifiedAtMs = source["modifiedAtMs"];
 	    }
 	}
@@ -997,6 +1007,22 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class PlaylistTrackMetadataCacheEntry {
+	    trackPath: string;
+	    trackName: string;
+	    artistName: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlaylistTrackMetadataCacheEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.trackPath = source["trackPath"];
+	        this.trackName = source["trackName"];
+	        this.artistName = source["artistName"];
+	    }
 	}
 	
 	export class TrackBlob {

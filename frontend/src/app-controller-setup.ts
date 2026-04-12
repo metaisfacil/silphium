@@ -133,12 +133,22 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         },
         selectPlaylistFile: context.selectPlaylistFile,
         selectPlaylistSaveFile: context.selectPlaylistSaveFile,
+        loadListenHistoryData: async () => {
+            return await context.loadListenHistoryData();
+        },
         loadPlaylistData: async (playlistPath: string) => {
             return await context.loadPlaylistData(playlistPath);
+        },
+        savePlaylistTrackMetadataCache: async (entries) => {
+            return await context.savePlaylistTrackMetadataCache(entries);
         },
         savePlaylistData: (playlistPath: string, trackPaths: string[]) => context.savePlaylistData(playlistPath, trackPaths),
         appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => context.appendTracksToPlaylistData(playlistPath, trackPaths),
         getFavoritePlaylists: () => context.currentSettings.favoritePlaylists,
+        hasListenHistoryPlaylist: () => (
+            context.currentSettings.localLibraryFilesDatabaseEnabled
+            && context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled
+        ),
         onTrackChosen: async (index: number, selectionContext: PlaylistTrackChosenContext) => {
             const manualTrackSelection = selectionContext.userInitiated && selectionContext.source !== 'queue';
             await context.loadTrack(index, true, undefined, manualTrackSelection);

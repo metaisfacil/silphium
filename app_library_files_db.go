@@ -95,6 +95,29 @@ func (a *App) localLibraryFilesDatabaseLoadOnStartupEnabled() bool {
 	return *a.settingsState().settings.LocalLibraryFilesDatabaseLoadOnStartup
 }
 
+func (a *App) localLibraryFilesDatabaseListenHistoryEnabled() bool {
+	if !a.localLibraryFilesDatabaseEnabled() {
+		return false
+	}
+
+	a.ensureSettingsLoaded()
+	if a.settingsState().settings.LocalLibraryFilesDatabaseListenHistoryEnabled == nil {
+		return false
+	}
+
+	return *a.settingsState().settings.LocalLibraryFilesDatabaseListenHistoryEnabled
+}
+
+func (a *App) localLibraryFilesDatabaseListenHistoryLimit() int {
+	a.ensureSettingsLoaded()
+	limit := a.settingsState().settings.LocalLibraryFilesDatabaseListenHistoryLimit
+	if limit < 0 {
+		return 0
+	}
+
+	return limit
+}
+
 func (a *App) libraryFilesDatabasePath() string {
 	settingsPath := a.ensureSettingsPath()
 	return filepath.Join(filepath.Dir(settingsPath), libraryFilesDatabaseFileName)

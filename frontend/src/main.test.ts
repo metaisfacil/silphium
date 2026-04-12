@@ -227,7 +227,9 @@ vi.mock('./app-runtime-setup', () => ({
 
 vi.mock('./app-playback-order-playlist-runtime', () => ({
     createPlaybackOrderPlaylistRuntime: vi.fn(() => ({
+        loadListenHistoryData: vi.fn(async () => null),
         loadPlaylistData: vi.fn(async () => null),
+        savePlaylistTrackMetadataCache: vi.fn(async () => true),
         savePlaybackOrderSetting: vi.fn(async () => undefined),
         setPlaybackOrderMode: testState.setPlaybackOrderMode,
     })),
@@ -260,6 +262,7 @@ vi.mock('./utils/settings-normalization', () => ({
 }));
 
 vi.mock('../wailsjs/go/main/App', () => ({
+    AddListenHistoryEntry: vi.fn(async () => true),
     AppendTracksToPlaylistFile: vi.fn(async () => true),
     AudioListOutputDevices: vi.fn(async () => []),
     AudioQueueNextTrack: vi.fn(async () => undefined),
@@ -276,6 +279,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
     GetMusicBrainzTagWorkerProgress: vi.fn(async () => testState.musicBrainzProgress),
     GetSettings: vi.fn(async () => testState.normalizedSettings),
     IsLibraryFolderImmediateDescendantsEnumerated: vi.fn(async () => true),
+    LoadListenHistoryPlaylist: vi.fn(async () => ({ name: 'Listen History', trackFiles: [] })),
     LogFrontendMessage: vi.fn(async () => undefined),
     LookupArtistByMBID: vi.fn(async () => ({ found: false })),
     ReadFileBase64: vi.fn(async () => ''),

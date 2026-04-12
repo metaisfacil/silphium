@@ -125,6 +125,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsFFmpegPath,
         settingsLocalLibraryFilesDatabaseEnabled,
         settingsLocalLibraryFilesDatabaseLoadOnStartup,
+        settingsLocalLibraryFilesDatabaseListenHistoryEnabled,
+        settingsLocalLibraryFilesDatabaseListenHistoryLimit,
         settingsListenBrainzToken,
         settingsLastFmApiKey,
         settingsLastFmApiSecret,
@@ -323,6 +325,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsListenBrainzRequestRateMs,
         settingsLocalLibraryFilesDatabaseEnabled,
         settingsLocalLibraryFilesDatabaseLoadOnStartup,
+        settingsLocalLibraryFilesDatabaseListenHistoryEnabled,
+        settingsLocalLibraryFilesDatabaseListenHistoryLimit,
         settingsMusicBrainzTagDatabaseEnabled,
         settingsHighlightMusicBrainzTaggedAlbumFolders,
         settingsMusicBrainzTagStaleDays,
@@ -556,6 +560,8 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         libraryFolders: controllerState.libraryFolders.map((folder) => ({ ...folder })),
         localLibraryFilesDatabaseEnabled: settingsLocalLibraryFilesDatabaseEnabled.checked,
         localLibraryFilesDatabaseLoadOnStartup: settingsLocalLibraryFilesDatabaseLoadOnStartup.checked,
+        localLibraryFilesDatabaseListenHistoryEnabled: settingsLocalLibraryFilesDatabaseListenHistoryEnabled.checked,
+        localLibraryFilesDatabaseListenHistoryLimit: Math.max(0, Number.parseInt(settingsLocalLibraryFilesDatabaseListenHistoryLimit.value.trim(), 10) || 0),
         ffmpegPath: settingsFFmpegPath.value,
         listenBrainzUserToken: settingsListenBrainzToken.value,
         lastFmApiKey: settingsLastFmApiKey.value,
@@ -720,6 +726,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         controllerState.libraryFolders = normalizeLibraryFolders(values.libraryFolders);
         settingsLocalLibraryFilesDatabaseEnabled.checked = values.localLibraryFilesDatabaseEnabled !== false;
         settingsLocalLibraryFilesDatabaseLoadOnStartup.checked = values.localLibraryFilesDatabaseLoadOnStartup !== false;
+        settingsLocalLibraryFilesDatabaseListenHistoryEnabled.checked = values.localLibraryFilesDatabaseListenHistoryEnabled === true;
+        settingsLocalLibraryFilesDatabaseListenHistoryLimit.value = values.localLibraryFilesDatabaseListenHistoryLimit > 0
+            ? String(values.localLibraryFilesDatabaseListenHistoryLimit)
+            : '0';
         settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         settingsLastFmApiKey.value = values.lastFmApiKey || '';

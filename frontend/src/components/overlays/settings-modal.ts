@@ -74,6 +74,8 @@ export type SettingsModalElements = {
     settingsFFmpegPath: HTMLInputElement;
     settingsLocalLibraryFilesDatabaseEnabled: HTMLInputElement;
     settingsLocalLibraryFilesDatabaseLoadOnStartup: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseListenHistoryEnabled: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseListenHistoryLimit: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
     settingsLastFmApiKey: HTMLInputElement;
     settingsLastFmApiSecret: HTMLInputElement;
@@ -219,6 +221,13 @@ export const renderSettingsModal = (): string => `
                     </div>
                     <div class="settings-field settings-toggle-field">
                         ${renderSettingsCheckboxLabel('settings-local-library-files-database-load-on-startup', 'Load from local snapshot on startup', 'Restores the last saved local library snapshot immediately on startup, then refreshes it from disk in the background. Disable this to keep writing the snapshot without using it during startup.')}
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-local-library-files-database-listen-history-enabled', 'Store listen history in the local database', 'Keeps a local history of completed listens in the same SQLite database as the library snapshot and exposes it as a read-only playlist view.')}
+                    </div>
+                    <div class="settings-field">
+                        ${renderSettingsLabel('settings-local-library-files-database-listen-history-limit', 'Stored listen history limit', 'Set 0 to keep all stored listens. Positive values discard the oldest listens once the limit is reached.')}
+                        <input id="settings-local-library-files-database-listen-history-limit" class="settings-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
                     </div>
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
@@ -611,6 +620,8 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsFFmpegPath: root.querySelector('#settings-ffmpeg-path') as HTMLInputElement,
     settingsLocalLibraryFilesDatabaseEnabled: root.querySelector('#settings-local-library-files-database-enabled') as HTMLInputElement,
     settingsLocalLibraryFilesDatabaseLoadOnStartup: root.querySelector('#settings-local-library-files-database-load-on-startup') as HTMLInputElement,
+    settingsLocalLibraryFilesDatabaseListenHistoryEnabled: root.querySelector('#settings-local-library-files-database-listen-history-enabled') as HTMLInputElement,
+    settingsLocalLibraryFilesDatabaseListenHistoryLimit: root.querySelector('#settings-local-library-files-database-listen-history-limit') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsLastFmApiKey: root.querySelector('#settings-lastfm-api-key') as HTMLInputElement,
     settingsLastFmApiSecret: root.querySelector('#settings-lastfm-api-secret') as HTMLInputElement,

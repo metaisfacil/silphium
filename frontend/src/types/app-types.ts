@@ -143,6 +143,9 @@ export type LibraryIndexedFile = {
     folderPath: string;
     rootPath: string;
     rootName: string;
+    cachedTrackTitle?: string;
+    cachedArtistName?: string;
+    listenedAt?: number;
 };
 
 export type LibraryScanResult = {
@@ -331,6 +334,8 @@ export type AppSettings = {
     libraryPath: string;
     localLibraryFilesDatabaseEnabled: boolean;
     localLibraryFilesDatabaseLoadOnStartup: boolean;
+    localLibraryFilesDatabaseListenHistoryEnabled: boolean;
+    localLibraryFilesDatabaseListenHistoryLimit: number;
     ffmpegPath: string;
     listenBrainzUserToken: string;
     lastFmApiKey: string;

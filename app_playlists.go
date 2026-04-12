@@ -8,6 +8,13 @@ import (
 	"unicode"
 )
 
+// PlaylistTrackMetadataCacheEntry stores minimal track labels for playlist reuse.
+type PlaylistTrackMetadataCacheEntry struct {
+	TrackPath  string `json:"trackPath"`
+	TrackName  string `json:"trackName"`
+	ArtistName string `json:"artistName"`
+}
+
 // PlaylistLoadResult contains parsed playlist metadata and indexed tracks.
 type PlaylistLoadResult struct {
 	Name       string               `json:"name"`
@@ -161,6 +168,7 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 	}
 	defer fileHandle.Close()
 
+	trackPaths := make([]string, 0)
 	scanner := bufio.NewScanner(fileHandle)
 	for scanner.Scan() {
 		resolved, ok := resolvePlaylistEntryPath(cleanPath, scanner.Text())
@@ -201,5 +209,36 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 		})
 	}
 
+	for _, trackFile := range result.TrackFiles {
+		trackPaths = append(trackPaths, trackFile.Path)
+	}
+	cacheByPath := loadPlaylistTrackCacheRecordsFromSQLite(a.libraryFilesDatabasePath(), trackPaths)
+	for index := range result.TrackFiles {
+		cacheRecord, ok := cacheByPath[result.TrackFiles[index].Path]
+		if !ok {
+			continue
+		}
+		result.TrackFiles[index].CachedTrackTitle = cacheRecord.TrackName
+		result.TrackFiles[index].CachedArtistName = cacheRecord.ArtistName
+	}
+
 	return result
+}
+
+// SavePlaylistTrackMetadataCache stores resolved title/artist labels for later playlist loads.
+func (a *App) SavePlaylistTrackMetadataCache(entries []PlaylistTrackMetadataCacheEntry) bool {
+	if len(entries) == 0 || !a.localLibraryFilesDatabaseEnabled() {
+		return false
+	}
+
+	records := make([]playlistTrackCacheRecord, 0, len(entries))
+	for _, entry := range entries {
+		records = append(records, playlistTrackCacheRecord(entry))
+	}
+
+	if err := savePlaylistTrackCacheRecordsToSQLite(a.libraryFilesDatabasePath(), records); err != nil {
+		return false
+	}
+
+	return true
 }

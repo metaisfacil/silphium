@@ -52,6 +52,9 @@ const createScope = () => {
             loadedPlaylistTrackIndexes: null,
             loadedPlaylistName: '',
             loadedPlaylistPath: '',
+            loadedPlaylistReadOnly: false,
+            loadedPlaylistHistoryItems: null,
+            loadedPlaylistCachedItems: null,
             editableQueueTrackIndexes: null,
             selectedSource: 'queue',
             selectedFavoriteIndex: null,
@@ -130,7 +133,9 @@ const createScope = () => {
         baseSequenceIndexes: vi.fn(() => [0]),
         ensureTrackTagsResolvedBatch: vi.fn(async () => undefined),
         selectPlaylistSaveFile: vi.fn(async () => '/playlists/out.m3u'),
+        loadListenHistoryData: vi.fn(async () => ({ name: 'Listen History', trackIndexes: [0] })),
         loadPlaylistData: vi.fn(async () => []),
+        savePlaylistTrackMetadataCache: vi.fn(async () => true),
         savePlaylistData: vi.fn(() => undefined),
         appendTracksToPlaylistData: vi.fn(() => undefined),
         loadTrack: vi.fn(async () => undefined),
@@ -347,6 +352,7 @@ describe('app-bootstrap-setup wrappers', () => {
         expect(context.getPlaybackOrderLabel()).toBe('Ordered library');
         expect(context.getBaseSequence()).toEqual([0]);
         await context.ensureTrackTagsResolvedBatch([0]);
+        await context.loadListenHistoryData();
         await context.loadPlaylistData('/playlists/favorites.m3u');
         context.savePlaylistData('/playlists/favorites.m3u', ['/music/track-1.flac']);
         context.appendTracksToPlaylistData('/playlists/favorites.m3u', ['/music/track-1.flac']);

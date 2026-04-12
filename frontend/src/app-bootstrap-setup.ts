@@ -1,6 +1,7 @@
 import { setupAppControllers } from './app-controller-setup';
 import { setupAppEventBindings } from './app-event-bindings';
 import type { AppRuntimeScope } from './app-runtime-scope';
+import type { PlaylistTrackMetadataCacheEntry } from './controllers/playlist-controller';
 import type { AppSettings, AudioPlaybackState, MusicBrainzTagWorkerProgress, TextLibraryFile, Track } from './types/app-types';
 
 type RuntimeScope<K extends keyof AppRuntimeScope> = Pick<AppRuntimeScope, K>;
@@ -61,7 +62,9 @@ type AppControllerSetupScope = RuntimeScope<
     | 'baseSequenceIndexes'
     | 'ensureTrackTagsResolvedBatch'
     | 'selectPlaylistSaveFile'
+    | 'loadListenHistoryData'
     | 'loadPlaylistData'
+    | 'savePlaylistTrackMetadataCache'
     | 'savePlaylistData'
     | 'appendTracksToPlaylistData'
     | 'loadTrack'
@@ -390,7 +393,9 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
         await scope.ensureTrackTagsResolvedBatch(indexes);
     },
     selectPlaylistSaveFile: scope.selectPlaylistSaveFile,
+    loadListenHistoryData: async () => await scope.loadListenHistoryData(),
     loadPlaylistData: async (playlistPath: string) => await scope.loadPlaylistData(playlistPath),
+    savePlaylistTrackMetadataCache: async (entries: PlaylistTrackMetadataCacheEntry[]) => await scope.savePlaylistTrackMetadataCache(entries),
     savePlaylistData: (playlistPath: string, trackPaths: string[]) => scope.savePlaylistData(playlistPath, trackPaths),
     appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => scope.appendTracksToPlaylistData(playlistPath, trackPaths),
     loadTrack: async (index: number, allowMissingTrackRecovery = true, replayGainSequenceOverrideIndexes?: number[], manualTrackSelection = false) => {

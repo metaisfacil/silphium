@@ -23,6 +23,8 @@ type ScrobbleSubmissionOptions = {
 type ScrobbleServiceOptions = {
     submitListenBrainz?: (eventType: 'playing_now' | 'single', payload: ScrobblePayload, listenedAt: number) => Promise<unknown>;
     submitLastFm?: (eventType: 'playing_now' | 'single', payload: ScrobblePayload, listenedAt: number) => Promise<unknown>;
+    submitListenHistory?: (trackPath: string, payload: ScrobblePayload, listenedAt: number) => Promise<unknown>;
+    hasListenHistoryEnabled?: () => boolean;
 };
 
 const createProviderRecord = <T>(initial: T): Record<ScrobbleProvider, T> => ({
@@ -36,6 +38,8 @@ export type ScrobbleSessionState = {
     scrobbleSubmittedSessionId: Record<ScrobbleProvider, number>;
     nowPlayingInFlight: Record<ScrobbleProvider, boolean>;
     scrobbleInFlight: Record<ScrobbleProvider, boolean>;
+    localHistorySubmittedSessionId: number;
+    localHistoryInFlight: boolean;
     scrobbleSessionStartedAt: number;
     activeSessionTrackKey: string;
     recentSinglesByProvider: Record<ScrobbleProvider, Map<string, number>>;
@@ -47,6 +51,8 @@ export const createScrobbleSessionState = (): ScrobbleSessionState => ({
     scrobbleSubmittedSessionId: createProviderRecord(-1),
     nowPlayingInFlight: createProviderRecord(false),
     scrobbleInFlight: createProviderRecord(false),
+    localHistorySubmittedSessionId: -1,
+    localHistoryInFlight: false,
     scrobbleSessionStartedAt: 0,
     activeSessionTrackKey: '',
     recentSinglesByProvider: {
@@ -71,9 +77,29 @@ export const createScrobbleService = (
             .toLowerCase();
     };
 
-    const providerSubmitters: Record<ScrobbleProvider, ScrobbleServiceOptions[keyof ScrobbleServiceOptions]> = {
+    const providerSubmitters: Record<ScrobbleProvider, ScrobbleServiceOptions['submitListenBrainz']> = {
         listenBrainz: options.submitListenBrainz,
         lastFm: options.submitLastFm,
+    };
+
+    const submitListenHistory = (trackPath: string, payload: ScrobblePayload, listenedAt: number): void => {
+        const submit = options.submitListenHistory;
+        if (!submit || trackPath.trim() === '') {
+            return;
+        }
+
+        state.localHistoryInFlight = true;
+
+        void submit(trackPath, payload, listenedAt)
+            .then(() => {
+                state.localHistorySubmittedSessionId = state.scrobbleSessionId;
+            })
+            .catch((error) => {
+                console.error(error);
+            })
+            .finally(() => {
+                state.localHistoryInFlight = false;
+            });
     };
 
     const firstTagValue = (track: Track, ...keys: string[]): string => {
@@ -238,7 +264,8 @@ export const createScrobbleService = (
             }
 
             const enabledProviders = providers.filter((provider) => availability[provider]);
-            if (enabledProviders.length === 0) {
+            const localHistoryEnabled = options.hasListenHistoryEnabled?.() === true && !!options.submitListenHistory;
+            if (enabledProviders.length === 0 && !localHistoryEnabled) {
                 return;
             }
 
@@ -272,6 +299,12 @@ export const createScrobbleService = (
             }
 
             const listenedAt = state.scrobbleSessionStartedAt > 0 ? state.scrobbleSessionStartedAt : Math.floor(Date.now() / 1000);
+            if (localHistoryEnabled
+                && state.localHistorySubmittedSessionId !== state.scrobbleSessionId
+                && !state.localHistoryInFlight) {
+                submitListenHistory(track.path || '', payload, listenedAt);
+            }
+
             for (const provider of enabledProviders) {
                 if (state.scrobbleSubmittedSessionId[provider] === state.scrobbleSessionId || state.scrobbleInFlight[provider]) {
                     continue;
@@ -291,6 +324,8 @@ export const createScrobbleService = (
             state.scrobbleSubmittedSessionId = createProviderRecord(-1);
             state.nowPlayingInFlight = createProviderRecord(false);
             state.scrobbleInFlight = createProviderRecord(false);
+            state.localHistorySubmittedSessionId = -1;
+            state.localHistoryInFlight = false;
             state.scrobbleSessionStartedAt = 0;
             state.activeSessionTrackKey = '';
         },
@@ -303,6 +338,8 @@ export const createScrobbleService = (
             state.scrobbleSessionId += 1;
             state.nowPlayingSubmittedSessionId = createProviderRecord(-1);
             state.scrobbleSubmittedSessionId = createProviderRecord(-1);
+            state.localHistorySubmittedSessionId = -1;
+            state.localHistoryInFlight = false;
             state.scrobbleSessionStartedAt = 0;
             state.activeSessionTrackKey = nextTrackKey;
         },

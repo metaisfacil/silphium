@@ -199,6 +199,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsSendToActionCancel,
         settingsFFmpegPath,
         settingsLocalLibraryFilesDatabaseEnabled,
+        settingsLocalLibraryFilesDatabaseListenHistoryEnabled,
         settingsListenBrainzToken,
         settingsLastFmApiKey,
         settingsLastFmApiSecret,
@@ -513,6 +514,10 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
     });
 
     settingsLocalLibraryFilesDatabaseEnabled.addEventListener('change', () => {
+        refreshLocalLibraryFilesDatabaseControls();
+    });
+
+    settingsLocalLibraryFilesDatabaseListenHistoryEnabled.addEventListener('change', () => {
         refreshLocalLibraryFilesDatabaseControls();
     });
 

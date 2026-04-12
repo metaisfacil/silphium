@@ -2870,6 +2870,10 @@
     gap: 0.2rem;
 }
 
+.playlist-row-read-only {
+    grid-template-columns: auto 1fr;
+}
+
 .playlist-position-indicator {
     font-size: 0.7rem;
     opacity: 0.62;
@@ -2936,6 +2940,17 @@
     text-overflow: ellipsis;
 }
 
+.playlist-item-topline {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 0.6rem;
+}
+
+.playlist-item-topline .playlist-item-main {
+    min-width: 0;
+}
+
 .playlist-item-prefix {
     opacity: 0.62;
     flex: 0 0 auto;
@@ -2955,6 +2970,13 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.playlist-item-meta {
+    font-size: 0.72rem;
+    opacity: 0.74;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 .playlist-item-empty {

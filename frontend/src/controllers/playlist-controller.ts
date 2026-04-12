@@ -1,7 +1,7 @@
 import type { PlaylistMenuElements } from '../components/overlays/playlist-menu';
 import type { PlaylistModalElements } from '../components/overlays/playlist-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
-import { createPlaylistControllerState, type PlaylistControllerState, type PlaylistSource } from './playlist-controller-state';
+import { createPlaylistControllerState, type LoadedListenHistoryItem, type LoadedPlaylistCachedItem, type PlaylistControllerState, type PlaylistSource } from './playlist-controller-state';
 
 export type PlaylistDirection = -1 | 1;
 
@@ -20,6 +20,14 @@ export type PlaylistTrackView = {
 export type LoadedPlaylistData = {
     name: string;
     trackIndexes: number[];
+    historyItems?: LoadedListenHistoryItem[];
+    cachedItems?: LoadedPlaylistCachedItem[];
+};
+
+export type PlaylistTrackMetadataCacheEntry = {
+    trackPath: string;
+    trackName: string;
+    artistName: string;
 };
 
 export type PlaylistTargetOption = {
@@ -49,9 +57,12 @@ type PlaylistControllerOptions = {
     selectPlaylistFile: () => Promise<string>;
     selectPlaylistSaveFile: () => Promise<string>;
     loadPlaylistData: (playlistPath: string) => Promise<LoadedPlaylistData | null>;
+    loadListenHistoryData: () => Promise<LoadedPlaylistData | null>;
+    savePlaylistTrackMetadataCache: (entries: PlaylistTrackMetadataCacheEntry[]) => Promise<boolean>;
     savePlaylistData: (playlistPath: string, trackPaths: string[]) => Promise<boolean>;
     appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => Promise<boolean>;
     getFavoritePlaylists: () => string[];
+    hasListenHistoryPlaylist: () => boolean;
     onTrackChosen: (index: number, context: PlaylistTrackChosenContext) => Promise<void>;
     onExternalPlaylistLoaded: () => void;
 };
@@ -99,6 +110,135 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const playlistDragIcon = '<svg class="playlist-inline-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M9 6.5C9 7.33 8.33 8 7.5 8C6.67 8 6 7.33 6 6.5C6 5.67 6.67 5 7.5 5C8.33 5 9 5.67 9 6.5ZM18 6.5C18 7.33 17.33 8 16.5 8C15.67 8 15 7.33 15 6.5C15 5.67 15.67 5 16.5 5C17.33 5 18 5.67 18 6.5ZM9 12C9 12.83 8.33 13.5 7.5 13.5C6.67 13.5 6 12.83 6 12C6 11.17 6.67 10.5 7.5 10.5C8.33 10.5 9 11.17 9 12ZM18 12C18 12.83 17.33 13.5 16.5 13.5C15.67 13.5 15 12.83 15 12C15 11.17 15.67 10.5 16.5 10.5C17.33 10.5 18 11.17 18 12ZM9 17.5C9 18.33 8.33 19 7.5 19C6.67 19 6 18.33 6 17.5C6 16.67 6.67 16 7.5 16C8.33 16 9 16.67 9 17.5ZM18 17.5C18 18.33 17.33 19 16.5 19C15.67 19 15 18.33 15 17.5C15 16.67 15.67 16 16.5 16C17.33 16 18 16.67 18 17.5Z"/></svg>';
     const playlistRemoveIcon = '<svg class="playlist-inline-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6.4 5.34C6.11 5.05 5.64 5.05 5.34 5.34C5.05 5.64 5.05 6.11 5.34 6.4L10.94 12L5.34 17.6C5.05 17.89 5.05 18.36 5.34 18.66C5.64 18.95 6.11 18.95 6.4 18.66L12 13.06L17.6 18.66C17.89 18.95 18.36 18.95 18.66 18.66C18.95 18.36 18.95 17.89 18.66 17.6L13.06 12L18.66 6.4C18.95 6.11 18.95 5.64 18.66 5.34C18.36 5.05 17.89 5.05 17.6 5.34L12 10.94L6.4 5.34Z"/></svg>';
 
+    const hasCachedPlaylistLabels = (item?: LoadedPlaylistCachedItem): boolean => (
+        (item?.cachedTrackTitle || '').trim() !== ''
+        && (item?.cachedArtistName || '').trim() !== ''
+    );
+
+    const cachedPlaylistItemsByTrackIndex = (): Map<number, LoadedPlaylistCachedItem> => {
+        const cachedItemsByTrackIndex = new Map<number, LoadedPlaylistCachedItem>();
+        if (!controllerState.loadedPlaylistTrackIndexes || !controllerState.loadedPlaylistCachedItems) {
+            return cachedItemsByTrackIndex;
+        }
+
+        controllerState.loadedPlaylistTrackIndexes.forEach((trackIndex, position) => {
+            const cachedItem = controllerState.loadedPlaylistCachedItems?.[position];
+            if (!cachedItem || !hasCachedPlaylistLabels(cachedItem) || cachedItemsByTrackIndex.has(trackIndex)) {
+                return;
+            }
+
+            cachedItemsByTrackIndex.set(trackIndex, cachedItem);
+        });
+
+        return cachedItemsByTrackIndex;
+    };
+
+    const persistPlaylistTrackMetadataCache = async (trackIndexes: number[]): Promise<void> => {
+        if (!hasLoadedPlaylist() || controllerState.loadedPlaylistReadOnly) {
+            return;
+        }
+
+        const uniqueTrackIndexes = Array.from(new Set(trackIndexes));
+        const cacheEntries: PlaylistTrackMetadataCacheEntry[] = [];
+        for (const trackIndex of uniqueTrackIndexes) {
+            const track = options.getTrack(trackIndex);
+            const trackPath = options.getTrackPath(trackIndex).trim();
+            if (!track || !track.tagsResolved || trackPath === '') {
+                continue;
+            }
+
+            const trackName = (track.displayTitle || track.name || '').trim();
+            const artistName = (track.displayArtist || '').trim();
+            if (trackName === '' || artistName === '') {
+                continue;
+            }
+
+            cacheEntries.push({
+                trackPath,
+                trackName,
+                artistName,
+            });
+        }
+        if (cacheEntries.length === 0) {
+            return;
+        }
+
+        const saved = await options.savePlaylistTrackMetadataCache(cacheEntries);
+        if (!saved || !controllerState.loadedPlaylistTrackIndexes) {
+            return;
+        }
+
+        const cacheEntryByPath = new Map(cacheEntries.map((entry) => [entry.trackPath, entry]));
+        const nextCachedItems = controllerState.loadedPlaylistCachedItems
+            ? controllerState.loadedPlaylistCachedItems.slice()
+            : controllerState.loadedPlaylistTrackIndexes.map(() => ({}));
+
+        controllerState.loadedPlaylistTrackIndexes.forEach((trackIndex, position) => {
+            const trackPath = options.getTrackPath(trackIndex).trim();
+            const cacheEntry = cacheEntryByPath.get(trackPath);
+            if (!cacheEntry) {
+                return;
+            }
+
+            nextCachedItems[position] = {
+                cachedTrackTitle: cacheEntry.trackName,
+                cachedArtistName: cacheEntry.artistName,
+            };
+        });
+        controllerState.loadedPlaylistCachedItems = nextCachedItems;
+    };
+
+    const formatListenHistoryAge = (timestampSeconds: number): string => {
+        if (!Number.isFinite(timestampSeconds) || timestampSeconds <= 0) {
+            return '';
+        }
+
+        const deltaSeconds = Math.max(0, Math.floor(Date.now() / 1000) - Math.floor(timestampSeconds));
+        if (deltaSeconds < 45) {
+            return 'just now';
+        }
+
+        if (deltaSeconds < 90) {
+            return '1 minute ago';
+        }
+
+        const deltaMinutes = Math.floor(deltaSeconds / 60);
+        if (deltaMinutes < 60) {
+            return `${deltaMinutes} minutes ago`;
+        }
+
+        if (deltaMinutes < 120) {
+            return '1 hour ago';
+        }
+
+        const deltaHours = Math.floor(deltaMinutes / 60);
+        if (deltaHours < 24) {
+            return `${deltaHours} hours ago`;
+        }
+
+        if (deltaHours < 48) {
+            return '1 day ago';
+        }
+
+        const deltaDays = Math.floor(deltaHours / 24);
+        if (deltaDays < 14) {
+            return `${deltaDays} days ago`;
+        }
+
+        const deltaWeeks = Math.floor(deltaDays / 7);
+        if (deltaWeeks < 8) {
+            return deltaWeeks === 1 ? '1 week ago' : `${deltaWeeks} weeks ago`;
+        }
+
+        const deltaMonths = Math.floor(deltaDays / 30);
+        if (deltaMonths < 12) {
+            return deltaMonths === 1 ? '1 month ago' : `${deltaMonths} months ago`;
+        }
+
+        const deltaYears = Math.floor(deltaDays / 365);
+        return deltaYears === 1 ? '1 year ago' : `${deltaYears} years ago`;
+    };
+
     const setHydrationProgress = (completed: number, total: number): void => {
         hydrationHideToken += 1;
 
@@ -135,6 +275,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const normalizePlaylistPath = (playlistPath: string): string => playlistPath.trim().toLowerCase();
 
+    const isViewingReadOnlyPlaylist = (): boolean => controllerState.selectedSource === 'history' && controllerState.loadedPlaylistReadOnly;
+
     const playlistTargetLabel = (playlistPath: string, fallbackLabel = ''): string => {
         const cleanFallbackLabel = fallbackLabel.trim();
         if (cleanFallbackLabel !== '') {
@@ -169,7 +311,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         options.getFavoritePlaylists().forEach((playlistPath) => {
             appendTarget(playlistPath);
         });
-        appendTarget(controllerState.loadedPlaylistPath, controllerState.loadedPlaylistName);
+        if (!controllerState.loadedPlaylistReadOnly) {
+            appendTarget(controllerState.loadedPlaylistPath, controllerState.loadedPlaylistName);
+        }
 
         return targets;
     };
@@ -188,6 +332,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistTrackIndexes = loadedPlaylist.trackIndexes;
         controllerState.loadedPlaylistName = loadedPlaylist.name || '';
         controllerState.loadedPlaylistPath = normalizedPath;
+        controllerState.loadedPlaylistReadOnly = false;
+        controllerState.loadedPlaylistHistoryItems = null;
+        controllerState.loadedPlaylistCachedItems = loadedPlaylist.cachedItems || null;
         controllerState.editableQueueTrackIndexes = null;
         controllerState.selectedSource = 'playlist';
         controllerState.playbackSource = 'queue';
@@ -198,6 +345,33 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         renderPlaylist();
         openModal();
+        return true;
+    };
+
+    const loadListenHistoryPlaylist = async (openAfterLoad = false): Promise<boolean> => {
+        const loadedPlaylist = await options.loadListenHistoryData();
+        if (!loadedPlaylist) {
+            return false;
+        }
+
+        controllerState.loadedPlaylistTrackIndexes = loadedPlaylist.trackIndexes;
+        controllerState.loadedPlaylistName = loadedPlaylist.name || 'Listen History';
+        controllerState.loadedPlaylistPath = '__listen_history__';
+        controllerState.loadedPlaylistReadOnly = true;
+        controllerState.loadedPlaylistHistoryItems = loadedPlaylist.historyItems || [];
+        controllerState.loadedPlaylistCachedItems = loadedPlaylist.cachedItems || null;
+        controllerState.editableQueueTrackIndexes = null;
+        controllerState.selectedSource = 'history';
+        controllerState.playbackSource = 'queue';
+        controllerState.selectedFavoriteIndex = null;
+        dragFromPosition = null;
+        hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
+
+        renderPlaylist();
+        if (openAfterLoad) {
+            openModal();
+        }
+
         return true;
     };
 
@@ -252,6 +426,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         const expectedOptions: Array<{ value: string; label: string }> = [
             { value: 'queue', label: queueLabel },
+            ...(options.hasListenHistoryPlaylist() ? [{ value: 'history', label: 'Listen History' }] : []),
             ...favoritePlaylists.map((playlistPath, index) => {
                 const segments = playlistPath.split(/[\\/]/);
                 const baseName = segments[segments.length - 1] || playlistPath;
@@ -266,7 +441,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return normalizePlaylistPath(playlistPath) === normalizePlaylistPath(controllerState.loadedPlaylistPath);
         });
 
-        if (hasLoadedPlaylist() && !loadedPlaylistMatchesFavorite) {
+        if (hasLoadedPlaylist() && !loadedPlaylistMatchesFavorite && !controllerState.loadedPlaylistReadOnly) {
             const playlistLabel = `Playlist: ${controllerState.loadedPlaylistName || 'M3U/M3U8'}`;
             expectedOptions.push({ value: 'playlist', label: playlistLabel });
         }
@@ -294,6 +469,14 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             const hasPlaylistOption = Array.from(playlistSource.options).some((option) => option.value === 'playlist');
             if (hasPlaylistOption) {
                 playlistSource.value = 'playlist';
+                return;
+            }
+        }
+
+        if (controllerState.selectedSource === 'history' && controllerState.loadedPlaylistReadOnly) {
+            const hasHistoryOption = Array.from(playlistSource.options).some((option) => option.value === 'history');
+            if (hasHistoryOption) {
+                playlistSource.value = 'history';
                 return;
             }
         }
@@ -349,7 +532,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         const currentTrackIndex = options.getCurrentTrackIndex();
         const activePosition = indexes.indexOf(currentTrackIndex);
         const anchorPosition = activePosition >= 0 ? activePosition : currentPosition;
-        const viewingPlaylist = controllerState.selectedSource === 'playlist' && hasLoadedPlaylist();
+        const viewingPlaylist = controllerState.selectedSource !== 'queue' && hasLoadedPlaylist();
         const start = viewingPlaylist ? 0 : Math.max(0, anchorPosition - 50);
         const end = viewingPlaylist ? indexes.length : Math.min(indexes.length, anchorPosition + 51);
         const visibleIndexes = indexes.slice(start, end);
@@ -369,6 +552,15 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 : (activePosition >= 0 && actualPosition < activePosition ? playlistPrefixIcon('before') : playlistPrefixIcon('after'));
             const label = track?.displayTitle || track?.name || 'Unknown track';
             const secondary = track?.displayArtist || '';
+
+            if (isViewingReadOnlyPlaylist()) {
+                const historyItem = controllerState.loadedPlaylistHistoryItems?.[actualPosition];
+                const ageLabel = formatListenHistoryAge(historyItem?.listenedAt || 0);
+                return `<li class="playlist-row playlist-row-read-only" data-playlist-position="${actualPosition}">
+            <span class="playlist-position-indicator">#${actualPosition + 1}</span>
+            <button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}" data-playlist-position="${actualPosition}"><span class="playlist-item-topline"><span class="playlist-item-main"><span class="playlist-item-prefix">${prefix}</span><span class="playlist-item-label">${label}</span></span>${ageLabel ? `<span class="playlist-item-meta">${ageLabel}</span>` : ''}</span><span class="playlist-item-sub">${secondary}</span></button>
+        </li>`;
+            }
 
             return `<li class="playlist-row" draggable="true" data-playlist-position="${actualPosition}">
             <button class="playlist-drag-handle" type="button" aria-label="Drag track" title="Drag to reorder">${playlistDragIcon}</button>
@@ -409,8 +601,19 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return true;
         });
 
+        const cachedItemsByTrackIndex = cachedPlaylistItemsByTrackIndex();
+        const resolvedIndexesMissingCache = scopedTrackIndexes.filter((index) => {
+            const track = options.getTrack(index);
+            return !!track?.tagsResolved && !hasCachedPlaylistLabels(cachedItemsByTrackIndex.get(index));
+        });
+        if (resolvedIndexesMissingCache.length > 0) {
+            void persistPlaylistTrackMetadataCache(resolvedIndexesMissingCache).catch((error) => {
+                console.error(error);
+            });
+        }
+
         const pending = scopedTrackIndexes.filter((index) => {
-            return !options.getTrack(index)?.tagsResolved;
+            return !options.getTrack(index)?.tagsResolved && !hasCachedPlaylistLabels(cachedItemsByTrackIndex.get(index));
         });
 
         const totalTracks = scopedTrackIndexes.length;
@@ -446,6 +649,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                     return;
                 }
 
+                await persistPlaylistTrackMetadataCache(batch);
+                if (runId !== hydrationRunId) {
+                    return;
+                }
+
                 completed += batch.length;
                 setHydrationProgress(completed, totalTracks);
 
@@ -460,7 +668,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const hydrateCurrentViewTracks = (): void => {
         const { indexes, currentPosition } = currentSequence();
-        const viewingPlaylist = controllerState.selectedSource === 'playlist' && hasLoadedPlaylist();
+        const viewingPlaylist = controllerState.selectedSource !== 'queue' && hasLoadedPlaylist();
         if (viewingPlaylist) {
             hydrateTrackMetadataInBackground(indexes);
             return;
@@ -475,6 +683,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         if (playlistModalHideTimer !== undefined) {
             window.clearTimeout(playlistModalHideTimer);
             playlistModalHideTimer = undefined;
+        }
+
+        if (controllerState.selectedSource === 'history' && options.hasListenHistoryPlaylist()) {
+            void loadListenHistoryPlaylist(false).catch((error) => {
+                console.error(error);
+            });
         }
 
         hydrateCurrentViewTracks();
@@ -495,6 +709,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const mutableCurrentSequence = (): number[] => {
+        if (isViewingReadOnlyPlaylist()) {
+            return mutableQueueSequence();
+        }
+
         if (controllerState.selectedSource === 'playlist' && controllerState.loadedPlaylistTrackIndexes) {
             return controllerState.loadedPlaylistTrackIndexes;
         }
@@ -669,6 +887,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistTrackIndexes = null;
         controllerState.loadedPlaylistName = '';
         controllerState.loadedPlaylistPath = '';
+        controllerState.loadedPlaylistReadOnly = false;
+        controllerState.loadedPlaylistHistoryItems = null;
+        controllerState.loadedPlaylistCachedItems = null;
         controllerState.editableQueueTrackIndexes = null;
         controllerState.selectedSource = 'queue';
         controllerState.selectedFavoriteIndex = null;
@@ -726,6 +947,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         controllerState.loadedPlaylistName = selectedPath.split(/[\\/]/).pop() || selectedPath;
         controllerState.loadedPlaylistPath = selectedPath;
+        controllerState.loadedPlaylistReadOnly = false;
+        controllerState.loadedPlaylistHistoryItems = null;
+        controllerState.loadedPlaylistCachedItems = null;
         controllerState.selectedFavoriteIndex = null;
         updateHeaderSourceControl();
     };
@@ -744,6 +968,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistName = selectedPath.split(/[\\/]/).pop() || selectedPath;
         controllerState.loadedPlaylistPath = selectedPath;
         controllerState.loadedPlaylistTrackIndexes = [];
+        controllerState.loadedPlaylistReadOnly = false;
+        controllerState.loadedPlaylistHistoryItems = null;
+        controllerState.loadedPlaylistCachedItems = null;
         controllerState.selectedSource = 'playlist';
         controllerState.playbackSource = 'queue';
         controllerState.editableQueueTrackIndexes = null;
@@ -765,6 +992,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistTrackIndexes = loadedPlaylist.trackIndexes;
         controllerState.loadedPlaylistName = loadedPlaylist.name || '';
         controllerState.loadedPlaylistPath = playlistPath;
+        controllerState.loadedPlaylistReadOnly = false;
+        controllerState.loadedPlaylistHistoryItems = null;
+        controllerState.loadedPlaylistCachedItems = loadedPlaylist.cachedItems || null;
         controllerState.selectedSource = 'playlist';
         controllerState.playbackSource = 'queue';
         dragFromPosition = null;
@@ -791,6 +1021,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistTrackIndexes = loadedPlaylist.trackIndexes;
         controllerState.loadedPlaylistName = loadedPlaylist.name || '';
         controllerState.loadedPlaylistPath = normalizedPath;
+        controllerState.loadedPlaylistReadOnly = false;
+        controllerState.loadedPlaylistHistoryItems = null;
+        controllerState.loadedPlaylistCachedItems = loadedPlaylist.cachedItems || null;
         controllerState.selectedFavoriteIndex = null;
         updateHeaderSourceControl();
         scheduleRender();
@@ -814,7 +1047,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const commitPlaybackSourceFromCurrentView = (): void => {
-        if (controllerState.selectedSource === 'playlist' && hasLoadedPlaylist()) {
+        if (controllerState.selectedSource !== 'queue' && hasLoadedPlaylist()) {
             const playlistSequence = loadedPlaylistSequence();
             if (playlistSequence) {
                 controllerState.editableQueueTrackIndexes = playlistSequence.indexes.slice();
@@ -870,6 +1103,28 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return;
         }
 
+        if (selectedValue === 'history') {
+            void loadListenHistoryPlaylist(false).then((loaded) => {
+                if (loaded) {
+                    return;
+                }
+
+                controllerState.selectedSource = 'queue';
+                controllerState.selectedFavoriteIndex = null;
+                playlistSource.value = 'queue';
+                hydrateCurrentViewTracks();
+                renderPlaylist();
+            }).catch((error) => {
+                console.error(error);
+                controllerState.selectedSource = 'queue';
+                controllerState.selectedFavoriteIndex = null;
+                playlistSource.value = 'queue';
+                hydrateCurrentViewTracks();
+                renderPlaylist();
+            });
+            return;
+        }
+
         const favoriteMatch = /^favorite:(\d+)$/.exec(selectedValue);
         if (favoriteMatch) {
             const favoriteIndex = Number(favoriteMatch[1]);
@@ -919,6 +1174,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         const removeButton = target.closest('[data-playlist-remove-position]');
         if (removeButton instanceof HTMLButtonElement) {
+            if (isViewingReadOnlyPlaylist()) {
+                return;
+            }
+
             const activeQueue = mutableCurrentSequence();
             const removePosition = Number(removeButton.dataset.playlistRemovePosition);
             if (!Number.isInteger(removePosition)) {
@@ -960,6 +1219,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     });
 
     playlistList.addEventListener('dragstart', (event) => {
+        if (isViewingReadOnlyPlaylist()) {
+            return;
+        }
+
         const sequence = currentSequence().indexes;
         if (sequence.length === 0) {
             return;
@@ -996,6 +1259,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     });
 
     playlistList.addEventListener('dragover', (event) => {
+        if (isViewingReadOnlyPlaylist()) {
+            return;
+        }
+
         const activeQueue = currentSequence().indexes;
         if (activeQueue.length === 0) {
             return;
@@ -1018,6 +1285,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     });
 
     playlistList.addEventListener('drop', (event) => {
+        if (isViewingReadOnlyPlaylist()) {
+            return;
+        }
+
         const activeQueue = mutableCurrentSequence();
         if (activeQueue.length === 0) {
             return;

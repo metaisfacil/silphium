@@ -71,6 +71,8 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         libraryFolders: AppLibraryFolder[];
         localLibraryFilesDatabaseEnabled: boolean;
         localLibraryFilesDatabaseLoadOnStartup: boolean;
+        localLibraryFilesDatabaseListenHistoryEnabled: boolean;
+        localLibraryFilesDatabaseListenHistoryLimit: number;
         ffmpegPath: string;
         listenBrainzUserToken: string;
         lastFmApiKey: string;
@@ -115,6 +117,8 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             libraryPath: primaryLibraryFolder?.path || '',
             localLibraryFilesDatabaseEnabled: values.localLibraryFilesDatabaseEnabled,
             localLibraryFilesDatabaseLoadOnStartup: values.localLibraryFilesDatabaseLoadOnStartup,
+            localLibraryFilesDatabaseListenHistoryEnabled: values.localLibraryFilesDatabaseListenHistoryEnabled,
+            localLibraryFilesDatabaseListenHistoryLimit: values.localLibraryFilesDatabaseListenHistoryLimit,
             ffmpegPath: values.ffmpegPath,
             listenBrainzUserToken: values.listenBrainzUserToken,
             lastFmApiKey: values.lastFmApiKey,
@@ -197,6 +201,8 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             libraryFolders: context.currentSettings.libraryFolders,
             localLibraryFilesDatabaseEnabled: context.currentSettings.localLibraryFilesDatabaseEnabled,
             localLibraryFilesDatabaseLoadOnStartup: context.currentSettings.localLibraryFilesDatabaseLoadOnStartup,
+            localLibraryFilesDatabaseListenHistoryEnabled: context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled,
+            localLibraryFilesDatabaseListenHistoryLimit: context.currentSettings.localLibraryFilesDatabaseListenHistoryLimit,
             ffmpegPath: context.currentSettings.ffmpegPath,
             listenBrainzUserToken: context.currentSettings.listenBrainzUserToken,
             lastFmApiKey: context.currentSettings.lastFmApiKey,

@@ -499,7 +499,9 @@ const {
 } = runtimeScope;
 
 const {
+    loadListenHistoryData,
     loadPlaylistData,
+    savePlaylistTrackMetadataCache,
     savePlaybackOrderSetting,
     setPlaybackOrderMode,
 } = createPlaybackOrderPlaylistRuntime({
@@ -526,7 +528,9 @@ const {
 });
 
 Object.assign(runtimeScope, {
+    loadListenHistoryData,
     loadPlaylistData,
+    savePlaylistTrackMetadataCache,
     savePlaybackOrderSetting,
     setPlaybackOrderMode,
 });

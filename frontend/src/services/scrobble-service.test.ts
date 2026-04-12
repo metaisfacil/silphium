@@ -300,6 +300,7 @@ describe('createScrobbleService', () => {
         expect(submitListenBrainz).toHaveBeenCalledTimes(2);
         expect(state.nowPlayingSubmittedSessionId.listenBrainz).toBe(1);
         expect(state.scrobbleSubmittedSessionId.listenBrainz).toBe(1);
+        expect(state.localHistorySubmittedSessionId).toBe(-1);
         expect(state.scrobbleSessionStartedAt).toBeGreaterThan(0);
         expect(state.recentSinglesByProvider.listenBrainz.size).toBe(1);
 
@@ -308,6 +309,40 @@ describe('createScrobbleService', () => {
         expect(state.activeSessionTrackKey).toBe('');
         expect(state.nowPlayingSubmittedSessionId.listenBrainz).toBe(-1);
         expect(state.scrobbleSubmittedSessionId.listenBrainz).toBe(-1);
+        expect(state.localHistorySubmittedSessionId).toBe(-1);
         expect(state.recentSinglesByProvider.listenBrainz.size).toBe(1);
+    });
+
+    it('stores local listen history even when no external scrobble provider is configured', async () => {
+        const submitListenHistory = vi.fn(async () => undefined);
+        const state = createScrobbleSessionState();
+        const service = createScrobbleService({
+            submitListenHistory,
+            hasListenHistoryEnabled: () => true,
+        }, state);
+
+        const track = createTrack();
+        const playbackState = createPlaybackState({ currentTime: 200, duration: 300 });
+
+        service.startTrackSession(track.path);
+        service.maybeSubmit(playbackState, track, { listenBrainz: false, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenHistory).toHaveBeenCalledTimes(1);
+        expect(submitListenHistory).toHaveBeenCalledWith(
+            track.path,
+            expect.objectContaining({
+                artistName: 'Resolved Artist',
+                trackName: 'Resolved Title',
+                releaseName: 'Resolved Album',
+            }),
+            expect.any(Number),
+        );
+        expect(state.localHistorySubmittedSessionId).toBe(1);
+
+        service.maybeSubmit(playbackState, track, { listenBrainz: false, lastFm: false });
+        expect(submitListenHistory).toHaveBeenCalledTimes(1);
     });
 });
