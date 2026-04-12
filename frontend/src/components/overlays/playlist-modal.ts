@@ -1,6 +1,7 @@
 export type PlaylistModalElements = {
     playlistModal: HTMLDivElement;
     playlistBackdrop: HTMLDivElement;
+    playlistDialog: HTMLElement;
     playlistClose: HTMLButtonElement;
     playlistTitle: HTMLParagraphElement;
     playlistSource: HTMLSelectElement;
@@ -46,6 +47,7 @@ export const renderPlaylistModal = (): string => `
 export const getPlaylistModalElements = (root: ParentNode): PlaylistModalElements => ({
     playlistModal: root.querySelector('#playlist-modal') as HTMLDivElement,
     playlistBackdrop: root.querySelector('#playlist-backdrop') as HTMLDivElement,
+    playlistDialog: root.querySelector('.playlist-dialog') as HTMLElement,
     playlistClose: root.querySelector('#playlist-close') as HTMLButtonElement,
     playlistTitle: root.querySelector('#playlist-title') as HTMLParagraphElement,
     playlistSource: root.querySelector('#playlist-source') as HTMLSelectElement,

@@ -76,6 +76,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const {
         playlistModal,
         playlistBackdrop,
+        playlistDialog,
         playlistClose,
         playlistTitle,
         playlistSource,
@@ -95,7 +96,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     let hydrationHideToken = 0;
     const queueMutationChunkSize = 512;
     const playlistModalTransitionMs = UI_TIMINGS_MS.modalTransition;
+    const playlistViewTransitionMs = 220;
     let playlistModalHideTimer: number | undefined;
+    let playlistViewTransitionTimer: number | undefined;
+    let playlistDialogResizeTimer: number | undefined;
     const playlistPrefixIcon = (state: 'active' | 'before' | 'after'): string => {
         if (state === 'active') {
             return '<svg class="playlist-inline-icon" width="11" height="11" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12 7C9.24 7 7 9.24 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 9.24 14.76 7 12 7Z"/></svg>';
@@ -343,7 +347,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         options.onExternalPlaylistLoaded();
         hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
 
-        renderPlaylist();
+        renderPlaylist(true);
         openModal();
         return true;
     };
@@ -367,7 +371,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         dragFromPosition = null;
         hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
 
-        renderPlaylist();
+        renderPlaylist(true);
         if (openAfterLoad) {
             openModal();
         }
@@ -525,7 +529,76 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         dragFromPosition = null;
     };
 
-    const renderPlaylist = (): void => {
+    const prefersReducedMotion = (): boolean => {
+        if (typeof window.matchMedia !== 'function') {
+            return false;
+        }
+
+        return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    };
+
+    const animatePlaylistDialogResize = (previousHeight: number): void => {
+        if (playlistModal.hidden || prefersReducedMotion()) {
+            playlistDialog.style.height = '';
+            playlistDialog.classList.remove('is-resizing');
+            return;
+        }
+
+        const nextHeight = playlistDialog.getBoundingClientRect().height;
+        if (!Number.isFinite(previousHeight) || previousHeight <= 0 || Math.abs(nextHeight - previousHeight) < 1) {
+            playlistDialog.style.height = '';
+            playlistDialog.classList.remove('is-resizing');
+            return;
+        }
+
+        if (playlistDialogResizeTimer !== undefined) {
+            window.clearTimeout(playlistDialogResizeTimer);
+            playlistDialogResizeTimer = undefined;
+        }
+
+        playlistDialog.classList.add('is-resizing');
+        playlistDialog.style.height = `${previousHeight}px`;
+        void playlistDialog.offsetHeight;
+        playlistDialog.style.height = `${nextHeight}px`;
+
+        playlistDialogResizeTimer = window.setTimeout(() => {
+            playlistDialog.style.height = '';
+            playlistDialog.classList.remove('is-resizing');
+            playlistDialogResizeTimer = undefined;
+        }, playlistViewTransitionMs);
+    };
+
+    const animatePlaylistViewSwitch = (): void => {
+        if (playlistModal.hidden) {
+            return;
+        }
+
+        if (playlistViewTransitionTimer !== undefined) {
+            window.clearTimeout(playlistViewTransitionTimer);
+            playlistViewTransitionTimer = undefined;
+        }
+
+        playlistList.classList.remove('is-view-switching');
+        void playlistList.offsetWidth;
+        playlistList.classList.add('is-view-switching');
+
+        playlistViewTransitionTimer = window.setTimeout(() => {
+            playlistList.classList.remove('is-view-switching');
+            playlistViewTransitionTimer = undefined;
+        }, playlistViewTransitionMs);
+    };
+
+    const renderPlaylist = (animateViewSwitch = false): void => {
+        const previousDialogHeight = animateViewSwitch ? playlistDialog.getBoundingClientRect().height : 0;
+        if (animateViewSwitch) {
+            if (playlistDialogResizeTimer !== undefined) {
+                window.clearTimeout(playlistDialogResizeTimer);
+                playlistDialogResizeTimer = undefined;
+            }
+            playlistDialog.style.height = '';
+            playlistDialog.classList.remove('is-resizing');
+        }
+
         updateHeaderSourceControl();
 
         const { indexes, currentPosition } = currentSequence();
@@ -539,6 +612,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         if (visibleIndexes.length === 0) {
             playlistList.innerHTML = '<li class="playlist-item-empty">No tracks available</li>';
+            if (animateViewSwitch) {
+                animatePlaylistDialogResize(previousDialogHeight);
+                animatePlaylistViewSwitch();
+            }
             return;
         }
 
@@ -571,6 +648,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }).join('');
 
         playlistList.innerHTML = rows;
+        if (animateViewSwitch) {
+            animatePlaylistDialogResize(previousDialogHeight);
+            animatePlaylistViewSwitch();
+        }
     };
 
     const scheduleRender = (() => {
@@ -705,7 +786,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         hydrateCurrentViewTracks();
-        renderPlaylist();
+        renderPlaylist(true);
     };
 
     const mutableCurrentSequence = (): number[] => {
@@ -923,7 +1004,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         const activeQueue = mutableCurrentSequence();
         activeQueue.push(currentTrackIndex);
         hydrateTrackMetadataInBackground([currentTrackIndex]);
-        renderPlaylist();
+        renderPlaylist(true);
     };
 
     const saveCurrentSequenceAsPlaylist = async (): Promise<void> => {
@@ -976,7 +1057,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.editableQueueTrackIndexes = null;
         controllerState.selectedFavoriteIndex = null;
         hydrateTrackMetadataInBackground([]);
-        renderPlaylist();
+        renderPlaylist(true);
     };
 
     const loadFavouritePlaylist = async (playlistPath: string): Promise<void> => {
@@ -999,7 +1080,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.playbackSource = 'queue';
         dragFromPosition = null;
         hydrateTrackMetadataInBackground(loadedPlaylist.trackIndexes);
-        renderPlaylist();
+        renderPlaylist(true);
     };
 
     const openPlaylistTarget = async (): Promise<PlaylistTargetOption | null> => {
@@ -1091,7 +1172,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             controllerState.selectedFavoriteIndex = null;
             controllerState.playbackSource = 'queue';
             hydrateCurrentViewTracks();
-            renderPlaylist();
+            renderPlaylist(true);
             return;
         }
 
@@ -1099,7 +1180,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             controllerState.selectedSource = 'playlist';
             controllerState.selectedFavoriteIndex = null;
             hydrateCurrentViewTracks();
-            renderPlaylist();
+            renderPlaylist(true);
             return;
         }
 
@@ -1113,14 +1194,14 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 controllerState.selectedFavoriteIndex = null;
                 playlistSource.value = 'queue';
                 hydrateCurrentViewTracks();
-                renderPlaylist();
+                renderPlaylist(true);
             }).catch((error) => {
                 console.error(error);
                 controllerState.selectedSource = 'queue';
                 controllerState.selectedFavoriteIndex = null;
                 playlistSource.value = 'queue';
                 hydrateCurrentViewTracks();
-                renderPlaylist();
+                renderPlaylist(true);
             });
             return;
         }

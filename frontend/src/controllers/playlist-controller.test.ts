@@ -177,6 +177,7 @@ describe('createPlaylistController', () => {
         expect(loadPlaylistData).toHaveBeenCalledWith('/playlists/favorite.m3u8');
         expect(elements.playlistSource.value).toBe('favorite:0');
         expect(onTrackChosen).not.toHaveBeenCalled();
+        expect(elements.playlistList.classList.contains('is-view-switching')).toBe(true);
 
         const firstFavoriteTrackButton = elements.playlistList.querySelector('[data-playlist-track-index]') as HTMLButtonElement | null;
         expect(firstFavoriteTrackButton?.dataset.playlistTrackIndex).toBe('1');
@@ -208,6 +209,7 @@ describe('createPlaylistController', () => {
         expect(elements.playlistList.querySelector('[data-playlist-remove-position]')).toBeNull();
         expect(elements.playlistList.querySelector('.playlist-drag-handle')).toBeNull();
         expect(elements.playlistList.querySelector('.playlist-row-read-only')).not.toBeNull();
+        expect(elements.playlistList.classList.contains('is-view-switching')).toBe(true);
         expect(elements.playlistList.textContent).toContain('1 day ago');
         expect(elements.playlistList.textContent).toContain('2 weeks ago');
 

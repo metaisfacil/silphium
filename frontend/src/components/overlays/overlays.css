@@ -2684,7 +2684,7 @@
     overflow: hidden;
     opacity: 0;
     transform: translateY(8px) scale(0.985);
-    transition: opacity 220ms ease, transform 220ms ease;
+    transition: opacity 220ms ease, transform 220ms ease, height 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .playlist-modal.is-visible .playlist-backdrop {
@@ -2694,6 +2694,10 @@
 .playlist-modal.is-visible .playlist-dialog {
     opacity: 1;
     transform: translateY(0) scale(1);
+}
+
+.playlist-dialog.is-resizing {
+    overflow: clip;
 }
 
 .playlist-header {
@@ -2861,6 +2865,56 @@
     cursor: pointer;
     display: grid;
     gap: 0.1rem;
+}
+
+.playlist-list.is-view-switching > .playlist-row,
+.playlist-list.is-view-switching > .playlist-item-empty {
+    animation: playlist-view-switch 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.playlist-list.is-view-switching > .playlist-row:nth-child(2),
+.playlist-list.is-view-switching > .playlist-item-empty:nth-child(2) {
+    animation-delay: 18ms;
+}
+
+.playlist-list.is-view-switching > .playlist-row:nth-child(3),
+.playlist-list.is-view-switching > .playlist-item-empty:nth-child(3) {
+    animation-delay: 36ms;
+}
+
+.playlist-list.is-view-switching > .playlist-row:nth-child(4),
+.playlist-list.is-view-switching > .playlist-item-empty:nth-child(4) {
+    animation-delay: 54ms;
+}
+
+.playlist-list.is-view-switching > .playlist-row:nth-child(5),
+.playlist-list.is-view-switching > .playlist-item-empty:nth-child(5) {
+    animation-delay: 72ms;
+}
+
+@keyframes playlist-view-switch {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 0.65rem, 0) scale(0.985);
+        filter: blur(0.25rem);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+        filter: blur(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .playlist-dialog {
+        transition: opacity 220ms ease, transform 220ms ease;
+    }
+
+    .playlist-list.is-view-switching > .playlist-row,
+    .playlist-list.is-view-switching > .playlist-item-empty {
+        animation: none;
+    }
 }
 
 .playlist-row {
