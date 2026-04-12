@@ -11,6 +11,17 @@ const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
 };
 
+const selectCustomPlaylistSource = async (
+    elements: ReturnType<typeof getPlaylistModalElements>,
+    value: string,
+): Promise<void> => {
+    elements.playlistSourceButton.click();
+    const optionButton = elements.playlistSourceMenu.querySelector(`[data-value="${value}"]`) as HTMLButtonElement | null;
+    expect(optionButton).not.toBeNull();
+    optionButton?.click();
+    await flushPromises();
+};
+
 const createTrackView = (index: number): PlaylistTrackView => ({
     displayTitle: `Track ${index}`,
     name: `Track ${index}`,
@@ -170,12 +181,11 @@ describe('createPlaylistController', () => {
         const firstQueueTrackButton = elements.playlistList.querySelector('[data-playlist-track-index]') as HTMLButtonElement | null;
         expect(firstQueueTrackButton?.dataset.playlistTrackIndex).toBe('0');
 
-        elements.playlistSource.value = 'favorite:0';
-        elements.playlistSource.dispatchEvent(new Event('change', { bubbles: true }));
-        await flushPromises();
+        await selectCustomPlaylistSource(elements, 'favorite:0');
 
         expect(loadPlaylistData).toHaveBeenCalledWith('/playlists/favorite.m3u8');
         expect(elements.playlistSource.value).toBe('favorite:0');
+        expect(elements.playlistSourceLabel.textContent).toBe('Favorite: favorite.m3u8');
         expect(onTrackChosen).not.toHaveBeenCalled();
         expect(elements.playlistList.classList.contains('is-view-switching')).toBe(true);
 
@@ -195,14 +205,14 @@ describe('createPlaylistController', () => {
         vi.setSystemTime(new Date('2023-11-15T12:00:00Z'));
 
         controller.openModal();
-        elements.playlistSource.value = 'history';
-        elements.playlistSource.dispatchEvent(new Event('change', { bubbles: true }));
-        await flushPromises();
+        await selectCustomPlaylistSource(elements, 'history');
 
         expect(loadListenHistoryData).toHaveBeenCalledTimes(1);
         expect(elements.playlistSource.value).toBe('history');
+        expect(elements.playlistSourceLabel.textContent).toBe('Listen History');
+        expect(elements.playlistSourceIcon.innerHTML).toContain('<svg');
         expect(Array.from(elements.playlistSource.options).map((option) => option.text)).toEqual([
-            'Playback Queue (Ordered)',
+            'Playback Queue',
             'Listen History',
             'Favorite: favorite.m3u8',
         ]);
@@ -224,6 +234,21 @@ describe('createPlaylistController', () => {
         });
         expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 0], currentPosition: 0 });
         vi.useRealTimers();
+    });
+
+    it('renders svg icons for queue and history inside the custom source menu', () => {
+        const { controller, elements } = mountPlaylistController();
+
+        controller.openModal();
+        elements.playlistSourceButton.click();
+
+        const queueOption = elements.playlistSourceMenu.querySelector('[data-value="queue"] .playlist-source-option-icon') as HTMLSpanElement | null;
+        const historyOption = elements.playlistSourceMenu.querySelector('[data-value="history"] .playlist-source-option-icon') as HTMLSpanElement | null;
+        const favoriteOption = elements.playlistSourceMenu.querySelector('[data-value="favorite:0"] .playlist-source-option-icon') as HTMLSpanElement | null;
+
+        expect(queueOption?.innerHTML).toContain('<svg');
+        expect(historyOption?.innerHTML).toContain('<svg');
+        expect(favoriteOption?.classList.contains('is-empty')).toBe(true);
     });
 
     it('lists playlist targets without the queue and appends to the loaded playlist state', async () => {

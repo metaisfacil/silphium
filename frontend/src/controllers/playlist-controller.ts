@@ -35,6 +35,12 @@ export type PlaylistTargetOption = {
     label: string;
 };
 
+type PlaylistSourceControlOption = {
+    value: string;
+    label: string;
+    iconMarkup: string;
+};
+
 type PlaylistTrackChosenContext = {
     source: PlaylistSource;
     userInitiated: boolean;
@@ -69,6 +75,11 @@ type PlaylistControllerOptions = {
 
 export type PlaylistController = ReturnType<typeof createPlaylistController>;
 
+const playbackQueueSourceLabel = 'Playback Queue';
+const listenHistorySourceLabel = 'Listen History';
+const playbackQueueSourceIcon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M4.75 6.5C4.75 5.81 5.31 5.25 6 5.25H19C19.69 5.25 20.25 5.81 20.25 6.5C20.25 7.19 19.69 7.75 19 7.75H6C5.31 7.75 4.75 7.19 4.75 6.5ZM4.75 12C4.75 11.31 5.31 10.75 6 10.75H15C15.69 10.75 16.25 11.31 16.25 12C16.25 12.69 15.69 13.25 15 13.25H6C5.31 13.25 4.75 12.69 4.75 12ZM4.75 17.5C4.75 16.81 5.31 16.25 6 16.25H12C12.69 16.25 13.25 16.81 13.25 17.5C13.25 18.19 12.69 18.75 12 18.75H6C5.31 18.75 4.75 18.19 4.75 17.5Z"/></svg>';
+const listenHistorySourceIcon = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12 3.75C7.44 3.75 3.75 7.44 3.75 12C3.75 16.56 7.44 20.25 12 20.25C16.56 20.25 20.25 16.56 20.25 12C20.25 7.44 16.56 3.75 12 3.75ZM2.25 12C2.25 6.61 6.61 2.25 12 2.25C17.39 2.25 21.75 6.61 21.75 12C21.75 17.39 17.39 21.75 12 21.75C6.61 21.75 2.25 17.39 2.25 12ZM12 7.75C12.41 7.75 12.75 8.09 12.75 8.5V11.69L15.03 13.2C15.37 13.42 15.47 13.88 15.25 14.22C15.02 14.57 14.56 14.66 14.22 14.44L11.6 12.69C11.39 12.56 11.25 12.32 11.25 12.06V8.5C11.25 8.09 11.59 7.75 12 7.75Z"/></svg>';
+
 export const createPlaylistController = (options: PlaylistControllerOptions) => {
     const { trigger, menu, modal } = options;
     const controllerState = options.state ?? createPlaylistControllerState();
@@ -79,7 +90,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistDialog,
         playlistClose,
         playlistTitle,
+        playlistSourceWrap,
+        playlistSourceButton,
+        playlistSourceIcon,
+        playlistSourceLabel,
         playlistSource,
+        playlistSourceMenu,
         playlistHydrationProgress,
         playlistHydrationCount,
         playlistList,
@@ -424,19 +440,42 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         return queueSequence();
     };
 
-    const updateHeaderSourceControl = (): void => {
-        const queueLabel = `Playback Queue (${options.getPlaybackOrderLabel()})`;
-        const favoritePlaylists = options.getFavoritePlaylists().filter((playlistPath) => playlistPath.trim() !== '');
+    const playlistSourceIconMarkup = (selectedValue: string): string => {
+        if (selectedValue === 'queue') {
+            return playbackQueueSourceIcon;
+        }
 
-        const expectedOptions: Array<{ value: string; label: string }> = [
-            { value: 'queue', label: queueLabel },
-            ...(options.hasListenHistoryPlaylist() ? [{ value: 'history', label: 'Listen History' }] : []),
+        if (selectedValue === 'history') {
+            return listenHistorySourceIcon;
+        }
+
+        return '';
+    };
+
+    const updatePlaylistSourceIcon = (selectedValue: string): void => {
+        const iconMarkup = playlistSourceIconMarkup(selectedValue);
+        playlistSourceIcon.innerHTML = iconMarkup;
+        if (iconMarkup !== '') {
+            playlistSourceIcon.classList.add('is-visible');
+            return;
+        }
+
+        playlistSourceIcon.innerHTML = '';
+        playlistSourceIcon.classList.remove('is-visible');
+    };
+
+    const getPlaylistSourceControlOptions = (): PlaylistSourceControlOption[] => {
+        const favoritePlaylists = options.getFavoritePlaylists().filter((playlistPath) => playlistPath.trim() !== '');
+        const expectedOptions: PlaylistSourceControlOption[] = [
+            { value: 'queue', label: playbackQueueSourceLabel, iconMarkup: playbackQueueSourceIcon },
+            ...(options.hasListenHistoryPlaylist() ? [{ value: 'history', label: listenHistorySourceLabel, iconMarkup: listenHistorySourceIcon }] : []),
             ...favoritePlaylists.map((playlistPath, index) => {
                 const segments = playlistPath.split(/[\\/]/);
                 const baseName = segments[segments.length - 1] || playlistPath;
                 return {
                     value: `favorite:${index}`,
                     label: `Favorite: ${baseName}`,
+                    iconMarkup: '',
                 };
             }),
         ];
@@ -447,55 +486,185 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         if (hasLoadedPlaylist() && !loadedPlaylistMatchesFavorite && !controllerState.loadedPlaylistReadOnly) {
             const playlistLabel = `Playlist: ${controllerState.loadedPlaylistName || 'M3U/M3U8'}`;
-            expectedOptions.push({ value: 'playlist', label: playlistLabel });
+            expectedOptions.push({ value: 'playlist', label: playlistLabel, iconMarkup: '' });
         }
 
-        const shouldRebuildOptions = playlistSource.options.length !== expectedOptions.length
-            || expectedOptions.some((option, index) => {
-                const currentOption = playlistSource.options.item(index);
-                return !currentOption || currentOption.value !== option.value || currentOption.text !== option.label;
-            });
+        return expectedOptions;
+    };
 
-        if (shouldRebuildOptions) {
-            playlistSource.innerHTML = '';
-            expectedOptions.forEach((option) => {
-                const nextOption = document.createElement('option');
-                nextOption.value = option.value;
-                nextOption.text = option.label;
-                playlistSource.append(nextOption);
-            });
+    const buildPlaylistSourceOptionButton = (option: PlaylistSourceControlOption): HTMLButtonElement => {
+        const optionButton = document.createElement('button');
+        optionButton.type = 'button';
+        optionButton.className = 'playlist-source-option';
+        optionButton.dataset.value = option.value;
+        optionButton.setAttribute('role', 'option');
+
+        const optionIcon = document.createElement('span');
+        optionIcon.className = 'playlist-source-option-icon';
+        if (option.iconMarkup === '') {
+            optionIcon.classList.add('is-empty');
+        } else {
+            optionIcon.innerHTML = option.iconMarkup;
         }
 
+        const optionLabel = document.createElement('span');
+        optionLabel.className = 'playlist-source-option-label';
+        optionLabel.textContent = option.label;
+
+        optionButton.append(optionIcon, optionLabel);
+        return optionButton;
+    };
+
+    const rebuildPlaylistSourceControl = (expectedOptions: PlaylistSourceControlOption[]): void => {
+        playlistSource.innerHTML = '';
+        playlistSourceMenu.innerHTML = '';
+
+        expectedOptions.forEach((option) => {
+            const nativeOption = document.createElement('option');
+            nativeOption.value = option.value;
+            nativeOption.text = option.label;
+            playlistSource.append(nativeOption);
+            playlistSourceMenu.append(buildPlaylistSourceOptionButton(option));
+        });
+    };
+
+    const setPlaylistSourceSelection = (selectedValue: string): boolean => {
+        const selectedOption = Array.from(playlistSource.options).find((option) => option.value === selectedValue);
+        if (!selectedOption) {
+            return false;
+        }
+
+        playlistSource.value = selectedValue;
+        playlistSourceLabel.textContent = selectedOption.text;
+        updatePlaylistSourceIcon(selectedValue);
+
+        Array.from(playlistSourceMenu.querySelectorAll<HTMLButtonElement>('.playlist-source-option')).forEach((optionButton) => {
+            const isSelected = optionButton.dataset.value === selectedValue;
+            optionButton.classList.toggle('is-selected', isSelected);
+            optionButton.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+            optionButton.tabIndex = isSelected ? 0 : -1;
+        });
+
+        return true;
+    };
+
+    const closePlaylistSourceMenu = (restoreFocus = false): void => {
+        playlistSourceMenu.hidden = true;
+        playlistSourceWrap.classList.remove('is-open');
+        playlistSourceButton.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) {
+            playlistSourceButton.focus();
+        }
+    };
+
+    const focusPlaylistSourceOption = (selectedValue?: string): void => {
+        const selectedOption = selectedValue
+            ? playlistSourceMenu.querySelector<HTMLButtonElement>(`.playlist-source-option[data-value="${selectedValue}"]`)
+            : playlistSourceMenu.querySelector<HTMLButtonElement>('.playlist-source-option.is-selected');
+        const firstOption = playlistSourceMenu.querySelector<HTMLButtonElement>('.playlist-source-option');
+        (selectedOption ?? firstOption)?.focus();
+    };
+
+    const openPlaylistSourceMenu = (): void => {
+        if (playlistSource.options.length === 0) {
+            return;
+        }
+
+        playlistSourceMenu.hidden = false;
+        playlistSourceWrap.classList.add('is-open');
+        playlistSourceButton.setAttribute('aria-expanded', 'true');
+        focusPlaylistSourceOption(playlistSource.value);
+    };
+
+    const togglePlaylistSourceMenu = (): void => {
+        if (playlistSourceMenu.hidden) {
+            openPlaylistSourceMenu();
+            return;
+        }
+
+        closePlaylistSourceMenu(true);
+    };
+
+    const handlePlaylistSourceChange = (selectedValue: string): void => {
+        if (!setPlaylistSourceSelection(selectedValue)) {
+            return;
+        }
+
+        if (selectedValue === 'queue') {
+            controllerState.selectedSource = 'queue';
+            controllerState.selectedFavoriteIndex = null;
+            controllerState.playbackSource = 'queue';
+            hydrateCurrentViewTracks();
+            renderPlaylist(true);
+            return;
+        }
+
+        if (selectedValue === 'playlist') {
+            controllerState.selectedSource = 'playlist';
+            controllerState.selectedFavoriteIndex = null;
+            hydrateCurrentViewTracks();
+            renderPlaylist(true);
+            return;
+        }
+
+        if (selectedValue === 'history') {
+            void loadListenHistoryPlaylist(false).then((loaded) => {
+                if (loaded) {
+                    return;
+                }
+
+                controllerState.selectedSource = 'queue';
+                controllerState.selectedFavoriteIndex = null;
+                setPlaylistSourceSelection('queue');
+                hydrateCurrentViewTracks();
+                renderPlaylist(true);
+            }).catch((error) => {
+                console.error(error);
+                controllerState.selectedSource = 'queue';
+                controllerState.selectedFavoriteIndex = null;
+                setPlaylistSourceSelection('queue');
+                hydrateCurrentViewTracks();
+                renderPlaylist(true);
+            });
+            return;
+        }
+
+        const favoriteMatch = /^favorite:(\d+)$/.exec(selectedValue);
+        if (favoriteMatch) {
+            const favoriteIndex = Number(favoriteMatch[1]);
+            void loadFavouritePlaylistByIndex(favoriteIndex).catch((error) => {
+                console.error(error);
+            });
+        }
+    };
+
+    const updateHeaderSourceControl = (): void => {
+        rebuildPlaylistSourceControl(getPlaylistSourceControlOptions());
         playlistTitle.hidden = true;
-        playlistSource.hidden = false;
+        playlistSourceWrap.hidden = false;
 
         if (controllerState.selectedSource === 'playlist' && hasLoadedPlaylist()) {
-            const hasPlaylistOption = Array.from(playlistSource.options).some((option) => option.value === 'playlist');
-            if (hasPlaylistOption) {
-                playlistSource.value = 'playlist';
+            if (setPlaylistSourceSelection('playlist')) {
                 return;
             }
         }
 
         if (controllerState.selectedSource === 'history' && controllerState.loadedPlaylistReadOnly) {
-            const hasHistoryOption = Array.from(playlistSource.options).some((option) => option.value === 'history');
-            if (hasHistoryOption) {
-                playlistSource.value = 'history';
+            if (setPlaylistSourceSelection('history')) {
                 return;
             }
         }
 
         if (controllerState.selectedFavoriteIndex !== null) {
             const favoriteValue = `favorite:${controllerState.selectedFavoriteIndex}`;
-            if (Array.from(playlistSource.options).some((option) => option.value === favoriteValue)) {
-                playlistSource.value = favoriteValue;
+            if (setPlaylistSourceSelection(favoriteValue)) {
                 return;
             }
         }
 
         controllerState.selectedSource = 'queue';
         controllerState.selectedFavoriteIndex = null;
-        playlistSource.value = 'queue';
+        setPlaylistSourceSelection('queue');
     };
 
     const closeMenu = (): void => {
@@ -515,6 +684,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const closeModal = (): void => {
+        closePlaylistSourceMenu();
         playlistModal.classList.remove('is-visible');
 
         if (playlistModalHideTimer !== undefined) {
@@ -1150,9 +1320,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         await loadFavouritePlaylist(favoritePlaylists[favoriteIndex]);
         updateHeaderSourceControl();
         const favoriteValue = `favorite:${favoriteIndex}`;
-        if (Array.from(playlistSource.options).some((option) => option.value === favoriteValue)) {
-            playlistSource.value = favoriteValue;
-        }
+        setPlaylistSourceSelection(favoriteValue);
     };
 
     trigger.addEventListener('click', () => {
@@ -1166,53 +1334,108 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     });
 
     playlistSource.addEventListener('change', () => {
-        const selectedValue = playlistSource.value;
-        if (selectedValue === 'queue') {
-            controllerState.selectedSource = 'queue';
-            controllerState.selectedFavoriteIndex = null;
-            controllerState.playbackSource = 'queue';
-            hydrateCurrentViewTracks();
-            renderPlaylist(true);
+        handlePlaylistSourceChange(playlistSource.value);
+    });
+
+    playlistSourceButton.addEventListener('click', () => {
+        togglePlaylistSourceMenu();
+    });
+
+    playlistSourceButton.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            openPlaylistSourceMenu();
             return;
         }
 
-        if (selectedValue === 'playlist') {
-            controllerState.selectedSource = 'playlist';
-            controllerState.selectedFavoriteIndex = null;
-            hydrateCurrentViewTracks();
-            renderPlaylist(true);
+        if (event.key === 'Escape' && !playlistSourceMenu.hidden) {
+            event.preventDefault();
+            closePlaylistSourceMenu(true);
+        }
+    });
+
+    playlistSourceMenu.addEventListener('click', (event) => {
+        const optionButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('.playlist-source-option');
+        if (!optionButton) {
             return;
         }
 
-        if (selectedValue === 'history') {
-            void loadListenHistoryPlaylist(false).then((loaded) => {
-                if (loaded) {
-                    return;
-                }
-
-                controllerState.selectedSource = 'queue';
-                controllerState.selectedFavoriteIndex = null;
-                playlistSource.value = 'queue';
-                hydrateCurrentViewTracks();
-                renderPlaylist(true);
-            }).catch((error) => {
-                console.error(error);
-                controllerState.selectedSource = 'queue';
-                controllerState.selectedFavoriteIndex = null;
-                playlistSource.value = 'queue';
-                hydrateCurrentViewTracks();
-                renderPlaylist(true);
-            });
+        const { value } = optionButton.dataset;
+        if (!value) {
             return;
         }
 
-        const favoriteMatch = /^favorite:(\d+)$/.exec(selectedValue);
-        if (favoriteMatch) {
-            const favoriteIndex = Number(favoriteMatch[1]);
-            void loadFavouritePlaylistByIndex(favoriteIndex).catch((error) => {
-                console.error(error);
-            });
+        closePlaylistSourceMenu();
+        handlePlaylistSourceChange(value);
+    });
+
+    playlistSourceMenu.addEventListener('keydown', (event) => {
+        const optionButtons = Array.from(playlistSourceMenu.querySelectorAll<HTMLButtonElement>('.playlist-source-option'));
+        if (optionButtons.length === 0) {
+            return;
         }
+
+        const activeElement = document.activeElement as HTMLButtonElement | null;
+        const currentIndex = activeElement ? optionButtons.indexOf(activeElement) : -1;
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closePlaylistSourceMenu(true);
+            return;
+        }
+
+        if (event.key === 'Tab') {
+            closePlaylistSourceMenu();
+            return;
+        }
+
+        if (event.key === 'Home') {
+            event.preventDefault();
+            optionButtons[0]?.focus();
+            return;
+        }
+
+        if (event.key === 'End') {
+            event.preventDefault();
+            optionButtons[optionButtons.length - 1]?.focus();
+            return;
+        }
+
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            const nextIndex = currentIndex >= 0 ? Math.min(optionButtons.length - 1, currentIndex + 1) : 0;
+            optionButtons[nextIndex]?.focus();
+            return;
+        }
+
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            const nextIndex = currentIndex >= 0 ? Math.max(0, currentIndex - 1) : optionButtons.length - 1;
+            optionButtons[nextIndex]?.focus();
+            return;
+        }
+
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            activeElement?.click();
+        }
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+        if (playlistSourceMenu.hidden) {
+            return;
+        }
+
+        const eventTarget = event.target;
+        if (!(eventTarget instanceof Node)) {
+            return;
+        }
+
+        if (playlistSourceWrap.contains(eventTarget)) {
+            return;
+        }
+
+        closePlaylistSourceMenu();
     });
 
     playlistLoadBtn.addEventListener('click', () => {
