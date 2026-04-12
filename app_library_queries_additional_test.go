@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -246,6 +247,57 @@ func TestLibraryQueryFallbackPagingAndMusicBrainzTagSearch(t *testing.T) {
 	}
 	if artistPage.TotalEntries != 1 || len(artistPage.Entries) != 1 || artistPage.Entries[0].Path != "Library One/Artist One/Album One" {
 		t.Fatalf("GetLibraryFolderPage(fallback map) = %#v, want the album child entry", artistPage)
+	}
+
+	newerAlbumFolder := filepath.Join(fixture.rootOne, "Artist One", "Album Two")
+	newerTrackPath := filepath.Join(newerAlbumFolder, "02 Newer.flac")
+	writeTestFile(t, newerTrackPath, "newer")
+	olderTimestamp := time.Unix(1_700_000_000, 0)
+	newerTimestamp := olderTimestamp.Add(2 * time.Hour)
+	if err := os.Chtimes(fixture.trackOne, olderTimestamp, olderTimestamp); err != nil {
+		t.Fatalf("Chtimes(%q) error = %v", fixture.trackOne, err)
+	}
+	if err := os.Chtimes(fixture.noteOne, olderTimestamp, olderTimestamp); err != nil {
+		t.Fatalf("Chtimes(%q) error = %v", fixture.noteOne, err)
+	}
+	if err := os.Chtimes(fixture.coverOne, olderTimestamp, olderTimestamp); err != nil {
+		t.Fatalf("Chtimes(%q) error = %v", fixture.coverOne, err)
+	}
+	if err := os.Chtimes(fixture.folderCoverOne, olderTimestamp, olderTimestamp); err != nil {
+		t.Fatalf("Chtimes(%q) error = %v", fixture.folderCoverOne, err)
+	}
+	if err := os.Chtimes(newerTrackPath, newerTimestamp, newerTimestamp); err != nil {
+		t.Fatalf("Chtimes(%q) error = %v", newerTrackPath, err)
+	}
+
+	root := app.activeLibraryRoots[0]
+	app.addOrUpdateIndexedFile(root, fixture.trackOne, filepath.Base(fixture.trackOne))
+	app.addOrUpdateIndexedFile(root, fixture.noteOne, filepath.Base(fixture.noteOne))
+	app.addOrUpdateIndexedFile(root, fixture.coverOne, filepath.Base(fixture.coverOne))
+	app.addOrUpdateIndexedFile(root, fixture.folderCoverOne, filepath.Base(fixture.folderCoverOne))
+	app.addOrUpdateIndexedFile(root, newerTrackPath, filepath.Base(newerTrackPath))
+	app.libraryScan.TrackFiles = []LibraryIndexedFile{app.trackByPath[fixture.trackOne], app.trackByPath[fixture.trackTwo], app.trackByPath[newerTrackPath]}
+	app.libraryScan.TextFiles = []LibraryIndexedFile{app.textByPath[fixture.noteOne]}
+	app.libraryScan.ImageFiles = []LibraryIndexedFile{app.imageByPath[fixture.coverOne], app.imageByPath[fixture.folderCoverOne], app.imageByPath[fixture.imageTwo]}
+	indexData := buildLibraryDerivedIndexData(app.libraryScan.TrackFiles, app.libraryScan.TextFiles, app.libraryScan.ImageFiles)
+	app.folderEntriesByFolder = indexData.folderEntriesByFolder
+	app.folderChildPathsByFolder = indexData.folderChildPathsByFolder
+	app.trackFilesByFolder = indexData.trackFilesByFolder
+	app.searchFolderEntries = indexData.searchFolderEntries
+	app.searchTrackEntries = indexData.searchTrackEntries
+	app.searchTextEntries = indexData.searchTextEntries
+	app.searchImageEntries = indexData.searchImageEntries
+	app.libraryDerivedIndexDirty = false
+	app.libraryDerivedIndexBuilding = false
+
+	dateDescPage := app.GetLibraryFolderPageSorted("Library One/Artist One", "date-desc", 0, 10)
+	if dateDescPage.TotalEntries != 2 || len(dateDescPage.Entries) != 2 || dateDescPage.Entries[0].Path != "Library One/Artist One/Album Two" {
+		t.Fatalf("GetLibraryFolderPageSorted(date-desc) = %#v, want newer album first", dateDescPage)
+	}
+
+	dateAscPage := app.GetLibraryFolderPageSorted("Library One/Artist One", "date-asc", 0, 10)
+	if dateAscPage.TotalEntries != 2 || len(dateAscPage.Entries) != 2 || dateAscPage.Entries[0].Path != "Library One/Artist One/Album One" {
+		t.Fatalf("GetLibraryFolderPageSorted(date-asc) = %#v, want older album first", dateAscPage)
 	}
 
 	if got := app.ResolveLibraryFolderForPath(filepath.Join(fixture.rootOne, "Artist One", "Missing Album", "01 Missing.flac")); got != "" {

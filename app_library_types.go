@@ -8,6 +8,7 @@ type LibraryIndexedFile struct {
 	FolderPath   string `json:"folderPath"`
 	RootPath     string `json:"rootPath"`
 	RootName     string `json:"rootName"`
+	ModifiedAtMs int64  `json:"modifiedAtMs,omitempty"`
 }
 
 // LibraryScanResult contains indexed library content and scan metadata.
@@ -44,6 +45,7 @@ type LibraryBrowserEntry struct {
 	Path                      string `json:"path"`
 	FolderPath                string `json:"folderPath"`
 	RelativePath              string `json:"relativePath"`
+	ModifiedAtMs              int64  `json:"modifiedAtMs,omitempty"`
 	MusicBrainzTaggedAlbumDir bool   `json:"musicBrainzTaggedAlbumDir,omitempty"`
 }
 

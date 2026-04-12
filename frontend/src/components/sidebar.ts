@@ -14,6 +14,7 @@ export type SidebarElements = {
     libraryBack: HTMLButtonElement;
     libraryPath: HTMLParagraphElement;
     librarySearch: HTMLInputElement;
+    librarySort: HTMLSelectElement;
     libraryBrowser: HTMLDivElement;
     socialFeedStatus: HTMLParagraphElement;
     socialFeedList: HTMLDivElement;
@@ -50,6 +51,11 @@ export const renderSidebar = (): string => `
             autocomplete="off"
             spellcheck="false"
           >
+          <select id="library-sort" class="library-sort" aria-label="Sort library browser">
+            <option value="name" selected>Name</option>
+            <option value="date-desc">Newest</option>
+            <option value="date-asc">Oldest</option>
+          </select>
         </div>
         <div id="library-browser" class="library-browser"></div>
       </section>
@@ -76,6 +82,7 @@ export const getSidebarElements = (root: ParentNode): SidebarElements => ({
     libraryBack: root.querySelector('#library-back') as HTMLButtonElement,
     libraryPath: root.querySelector('#library-path') as HTMLParagraphElement,
     librarySearch: root.querySelector('#library-search') as HTMLInputElement,
+    librarySort: root.querySelector('#library-sort') as HTMLSelectElement,
     libraryBrowser: root.querySelector('#library-browser') as HTMLDivElement,
     socialFeedStatus: root.querySelector('#social-feed-status') as HTMLParagraphElement,
     socialFeedList: root.querySelector('#social-feed-list') as HTMLDivElement,

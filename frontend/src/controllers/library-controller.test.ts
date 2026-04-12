@@ -70,6 +70,7 @@ const mountLibraryController = (overrides?: {
             <button id="library-back" type="button"></button>
             <p id="library-path"></p>
             <input id="library-search" type="text">
+               <select id="library-sort"><option value="name">Name</option><option value="date-desc">Newest</option><option value="date-asc">Oldest</option></select>
             <div id="library-browser"></div>
         </div>
     `;
@@ -81,6 +82,7 @@ const mountLibraryController = (overrides?: {
     const libraryBack = document.querySelector('#library-back') as HTMLButtonElement;
     const libraryPath = document.querySelector('#library-path') as HTMLParagraphElement;
     const librarySearch = document.querySelector('#library-search') as HTMLInputElement;
+    const librarySort = document.querySelector('#library-sort') as HTMLSelectElement;
     const libraryBrowser = document.querySelector('#library-browser') as HTMLElement;
 
     const tracks: Track[] = [
@@ -163,6 +165,7 @@ const mountLibraryController = (overrides?: {
         libraryBack,
         libraryPath,
         librarySearch,
+           librarySort,
         libraryBrowser,
         state: overrides?.state,
         getTracks: () => tracks,
@@ -188,6 +191,7 @@ const mountLibraryController = (overrides?: {
     return {
         controller,
         librarySearch,
+        librarySort,
         libraryBrowser,
         searchLibrary,
         loadFolderPage,
@@ -233,7 +237,7 @@ describe('createLibraryController', () => {
         controller.setSidebarOpen(true);
         await flushPromises();
 
-        expect(loadFolderPage).toHaveBeenCalledWith('Library/Artist One', 0, 100);
+        expect(loadFolderPage).toHaveBeenCalledWith('Library/Artist One', 'name', 0, 100);
         expect(controller.isSidebarOpen()).toBe(true);
         expect(controller.getCurrentFolderPath()).toBe('Library/Artist One');
         expect(libraryBrowser.querySelector(`[data-track-path="${trackPath}"]`)).not.toBeNull();
@@ -257,6 +261,24 @@ describe('createLibraryController', () => {
         expect(controller.getLibrarySearchQuery()).toBe('');
         expect(controller.isLibrarySearchActive()).toBe(false);
         expect(libraryBrowser.querySelector(`[data-track-path="${trackPath}"]`)).not.toBeNull();
+    });
+
+    it('reloads the current folder when the browser sort mode changes', async () => {
+        const { controller, librarySort, loadFolderPage } = mountLibraryController();
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        expect(loadFolderPage).toHaveBeenCalledWith('Library/Artist One', 'name', 0, 100);
+
+        librarySort.value = 'date-desc';
+        librarySort.dispatchEvent(new Event('change', { bubbles: true }));
+        await flushPromises();
+
+        expect(loadFolderPage).toHaveBeenLastCalledWith('Library/Artist One', 'date-desc', 0, 100);
+        expect(controller.getLibraryBrowserSortMode()).toBe('date-desc');
     });
 
     it('preserves the last folder on close and clears restored search state when navigating', async () => {

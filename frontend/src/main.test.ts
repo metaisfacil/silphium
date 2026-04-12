@@ -271,6 +271,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
     GetLastFmRequestToken: vi.fn(async () => ''),
     GetLastFmSessionKey: vi.fn(async () => ''),
     GetLibraryFolderPage: vi.fn(async () => ({ entries: [], folderPath: '', limit: 0, offset: 0, totalEntries: 0 })),
+    GetLibraryFolderPageSorted: vi.fn(async () => ({ entries: [], folderPath: '', limit: 0, offset: 0, totalEntries: 0 })),
     GetLibraryIndexedFilePage: vi.fn(async () => ({ entries: [], kind: 'track', limit: 0, offset: 0, totalEntries: 0 })),
     GetMusicBrainzTagWorkerProgress: vi.fn(async () => testState.musicBrainzProgress),
     GetSettings: vi.fn(async () => testState.normalizedSettings),

@@ -90,6 +90,7 @@ type AppControllerSetupScope = RuntimeScope<
     | 'libraryBack'
     | 'libraryPath'
     | 'librarySearch'
+    | 'librarySort'
     | 'libraryBrowser'
     | 'libraryScanYieldIndicator'
     | 'loadFolderPage'
@@ -432,6 +433,7 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
     libraryBack: scope.libraryBack,
     libraryPath: scope.libraryPath,
     librarySearch: scope.librarySearch,
+    librarySort: scope.librarySort,
     libraryBrowser: scope.libraryBrowser,
     libraryScanYieldIndicator: scope.libraryScanYieldIndicator,
     loadFolderPage: scope.loadFolderPage,

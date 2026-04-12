@@ -1,6 +1,7 @@
 import type {
     ImageLibraryFile,
     LibraryBrowserEntry,
+    LibraryBrowserSortMode,
     TextLibraryFile,
     Track,
 } from '../types/app-types';
@@ -55,6 +56,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         libraryBack,
         libraryPath,
         librarySearch,
+        librarySort,
         libraryBrowser,
     } = options;
     const controllerState = options.state ?? createLibraryControllerState();
@@ -71,6 +73,18 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     const getTracks = (): Track[] => options.getTracks();
 
     const normalizedLibrarySearchQuery = (): string => controllerState.librarySearchQuery.trim().toLowerCase();
+
+    const normalizedLibraryBrowserSortMode = (): LibraryBrowserSortMode => {
+        switch (controllerState.libraryBrowserSortMode) {
+            case 'date-asc':
+            case 'date-desc':
+                return controllerState.libraryBrowserSortMode;
+            default:
+                return 'name';
+        }
+    };
+
+    librarySort.value = normalizedLibraryBrowserSortMode();
 
     const isLibrarySearchActive = (): boolean => normalizedLibrarySearchQuery() !== '';
 
@@ -137,7 +151,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     const sourceKey = (source: PaneSource): string => {
         return source.kind === 'folder'
-            ? `folder:${source.folderPath}`
+            ? `folder:${source.folderPath}:${source.sortMode}`
             : `search:${source.query}`;
     };
 
@@ -156,6 +170,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         return {
             kind: 'folder',
             folderPath: controllerState.currentFolderPath,
+            sortMode: normalizedLibraryBrowserSortMode(),
         };
     };
 
@@ -464,7 +479,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         try {
             const offset = pageIndex * serverPageSize;
             const page = state.source.kind === 'folder'
-                ? await options.loadFolderPage(state.source.folderPath, offset, serverPageSize)
+                ? await options.loadFolderPage(state.source.folderPath, state.source.sortMode, offset, serverPageSize)
                 : await options.searchLibrary(state.source.query, offset, serverPageSize);
 
             const latestState = paneStateByElement.get(pane);
@@ -742,6 +757,11 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }, searchDebounceMs);
     };
 
+    const setLibraryBrowserSortMode = (sortMode: LibraryBrowserSortMode): void => {
+        controllerState.libraryBrowserSortMode = sortMode;
+        librarySort.value = normalizedLibraryBrowserSortMode();
+    };
+
     const doRebuildPastedPathLookupCache = (
         tracks: Track[] = options.getTracks(),
         textFiles: TextLibraryFile[] = options.getTextFiles(),
@@ -851,6 +871,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         setSuppressNextLibrarySearchPasteInput: (value: boolean) => { suppressNextLibrarySearchPasteInput = value; },
         getLibrarySearchQuery: () => controllerState.librarySearchQuery,
         setLibrarySearchQueryValue: setLibrarySearchQuery,
+        getLibraryBrowserSortMode: normalizedLibraryBrowserSortMode,
+        setLibraryBrowserSortMode,
         getCurrentFolderPath: () => controllerState.currentFolderPath,
         setCurrentFolderPath: (path: string) => { controllerState.currentFolderPath = path; },
         isLibrarySearchActive,
@@ -885,6 +907,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     return {
         clearLibrarySearch,
         firstTrackIndexFromRandomAlbumFolder,
+        getLibraryBrowserSortMode: normalizedLibraryBrowserSortMode,
         getLibrarySearchQuery: () => controllerState.librarySearchQuery,
         getLibrarySearchStateSnapshot,
         getLibraryRootName: () => controllerState.libraryRootName,
@@ -901,6 +924,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         setCurrentFolderPath: (path: string) => {
             controllerState.currentFolderPath = path;
         },
+        setLibraryBrowserSortMode,
         setLibraryLoading,
         setLibraryLoadingEtaSeconds,
         setLibraryLoadingStatusLabel,

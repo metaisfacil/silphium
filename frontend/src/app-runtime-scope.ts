@@ -29,6 +29,7 @@ import type {
     CustomSendToActionScope,
     FFmpegPathStatus,
     ImageLibraryFile,
+    LibraryBrowserSortMode,
     LibraryFolderPage,
     LibraryIndexedFilePage,
     LibraryScanProgress,
@@ -82,7 +83,7 @@ type SharedRuntimeMethods = {
     copyShareImageToClipboard: (base64: string) => Promise<boolean>;
     readFileBase64: (path: string) => Promise<string>;
     readImageThumbnail: (path: string, maxEdge: number) => Promise<{ base64?: string; mimeType?: string }>;
-    loadFolderPage: (folderPath: string, offset: number, limit: number) => Promise<LibraryFolderPage>;
+    loadFolderPage: (folderPath: string, sortMode: LibraryBrowserSortMode, offset: number, limit: number) => Promise<LibraryFolderPage>;
     resolveLibraryFolderForAbsolutePath: (path: string) => Promise<string>;
     isFolderImmediateDescendantsEnumerated: (folderPath: string) => Promise<boolean>;
     searchLibrary: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;

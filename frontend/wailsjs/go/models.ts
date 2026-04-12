@@ -317,6 +317,7 @@ export namespace main {
 	    path: string;
 	    folderPath: string;
 	    relativePath: string;
+	    modifiedAtMs?: number;
 	    musicBrainzTaggedAlbumDir?: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -330,6 +331,7 @@ export namespace main {
 	        this.path = source["path"];
 	        this.folderPath = source["folderPath"];
 	        this.relativePath = source["relativePath"];
+	        this.modifiedAtMs = source["modifiedAtMs"];
 	        this.musicBrainzTaggedAlbumDir = source["musicBrainzTaggedAlbumDir"];
 	    }
 	}
@@ -378,6 +380,7 @@ export namespace main {
 	    folderPath: string;
 	    rootPath: string;
 	    rootName: string;
+	    modifiedAtMs?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new LibraryIndexedFile(source);
@@ -391,6 +394,7 @@ export namespace main {
 	        this.folderPath = source["folderPath"];
 	        this.rootPath = source["rootPath"];
 	        this.rootName = source["rootName"];
+	        this.modifiedAtMs = source["modifiedAtMs"];
 	    }
 	}
 	export class LibraryIndexedFilePage {

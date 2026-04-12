@@ -3,8 +3,15 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+)
+
+const (
+	libraryBrowserSortName     = "name"
+	libraryBrowserSortDateAsc  = "date-asc"
+	libraryBrowserSortDateDesc = "date-desc"
 )
 
 func searchQueryForLog(query string) string {
@@ -22,6 +29,42 @@ func folderPathForLog(folderPath string) string {
 	}
 
 	return folderPath
+}
+
+func normalizeLibraryBrowserSortMode(sortMode string) string {
+	switch strings.ToLower(strings.TrimSpace(sortMode)) {
+	case "", libraryBrowserSortName:
+		return libraryBrowserSortName
+	case libraryBrowserSortDateAsc:
+		return libraryBrowserSortDateAsc
+	case libraryBrowserSortDateDesc:
+		return libraryBrowserSortDateDesc
+	default:
+		return libraryBrowserSortName
+	}
+}
+
+func sortLibraryBrowserEntries(entries []LibraryBrowserEntry, sortMode string) []LibraryBrowserEntry {
+	normalizedSortMode := normalizeLibraryBrowserSortMode(sortMode)
+	if normalizedSortMode == libraryBrowserSortName || len(entries) <= 1 {
+		return entries
+	}
+
+	sortedEntries := append([]LibraryBrowserEntry(nil), entries...)
+	sort.SliceStable(sortedEntries, func(i int, j int) bool {
+		leftModifiedAt := sortedEntries[i].ModifiedAtMs
+		rightModifiedAt := sortedEntries[j].ModifiedAtMs
+		if leftModifiedAt == rightModifiedAt {
+			return false
+		}
+
+		if normalizedSortMode == libraryBrowserSortDateAsc {
+			return leftModifiedAt < rightModifiedAt
+		}
+
+		return leftModifiedAt > rightModifiedAt
+	})
+	return sortedEntries
 }
 
 func (a *App) annotateMusicBrainzTaggedAlbumFolders(entries []LibraryBrowserEntry) {
@@ -189,10 +232,16 @@ func (a *App) GetLibraryIndexedFilePage(kind string, offset int, limit int) Libr
 	}
 }
 
-// GetLibraryFolderPage returns a paginated folder listing from the current backend index.
+// GetLibraryFolderPage returns a paginated folder listing from the current backend index using the default name sort.
 func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) LibraryFolderPage {
+	return a.GetLibraryFolderPageSorted(folderPath, libraryBrowserSortName, offset, limit)
+}
+
+// GetLibraryFolderPageSorted returns a paginated folder listing from the current backend index.
+func (a *App) GetLibraryFolderPageSorted(folderPath string, sortMode string, offset int, limit int) LibraryFolderPage {
 	queryStartTime := time.Now()
 	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
+	normalizedSortMode := normalizeLibraryBrowserSortMode(sortMode)
 	if !ok {
 		return LibraryFolderPage{
 			FolderPath: normalizedFolderPath,
@@ -264,6 +313,8 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 		contentState.indexMu.Unlock()
 	}
 
+	entries = sortLibraryBrowserEntries(entries, normalizedSortMode)
+
 	pagedEntries := copyPagedLibraryEntries(entries, offset, limit)
 	a.annotateMusicBrainzTaggedAlbumFolders(pagedEntries)
 	result := LibraryFolderPage{
@@ -274,9 +325,10 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 		Entries:      pagedEntries,
 	}
 	a.logRescanEvent(
-		"GetLibraryFolderPage END: folder=%s mode=%s total=%d page=%d offset=%d limit=%d took %.2fms",
+		"GetLibraryFolderPageSorted END: folder=%s mode=%s sort=%s total=%d page=%d offset=%d limit=%d took %.2fms",
 		folderPathForLog(normalizedFolderPath),
 		mode,
+		normalizedSortMode,
 		len(entries),
 		len(pagedEntries),
 		offset,

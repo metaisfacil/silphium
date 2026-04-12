@@ -163,7 +163,7 @@ func (a *App) buildMusicBrainzTagSearchResultsLocked(tagNames []string) []Librar
 			continue
 		}
 
-		appendEntry(folderBrowserEntry(cleanFolderPath))
+		appendEntry(folderBrowserEntry(cleanFolderPath, 0))
 		appendFolderEntries(cleanFolderPath)
 	}
 

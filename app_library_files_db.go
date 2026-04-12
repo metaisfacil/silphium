@@ -221,6 +221,7 @@ func indexedFileFromDatabaseRecord(root libraryRootConfig, record libraryFilesDa
 		FolderPath:   buildVirtualLibraryPath(root.Name, folderPath),
 		RootPath:     root.Path,
 		RootName:     root.Name,
+		ModifiedAtMs: timeFromUnixNanoValue(record.ModUnixNs).UnixMilli(),
 	}, true
 }
 

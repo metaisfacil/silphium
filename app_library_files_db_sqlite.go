@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -187,7 +188,13 @@ func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFile
 	if err != nil {
 		return err
 	}
-	defer transaction.Rollback()
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		_ = transaction.Rollback()
+	}()
 
 	if _, err := transaction.Exec(`DELETE FROM meta`); err != nil {
 		return err
@@ -228,10 +235,12 @@ func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFile
 			}
 
 			var size int64
-			var modUnixNs int64
+			modUnixNs := entry.ModifiedAtMs * int64(time.Millisecond)
 			if info, statErr := os.Stat(entry.Path); statErr == nil {
 				size = info.Size()
-				modUnixNs = info.ModTime().UnixNano()
+				if modUnixNs <= 0 {
+					modUnixNs = info.ModTime().UnixNano()
+				}
 			}
 
 			if _, err := transaction.Exec(
@@ -260,5 +269,10 @@ func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFile
 		return err
 	}
 
-	return transaction.Commit()
+	if err := transaction.Commit(); err != nil {
+		return err
+	}
+	committed = true
+
+	return nil
 }

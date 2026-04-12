@@ -14,6 +14,7 @@ const createDeps = () => {
         <button id="library-back" type="button"></button>
         <p id="library-path"></p>
         <input id="library-search" type="text">
+        <select id="library-sort"><option value="name">Name</option><option value="date-desc">Newest</option><option value="date-asc">Oldest</option></select>
         <div id="library-browser"></div>
     `;
 
@@ -21,10 +22,12 @@ const createDeps = () => {
     const libraryBack = document.querySelector('#library-back') as HTMLButtonElement;
     const libraryPath = document.querySelector('#library-path') as HTMLParagraphElement;
     const librarySearch = document.querySelector('#library-search') as HTMLInputElement;
+    const librarySort = document.querySelector('#library-sort') as HTMLSelectElement;
     const libraryBrowser = document.querySelector('#library-browser') as HTMLElement;
 
     let suppressNextPaste = false;
     let librarySearchQuery = '';
+    let libraryBrowserSortMode: 'name' | 'date-desc' | 'date-asc' = 'name';
     let currentFolderPath = 'Library/Artist';
     let librarySearchActive = false;
     const expandedSearchFolders = new Set<string>();
@@ -36,6 +39,7 @@ const createDeps = () => {
             libraryBack,
             libraryPath,
             librarySearch,
+            librarySort,
             libraryBrowser,
             libraryScanYieldIndicator: document.createElement('span'),
             getTracks: () => [],
@@ -72,6 +76,10 @@ const createDeps = () => {
         getLibrarySearchQuery: () => librarySearchQuery,
         setLibrarySearchQueryValue: (value: string) => {
             librarySearchQuery = value;
+        },
+        getLibraryBrowserSortMode: () => libraryBrowserSortMode,
+        setLibraryBrowserSortMode: (value) => {
+            libraryBrowserSortMode = value;
         },
         getCurrentFolderPath: () => currentFolderPath,
         setCurrentFolderPath: (path: string) => {

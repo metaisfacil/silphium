@@ -188,8 +188,11 @@ export type LibraryBrowserEntry = {
     path: string;
     folderPath: string;
     relativePath: string;
+    modifiedAtMs?: number;
     musicBrainzTaggedAlbumDir?: boolean;
 };
+
+export type LibraryBrowserSortMode = 'name' | 'date-desc' | 'date-asc';
 
 export type LibraryFolderPage = {
     folderPath: string;

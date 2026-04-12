@@ -20,6 +20,14 @@ type preparedIncrementalLibraryChange struct {
 	imageFiles []LibraryIndexedFile
 }
 
+func modifiedAtMsFromFileInfo(info os.FileInfo) int64 {
+	if info == nil {
+		return 0
+	}
+
+	return info.ModTime().UnixMilli()
+}
+
 func activeLibraryRootForPathInRoots(roots []libraryRootConfig, path string) (libraryRootConfig, bool) {
 	absolutePath, ok := absoluteNormalizedPath(path)
 	if !ok {
@@ -72,7 +80,7 @@ func (a *App) prepareIncrementalLibraryChange(root libraryRootConfig, targetPath
 	}
 
 	if !info.IsDir() {
-		if indexed, ok := indexFileForRoot(root, targetPath, info.Name()); ok {
+		if indexed, ok := indexFileForRootWithModifiedAt(root, targetPath, info.Name(), modifiedAtMsFromFileInfo(info)); ok {
 			appendPreparedIncrementalLibraryFile(&prepared, indexed)
 		}
 		a.logRescanEvent("  - processed single file: %s", targetPath)
@@ -85,7 +93,12 @@ func (a *App) prepareIncrementalLibraryChange(root libraryRootConfig, targetPath
 			return nil
 		}
 
-		if indexed, ok := indexFileForRoot(root, currentPath, entry.Name()); ok {
+		entryInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			return nil
+		}
+
+		if indexed, ok := indexFileForRootWithModifiedAt(root, currentPath, entry.Name(), modifiedAtMsFromFileInfo(entryInfo)); ok {
 			appendPreparedIncrementalLibraryFile(&prepared, indexed)
 		}
 		fileCount++
@@ -133,7 +146,7 @@ func (a *App) removePathAndDescendants(path string) {
 	}
 }
 
-func indexFileForRoot(root libraryRootConfig, fullPath string, fileName string) (LibraryIndexedFile, bool) {
+func indexFileForRootWithModifiedAt(root libraryRootConfig, fullPath string, fileName string, modifiedAtMs int64) (LibraryIndexedFile, bool) {
 	folderPath, relativePath, ok := folderAndRelativeForLibraryRoot(root, fullPath)
 	if !ok {
 		return LibraryIndexedFile{}, false
@@ -146,7 +159,17 @@ func indexFileForRoot(root libraryRootConfig, fullPath string, fileName string) 
 		FolderPath:   folderPath,
 		RootPath:     root.Path,
 		RootName:     root.Name,
+		ModifiedAtMs: modifiedAtMs,
 	}, true
+}
+
+func indexFileForRoot(root libraryRootConfig, fullPath string, fileName string) (LibraryIndexedFile, bool) {
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		return indexFileForRootWithModifiedAt(root, fullPath, fileName, 0)
+	}
+
+	return indexFileForRootWithModifiedAt(root, fullPath, fileName, modifiedAtMsFromFileInfo(info))
 }
 
 func (a *App) addOrUpdateIndexedFile(root libraryRootConfig, fullPath string, fileName string) {

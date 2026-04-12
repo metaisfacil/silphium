@@ -25,6 +25,7 @@ describe('createAppState', () => {
             libraryLoading: false,
             libraryLoadingEtaSeconds: null,
             libraryLoadingStatusLabel: '',
+            libraryBrowserSortMode: 'name',
             librarySearchQuery: '',
             librarySearchPending: false,
             activeSearchResult: null,
