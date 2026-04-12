@@ -61,7 +61,6 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsTabGeneral,
         settingsTabLibrary,
         settingsTabNetwork,
-        settingsTabDatabase,
         settingsTabPlaylists,
         settingsTabScrobbling,
         settingsTabAudio,
@@ -70,7 +69,6 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsPanelGeneral,
         settingsPanelLibrary,
         settingsPanelNetwork,
-        settingsPanelDatabase,
         settingsPanelPlaylists,
         settingsPanelScrobbling,
         settingsPanelAudio,
@@ -530,7 +528,6 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         general: settingsTabGeneral,
         library: settingsTabLibrary,
         network: settingsTabNetwork,
-        database: settingsTabDatabase,
         playlists: settingsTabPlaylists,
         scrobbling: settingsTabScrobbling,
         audio: settingsTabAudio,
@@ -547,7 +544,6 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             general: settingsPanelGeneral,
             library: settingsPanelLibrary,
             network: settingsPanelNetwork,
-            database: settingsPanelDatabase,
             playlists: settingsPanelPlaylists,
             scrobbling: settingsPanelScrobbling,
             audio: settingsPanelAudio,
@@ -816,16 +812,16 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             settingsAddLibraryFolder.focus();
             return;
         }
+        if (initialTab === 'database') {
+            settingsMusicBrainzTagDatabaseEnabled.focus();
+            return;
+        }
         if (primaryTab === 'library') {
             settingsLocalLibraryFilesDatabaseEnabled.focus();
             return;
         }
         if (primaryTab === 'network') {
             settingsListenBrainzToken.focus();
-            return;
-        }
-        if (primaryTab === 'database') {
-            settingsMusicBrainzTagDatabaseEnabled.focus();
             return;
         }
         if (primaryTab === 'playlists') {

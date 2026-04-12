@@ -157,7 +157,6 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsTabGeneral,
         settingsTabLibrary,
         settingsTabNetwork,
-        settingsTabDatabase,
         settingsTabPlaylists,
         settingsTabScrobbling,
         settingsTabAudio,
@@ -451,11 +450,6 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
     settingsTabNetwork.addEventListener('click', () => {
         setActiveTab('network');
         settingsListenBrainzToken.focus();
-    });
-
-    settingsTabDatabase.addEventListener('click', () => {
-        setActiveTab('database');
-        settingsMusicBrainzTagDatabaseEnabled.focus();
     });
 
     settingsTabPlaylists.addEventListener('click', () => {

@@ -27,7 +27,6 @@ const createRuntime = () => {
         general: createTabButton(),
         library: createTabButton(),
         network: createTabButton(),
-        database: createTabButton(),
         playlists: createTabButton(),
         scrobbling: createTabButton(),
         audio: createTabButton(),
@@ -39,7 +38,6 @@ const createRuntime = () => {
         general: createPanel(),
         library: createPanel(),
         network: createPanel(),
-        database: createPanel(),
         playlists: createPanel(),
         scrobbling: createPanel(),
         audio: createPanel(),
@@ -68,5 +66,13 @@ describe('createSettingsTabRuntime', () => {
         runtime.setActiveTab('network');
 
         expect(settingsTabPanels.network.scrollTop).toBe(0);
+    });
+
+    it('maps legacy database tab requests to the combined library panel', () => {
+        const { runtime, settingsTabPanels } = createRuntime();
+
+        runtime.setActiveTab('database');
+
+        expect(settingsTabPanels.library.hidden).toBe(false);
     });
 });

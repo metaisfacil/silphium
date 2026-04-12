@@ -8,7 +8,6 @@ export type SettingsModalElements = {
     settingsTabGeneral: HTMLButtonElement;
     settingsTabLibrary: HTMLButtonElement;
     settingsTabNetwork: HTMLButtonElement;
-    settingsTabDatabase: HTMLButtonElement;
     settingsTabPlaylists: HTMLButtonElement;
     settingsTabScrobbling: HTMLButtonElement;
     settingsTabAudio: HTMLButtonElement;
@@ -17,7 +16,6 @@ export type SettingsModalElements = {
     settingsPanelGeneral: HTMLDivElement;
     settingsPanelLibrary: HTMLDivElement;
     settingsPanelNetwork: HTMLDivElement;
-    settingsPanelDatabase: HTMLDivElement;
     settingsPanelPlaylists: HTMLDivElement;
     settingsPanelScrobbling: HTMLDivElement;
     settingsPanelAudio: HTMLDivElement;
@@ -189,7 +187,6 @@ export const renderSettingsModal = (): string => `
                         <button id="settings-tab-audio" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-audio" aria-selected="false">Audio</button>
                         <button id="settings-tab-playlists" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-playlists" aria-selected="false">Playlists</button>
                         <button id="settings-tab-scrobbling" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-scrobbling" aria-selected="false">Scrobbling</button>
-                        <button id="settings-tab-database" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-database" aria-selected="false">Metadata</button>
                         <button id="settings-tab-network" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-network" aria-selected="false">Network</button>
                         <button id="settings-tab-actions" class="settings-tab" type="button" role="tab" aria-controls="settings-panel-actions" aria-selected="false">Actions</button>
                     </div>
@@ -227,7 +224,41 @@ export const renderSettingsModal = (): string => `
                     </div>
                     <div class="settings-field">
                         ${renderSettingsLabel('settings-local-library-files-database-listen-history-limit', 'Stored listen history limit', 'Set 0 to keep all stored listens. Positive values discard the oldest listens once the limit is reached.')}
-                        <input id="settings-local-library-files-database-listen-history-limit" class="settings-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
+                        <input id="settings-local-library-files-database-listen-history-limit" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
+                    </div>
+                    <hr class="settings-section-divider" aria-hidden="true">
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-database-enabled', 'Enable MusicBrainz tag database', 'Builds a background MusicBrainz tag index for <code>mbtag:</code> searches. Direct user lookups still take priority over the background worker.')}
+                    </div>
+                    <div class="settings-field settings-worker-progress-field">
+                        <div class="settings-worker-progress-header">
+                            <span class="settings-label">Metadata worker progress</span>
+                            <span id="settings-musicbrainz-tag-worker-progress-value" class="settings-worker-progress-value">0%</span>
+                        </div>
+                        <div id="settings-musicbrainz-tag-worker-progress-bar" class="settings-worker-progress-bar" role="progressbar" aria-label="Metadata worker progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete">
+                            <span id="settings-musicbrainz-tag-worker-progress-fill" class="settings-worker-progress-fill"></span>
+                        </div>
+                        <p id="settings-musicbrainz-tag-worker-progress-remaining" class="settings-hint">0 entities processed • 0 entities still to look up.</p>
+                        <p id="settings-musicbrainz-tag-worker-progress-status" class="settings-hint settings-worker-progress-status">MusicBrainz tag worker idle.</p>
+                    </div>
+                    <div class="settings-field settings-field-compact-grid">
+                        <div class="settings-subfield">
+                            ${renderSettingsLabel('settings-musicbrainz-tag-stale-days', 'Metadata stale after', 'Default is 30 days. Set 0 to never automatically refetch cached MusicBrainz metadata.')}
+                            <div class="settings-server-rate-group">
+                                <input id="settings-musicbrainz-tag-stale-days" class="settings-input settings-server-rate-input" type="number" min="0" max="36500" step="1" inputmode="numeric" aria-label="MusicBrainz metadata stale days" placeholder="30">
+                                <span class="settings-server-rate-unit">days</span>
+                            </div>
+                        </div>
+                        <div class="settings-subfield">
+                            ${renderSettingsLabel('settings-musicbrainz-tag-worker-cores', 'MusicBrainz tag worker cores', 'Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.', 'end')}
+                            <input id="settings-musicbrainz-tag-worker-cores" class="settings-input settings-server-rate-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
+                        </div>
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-request-staggering-enabled', 'Stagger background refetches', 'Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.')}
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-highlight-musicbrainz-tagged-album-folders', 'Highlight MusicBrainz-tagged album folders', 'When enabled, album folders tagged with MusicBrainz IDs use a subtle orange folder icon in the library browser.', 'end')}
                     </div>
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
@@ -269,39 +300,6 @@ export const renderSettingsModal = (): string => `
                                 <span class="settings-server-rate-unit">ms</span>
                             </div>
                         </div>
-                    </div>
-                </div>
-                <div id="settings-panel-database" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-database" hidden>
-                    <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-database-enabled', 'Enable MusicBrainz tag database', 'Builds a background MusicBrainz tag index for <code>mbtag:</code> searches. Direct user lookups still take priority over the background worker.')}
-                    </div>
-                    <div class="settings-field settings-worker-progress-field">
-                        <div class="settings-worker-progress-header">
-                            <span class="settings-label">Metadata worker progress</span>
-                            <span id="settings-musicbrainz-tag-worker-progress-value" class="settings-worker-progress-value">0%</span>
-                        </div>
-                        <div id="settings-musicbrainz-tag-worker-progress-bar" class="settings-worker-progress-bar" role="progressbar" aria-label="Metadata worker progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete">
-                            <span id="settings-musicbrainz-tag-worker-progress-fill" class="settings-worker-progress-fill"></span>
-                        </div>
-                        <p id="settings-musicbrainz-tag-worker-progress-remaining" class="settings-hint">0 entities processed • 0 entities still to look up.</p>
-                        <p id="settings-musicbrainz-tag-worker-progress-status" class="settings-hint settings-worker-progress-status">MusicBrainz tag worker idle.</p>
-                    </div>
-                    <div class="settings-field">
-                        ${renderSettingsLabel('settings-musicbrainz-tag-stale-days', 'Metadata stale after', 'Default is 30 days. Set 0 to never automatically refetch cached MusicBrainz metadata.')}
-                        <div class="settings-server-rate-group">
-                            <input id="settings-musicbrainz-tag-stale-days" class="settings-input settings-server-rate-input" type="number" min="0" max="36500" step="1" inputmode="numeric" aria-label="MusicBrainz metadata stale days" placeholder="30">
-                            <span class="settings-server-rate-unit">days</span>
-                        </div>
-                    </div>
-                    <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-request-staggering-enabled', 'Stagger background refetches', 'Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.')}
-                    </div>
-                    <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-highlight-musicbrainz-tagged-album-folders', 'Highlight MusicBrainz-tagged album folders', 'When enabled, album folders tagged with MusicBrainz IDs use a subtle orange folder icon in the library browser.', 'end')}
-                    </div>
-                    <div class="settings-field">
-                        ${renderSettingsLabel('settings-musicbrainz-tag-worker-cores', 'MusicBrainz tag worker cores', 'Uses up to this many parallel local tag readers. MusicBrainz network requests to the public server are limited to one request per second.')}
-                        <input id="settings-musicbrainz-tag-worker-cores" class="settings-input" type="number" min="1" step="1" inputmode="numeric" placeholder="1">
                     </div>
                 </div>
                 <div id="settings-panel-playlists" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-playlists" hidden>
@@ -554,7 +552,6 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsTabGeneral: root.querySelector('#settings-tab-general') as HTMLButtonElement,
     settingsTabLibrary: root.querySelector('#settings-tab-library') as HTMLButtonElement,
     settingsTabNetwork: root.querySelector('#settings-tab-network') as HTMLButtonElement,
-    settingsTabDatabase: root.querySelector('#settings-tab-database') as HTMLButtonElement,
     settingsTabPlaylists: root.querySelector('#settings-tab-playlists') as HTMLButtonElement,
     settingsTabScrobbling: root.querySelector('#settings-tab-scrobbling') as HTMLButtonElement,
     settingsTabAudio: root.querySelector('#settings-tab-audio') as HTMLButtonElement,
@@ -563,7 +560,6 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsPanelGeneral: root.querySelector('#settings-panel-general') as HTMLDivElement,
     settingsPanelLibrary: root.querySelector('#settings-panel-library') as HTMLDivElement,
     settingsPanelNetwork: root.querySelector('#settings-panel-network') as HTMLDivElement,
-    settingsPanelDatabase: root.querySelector('#settings-panel-database') as HTMLDivElement,
     settingsPanelPlaylists: root.querySelector('#settings-panel-playlists') as HTMLDivElement,
     settingsPanelScrobbling: root.querySelector('#settings-panel-scrobbling') as HTMLDivElement,
     settingsPanelAudio: root.querySelector('#settings-panel-audio') as HTMLDivElement,
