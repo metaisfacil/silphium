@@ -59,8 +59,10 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     let imageModalResizeTransitionEndHandler: ((event: TransitionEvent) => void) | undefined;
     let imageModalSkipNextResizeAnimation = false;
     let imageModalZoomEasingFrame: number | undefined;
+    let imageModalRotateAnimationTimer: number | undefined;
 
     const imageModalZoomEasingFactor = 0.24;
+    const imageModalRotateAnimationMs = 220;
 
     const stopImageModalZoomEasing = (): void => {
         if (imageModalZoomEasingFrame === undefined) {
@@ -69,6 +71,29 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
         window.cancelAnimationFrame(imageModalZoomEasingFrame);
         imageModalZoomEasingFrame = undefined;
+    };
+
+    const clearImageModalRotateAnimation = (): void => {
+        if (imageModalRotateAnimationTimer !== undefined) {
+            window.clearTimeout(imageModalRotateAnimationTimer);
+            imageModalRotateAnimationTimer = undefined;
+        }
+
+        imageFilePreview.classList.remove('is-rotating');
+    };
+
+    const triggerImageModalRotateAnimation = (): void => {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            clearImageModalRotateAnimation();
+            return;
+        }
+
+        clearImageModalRotateAnimation();
+        imageFilePreview.classList.add('is-rotating');
+        imageModalRotateAnimationTimer = window.setTimeout(() => {
+            imageFilePreview.classList.remove('is-rotating');
+            imageModalRotateAnimationTimer = undefined;
+        }, imageModalRotateAnimationMs);
     };
 
     const resetImageModalEnterAnimation = (): void => {
@@ -188,7 +213,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageFileContent.style.height = `${Math.max(1, Math.round(rotatedBoundsHeight * fitScale))}px`;
     };
 
-    const animateImageModalDialogResize = (): void => {
+    const animateImageModalDialogResize = (startSizeOverride?: { width: number; height: number; lockWidth?: boolean }): void => {
         const modalVisible = !imageFileModal.hidden && imageFileModal.classList.contains('is-visible');
         if (!modalVisible) {
             clearImageModalDialogResize();
@@ -197,8 +222,8 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
         const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         const startRect = imageFileDialog.getBoundingClientRect();
-        const startWidth = Math.ceil(startRect.width);
-        const startHeight = Math.ceil(startRect.height);
+        const startWidth = startSizeOverride ? Math.ceil(startSizeOverride.width) : Math.ceil(startRect.width);
+        const startHeight = startSizeOverride ? Math.ceil(startSizeOverride.height) : Math.ceil(startRect.height);
 
         imageFileDialog.style.width = '';
         imageFileDialog.style.height = '';
@@ -206,13 +231,19 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         const targetRect = imageFileDialog.getBoundingClientRect();
         const targetWidth = Math.ceil(targetRect.width);
         const targetHeight = Math.ceil(targetRect.height);
+
+        const lockWidth = startSizeOverride?.lockWidth === true;
+        const stableWidth = lockWidth ? Math.max(startWidth, targetWidth) : undefined;
+        const nextStartWidth = stableWidth ?? startWidth;
+        const nextTargetWidth = stableWidth ?? targetWidth;
+
         if (
             prefersReducedMotion
             || startWidth <= 0
             || startHeight <= 0
             || targetWidth <= 0
             || targetHeight <= 0
-            || (Math.abs(targetWidth - startWidth) < 2 && Math.abs(targetHeight - startHeight) < 2)
+            || (Math.abs(nextTargetWidth - nextStartWidth) < 2 && Math.abs(targetHeight - startHeight) < 2)
         ) {
             clearImageModalDialogResize();
             return;
@@ -220,10 +251,10 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
         clearImageModalDialogResize();
         imageFileDialog.classList.add('is-resizing');
-        imageFileDialog.style.width = `${startWidth}px`;
+        imageFileDialog.style.width = `${nextStartWidth}px`;
         imageFileDialog.style.height = `${startHeight}px`;
         void imageFileDialog.offsetWidth;
-        imageFileDialog.style.width = `${targetWidth}px`;
+        imageFileDialog.style.width = `${nextTargetWidth}px`;
         imageFileDialog.style.height = `${targetHeight}px`;
 
         imageModalResizeTransitionEndHandler = (event: TransitionEvent): void => {
@@ -480,7 +511,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     };
 
     const setImageModalRotation = (degrees: number): void => {
-        imageModalRotation = ((degrees % 360) + 360) % 360;
+        imageModalRotation = degrees;
         if (imageModalZoom <= 1) {
             syncImageModalContentViewportSize();
         }
@@ -492,7 +523,14 @@ export const createImageModalController = (options: ImageModalControllerOptions)
             return;
         }
 
+        const startRect = imageFileDialog.getBoundingClientRect();
+        triggerImageModalRotateAnimation();
         setImageModalRotation(imageModalRotation + deltaDegrees);
+        animateImageModalDialogResize({
+            width: startRect.width,
+            height: startRect.height,
+            lockWidth: true,
+        });
     };
 
     const zoomImageModalFromWheel = (deltaY: number, clientX: number, clientY: number): void => {
@@ -625,6 +663,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
     const close = (): void => {
         stopImageModalZoomEasing();
+        clearImageModalRotateAnimation();
         imageModalGallery = [];
         imageModalCurrentIndex = -1;
         imageModalPage = 0;
@@ -661,6 +700,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageModalGallery = gallery;
         imageModalCurrentIndex = -1;
         imageModalPage = 0;
+        clearImageModalRotateAnimation();
         setImageModalRotation(0);
         resetImageModalZoom();
         imageModalLoadToken += 1;
@@ -708,6 +748,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageModalGallery = [];
         imageModalCurrentIndex = -1;
         imageModalPage = 0;
+        clearImageModalRotateAnimation();
         setImageModalRotation(0);
         resetImageModalZoom();
         imageModalLoadToken += 1;

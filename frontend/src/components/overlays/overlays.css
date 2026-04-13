@@ -250,6 +250,10 @@
     z-index: 0;
 }
 
+.image-file-preview.is-rotating {
+    transition: opacity 140ms ease, transform 220ms cubic-bezier(0.2, 0.78, 0.22, 1);
+}
+
 .image-file-thumbs {
     display: grid;
     grid-template-columns: auto auto auto;
