@@ -757,6 +757,12 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }, searchDebounceMs);
     };
 
+    const startLibrarySearch = (query: string): void => {
+        const nextQuery = query.trim();
+        librarySearch.value = nextQuery;
+        setLibrarySearchQuery(nextQuery);
+    };
+
     const setLibraryBrowserSortMode = (sortMode: LibraryBrowserSortMode): void => {
         controllerState.libraryBrowserSortMode = sortMode;
         librarySort.value = normalizedLibraryBrowserSortMode();
@@ -928,6 +934,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             controllerState.currentFolderPath = path;
         },
         setLibraryBrowserSortMode,
+        startLibrarySearch,
         setLibraryLoading,
         setLibraryLoadingEtaSeconds,
         setLibraryLoadingStatusLabel,

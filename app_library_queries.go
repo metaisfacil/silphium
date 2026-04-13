@@ -187,6 +187,37 @@ func (a *App) ResolveLibraryFolderForPath(path string) string {
 	return a.resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPath)
 }
 
+// ResolveLibraryFolderForReleaseMBID resolves a MusicBrainz release MBID to one available virtual library folder path.
+func (a *App) ResolveLibraryFolderForReleaseMBID(releaseMBID string) string {
+	cleanReleaseMBID := sanitizeMusicBrainzID(releaseMBID)
+	if cleanReleaseMBID == "" || !a.musicBrainzTagDatabaseEnabled() {
+		return ""
+	}
+
+	a.musicBrainzTagMu.Lock()
+	defer a.musicBrainzTagMu.Unlock()
+	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+
+	folderPathsByID := a.musicBrainzTagReleaseFoldersByID[cleanReleaseMBID]
+	if len(folderPathsByID) == 0 {
+		return ""
+	}
+
+	folderPaths := make([]string, 0, len(folderPathsByID))
+	for folderPath := range folderPathsByID {
+		folderPaths = append(folderPaths, folderPath)
+	}
+	sortPathsCaseInsensitive(folderPaths)
+
+	for _, folderPath := range folderPaths {
+		if resolved := a.resolveAvailableLibraryFolderForVirtualPathLocked(folderPath); resolved != "" {
+			return resolved
+		}
+	}
+
+	return ""
+}
+
 // GetLibraryIndexedFilePage returns a paginated slice of indexed files for initial frontend hydration.
 func (a *App) GetLibraryIndexedFilePage(kind string, offset int, limit int) LibraryIndexedFilePage {
 	normalizedKind := strings.ToLower(strings.TrimSpace(kind))

@@ -263,6 +263,26 @@ describe('createLibraryController', () => {
         expect(libraryBrowser.querySelector(`[data-track-path="${trackPath}"]`)).not.toBeNull();
     });
 
+    it('starts a programmatic library search and updates the input value', async () => {
+        const { controller, librarySearch, searchLibrary } = mountLibraryController();
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.startLibrarySearch('Track 0');
+
+        expect(librarySearch.value).toBe('Track 0');
+        expect(controller.getLibrarySearchQuery()).toBe('Track 0');
+        expect(controller.isLibrarySearchActive()).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(180);
+        await flushPromises();
+
+        expect(searchLibrary).toHaveBeenCalledWith('track 0', 0, 100);
+    });
+
     it('reloads the current folder when the browser sort mode changes', async () => {
         const { controller, librarySort, loadFolderPage } = mountLibraryController();
 

@@ -232,7 +232,7 @@ const createScope = () => {
             handleDocumentClick: vi.fn(() => false),
             setMusicBrainzTagWorkerProgress: vi.fn(),
         },
-        libraryControllerRef: { navigate: vi.fn() },
+        libraryControllerRef: { navigateToFolder: vi.fn() },
         shareControllerRef: { open: vi.fn() },
         imageModalControllerRef: { open: vi.fn() },
         playerCard: document.createElement('section'),

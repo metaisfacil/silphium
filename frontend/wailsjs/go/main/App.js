@@ -210,6 +210,10 @@ export function ResolveLibraryFolderForPath(arg1) {
   return window['go']['main']['App']['ResolveLibraryFolderForPath'](arg1);
 }
 
+export function ResolveLibraryFolderForReleaseMBID(arg1) {
+  return window['go']['main']['App']['ResolveLibraryFolderForReleaseMBID'](arg1);
+}
+
 export function RunCustomSendToAction(arg1, arg2) {
   return window['go']['main']['App']['RunCustomSendToAction'](arg1, arg2);
 }

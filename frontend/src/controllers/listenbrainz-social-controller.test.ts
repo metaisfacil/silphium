@@ -35,6 +35,8 @@ const mountController = (options?: {
     fetchFollowingUsers?: () => Promise<string[]>;
     fetchFollowingFeed?: (count: number) => Promise<ListenBrainzSocialEvent[]>;
     openUserProfile?: (provider: 'listenbrainz' | 'lastfm', userName: string) => void | Promise<void>;
+    openLocalReleaseFolder?: (folderPath: string) => void | Promise<void>;
+    openLibrarySearch?: (query: string) => void | Promise<void>;
 }) => {
     document.body.innerHTML = `
         <button id="sidebar-toggle" type="button"></button>
@@ -63,6 +65,8 @@ const mountController = (options?: {
     const fetchFollowingUsers = options?.fetchFollowingUsers || vi.fn(async () => ['alice', 'bob']);
     const fetchFollowingFeed = options?.fetchFollowingFeed || vi.fn(async () => [createEvent()]);
     const openUserProfile = options?.openUserProfile || vi.fn();
+    const openLocalReleaseFolder = options?.openLocalReleaseFolder || vi.fn();
+    const openLibrarySearch = options?.openLibrarySearch || vi.fn();
 
     const controller = createListenBrainzSocialController({
         elements: {
@@ -82,6 +86,8 @@ const mountController = (options?: {
         fetchFollowingUsers,
         fetchFollowingFeed,
         openUserProfile,
+        openLocalReleaseFolder,
+        openLibrarySearch,
     });
 
     return {
@@ -98,6 +104,8 @@ const mountController = (options?: {
         fetchFollowingUsers,
         fetchFollowingFeed,
         openUserProfile,
+        openLocalReleaseFolder,
+        openLibrarySearch,
     };
 };
 
@@ -365,5 +373,83 @@ describe('createListenBrainzSocialController', () => {
         userButton?.click();
 
         expect(openUserProfile).toHaveBeenCalledWith('lastfm', 'lastfm-user');
+    });
+
+    it('opens a local album folder when a resolved release title is clicked', async () => {
+        const openLocalReleaseFolder = vi.fn();
+        const {
+            sidebarSectionOptionSocial,
+            socialFeedList,
+        } = mountController({
+            openLocalReleaseFolder,
+            fetchFollowingFeed: vi.fn(async () => [
+                createEvent({
+                    trackMetadata: {
+                        artistName: 'Artist One',
+                        trackName: 'Track One',
+                        releaseName: 'Album One',
+                        additionalInfo: {
+                            musicServiceName: 'ListenBrainz',
+                            localReleaseFolderPath: 'Library/Artist One/Album One',
+                        },
+                    },
+                }),
+            ]),
+        });
+
+        sidebarSectionOptionSocial.click();
+        await flushPromises();
+
+        await vi.waitFor(() => {
+            expect(socialFeedList.textContent).toContain('Album One');
+        });
+
+        const releaseButton = socialFeedList.querySelector('[data-social-release-folder-path="Library/Artist One/Album One"]') as HTMLButtonElement | null;
+        expect(releaseButton).not.toBeNull();
+        releaseButton?.click();
+
+        expect(openLocalReleaseFolder).toHaveBeenCalledWith('Library/Artist One/Album One');
+    });
+
+    it('opens a right-click menu for scrobbles that can search artist, album, or track in the library', async () => {
+        const openLibrarySearch = vi.fn();
+        const {
+            sidebarSectionOptionSocial,
+            sidebarPaneSocial,
+            socialFeedList,
+        } = mountController({ openLibrarySearch });
+
+        sidebarSectionOptionSocial.click();
+        await flushPromises();
+
+        await vi.waitFor(() => {
+            expect(socialFeedList.textContent).toContain('Track One');
+        });
+
+        const socialCard = socialFeedList.querySelector('.social-feed-card') as HTMLElement | null;
+        expect(socialCard).not.toBeNull();
+        socialCard?.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 32,
+            clientY: 48,
+        }));
+
+        const contextMenu = sidebarPaneSocial.querySelector('.social-feed-context-menu') as HTMLDivElement | null;
+        expect(contextMenu).not.toBeNull();
+        expect(contextMenu?.hidden).toBe(false);
+
+        const artistAction = contextMenu?.querySelector('[data-social-library-query-kind="artist"]') as HTMLButtonElement | null;
+        const albumAction = contextMenu?.querySelector('[data-social-library-query-kind="album"]') as HTMLButtonElement | null;
+        const trackAction = contextMenu?.querySelector('[data-social-library-query-kind="track"]') as HTMLButtonElement | null;
+
+        expect(artistAction?.dataset.socialLibraryQuery).toBe('Artist One');
+        expect(albumAction?.dataset.socialLibraryQuery).toBe('Album One');
+        expect(trackAction?.dataset.socialLibraryQuery).toBe('Track One');
+
+        trackAction?.click();
+
+        expect(openLibrarySearch).toHaveBeenCalledWith('Track One');
+        expect(contextMenu?.hidden).toBe(true);
     });
 });

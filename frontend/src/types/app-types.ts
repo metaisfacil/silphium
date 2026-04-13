@@ -68,6 +68,7 @@ export type ListenBrainzSocialAdditionalInfo = {
     musicService?: string;
     musicServiceName?: string;
     durationMs?: number;
+    localReleaseFolderPath?: string;
 };
 
 export type ListenBrainzSocialTrackMetadata = {

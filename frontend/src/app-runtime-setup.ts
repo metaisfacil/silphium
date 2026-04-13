@@ -33,6 +33,8 @@ type AppCoreServicesRuntimeScope = RuntimeScope<
     | 'closeTrackMetaMenu'
     | 'closeSidebarQueueMenu'
     | 'playlistControllerRef'
+    | 'libraryControllerRef'
+    | 'librarySearch'
     | 'sidebarToggle'
     | 'sidebarSectionTrigger'
     | 'sidebarSectionTriggerLabel'
@@ -402,6 +404,8 @@ const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) =>
         scope.closeSidebarQueueMenu();
     },
     playlistController: () => scope.playlistControllerRef,
+    libraryController: () => scope.libraryControllerRef,
+    librarySearch: scope.librarySearch,
     sidebarToggle: scope.sidebarToggle,
     sidebarSectionTrigger: scope.sidebarSectionTrigger,
     sidebarSectionTriggerLabel: scope.sidebarSectionTriggerLabel,

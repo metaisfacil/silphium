@@ -10,9 +10,17 @@ type ListenBrainzSocialControllerOptions = {
     fetchFollowingUsers: () => Promise<string[]>;
     fetchFollowingFeed: (count: number) => Promise<ListenBrainzSocialEvent[]>;
     openUserProfile: (provider: 'listenbrainz' | 'lastfm', userName: string) => void | Promise<void>;
+    openLocalReleaseFolder: (folderPath: string) => void | Promise<void>;
+    openLibrarySearch: (query: string) => void | Promise<void>;
 };
 
 export type ListenBrainzSocialController = ReturnType<typeof createListenBrainzSocialController>;
+
+type SocialFeedContextMenuTargets = {
+    artistName: string;
+    releaseName: string;
+    trackName: string;
+};
 
 const socialFeedPollIntervalMs = 15000;
 const socialFeedItemCount = 40;
@@ -184,6 +192,13 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
     let pollHandle: number | undefined;
     let updateAnimationHandle: number | undefined;
     let sectionSwitchAnimationHandle: number | undefined;
+    const ownerDocument = socialFeedList.ownerDocument;
+    const socialFeedContextMenu = ownerDocument.createElement('div');
+    socialFeedContextMenu.className = 'social-feed-context-menu';
+    socialFeedContextMenu.hidden = true;
+    socialFeedContextMenu.setAttribute('role', 'menu');
+    socialFeedContextMenu.setAttribute('aria-label', 'Search scrobble in library');
+    sidebarPaneSocial.append(socialFeedContextMenu);
 
     const stopPolling = (): void => {
         if (pollHandle !== undefined) {
@@ -229,6 +244,53 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         sidebarSectionTrigger.classList.toggle('is-open', open);
     };
 
+    const closeSocialFeedContextMenu = (): void => {
+        socialFeedContextMenu.hidden = true;
+        socialFeedContextMenu.innerHTML = '';
+    };
+
+    const openSocialFeedContextMenu = (clientX: number, clientY: number, targets: SocialFeedContextMenuTargets): void => {
+        const actions = [
+            {
+                label: 'Search artist',
+                query: targets.artistName,
+                kind: 'artist',
+            },
+            {
+                label: 'Search album',
+                query: targets.releaseName,
+                kind: 'album',
+            },
+            {
+                label: 'Search track',
+                query: targets.trackName,
+                kind: 'track',
+            },
+        ];
+
+        socialFeedContextMenu.innerHTML = actions.map(({ label, query, kind }) => `
+            <button
+                class="social-feed-context-menu-item"
+                type="button"
+                role="menuitem"
+                data-social-library-query-kind="${kind}"
+                data-social-library-query="${escapeHtml(query)}"
+                title="${escapeHtml(query || label)}"
+                ${query === '' ? 'disabled' : ''}
+            >${escapeHtml(label)}</button>
+        `).join('');
+
+        socialFeedContextMenu.hidden = false;
+
+        const margin = 10;
+        const rect = socialFeedContextMenu.getBoundingClientRect();
+        const clampedX = Math.min(clientX, window.innerWidth - rect.width - margin);
+        const clampedY = Math.min(clientY, window.innerHeight - rect.height - margin);
+
+        socialFeedContextMenu.style.left = `${Math.max(margin, clampedX)}px`;
+        socialFeedContextMenu.style.top = `${Math.max(margin, clampedY)}px`;
+    };
+
     const renderEmptyState = (title: string, detail: string): string => `
         <div class="social-feed-empty">
             <p class="social-feed-empty-title">${escapeHtml(title)}</p>
@@ -268,17 +330,28 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
             const absoluteTime = timestampSeconds > 0
                 ? new Date(timestampSeconds * 1000).toLocaleString()
                 : 'Unknown time';
-            const trackName = (event.trackMetadata.trackName || '').trim() || 'Unknown track';
-            const artistName = (event.trackMetadata.artistName || '').trim() || 'Unknown artist';
-            const releaseName = (event.trackMetadata.releaseName || '').trim();
-            const secondaryLine = releaseName !== ''
-                ? `${artistName} • ${releaseName}`
-                : artistName;
+            const rawTrackName = (event.trackMetadata.trackName || '').trim();
+            const rawArtistName = (event.trackMetadata.artistName || '').trim();
+            const rawReleaseName = (event.trackMetadata.releaseName || '').trim();
+            const trackName = rawTrackName || 'Unknown track';
+            const artistName = rawArtistName || 'Unknown artist';
+            const releaseName = rawReleaseName;
+            const localReleaseFolderPath = (event.trackMetadata.additionalInfo.localReleaseFolderPath || '').trim();
             const provider = socialEventProvider(event);
             const iconMarkup = provider === 'lastfm' ? lastFmUserIcon : listenBrainzUserIcon;
+            const metaMarkup = releaseName !== ''
+                ? `${escapeHtml(artistName)} <span aria-hidden="true">•</span> ${localReleaseFolderPath !== ''
+                    ? `<button class="social-feed-meta-link" type="button" data-social-release-folder-path="${escapeHtml(localReleaseFolderPath)}">${escapeHtml(releaseName)}</button>`
+                    : escapeHtml(releaseName)}`
+                : escapeHtml(artistName);
 
             return `
-                <article class="social-feed-card${event.playingNow ? ' is-live' : ''}">
+                <article
+                    class="social-feed-card${event.playingNow ? ' is-live' : ''}"
+                    data-social-artist-query="${escapeHtml(rawArtistName)}"
+                    data-social-release-query="${escapeHtml(rawReleaseName)}"
+                    data-social-track-query="${escapeHtml(rawTrackName)}"
+                >
                     <div class="social-feed-card-header">
                         <div class="social-feed-identity">
                             <span class="social-feed-avatar" aria-hidden="true">${iconMarkup}</span>
@@ -290,7 +363,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
                         <span class="social-feed-time" title="${escapeHtml(absoluteTime)}">${escapeHtml(relativeTime)}</span>
                     </div>
                     <p class="social-feed-track">${escapeHtml(trackName)}</p>
-                    <p class="social-feed-meta">${escapeHtml(secondaryLine)}</p>
+                    <p class="social-feed-meta">${metaMarkup}</p>
                 </article>
             `;
         }).join('');
@@ -316,6 +389,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
             socialFeedStatus.textContent = '';
         }
 
+        closeSocialFeedContextMenu();
         socialFeedList.innerHTML = renderEvents();
         if (animateNextRender) {
             clearUpdateAnimation();
@@ -386,12 +460,14 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
 
     const showLibrary = (): void => {
         if (activeSection === 'library') {
+            closeSocialFeedContextMenu();
             setSectionMenuOpen(false);
             return;
         }
 
         activeSection = 'library';
         stopPolling();
+        closeSocialFeedContextMenu();
         setSectionMenuOpen(false);
         render();
         animateSectionSwitch();
@@ -399,11 +475,13 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
 
     const showSocial = (): void => {
         if (activeSection === 'social') {
+            closeSocialFeedContextMenu();
             setSectionMenuOpen(false);
             return;
         }
 
         activeSection = 'social';
+        closeSocialFeedContextMenu();
         setSectionMenuOpen(false);
         animateSectionSwitch();
         void refreshSocialFeed(false);
@@ -423,6 +501,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
             return;
         }
 
+        closeSocialFeedContextMenu();
         if (activeSection === 'social') {
             void refreshSocialFeed(true);
             scheduleNextPoll();
@@ -443,6 +522,15 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
             return;
         }
 
+        const releaseButton = target.closest('[data-social-release-folder-path]');
+        if (releaseButton instanceof HTMLButtonElement) {
+            const folderPath = (releaseButton.dataset.socialReleaseFolderPath || '').trim();
+            if (folderPath !== '') {
+                void options.openLocalReleaseFolder(folderPath);
+            }
+            return;
+        }
+
         const userButton = target.closest('[data-social-user-name][data-social-user-provider]');
         if (!(userButton instanceof HTMLButtonElement)) {
             return;
@@ -456,13 +544,62 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
 
         void options.openUserProfile(provider, userName);
     });
-    document.addEventListener('click', (event) => {
-        if (!sectionMenuOpen) {
+    socialFeedList.addEventListener('contextmenu', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            closeSocialFeedContextMenu();
             return;
         }
 
+        const socialCard = target.closest('.social-feed-card');
+        if (!(socialCard instanceof HTMLElement)) {
+            closeSocialFeedContextMenu();
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        openSocialFeedContextMenu(event.clientX, event.clientY, {
+            artistName: (socialCard.dataset.socialArtistQuery || '').trim(),
+            releaseName: (socialCard.dataset.socialReleaseQuery || '').trim(),
+            trackName: (socialCard.dataset.socialTrackQuery || '').trim(),
+        });
+    });
+    socialFeedContextMenu.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const actionButton = target.closest('[data-social-library-query]');
+        if (!(actionButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const query = (actionButton.dataset.socialLibraryQuery || '').trim();
+        closeSocialFeedContextMenu();
+        if (query === '') {
+            return;
+        }
+
+        void options.openLibrarySearch(query);
+    });
+    document.addEventListener('click', (event) => {
         const target = event.target;
         if (!(target instanceof Node)) {
+            return;
+        }
+
+        if (!socialFeedContextMenu.hidden) {
+            if (socialFeedContextMenu.contains(target)) {
+                return;
+            }
+
+            closeSocialFeedContextMenu();
+        }
+
+        if (!sectionMenuOpen) {
             return;
         }
 
@@ -473,7 +610,17 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         setSectionMenuOpen(false);
     });
     document.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape' || !sectionMenuOpen) {
+        if (event.key !== 'Escape') {
+            return;
+        }
+
+        if (!socialFeedContextMenu.hidden) {
+            event.preventDefault();
+            closeSocialFeedContextMenu();
+            return;
+        }
+
+        if (!sectionMenuOpen) {
             return;
         }
 
@@ -481,11 +628,26 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         setSectionMenuOpen(false);
         sidebarSectionTrigger.focus();
     });
+    document.addEventListener('contextmenu', (event) => {
+        const target = event.target;
+        if (!(target instanceof Node)) {
+            closeSocialFeedContextMenu();
+            return;
+        }
+
+        if (!socialFeedContextMenu.hidden && !socialFeedContextMenu.contains(target)) {
+            closeSocialFeedContextMenu();
+        }
+    });
+    document.addEventListener('scroll', () => {
+        closeSocialFeedContextMenu();
+    }, { capture: true });
     sidebarToggle.addEventListener('click', () => {
         window.setTimeout(() => {
             if (!options.isSidebarVisible()) {
                 stopPolling();
                 setSectionMenuOpen(false);
+                closeSocialFeedContextMenu();
                 clearSectionSwitchAnimation();
                 return;
             }
