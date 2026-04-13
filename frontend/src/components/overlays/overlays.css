@@ -1064,6 +1064,10 @@
     max-width: 100%;
 }
 
+#settings-send-to-action-form .settings-label-row {
+    justify-content: center;
+}
+
 .settings-checkbox-label-row {
     display: inline-flex;
     align-items: flex-start;
