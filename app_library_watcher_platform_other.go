@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
@@ -68,6 +69,10 @@ func (w *fsnotifyLibraryEventWatcher) HandleCreatePath(path string) {
 	if info, statErr := os.Stat(path); statErr == nil && info.IsDir() {
 		addLibraryWatchesRecursive(w.watcher, path, nil)
 	}
+}
+
+func (w *fsnotifyLibraryEventWatcher) DebounceDuration() time.Duration {
+	return 500 * time.Millisecond
 }
 
 func (w *fsnotifyLibraryEventWatcher) IsClosed() bool {

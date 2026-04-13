@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
+
+const libraryWatcherUpdateTimeout = 6 * time.Second
 
 func waitForLibraryWatcherToStart(t *testing.T, app *App) {
 	t.Helper()
@@ -247,7 +251,7 @@ func TestLibraryWatcherHelpersAndRuntimeEvents(t *testing.T) {
 	newTrack := filepath.Join(fixture.albumOneFolder, "99 Watched.flac")
 	writeTestFile(t, newTrack, "watched")
 
-	watchDeadline := time.Now().Add(2 * time.Second)
+	watchDeadline := time.Now().Add(libraryWatcherUpdateTimeout)
 	for time.Now().Before(watchDeadline) {
 		app.indexMu.Lock()
 		_, exists := app.trackByPath[normalizePath(newTrack)]
@@ -273,6 +277,110 @@ func TestLibraryWatcherHelpersAndRuntimeEvents(t *testing.T) {
 	app.startLibraryWatcher(nil, nil)
 	if watcherState.watcher != nil {
 		t.Fatal("startLibraryWatcher(nil) should leave watcher nil")
+	}
+}
+
+func TestIncrementalLibraryChangesAmendDerivedFolderIndexInPlace(t *testing.T) {
+	originalRuntimeEventsEmit := runtimeEventsEmit
+	var logMu sync.Mutex
+	logLines := make([]string, 0, 32)
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
+		if eventName != libraryRescanLogEvent || len(optionalData) == 0 {
+			return
+		}
+		line, ok := optionalData[0].(string)
+		if !ok {
+			return
+		}
+		logMu.Lock()
+		logLines = append(logLines, line)
+		logMu.Unlock()
+	}
+	t.Cleanup(func() {
+		runtimeEventsEmit = originalRuntimeEventsEmit
+	})
+
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	app.ctx = context.Background()
+
+	scanResult := app.scanLibraryFolder(fixture.rootOne, false)
+	if scanResult.ImageFileCount != 2 {
+		t.Fatalf("scanLibraryFolder() = %#v, want both fixture images indexed", scanResult)
+	}
+
+	albumFolderPath := ""
+	app.indexMu.Lock()
+	indexedCover, exists := app.imageByPath[normalizePath(fixture.coverOne)]
+	if exists {
+		albumFolderPath = indexedCover.FolderPath
+	}
+	app.indexMu.Unlock()
+	if !exists {
+		t.Fatalf("initial image index is missing %q", fixture.coverOne)
+	}
+	if got := app.GetLibraryFolderCoverPath(albumFolderPath); got != fixture.coverOne {
+		t.Fatalf("GetLibraryFolderCoverPath(before incremental update) = %q, want %q", got, fixture.coverOne)
+	}
+
+	logMu.Lock()
+	logLines = nil
+	logMu.Unlock()
+
+	if err := os.Remove(fixture.coverOne); err != nil {
+		t.Fatalf("Remove(%q) error = %v", fixture.coverOne, err)
+	}
+
+	notification, changed := app.applyIncrementalLibraryChanges([]string{fixture.coverOne})
+	if !changed {
+		t.Fatal("applyIncrementalLibraryChanges(removed cover) = false, want true")
+	}
+	if notification.ImageFileCount != 1 {
+		t.Fatalf("applyIncrementalLibraryChanges(removed cover) = %#v, want one indexed image remaining", notification)
+	}
+
+	app.indexMu.Lock()
+	folderIndexReady := app.isLibraryFolderIndexReadyLocked()
+	derivedDirty := app.libraryDerivedIndexDirty
+	derivedBuilding := app.libraryDerivedIndexBuilding
+	searchTrackEntriesReady := app.searchTrackEntries != nil
+	app.indexMu.Unlock()
+	if !folderIndexReady {
+		t.Fatal("incremental cover-art update should keep the folder-derived index ready")
+	}
+	if !derivedDirty || derivedBuilding {
+		t.Fatalf("incremental cover-art update should leave only the search corpus dirty/building = %t/%t, want true/false", derivedDirty, derivedBuilding)
+	}
+	if searchTrackEntriesReady {
+		t.Fatal("incremental cover-art update should invalidate the global search corpus instead of rebuilding it eagerly")
+	}
+
+	if got := app.GetLibraryFolderCoverPath(albumFolderPath); got != fixture.folderCoverOne {
+		t.Fatalf("GetLibraryFolderCoverPath(after incremental update) = %q, want %q", got, fixture.folderCoverOne)
+	}
+
+	page := app.GetLibraryFolderPage(albumFolderPath, 0, 10)
+	if page.TotalEntries != 3 {
+		t.Fatalf("GetLibraryFolderPage(after incremental update) = %#v, want 3 remaining entries", page)
+	}
+	for _, entry := range page.Entries {
+		if entry.Path == normalizePath(fixture.coverOne) {
+			t.Fatalf("GetLibraryFolderPage(after incremental update) still contains removed cover entry %#v", entry)
+		}
+	}
+
+	searchPage := app.SearchLibrary("folder.jpg", 0, 10)
+	if searchPage.TotalEntries != 1 || len(searchPage.Entries) != 1 || searchPage.Entries[0].Path != normalizePath(fixture.folderCoverOne) {
+		t.Fatalf("SearchLibrary(folder.jpg) = %#v, want fallback-map results for the remaining cover art", searchPage)
+	}
+
+	logMu.Lock()
+	deferredLogs := append([]string(nil), logLines...)
+	logMu.Unlock()
+	for _, line := range deferredLogs {
+		if strings.Contains(line, "rebuildLibraryDerivedIndex START") {
+			t.Fatalf("incremental cover-art update should not trigger a full derived-index rebuild, but log contained %q", line)
+		}
 	}
 }
 
@@ -351,7 +459,7 @@ func TestLibraryWatcherAdditionalEdgeBranches(t *testing.T) {
 	watchTrack := filepath.Join(watchRoot, "01 Watched.flac")
 	writeTestFile(t, watchTrack, "watched")
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(libraryWatcherUpdateTimeout)
 	for time.Now().Before(deadline) {
 		app.indexMu.Lock()
 		_, exists := app.trackByPath[normalizePath(watchTrack)]
@@ -493,5 +601,22 @@ func TestIncrementalLibraryChangesDoNotBlockFolderQueries(t *testing.T) {
 	app.indexMu.Unlock()
 	if !exists {
 		t.Fatalf("applyIncrementalLibraryChanges() did not index %q", newTrack)
+	}
+}
+
+func TestCoalesceIncrementalLibraryChangePaths(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "library")
+	child := filepath.Join(root, "Artist", "Album")
+	grandchild := filepath.Join(child, "01 Track.flac")
+	other := filepath.Join(root, "Other", "Album")
+
+	coalesced := coalesceIncrementalLibraryChangePaths([]string{grandchild, root, child, other, grandchild, "   "})
+	if len(coalesced) != 1 || normalizePath(coalesced[0]) != normalizePath(root) {
+		t.Fatalf("coalesceIncrementalLibraryChangePaths() = %#v, want only root %q", coalesced, root)
+	}
+
+	independent := coalesceIncrementalLibraryChangePaths([]string{child, other})
+	if len(independent) != 2 {
+		t.Fatalf("coalesceIncrementalLibraryChangePaths(independent) = %#v, want two paths", independent)
 	}
 }

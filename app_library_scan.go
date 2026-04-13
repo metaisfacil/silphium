@@ -155,7 +155,6 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 		scanState.scanInProgress = false
 		scanState.scanRemainingImmediateChildrenByFolder = nil
 		scanState.scanDiscoveredChildFoldersByParent = nil
-		a.maybeStartLibraryDerivedIndexRebuildLocked()
 		contentState.indexMu.Unlock()
 	}()
 
@@ -686,6 +685,9 @@ func (a *App) setLibraryIndexFromScan(scan LibraryScanResult, expectedScanGenera
 		len(scan.TrackFiles), len(scan.TextFiles), len(scan.ImageFiles))
 	contentState := a.libraryContentState()
 	generationState := a.libraryGenerationState()
+	folderIndexBuildStartTime := time.Now()
+	folderIndexData := buildLibraryFolderIndexData(scan.TrackFiles, scan.TextFiles, scan.ImageFiles)
+	a.logRescanEvent("  - folder index built (%.2fms)", time.Since(folderIndexBuildStartTime).Seconds()*1000)
 
 	lockWaitStart := time.Now()
 	contentState.indexMu.Lock()
@@ -719,7 +721,15 @@ func (a *App) setLibraryIndexFromScan(scan LibraryScanResult, expectedScanGenera
 	copyCoverStartTime := time.Now()
 	contentState.libraryScan = scan
 	contentState.libraryScan.CoverPathByFolder = cloneCoverPathByFolder(scan.CoverPathByFolder)
-	a.markLibraryDerivedIndexDirtyLocked()
+	indexState := a.libraryIndexState()
+	indexState.folderEntriesByFolder = folderIndexData.folderEntriesByFolder
+	indexState.folderChildPathsByFolder = folderIndexData.folderChildPathsByFolder
+	indexState.trackFilesByFolder = folderIndexData.trackFilesByFolder
+	indexState.directTextEntriesByFolder = folderIndexData.directTextEntriesByFolder
+	indexState.directImageEntriesByFolder = folderIndexData.directImageEntriesByFolder
+	indexState.folderModifiedAtByPath = folderIndexData.folderModifiedAtByPath
+	indexState.searchFolderEntries = folderIndexData.searchFolderEntries
+	a.markLibrarySearchIndexDirtyLocked()
 	a.logRescanEvent("  - cover paths copied (%.2fms)", time.Since(copyCoverStartTime).Seconds()*1000)
 	a.logRescanEvent("setLibraryIndexFromScan END: total time %.2fms", time.Since(setStartTime).Seconds()*1000)
 	return true
