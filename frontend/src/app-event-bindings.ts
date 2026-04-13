@@ -152,6 +152,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         sidebarQueueLove,
         sidebarQueueHate,
         sidebarQueueEnd,
+        sidebarQueueTreeToggleBtn,
         sidebarQueueSendToList,
         errorBackdrop,
         errorClose,
@@ -452,6 +453,17 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
                 playlistController.addToQueueEnd(trackIndexes);
             }
         })();
+    });
+
+    sidebarQueueTreeToggleBtn.addEventListener('click', () => {
+        const folderPath = (sidebarQueueTreeToggleBtn.dataset.folderPath || '').trim();
+        const expandAll = sidebarQueueTreeToggleBtn.dataset.expandAll === 'true';
+        closeSidebarQueueMenu();
+        if (folderPath === '') {
+            return;
+        }
+
+        libraryController.setSearchTreeSubtreeExpanded(folderPath, expandAll);
     });
 
     sidebarQueueSendToList.addEventListener('click', (event: MouseEvent) => {

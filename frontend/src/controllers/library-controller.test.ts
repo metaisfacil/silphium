@@ -343,6 +343,30 @@ describe('createLibraryController', () => {
         expect(controller.getCurrentFolderPath()).toBe('Library/Artist Two');
     });
 
+    it('expands and collapses a search-tree subtree programmatically', async () => {
+        const { controller, librarySearch, libraryBrowser } = mountLibraryController();
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        librarySearch.value = 'artist';
+        librarySearch.dispatchEvent(new Event('input', { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(180);
+        await flushPromises();
+
+        expect(libraryBrowser.querySelector('[data-search-folder-path="Library/Artist One/Album One"]')).toBeNull();
+
+        controller.setSearchTreeSubtreeExpanded('Library', true);
+
+        expect(libraryBrowser.querySelector('[data-search-folder-path="Library/Artist One/Album One"]')).not.toBeNull();
+
+        controller.setSearchTreeSubtreeExpanded('Library', false);
+
+        expect(libraryBrowser.querySelector('[data-search-folder-path="Library/Artist One/Album One"]')).toBeNull();
+    });
+
     it('right-clicks a filtered search folder with only that subtree track indexes', async () => {
         const { controller, librarySearch, libraryBrowser, onFolderQueueRequested } = mountLibraryController();
 
@@ -375,6 +399,7 @@ describe('createLibraryController', () => {
             'Library/Artist One',
             expect.stringContaining('Artist One'),
             [0],
+            true,
         );
     });
 

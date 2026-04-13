@@ -157,6 +157,8 @@ type AppQueueMenuRuntimeScope = RuntimeScope<
     | 'trackMetaParentFolderBtn'
     | 'trackMetaBrowserFolderBtn'
     | 'sidebarQueueMenu'
+    | 'sidebarQueueTreeToggleDivider'
+    | 'sidebarQueueTreeToggleBtn'
     | 'sidebarQueueSendToList'
     | 'sidebarQueueSendToDivider'
     | 'sidebarQueueFeedbackDivider'
@@ -718,6 +720,8 @@ const createQueueMenuRuntimeContext = (scope: AppQueueMenuRuntimeScope) => ({
     trackMetaParentFolderBtn: scope.trackMetaParentFolderBtn,
     trackMetaBrowserFolderBtn: scope.trackMetaBrowserFolderBtn,
     sidebarQueueMenu: scope.sidebarQueueMenu,
+    sidebarQueueTreeToggleDivider: scope.sidebarQueueTreeToggleDivider,
+    sidebarQueueTreeToggleBtn: scope.sidebarQueueTreeToggleBtn,
     sidebarQueueSendToList: scope.sidebarQueueSendToList,
     sidebarQueueSendToDivider: scope.sidebarQueueSendToDivider,
     sidebarQueueFeedbackDivider: scope.sidebarQueueFeedbackDivider,

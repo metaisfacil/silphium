@@ -4,6 +4,8 @@ export type SidebarQueueMenuElements = {
     sidebarQueueAddNext: HTMLButtonElement;
     sidebarQueueEnd: HTMLButtonElement;
     sidebarQueueAddToPlaylist: HTMLButtonElement;
+    sidebarQueueTreeToggleDivider: HTMLHRElement;
+    sidebarQueueTreeToggleBtn: HTMLButtonElement;
     sidebarQueueSendToDivider: HTMLHRElement;
     sidebarQueueSendToList: HTMLDivElement;
     sidebarQueueFeedbackDivider: HTMLHRElement;
@@ -17,6 +19,8 @@ export const renderSidebarQueueMenu = (): string => `
         <button id="sidebar-queue-add-next" class="playlist-menu-item" type="button" role="menuitem">Add next</button>
         <button id="sidebar-queue-end" class="playlist-menu-item" type="button" role="menuitem">Queue</button>
         <button id="sidebar-queue-add-to-playlist" class="playlist-menu-item" type="button" role="menuitem">Add to playlist</button>
+        <hr id="sidebar-queue-tree-toggle-divider" class="playlist-menu-divider" aria-hidden="true" hidden>
+        <button id="sidebar-queue-tree-toggle" class="playlist-menu-item" type="button" role="menuitem" hidden>Expand all</button>
         <hr id="sidebar-queue-send-to-divider" class="playlist-menu-divider" aria-hidden="true" hidden>
         <div id="sidebar-queue-send-to-list"></div>
         <hr id="sidebar-queue-feedback-divider" class="playlist-menu-divider" aria-hidden="true">
@@ -31,6 +35,8 @@ export const getSidebarQueueMenuElements = (root: ParentNode): SidebarQueueMenuE
     sidebarQueueAddNext: root.querySelector('#sidebar-queue-add-next') as HTMLButtonElement,
     sidebarQueueEnd: root.querySelector('#sidebar-queue-end') as HTMLButtonElement,
     sidebarQueueAddToPlaylist: root.querySelector('#sidebar-queue-add-to-playlist') as HTMLButtonElement,
+    sidebarQueueTreeToggleDivider: root.querySelector('#sidebar-queue-tree-toggle-divider') as HTMLHRElement,
+    sidebarQueueTreeToggleBtn: root.querySelector('#sidebar-queue-tree-toggle') as HTMLButtonElement,
     sidebarQueueSendToDivider: root.querySelector('#sidebar-queue-send-to-divider') as HTMLHRElement,
     sidebarQueueSendToList: root.querySelector('#sidebar-queue-send-to-list') as HTMLDivElement,
     sidebarQueueFeedbackDivider: root.querySelector('#sidebar-queue-feedback-divider') as HTMLHRElement,

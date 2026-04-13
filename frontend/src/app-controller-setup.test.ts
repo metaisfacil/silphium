@@ -448,8 +448,8 @@ describe('app-controller-setup', () => {
         expect(context.openTextFileModal).toHaveBeenCalledWith(context.textFiles[0]);
         expect(imageModalController.openImageFile).toHaveBeenCalledWith(context.imageFiles[0]);
         expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(10, 20, [0], 1, true, '/music/library/track-1.flac');
-        expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(30, 40, [0], undefined, false, '', '/music/library', 'Library', true, true);
-        expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(50, 60, [], undefined, false, '', '/music/library', 'Library', true, false);
+        expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(30, 40, [0], undefined, false, '', '/music/library', 'Library', true, true, undefined);
+        expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(50, 60, [], undefined, false, '', '/music/library', 'Library', true, false, undefined);
         expect(context.closeSidebarQueueMenu).toHaveBeenCalled();
     });
 });

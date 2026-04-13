@@ -128,6 +128,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'sidebarQueueLove'
     | 'sidebarQueueHate'
     | 'sidebarQueueEnd'
+    | 'sidebarQueueTreeToggleBtn'
     | 'sidebarQueueSendToList'
     | 'errorBackdrop'
     | 'errorClose'
@@ -490,6 +491,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         sidebarQueueLove: scope.sidebarQueueLove,
         sidebarQueueHate: scope.sidebarQueueHate,
         sidebarQueueEnd: scope.sidebarQueueEnd,
+        sidebarQueueTreeToggleBtn: scope.sidebarQueueTreeToggleBtn,
         sidebarQueueSendToList: scope.sidebarQueueSendToList,
         errorBackdrop: scope.errorBackdrop,
         errorClose: scope.errorClose,
