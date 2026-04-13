@@ -817,11 +817,14 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     const tryHandlePastedLibraryPath = async (rawValue: string): Promise<boolean> => {
         const normalizedPath = normalizePastedLibraryPath(rawValue);
-        if (!normalizedPath || !isLikelyAbsoluteLibraryPath(normalizedPath)) {
+        if (!normalizedPath) {
             return false;
         }
 
-        const folderPath = (await options.resolveLibraryFolderForAbsolutePath(normalizedPath)) || doResolvePastedLibraryJumpFolder(normalizedPath);
+        const resolvedAbsoluteFolderPath = isLikelyAbsoluteLibraryPath(normalizedPath)
+            ? await options.resolveLibraryFolderForAbsolutePath(normalizedPath)
+            : '';
+        const folderPath = resolvedAbsoluteFolderPath || doResolvePastedLibraryJumpFolder(normalizedPath);
         if (folderPath === null || folderPath === '') {
             suppressNextLibrarySearchPasteInput = false;
             return false;

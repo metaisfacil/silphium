@@ -66,7 +66,9 @@ describe('library-controller pasted-path helpers', () => {
         );
 
         expect(resolvePastedLibraryJumpFolder('C:/Music/Artist/Album/01 Track.flac', cache)).toBe('Library/Artist/Album');
+        expect(resolvePastedLibraryJumpFolder('Library/Artist/Album/01 Track.flac', cache)).toBe('Library/Artist/Album');
         expect(resolvePastedLibraryJumpFolder('C:/Music/Artist/Album', cache)).toBe('Library/Artist/Album');
+        expect(resolvePastedLibraryJumpFolder('Library/Artist/Album', cache)).toBe('Library/Artist/Album');
         expect(resolvePastedLibraryJumpFolder('C:/Music', cache)).toBe('Library');
         expect(resolvePastedLibraryJumpFolder('D:/Other/Artist', cache)).toBeNull();
     });

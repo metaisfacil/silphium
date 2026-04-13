@@ -78,6 +78,23 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
         libraryBrowser,
     } = options;
 
+    const restorePastedLibrarySearchValue = (value: string): void => {
+        setSuppressNextLibrarySearchPasteInput(false);
+        librarySearch.value = value;
+        setLibrarySearchQueryValue(value);
+    };
+
+    const tryHandlePastedLibraryPathCandidate = (value: string): void => {
+        void tryHandlePastedLibraryPath(value).then((handled) => {
+            if (!handled) {
+                restorePastedLibrarySearchValue(value);
+            }
+        }).catch((error) => {
+            restorePastedLibrarySearchValue(value);
+            console.error(error);
+        });
+    };
+
     librarySort.value = getLibraryBrowserSortMode();
 
     sidebarToggle.addEventListener('click', () => {
@@ -95,10 +112,9 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
             return;
         }
 
-        setSuppressNextLibrarySearchPasteInput(true);
         event.preventDefault();
         event.stopPropagation();
-        void tryHandlePastedLibraryPath(pastedText);
+        tryHandlePastedLibraryPathCandidate(pastedText);
     });
 
     librarySearch.addEventListener('input', (event) => {
@@ -111,14 +127,15 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
         if (event instanceof InputEvent && event.inputType === 'insertFromPaste') {
             const pastedValue = librarySearch.value;
             const normalizedPath = normalizePastedLibraryPath(pastedValue);
-            if (!normalizedPath || !isLikelyAbsoluteLibraryPath(normalizedPath)) {
+            const looksLikePathCandidate = normalizedPath !== ''
+                && (isLikelyAbsoluteLibraryPath(normalizedPath) || normalizedPath.includes('/'));
+            if (!looksLikePathCandidate) {
                 setLibrarySearchQueryValue(pastedValue);
                 return;
             }
 
             librarySearch.value = getLibrarySearchQuery();
-            setSuppressNextLibrarySearchPasteInput(true);
-            void tryHandlePastedLibraryPath(pastedValue);
+            tryHandlePastedLibraryPathCandidate(pastedValue);
             return;
         }
 
@@ -132,10 +149,9 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
             return;
         }
 
-        setSuppressNextLibrarySearchPasteInput(true);
         event.preventDefault();
         event.stopPropagation();
-        void tryHandlePastedLibraryPath(pastedText);
+        tryHandlePastedLibraryPathCandidate(pastedText);
     });
 
     librarySearch.addEventListener('keydown', (event) => {

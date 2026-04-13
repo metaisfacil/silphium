@@ -136,6 +136,40 @@ describe('setupLibraryEventHandlers', () => {
         expect(deps.tryHandlePastedLibraryPath).toHaveBeenCalledWith('C:\\Music\\Artist\\Album');
     });
 
+    it('treats pasted library-relative paths as jump candidates from the input event', async () => {
+        const { deps, librarySearch } = createDeps();
+        setupLibraryEventHandlers(deps);
+
+        librarySearch.value = 'Library/Artist/Album';
+        librarySearch.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            inputType: 'insertFromPaste',
+        }));
+        await flushPromises();
+
+        expect(deps.tryHandlePastedLibraryPath).toHaveBeenCalledWith('Library/Artist/Album');
+        expect(librarySearch.value).toBe('');
+    });
+
+    it('restores pasted text when delegated path handling cannot resolve it', async () => {
+        const { deps, librarySearch } = createDeps();
+        deps.tryHandlePastedLibraryPath = vi.fn(async () => false);
+        setupLibraryEventHandlers(deps);
+
+        const event = new InputEvent('beforeinput', {
+            bubbles: true,
+            cancelable: true,
+            data: 'C:\\Music\\Missing\\Album',
+            inputType: 'insertFromPaste',
+        });
+        librarySearch.dispatchEvent(event);
+        await flushPromises();
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(deps.tryHandlePastedLibraryPath).toHaveBeenCalledWith('C:\\Music\\Missing\\Album');
+        expect(librarySearch.value).toBe('C:\\Music\\Missing\\Album');
+    });
+
     it('clears active search results when the back button is pressed during search mode', () => {
         const { deps, libraryBack, setLibrarySearchActive } = createDeps();
         setupLibraryEventHandlers(deps);

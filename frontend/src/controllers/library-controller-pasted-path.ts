@@ -54,14 +54,21 @@ export const rebuildPastedPathLookupCache = (
         }
     };
 
-    const rememberIndexedFile = (path: string, folderPath: string, rootPath: string): void => {
+    const rememberIndexedFilePath = (filePath: string, folderPath: string): void => {
+        const normalizedFilePath = normalizePastedLibraryPath(filePath);
         const normalizedFolderPath = normalizePastedLibraryPath(folderPath);
-        const normalizedFilePath = normalizePastedLibraryPath(path);
-        const normalizedRootPath = normalizePastedLibraryPath(rootPath);
         const fileKey = libraryFolderPathKey(normalizedFilePath);
         if (fileKey && !indexedFileFolderPathByKey.has(fileKey)) {
             indexedFileFolderPathByKey.set(fileKey, normalizedFolderPath);
         }
+    };
+
+    const rememberIndexedFile = (path: string, relativePath: string, folderPath: string, rootPath: string): void => {
+        const normalizedFolderPath = normalizePastedLibraryPath(folderPath);
+        const normalizedRootPath = normalizePastedLibraryPath(rootPath);
+
+        rememberIndexedFilePath(path, normalizedFolderPath);
+        rememberIndexedFilePath(relativePath, normalizedFolderPath);
 
         const rootKey = libraryFolderPathKey(normalizedRootPath);
         if (rootKey && !monitoredRootByKey.has(rootKey)) {
@@ -76,15 +83,15 @@ export const rebuildPastedPathLookupCache = (
     };
 
     for (const track of tracks) {
-        rememberIndexedFile(track.path, track.folderPath, track.rootPath);
+        rememberIndexedFile(track.path, track.relativePath, track.folderPath, track.rootPath);
     }
 
     for (const textFile of textFiles) {
-        rememberIndexedFile(textFile.path, textFile.folderPath, textFile.rootPath);
+        rememberIndexedFile(textFile.path, textFile.relativePath, textFile.folderPath, textFile.rootPath);
     }
 
     for (const imageFile of imageFiles) {
-        rememberIndexedFile(imageFile.path, imageFile.folderPath, imageFile.rootPath);
+        rememberIndexedFile(imageFile.path, imageFile.relativePath, imageFile.folderPath, imageFile.rootPath);
     }
 
     return {
@@ -99,7 +106,7 @@ export const resolvePastedLibraryJumpFolder = (
     cache: PastedPathLookupCache,
 ): string | null => {
     const normalizedPath = normalizePastedLibraryPath(value);
-    if (!normalizedPath || !isLikelyAbsoluteLibraryPath(normalizedPath)) {
+    if (!normalizedPath) {
         return null;
     }
 
@@ -122,6 +129,10 @@ export const resolvePastedLibraryJumpFolder = (
     const exactFolderPath = indexedFolderPathByKey.get(pathKey);
     if (exactFolderPath !== undefined) {
         return exactFolderPath;
+    }
+
+    if (!isLikelyAbsoluteLibraryPath(normalizedPath)) {
+        return null;
     }
 
     for (const monitoredRoot of monitoredRoots) {
