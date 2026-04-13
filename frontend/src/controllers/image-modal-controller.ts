@@ -177,6 +177,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageFileDialog.classList.remove('is-resizing');
         imageFileDialog.style.width = '';
         imageFileDialog.style.height = '';
+        imageFileThumbsViewport.style.width = '';
     };
 
     const syncImageModalContentViewportSize = (): void => {
@@ -213,7 +214,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageFileContent.style.height = `${Math.max(1, Math.round(rotatedBoundsHeight * fitScale))}px`;
     };
 
-    const animateImageModalDialogResize = (startSizeOverride?: { width: number; height: number; lockWidth?: boolean }): void => {
+    const animateImageModalDialogResize = (startSizeOverride?: { width: number; height: number; lockWidth?: boolean; lockThumbViewport?: boolean }): void => {
         const modalVisible = !imageFileModal.hidden && imageFileModal.classList.contains('is-visible');
         if (!modalVisible) {
             clearImageModalDialogResize();
@@ -233,9 +234,17 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         const targetHeight = Math.ceil(targetRect.height);
 
         const lockWidth = startSizeOverride?.lockWidth === true;
+        const lockThumbViewport = startSizeOverride?.lockThumbViewport === true;
         const stableWidth = lockWidth ? Math.max(startWidth, targetWidth) : undefined;
         const nextStartWidth = stableWidth ?? startWidth;
         const nextTargetWidth = stableWidth ?? targetWidth;
+
+        if (lockThumbViewport && !imageFileThumbs.hidden) {
+            const thumbsViewportRect = imageFileThumbsViewport.getBoundingClientRect();
+            if (thumbsViewportRect.width > 0) {
+                imageFileThumbsViewport.style.width = `${Math.ceil(thumbsViewportRect.width)}px`;
+            }
+        }
 
         if (
             prefersReducedMotion
@@ -529,7 +538,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         animateImageModalDialogResize({
             width: startRect.width,
             height: startRect.height,
-            lockWidth: true,
+            lockThumbViewport: true,
         });
     };
 
