@@ -330,7 +330,7 @@ func TestLibraryWatcherAdditionalEdgeBranches(t *testing.T) {
 	if watcherState.watcher == firstWatcher {
 		t.Fatal("startLibraryWatcher(restart) should replace the previous watcher instance")
 	}
-	if err := firstWatcher.Add(fixture.rootOne); err == nil {
+	if !firstWatcher.IsClosed() {
 		t.Fatal("expected the replaced watcher to be closed")
 	}
 

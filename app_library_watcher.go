@@ -325,19 +325,6 @@ func addLibraryWatchesRecursive(watcher *fsnotify.Watcher, rootPath string, onPr
 	})
 }
 
-func addLibraryWatchesFromDiscoveredDirectories(watcher *fsnotify.Watcher, directoryPaths []string, onProgress func()) {
-	for _, directoryPath := range directoryPaths {
-		if strings.TrimSpace(directoryPath) == "" {
-			continue
-		}
-
-		_ = watcher.Add(directoryPath)
-		if onProgress != nil {
-			onProgress()
-		}
-	}
-}
-
 func collectWatchableLibraryRootPaths(roots []libraryRootConfig) []string {
 	rootPaths := make([]string, 0, len(roots))
 	for _, root := range roots {
@@ -357,6 +344,10 @@ func collectWatchableLibraryRootPaths(roots []libraryRootConfig) []string {
 
 func collectWatchableLibraryDirectoryPaths(roots []libraryRootConfig, directoryPaths []string) []string {
 	rootPaths := collectWatchableLibraryRootPaths(roots)
+	if libraryWatcherUsesRecursiveRootHandles() {
+		return rootPaths
+	}
+
 	if len(directoryPaths) == 0 {
 		return rootPaths
 	}
@@ -441,7 +432,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 
 	a.logRescanEvent("Starting library watcher for %d directories", len(watchablePaths))
 
-	watcher, watcherErr := fsnotify.NewWatcher()
+	watcher, watcherErr := newLibraryEventWatcher(roots, watchablePaths, directoryPaths, onProgress)
 	if watcherErr != nil {
 		a.logRescanEvent("Failed to create filesystem watcher: %v", watcherErr)
 		return false
@@ -450,20 +441,6 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 	if generation > 0 && watcherState.generation.Load() != generation {
 		_ = watcher.Close()
 		return false
-	}
-
-	a.logRescanEvent("Watcher created, registering all directories")
-	if len(directoryPaths) > 0 {
-		addLibraryWatchesFromDiscoveredDirectories(watcher, watchablePaths, onProgress)
-	} else {
-		for _, rootPath := range watchablePaths {
-			if generation > 0 && watcherState.generation.Load() != generation {
-				_ = watcher.Close()
-				return false
-			}
-
-			addLibraryWatchesRecursive(watcher, rootPath, onProgress)
-		}
 	}
 
 	if generation > 0 && watcherState.generation.Load() != generation {
@@ -494,7 +471,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 		_ = previousWatcher.Close()
 	}
 
-	go func(activeWatcher *fsnotify.Watcher, activeStopCh chan struct{}) {
+	go func(activeWatcher libraryEventWatcher, activeStopCh chan struct{}) {
 		runtimeState := a.runtimeState()
 		defer func() {
 			_ = activeWatcher.Close()
@@ -531,7 +508,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 				}
 				return
 
-			case event, ok := <-activeWatcher.Events:
+			case event, ok := <-activeWatcher.Events():
 				if !ok {
 					if timer != nil {
 						timer.Stop()
@@ -540,9 +517,7 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 				}
 
 				if event.Op&fsnotify.Create != 0 {
-					if info, statErr := os.Stat(event.Name); statErr == nil && info.IsDir() {
-						addLibraryWatchesRecursive(activeWatcher, event.Name, nil)
-					}
+					activeWatcher.HandleCreatePath(event.Name)
 				}
 
 				if isRelevantWatchEvent(event) {
@@ -567,13 +542,14 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 					a.logRescanEvent("EventsEmit END: took %.2fms", time.Since(emitStartTime).Seconds()*1000)
 				}
 
-			case _, ok := <-activeWatcher.Errors:
+			case watcherErr, ok := <-activeWatcher.Errors():
 				if !ok {
 					if timer != nil {
 						timer.Stop()
 					}
 					return
 				}
+				a.logRescanEvent("Library watcher error: %v", watcherErr)
 			}
 		}
 	}(watcher, stopCh)

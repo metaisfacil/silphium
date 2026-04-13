@@ -63,6 +63,14 @@ type appWatcherState struct {
 	mediaKeys appMediaKeyWatcherState
 }
 
+type libraryEventWatcher interface {
+	Close() error
+	Events() <-chan fsnotify.Event
+	Errors() <-chan error
+	HandleCreatePath(path string)
+	IsClosed() bool
+}
+
 type appLibraryState struct {
 	appLibraryContentState
 	appTrackTagsCacheState
@@ -132,7 +140,7 @@ type appLibraryDatabaseState struct {
 
 type appLibraryWatcherState struct {
 	mu         sync.Mutex
-	watcher    *fsnotify.Watcher
+	watcher    libraryEventWatcher
 	stopCh     chan struct{}
 	generation atomic.Uint64
 }
