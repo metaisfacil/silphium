@@ -117,7 +117,7 @@ export type LibraryControllerOptions = {
     onImageFileChosen: (index: number) => void;
     onImageFilePathChosen?: (path: string) => void;
     onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number, includeFileActions?: boolean, fileActionPath?: string) => void;
-    onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string, trackIndexes?: number[]) => void;
+    onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string, trackIndexes?: number[], searchTreeExpandAll?: boolean) => void;
     onSidebarClosed: () => void;
 };
 

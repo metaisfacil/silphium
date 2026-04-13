@@ -300,7 +300,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         onQueueRequested: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number, includeFileActions?: boolean, fileActionPath?: string) => {
             context.openSidebarQueueMenu(clientX, clientY, trackIndexes, feedbackTrackIndex, !!includeFileActions, fileActionPath || '');
         },
-        onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string, trackIndexes?: number[]) => {
+        onFolderQueueRequested: (clientX: number, clientY: number, folderPath: string, folderLabel: string, trackIndexes?: number[], searchTreeExpandAll?: boolean) => {
             const normalizedTrackIndexes = (trackIndexes || []).filter((trackIndex) => (
                 Number.isInteger(trackIndex) && trackIndex >= 0 && trackIndex < context.tracks.length
             ));
@@ -316,6 +316,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
                 folderLabel,
                 true,
                 trackIndexesScopedToSelection,
+                searchTreeExpandAll,
             );
         },
         onSidebarClosed: () => {

@@ -34,11 +34,22 @@ import { scheduleListenBrainzRequest } from './utils/musicbrainz-request-schedul
 import type { AudioVisualizationFrame, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
 import { firstTagValue, hasActiveSelectionWithin, normalizedTrackNumber } from './utils/display-helpers';
 
+type WindowWithOptionalReleaseFolderResolver = Window & {
+    go?: {
+        main?: {
+            App?: {
+                ResolveLibraryFolderForReleaseMBID?: (releaseMBID: string) => Promise<string> | string;
+            };
+        };
+    };
+};
+
 export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeContext) => {
     const defaultMusicBrainzServerUrl = 'https://musicbrainz.org';
     const defaultListenBrainzServerUrl = 'https://api.listenbrainz.org';
     const defaultLastFmServerUrl = 'https://ws.audioscrobbler.com/2.0';
     const playerCardLayoutKey = 'playerCardLayout';
+    const localReleaseFolderByMBID = new Map<string, Promise<string>>();
 
     const hasLastFmCredentialsConfigured = (): boolean => context.currentSettings.lastFmApiKey.trim() !== ''
         && context.currentSettings.lastFmApiSecret.trim() !== ''
@@ -184,6 +195,83 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         await listenBrainzController.submitFeedbackForTrack(trackIndex, score);
     };
 
+    const resolveLibraryFolderForReleaseMBID = async (releaseMBID: string): Promise<string> => {
+        const cleanReleaseMBID = releaseMBID.trim().toLowerCase();
+        if (cleanReleaseMBID === '' || !context.currentSettings.musicBrainzTagDatabaseEnabled) {
+            return '';
+        }
+
+        const cachedPromise = localReleaseFolderByMBID.get(cleanReleaseMBID);
+        if (cachedPromise) {
+            return await cachedPromise;
+        }
+
+        const runtimeWindow = window as WindowWithOptionalReleaseFolderResolver;
+        const resolveFolder = runtimeWindow.go?.main?.App?.ResolveLibraryFolderForReleaseMBID;
+        if (typeof resolveFolder !== 'function') {
+            return '';
+        }
+
+        const lookupPromise = Promise.resolve(resolveFolder(cleanReleaseMBID))
+            .then((folderPath) => folderPath.trim())
+            .catch(() => '');
+        localReleaseFolderByMBID.set(cleanReleaseMBID, lookupPromise);
+        return await lookupPromise;
+    };
+
+    const withResolvedLocalReleaseFolders = async (events: ListenBrainzSocialEvent[]): Promise<ListenBrainzSocialEvent[]> => {
+        return await Promise.all(events.map(async (event) => {
+            const releaseMBID = (event.trackMetadata.additionalInfo.releaseMbid || '').trim();
+            if (releaseMBID === '') {
+                return event;
+            }
+
+            const localReleaseFolderPath = await resolveLibraryFolderForReleaseMBID(releaseMBID);
+            if (localReleaseFolderPath === '') {
+                return event;
+            }
+
+            return {
+                ...event,
+                trackMetadata: {
+                    ...event.trackMetadata,
+                    additionalInfo: {
+                        ...event.trackMetadata.additionalInfo,
+                        localReleaseFolderPath,
+                    },
+                },
+            };
+        }));
+    };
+
+    const openLocalReleaseFolder = async (folderPath: string): Promise<void> => {
+        const cleanFolderPath = folderPath.trim();
+        if (cleanFolderPath === '') {
+            return;
+        }
+
+        socialController.showLibrary();
+        context.libraryController().navigateToFolder(cleanFolderPath);
+    };
+
+    const openLibrarySearch = (query: string): void => {
+        const cleanQuery = query.trim();
+        if (cleanQuery === '') {
+            return;
+        }
+
+        socialController.showLibrary();
+
+        const libraryController = context.libraryController();
+        if (!libraryController.isSidebarOpen()) {
+            libraryController.setSidebarOpen(true);
+        }
+
+        libraryController.startLibrarySearch(cleanQuery);
+        context.librarySearch.focus({ preventScroll: true });
+        context.librarySearch.select();
+    };
+
     const socialController = createListenBrainzSocialController({
         elements: {
             sidebarToggle: context.sidebarToggle,
@@ -244,7 +332,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
                 }));
             }
 
-            return (await Promise.all(providers)).flat();
+            return await withResolvedLocalReleaseFolders((await Promise.all(providers)).flat());
         },
         openUserProfile: (provider, userName): void => {
             const encodedUserName = encodeURIComponent(userName);
@@ -254,6 +342,8 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
             void BrowserOpenURL(profileUrl);
         },
+        openLocalReleaseFolder,
+        openLibrarySearch,
     });
     const sidebarController = createSidebarController({
         showLibrary: () => {

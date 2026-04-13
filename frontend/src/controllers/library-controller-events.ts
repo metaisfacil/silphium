@@ -78,6 +78,25 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
         libraryBrowser,
     } = options;
 
+    const searchTreeNodeHasChildren = (node: SearchTreeNode): boolean => {
+        return node.folders.length > 0
+            || node.trackEntries.length > 0
+            || node.textFileEntries.length > 0
+            || node.imageFileEntries.length > 0;
+    };
+
+    const collectSearchTreeExpandableFolderPaths = (node: SearchTreeNode, paths: string[] = []): string[] => {
+        if (searchTreeNodeHasChildren(node)) {
+            paths.push(node.path);
+        }
+
+        for (const childFolder of node.folders) {
+            collectSearchTreeExpandableFolderPaths(childFolder, paths);
+        }
+
+        return paths;
+    };
+
     const restorePastedLibrarySearchValue = (value: string): void => {
         setSuppressNextLibrarySearchPasteInput(false);
         librarySearch.value = value;
@@ -329,12 +348,17 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
                 ? findSearchTreeNode(activeSearchTreeRoot, searchFolderPath)
                 : null;
             const trackIndexes = searchFolderNode ? collectSearchTreeTrackIndexes(searchFolderNode, options.resolveTrackIndex) : [];
+            const expandableFolderPaths = searchFolderNode ? collectSearchTreeExpandableFolderPaths(searchFolderNode) : [];
+            const searchTreeExpandAll = expandableFolderPaths.length > 0
+                ? expandableFolderPaths.some((folderPath) => !getExpandedSearchFolders().has(folderPath))
+                : undefined;
             options.onFolderQueueRequested(
                 event.clientX,
                 event.clientY,
                 searchFolderPath,
                 button.textContent?.trim() || searchFolderPath,
                 trackIndexes,
+                searchTreeExpandAll,
             );
             return;
         }

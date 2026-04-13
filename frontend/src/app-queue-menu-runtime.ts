@@ -56,6 +56,11 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         context.sidebarQueueFileActionPath = '';
         context.sidebarQueueIncludeFileActions = false;
         context.sidebarQueueSendToActionScope = null;
+        context.sidebarQueueTreeToggleDivider.hidden = true;
+        context.sidebarQueueTreeToggleBtn.hidden = true;
+        context.sidebarQueueTreeToggleBtn.textContent = 'Expand all';
+        delete context.sidebarQueueTreeToggleBtn.dataset.folderPath;
+        delete context.sidebarQueueTreeToggleBtn.dataset.expandAll;
         context.sidebarQueueSendToList.innerHTML = '';
         context.sidebarQueueSendToDivider.hidden = true;
     };
@@ -119,6 +124,7 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         folderLabel?: string,
         folderTarget = false,
         trackIndexesScopedToSelection = false,
+        searchTreeExpandAll?: boolean,
     ): void => {
         const normalizedFolderPath = (folderPath || '').trim();
         if (trackIndexes.length === 0 && normalizedFolderPath === '' && !folderTarget) {
@@ -176,6 +182,18 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
             renderSendToButtons(context.sidebarQueueSendToList, sendToActions, 'playlist-menu-item');
         } else {
             context.sidebarQueueSendToList.innerHTML = '';
+        }
+        const showSearchTreeToggle = isFolderTarget && normalizedFolderPath !== '' && typeof searchTreeExpandAll === 'boolean';
+        context.sidebarQueueTreeToggleDivider.hidden = !showSearchTreeToggle;
+        context.sidebarQueueTreeToggleBtn.hidden = !showSearchTreeToggle;
+        if (showSearchTreeToggle) {
+            context.sidebarQueueTreeToggleBtn.textContent = searchTreeExpandAll ? 'Expand all' : 'Collapse all';
+            context.sidebarQueueTreeToggleBtn.dataset.folderPath = normalizedFolderPath;
+            context.sidebarQueueTreeToggleBtn.dataset.expandAll = searchTreeExpandAll ? 'true' : 'false';
+        } else {
+            context.sidebarQueueTreeToggleBtn.textContent = 'Expand all';
+            delete context.sidebarQueueTreeToggleBtn.dataset.folderPath;
+            delete context.sidebarQueueTreeToggleBtn.dataset.expandAll;
         }
         context.sidebarQueueMenu.hidden = false;
 

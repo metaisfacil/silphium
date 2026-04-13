@@ -42,6 +42,7 @@ import {
 } from './library-controller-types';
 import { createLibraryControllerViewRuntime } from './library-controller-view-runtime';
 import { createLibraryControllerSearchRuntime } from './library-controller-search-runtime';
+import { findSearchTreeNode } from './library-controller-search-tree';
 
 export type { LibraryControllerOptions } from './library-controller-types';
 
@@ -757,6 +758,59 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }, searchDebounceMs);
     };
 
+    const searchTreeNodeHasChildren = (node: SearchTreeNode): boolean => {
+        return node.folders.length > 0
+            || node.trackEntries.length > 0
+            || node.textFileEntries.length > 0
+            || node.imageFileEntries.length > 0;
+    };
+
+    const collectSearchTreeExpandableFolderPaths = (node: SearchTreeNode, paths: string[] = []): string[] => {
+        if (searchTreeNodeHasChildren(node)) {
+            paths.push(node.path);
+        }
+
+        for (const childFolder of node.folders) {
+            collectSearchTreeExpandableFolderPaths(childFolder, paths);
+        }
+
+        return paths;
+    };
+
+    const startLibrarySearch = (query: string): void => {
+        const nextQuery = query.trim();
+        librarySearch.value = nextQuery;
+        setLibrarySearchQuery(nextQuery);
+    };
+
+    const setSearchTreeSubtreeExpanded = (folderPath: string, expanded: boolean): void => {
+        const cleanFolderPath = folderPath.trim();
+        if (cleanFolderPath === '' || !isLibrarySearchActive() || !activeSearchTreeRoot) {
+            return;
+        }
+
+        const searchFolderNode = findSearchTreeNode(activeSearchTreeRoot, cleanFolderPath);
+        if (!searchFolderNode) {
+            return;
+        }
+
+        const expandableFolderPaths = collectSearchTreeExpandableFolderPaths(searchFolderNode);
+        if (expandableFolderPaths.length === 0) {
+            return;
+        }
+
+        for (const expandableFolderPath of expandableFolderPaths) {
+            if (expanded) {
+                controllerState.expandedSearchFolders.add(expandableFolderPath);
+                continue;
+            }
+
+            controllerState.expandedSearchFolders.delete(expandableFolderPath);
+        }
+
+        renderFolder('none');
+    };
+
     const setLibraryBrowserSortMode = (sortMode: LibraryBrowserSortMode): void => {
         controllerState.libraryBrowserSortMode = sortMode;
         librarySort.value = normalizedLibraryBrowserSortMode();
@@ -928,6 +982,8 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             controllerState.currentFolderPath = path;
         },
         setLibraryBrowserSortMode,
+        setSearchTreeSubtreeExpanded,
+        startLibrarySearch,
         setLibraryLoading,
         setLibraryLoadingEtaSeconds,
         setLibraryLoadingStatusLabel,

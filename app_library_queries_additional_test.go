@@ -382,6 +382,22 @@ func TestLibraryQueryFallbackPagingAndMusicBrainzTagSearch(t *testing.T) {
 		t.Fatalf("SearchLibrary(mbtag) artist folder tag highlight = true, want false: %#v", tagSearch.Entries)
 	}
 
+	app.musicBrainzTagReleaseFoldersByID[releaseID] = map[string]struct{}{
+		"Library One/Artist One/01 Missing Album": {},
+		"Library One/Artist One/Album One":        {},
+	}
+	if got := app.ResolveLibraryFolderForReleaseMBID(releaseID); got != "Library One/Artist One/Album One" {
+		t.Fatalf("ResolveLibraryFolderForReleaseMBID() = %q, want %q", got, "Library One/Artist One/Album One")
+	}
+	if got := app.ResolveLibraryFolderForReleaseMBID("not-an-mbid"); got != "" {
+		t.Fatalf("ResolveLibraryFolderForReleaseMBID(invalid) = %q, want empty", got)
+	}
+
+	app.settings.MusicBrainzTagDatabaseEnabled = false
+	if got := app.ResolveLibraryFolderForReleaseMBID(releaseID); got != "" {
+		t.Fatalf("ResolveLibraryFolderForReleaseMBID(disabled) = %q, want empty", got)
+	}
+
 	emptyTagSearch := app.SearchLibrary("mbtag:", 0, 20)
 	if emptyTagSearch.TotalEntries != 0 || len(emptyTagSearch.Entries) != 0 {
 		t.Fatalf("SearchLibrary(empty mbtag) = %#v, want empty search results", emptyTagSearch)
