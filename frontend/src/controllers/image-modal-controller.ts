@@ -43,9 +43,12 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     let imageModalPage = 0;
     let imageModalRotation = 0;
     let imageModalZoom = 1;
+    let imageModalTargetZoom = 1;
     let imageModalBaseFitScale = 1;
     let imageModalPanX = 0;
     let imageModalPanY = 0;
+    let imageModalTargetPanX = 0;
+    let imageModalTargetPanY = 0;
     let imageModalPanDragging = false;
     let imageModalPanPointerId: number | undefined;
     let imageModalPanStartClientX = 0;
@@ -55,6 +58,18 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     let imageModalResizeCleanupTimer: number | undefined;
     let imageModalResizeTransitionEndHandler: ((event: TransitionEvent) => void) | undefined;
     let imageModalSkipNextResizeAnimation = false;
+    let imageModalZoomEasingFrame: number | undefined;
+
+    const imageModalZoomEasingFactor = 0.24;
+
+    const stopImageModalZoomEasing = (): void => {
+        if (imageModalZoomEasingFrame === undefined) {
+            return;
+        }
+
+        window.cancelAnimationFrame(imageModalZoomEasingFrame);
+        imageModalZoomEasingFrame = undefined;
+    };
 
     const resetImageModalEnterAnimation = (): void => {
         imageFileDialog.style.setProperty('--image-modal-enter-x', '0px');
@@ -387,23 +402,71 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageFilePreview.style.transform = `translate(${imageModalPanX}px, ${imageModalPanY}px) rotate(${imageModalRotation}deg) scale(${imageModalBaseFitScale * imageModalZoom})`;
     };
 
+    const runImageModalZoomEasing = (): void => {
+        imageModalZoomEasingFrame = undefined;
+
+        const nextZoom = imageModalZoom + ((imageModalTargetZoom - imageModalZoom) * imageModalZoomEasingFactor);
+        const nextPanX = imageModalPanX + ((imageModalTargetPanX - imageModalPanX) * imageModalZoomEasingFactor);
+        const nextPanY = imageModalPanY + ((imageModalTargetPanY - imageModalPanY) * imageModalZoomEasingFactor);
+
+        const zoomCloseEnough = Math.abs(imageModalTargetZoom - nextZoom) < 0.001;
+        const panXCloseEnough = Math.abs(imageModalTargetPanX - nextPanX) < 0.25;
+        const panYCloseEnough = Math.abs(imageModalTargetPanY - nextPanY) < 0.25;
+
+        imageModalZoom = zoomCloseEnough ? imageModalTargetZoom : nextZoom;
+        imageModalPanX = panXCloseEnough ? imageModalTargetPanX : nextPanX;
+        imageModalPanY = panYCloseEnough ? imageModalTargetPanY : nextPanY;
+
+        if (imageModalZoom <= 1.001) {
+            imageModalZoom = 1;
+            imageModalPanX = 0;
+            imageModalPanY = 0;
+            imageModalTargetZoom = 1;
+            imageModalTargetPanX = 0;
+            imageModalTargetPanY = 0;
+            syncImageModalContentViewportSize();
+        }
+
+        applyImageModalTransform();
+
+        if (!zoomCloseEnough || !panXCloseEnough || !panYCloseEnough) {
+            imageModalZoomEasingFrame = window.requestAnimationFrame(runImageModalZoomEasing);
+        }
+    };
+
+    const queueImageModalZoomEasing = (): void => {
+        if (imageModalZoomEasingFrame !== undefined) {
+            return;
+        }
+
+        imageModalZoomEasingFrame = window.requestAnimationFrame(runImageModalZoomEasing);
+    };
+
     const setImageModalPan = (x: number, y: number): void => {
+        stopImageModalZoomEasing();
         imageModalPanX = x;
         imageModalPanY = y;
+        imageModalTargetPanX = x;
+        imageModalTargetPanY = y;
         applyImageModalTransform();
     };
 
     const setImageModalZoom = (zoom: number): void => {
+        stopImageModalZoomEasing();
         imageModalZoom = Math.min(5, Math.max(1, zoom));
+        imageModalTargetZoom = imageModalZoom;
         if (imageModalZoom <= 1) {
             imageModalPanX = 0;
             imageModalPanY = 0;
+            imageModalTargetPanX = 0;
+            imageModalTargetPanY = 0;
             syncImageModalContentViewportSize();
         }
         applyImageModalTransform();
     };
 
     const resetImageModalZoom = (): void => {
+        stopImageModalZoomEasing();
         imageModalPanDragging = false;
         imageModalPanPointerId = undefined;
         imageModalPanStartClientX = 0;
@@ -438,23 +501,42 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         }
 
         const previousZoom = imageModalZoom;
-        const unclampedNextZoom = deltaY > 0 ? previousZoom * 0.9 : previousZoom * 1.1;
+        const previousTargetZoom = imageModalTargetZoom;
+        const unclampedNextZoom = deltaY > 0 ? previousTargetZoom * 0.9 : previousTargetZoom * 1.1;
         const nextZoom = Math.min(5, Math.max(1, unclampedNextZoom));
-        if (Math.abs(nextZoom - previousZoom) < 0.0001) {
+        if (Math.abs(nextZoom - previousTargetZoom) < 0.0001) {
             return;
         }
 
         const contentBounds = imageFileContent.getBoundingClientRect();
         const cursorOffsetX = clientX - (contentBounds.left + contentBounds.width / 2);
         const cursorOffsetY = clientY - (contentBounds.top + contentBounds.height / 2);
-        const zoomRatio = nextZoom / previousZoom;
-        const nextPanX = (1 - zoomRatio) * cursorOffsetX + zoomRatio * imageModalPanX;
-        const nextPanY = (1 - zoomRatio) * cursorOffsetY + zoomRatio * imageModalPanY;
+        const zoomRatio = nextZoom / previousTargetZoom;
+        const nextPanX = (1 - zoomRatio) * cursorOffsetX + zoomRatio * imageModalTargetPanX;
+        const nextPanY = (1 - zoomRatio) * cursorOffsetY + zoomRatio * imageModalTargetPanY;
 
-        imageModalZoom = nextZoom;
-        imageModalPanX = nextZoom <= 1 ? 0 : nextPanX;
-        imageModalPanY = nextZoom <= 1 ? 0 : nextPanY;
-        applyImageModalTransform();
+        imageModalTargetZoom = nextZoom;
+        imageModalTargetPanX = nextZoom <= 1 ? 0 : nextPanX;
+        imageModalTargetPanY = nextZoom <= 1 ? 0 : nextPanY;
+
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            imageModalZoom = imageModalTargetZoom;
+            imageModalPanX = imageModalTargetPanX;
+            imageModalPanY = imageModalTargetPanY;
+            if (imageModalZoom <= 1) {
+                imageModalPanX = 0;
+                imageModalPanY = 0;
+                syncImageModalContentViewportSize();
+            }
+            applyImageModalTransform();
+            return;
+        }
+
+        if (Math.abs(previousZoom - imageModalTargetZoom) < 0.0001 && Math.abs(imageModalPanX - imageModalTargetPanX) < 0.25 && Math.abs(imageModalPanY - imageModalTargetPanY) < 0.25) {
+            return;
+        }
+
+        queueImageModalZoomEasing();
     };
 
     const renderImageModalThumbs = (loadToken: number): void => {
@@ -542,6 +624,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
     };
 
     const close = (): void => {
+        stopImageModalZoomEasing();
         imageModalGallery = [];
         imageModalCurrentIndex = -1;
         imageModalPage = 0;
