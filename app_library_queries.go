@@ -114,14 +114,9 @@ func (a *App) resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPat
 		return ""
 	}
 	contentState := a.libraryContentState()
-	scanState := a.libraryScanState()
 	indexState := a.libraryIndexState()
 
-	if !scanState.scanInProgress {
-		a.maybeStartLibraryDerivedIndexRebuildLocked()
-	}
-
-	if a.isLibraryDerivedIndexReadyLocked() {
+	if a.isLibraryFolderIndexReadyLocked() {
 		if _, exists := indexState.folderEntriesByFolder[normalizedFolderPath]; exists {
 			return normalizedFolderPath
 		}
@@ -304,11 +299,7 @@ func (a *App) GetLibraryFolderPageSorted(folderPath string, sortMode string, off
 	useFilesystemFallback := false
 	var rootsSnapshot []libraryRootConfig
 	activeGeneration := generationState.libraryScanGeneration.Load()
-	if !scanState.scanInProgress {
-		a.maybeStartLibraryDerivedIndexRebuildLocked()
-	}
-
-	if a.isLibraryDerivedIndexReadyLocked() {
+	if a.isLibraryFolderIndexReadyLocked() {
 		entries = indexState.folderEntriesByFolder[normalizedFolderPath]
 		mode = "derived-index"
 	} else if scanState.scanInProgress {
@@ -376,7 +367,6 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 	logQuery := searchQueryForLog(query)
 	generationState := a.libraryGenerationState()
 	contentState := a.libraryContentState()
-	scanState := a.libraryScanState()
 	indexState := a.libraryIndexState()
 	searchGeneration := generationState.searchGeneration.Load()
 	if offset <= 0 {
@@ -429,14 +419,11 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 	var entries []LibraryBrowserEntry
 	mode := "fallback-map"
 	canceled := false
-	if !scanState.scanInProgress {
-		a.maybeStartLibraryDerivedIndexRebuildLocked()
-	}
 
 	if hasMusicBrainzTagQuery {
 		entries = a.buildMusicBrainzTagSearchResultsLocked(musicBrainzTagQuery)
 		mode = "musicbrainz-tags"
-	} else if a.isLibraryDerivedIndexReadyLocked() {
+	} else if a.isLibrarySearchIndexReadyLocked() {
 		var derivedMode string
 		entries, derivedMode, canceled = a.buildSearchResultsLocked(normalizedQuery, searchCanceled)
 		mode = "derived-" + derivedMode
@@ -546,18 +533,13 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 		return []string{}
 	}
 	contentState := a.libraryContentState()
-	scanState := a.libraryScanState()
 
 	contentState.indexMu.Lock()
 
 	mode := "fallback-map"
 	useFilesystemFallback := false
 	var rootsSnapshot []libraryRootConfig
-	if !scanState.scanInProgress {
-		a.maybeStartLibraryDerivedIndexRebuildLocked()
-	}
-
-	if a.isLibraryDerivedIndexReadyLocked() {
+	if a.isLibraryFolderIndexReadyLocked() {
 		mode = "derived-index"
 		paths := a.getFolderTrackPathsFromDerivedIndexLocked(normalizedFolderPath)
 		contentState.indexMu.Unlock()
@@ -611,18 +593,13 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 		return 0
 	}
 	contentState := a.libraryContentState()
-	scanState := a.libraryScanState()
 
 	contentState.indexMu.Lock()
 
 	mode := "fallback-map"
 	useFilesystemFallback := false
 	var rootsSnapshot []libraryRootConfig
-	if !scanState.scanInProgress {
-		a.maybeStartLibraryDerivedIndexRebuildLocked()
-	}
-
-	if a.isLibraryDerivedIndexReadyLocked() {
+	if a.isLibraryFolderIndexReadyLocked() {
 		mode = "derived-index"
 		count := a.getFolderTrackCountFromDerivedIndexLocked(normalizedFolderPath)
 		contentState.indexMu.Unlock()

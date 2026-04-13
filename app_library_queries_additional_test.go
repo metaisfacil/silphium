@@ -583,10 +583,7 @@ func TestSearchLibraryCancellationAfterBuild(t *testing.T) {
 
 		select {
 		case scheduledCancellation <- struct{}{}:
-			go func() {
-				time.Sleep(time.Millisecond)
-				app.searchGeneration.Add(1)
-			}()
+			app.searchGeneration.Add(1)
 		default:
 		}
 	}

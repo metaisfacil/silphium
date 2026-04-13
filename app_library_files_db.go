@@ -181,6 +181,52 @@ func (a *App) notifyLibraryFilesDatabaseWorker() {
 		return
 	}
 
+	databaseState := a.libraryDatabaseState()
+	databaseState.mu.Lock()
+	databaseState.pendingFullSnapshot = true
+	databaseState.pendingIncrementalChanges = nil
+	databaseState.pendingIncrementalTotalEntries = 0
+	databaseState.mu.Unlock()
+
+	wakeCh := a.ensureLibraryFilesDatabaseWorker()
+	select {
+	case wakeCh <- struct{}{}:
+	default:
+	}
+}
+
+func clonePreparedIncrementalLibraryChanges(changes []preparedIncrementalLibraryChange) []preparedIncrementalLibraryChange {
+	if len(changes) == 0 {
+		return nil
+	}
+
+	cloned := make([]preparedIncrementalLibraryChange, len(changes))
+	for index, change := range changes {
+		cloned[index] = preparedIncrementalLibraryChange{
+			root:       change.root,
+			targetPath: change.targetPath,
+			trackFiles: append([]LibraryIndexedFile(nil), change.trackFiles...),
+			textFiles:  append([]LibraryIndexedFile(nil), change.textFiles...),
+			imageFiles: append([]LibraryIndexedFile(nil), change.imageFiles...),
+		}
+	}
+
+	return cloned
+}
+
+func (a *App) notifyLibraryFilesDatabaseWorkerIncremental(changes []preparedIncrementalLibraryChange, totalEntries int) {
+	if !a.localLibraryFilesDatabaseEnabled() || len(changes) == 0 {
+		return
+	}
+
+	databaseState := a.libraryDatabaseState()
+	databaseState.mu.Lock()
+	if !databaseState.pendingFullSnapshot {
+		databaseState.pendingIncrementalChanges = append(databaseState.pendingIncrementalChanges, clonePreparedIncrementalLibraryChanges(changes)...)
+		databaseState.pendingIncrementalTotalEntries = totalEntries
+	}
+	databaseState.mu.Unlock()
+
 	wakeCh := a.ensureLibraryFilesDatabaseWorker()
 	select {
 	case wakeCh <- struct{}{}:
@@ -196,6 +242,9 @@ func (a *App) stopLibraryFilesDatabaseWorker() {
 	databaseState.wakeCh = nil
 	databaseState.stopCh = nil
 	databaseState.doneCh = nil
+	databaseState.pendingFullSnapshot = false
+	databaseState.pendingIncrementalChanges = nil
+	databaseState.pendingIncrementalTotalEntries = 0
 	databaseState.mu.Unlock()
 
 	if stopCh == nil || doneCh == nil {
@@ -204,6 +253,29 @@ func (a *App) stopLibraryFilesDatabaseWorker() {
 
 	close(stopCh)
 	<-doneCh
+}
+
+func (a *App) dequeueLibraryFilesDatabaseWork() (bool, []preparedIncrementalLibraryChange, int) {
+	databaseState := a.libraryDatabaseState()
+	databaseState.mu.Lock()
+	defer databaseState.mu.Unlock()
+
+	if databaseState.pendingFullSnapshot {
+		databaseState.pendingFullSnapshot = false
+		databaseState.pendingIncrementalChanges = nil
+		databaseState.pendingIncrementalTotalEntries = 0
+		return true, nil, 0
+	}
+
+	if len(databaseState.pendingIncrementalChanges) == 0 {
+		return false, nil, 0
+	}
+
+	changes := databaseState.pendingIncrementalChanges
+	totalEntries := databaseState.pendingIncrementalTotalEntries
+	databaseState.pendingIncrementalChanges = nil
+	databaseState.pendingIncrementalTotalEntries = 0
+	return false, changes, totalEntries
 }
 
 func (a *App) runLibraryFilesDatabaseWorker(wakeCh <-chan struct{}, stopCh <-chan struct{}, doneCh chan<- struct{}) {
@@ -217,20 +289,34 @@ func (a *App) runLibraryFilesDatabaseWorker(wakeCh <-chan struct{}, stopCh <-cha
 		}
 
 		for {
-			snapshot, ok := a.snapshotLibraryFilesDatabaseState()
-			if !ok {
-				select {
-				case <-stopCh:
-					return
-				case <-time.After(250 * time.Millisecond):
-					continue
-				}
+			fullSnapshot, incrementalChanges, totalEntries := a.dequeueLibraryFilesDatabaseWork()
+			if !fullSnapshot && len(incrementalChanges) == 0 {
+				break
 			}
 
-			if err := writeLibraryFilesDatabaseSnapshotToSQLite(a.libraryFilesDatabasePath(), snapshot); err != nil {
-				logpkg.Printf("failed to persist library files database: %v", err)
+			if fullSnapshot {
+				snapshot, ok := a.snapshotLibraryFilesDatabaseState()
+				if !ok {
+					databaseState := a.libraryDatabaseState()
+					databaseState.mu.Lock()
+					databaseState.pendingFullSnapshot = true
+					databaseState.mu.Unlock()
+					select {
+					case <-stopCh:
+						return
+					case <-time.After(250 * time.Millisecond):
+						continue
+					}
+				}
+
+				if err := writeLibraryFilesDatabaseSnapshotToSQLite(a.libraryFilesDatabasePath(), snapshot); err != nil {
+					logpkg.Printf("failed to persist library files database: %v", err)
+				}
+			} else if len(incrementalChanges) > 0 {
+				if err := writeLibraryFilesDatabaseIncrementalChangesToSQLite(a.libraryFilesDatabasePath(), incrementalChanges, totalEntries); err != nil {
+					logpkg.Printf("failed to persist incremental library files database changes: %v", err)
+				}
 			}
-			break
 		}
 
 		for {
@@ -371,7 +457,6 @@ func (a *App) startLibraryFilesRefreshAsync(roots []libraryRootConfig, expectedS
 		if generationState.libraryScanGeneration.Load() == expectedScanGeneration {
 			indexState.libraryFileHydrationPending = false
 			indexState.libraryFolderEntriesCache = nil
-			a.maybeStartLibraryDerivedIndexRebuildLocked()
 			shouldEmitUpdate = true
 			payload = compactLibraryScanResult(contentState.libraryScan)
 		}
