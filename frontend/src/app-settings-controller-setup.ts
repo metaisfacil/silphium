@@ -14,6 +14,28 @@ import type { SettingsControllerState } from './controllers/settings-controller-
 import { normalizeLibraryFolders } from './utils/main-helpers';
 import { normalizeAppSettings } from './utils/settings-normalization';
 
+const defaultAudioOutputDeviceId = 'default';
+
+const resolveAvailableAudioOutputDevice = (
+    requestedDevice: string,
+    outputDevices: AudioOutputDevice[],
+): { selectedDevice: string; fellBackToDefault: boolean } => {
+    const normalizedRequestedDevice = requestedDevice.trim() || defaultAudioOutputDeviceId;
+    if (normalizedRequestedDevice === defaultAudioOutputDeviceId) {
+        return { selectedDevice: defaultAudioOutputDeviceId, fellBackToDefault: false };
+    }
+
+    const deviceExists = outputDevices.some((device) => {
+        const normalizedDeviceID = (device.id || defaultAudioOutputDeviceId).trim() || defaultAudioOutputDeviceId;
+        return normalizedDeviceID === normalizedRequestedDevice;
+    });
+    if (deviceExists) {
+        return { selectedDevice: normalizedRequestedDevice, fellBackToDefault: false };
+    }
+
+    return { selectedDevice: defaultAudioOutputDeviceId, fellBackToDefault: true };
+};
+
 export interface AppSettingsControllerSetupContext {
     trigger: HTMLButtonElement;
     elements: SettingsModalElements;
@@ -261,9 +283,14 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
 
             return await context.getLastFmSessionKey(normalizedApiKey, normalizedApiSecret, requestToken);
         },
-        applyAudioNow: async (values): Promise<AudioOutputDevice[]> => {
-            await saveNormalizedSettings(values);
+        applyAudioNow: async (values) => {
             const outputDevices = await context.refreshAvailableAudioOutputDevices();
+            const resolvedOutputDevice = resolveAvailableAudioOutputDevice(values.audioOutputDevice, outputDevices);
+            const nextValues = resolvedOutputDevice.fellBackToDefault
+                ? { ...values, audioOutputDevice: resolvedOutputDevice.selectedDevice }
+                : values;
+
+            await saveNormalizedSettings(nextValues);
 
             const nextState = await context.audioReinitializeBackend();
             context.setPlaybackBackendReady(true);
@@ -278,7 +305,13 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             }
 
             void context.refreshListenBrainzFeedbackForCurrentTrack(true);
-            return outputDevices;
+            return {
+                devices: outputDevices,
+                selectedDevice: resolvedOutputDevice.selectedDevice,
+                message: resolvedOutputDevice.fellBackToDefault
+                    ? 'Audio settings refreshed. Switched to Primary Sound Driver because the selected audio device is unavailable.'
+                    : 'Audio settings refreshed.',
+            };
         },
         forceReload: async (): Promise<void> => {
             await context.scanConfiguredLibraryFolders();

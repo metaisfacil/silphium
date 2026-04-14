@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -314,6 +315,23 @@ func (b *AudioBackend) flushPlayerBuffer(player audioOutputPlayer) error {
 	return nil
 }
 
+func (b *AudioBackend) selectedOutputDeviceIDLocked() string {
+	selectedOutputDevice := strings.TrimSpace(b.outputDevice)
+	if selectedOutputDevice == "" || selectedOutputDevice == defaultAudioOutputDevice {
+		return ""
+	}
+
+	for _, device := range b.ListOutputDevices() {
+		if strings.TrimSpace(device.ID) == selectedOutputDevice {
+			return selectedOutputDevice
+		}
+	}
+
+	logAudioEvent("Initialize falling back to default audio output because device=%q is unavailable", selectedOutputDevice)
+	b.outputDevice = defaultAudioOutputDevice
+	return ""
+}
+
 // SetFFmpegPath updates the configured ffmpeg executable path used by the backend.
 func (b *AudioBackend) SetFFmpegPath(path string) {
 	b.mutex.Lock()
@@ -445,18 +463,14 @@ func (b *AudioBackend) Initialize() error {
 		return nil
 	}
 
-	context, ready, err := newAudioOutputContext(&oto.NewContextOptions{
-		SampleRate:   audioSampleRate,
-		ChannelCount: audioChannelCount,
-		Format:       oto.FormatSignedInt16LE,
-		BufferSize:   b.outputBuffer,
-		OutputDeviceID: func() string {
-			if b.outputDevice == "" || b.outputDevice == defaultAudioOutputDevice {
-				return ""
-			}
+	selectedOutputDeviceID := b.selectedOutputDeviceIDLocked()
 
-			return b.outputDevice
-		}(),
+	context, ready, err := newAudioOutputContext(&oto.NewContextOptions{
+		SampleRate:     audioSampleRate,
+		ChannelCount:   audioChannelCount,
+		Format:         oto.FormatSignedInt16LE,
+		BufferSize:     b.outputBuffer,
+		OutputDeviceID: selectedOutputDeviceID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize audio output: %w", err)

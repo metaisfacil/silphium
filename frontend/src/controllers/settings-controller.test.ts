@@ -14,6 +14,12 @@ const createAudioDevices = (): AudioOutputDevice[] => ([
     { id: 'device-1', name: 'USB DAC', backend: 'wasapi', isDefault: false },
 ]);
 
+const createApplyAudioNowResult = () => ({
+    devices: createAudioDevices(),
+    selectedDevice: 'device-1',
+    message: 'Audio settings refreshed.',
+});
+
 const createKeyboardShortcuts = (): FocusedKeyboardShortcuts => ({
     playPauseToggle: 'Space',
     nextTrack: 'N',
@@ -91,7 +97,7 @@ const mountSettingsController = (options: {
     const save = options.save ?? vi.fn(async () => undefined);
     const forceReload = options.forceReload ?? vi.fn(async () => undefined);
     const fetchLastFmSessionKey = options.fetchLastFmSessionKey ?? vi.fn(async () => 'session-key');
-    const applyAudioNow = vi.fn(async () => createAudioDevices());
+    const applyAudioNow = vi.fn(async () => createApplyAudioNowResult());
     const setPlayerCardLayout = vi.fn((_layout: PlayerCardLayout) => undefined);
 
     const controller = createSettingsController({

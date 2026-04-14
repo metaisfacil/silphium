@@ -3,6 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getSettingsModalElements, renderSettingsModal } from '../components/overlays/settings-modal';
 import { bindSettingsControllerEvents, type SettingsControllerEventContext } from './settings-controller-events';
 
+const flushPromises = async (): Promise<void> => {
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+};
+
 const createContext = (): SettingsControllerEventContext => {
     document.body.innerHTML = renderSettingsModal();
     const trigger = document.createElement('button');
@@ -17,7 +23,7 @@ const createContext = (): SettingsControllerEventContext => {
             selectPlaylistFile: vi.fn(async () => ''),
             save: vi.fn(async () => undefined),
             fetchLastFmSessionKey: vi.fn(async () => ''),
-            applyAudioNow: vi.fn(async () => []),
+            applyAudioNow: vi.fn(async () => ({ devices: [], selectedDevice: 'default', message: 'Audio settings refreshed.' })),
             forceReload: vi.fn(async () => undefined),
             getPlayerCardLayout: vi.fn(() => 'default'),
             setPlayerCardLayout: vi.fn(),
@@ -143,5 +149,21 @@ describe('bindSettingsControllerEvents', () => {
         (tooltipTrigger as HTMLButtonElement).click();
 
         expect(context.setShortcutAccordionExpanded).not.toHaveBeenCalled();
+    });
+
+    it('surfaces the underlying refresh-audio failure reason', async () => {
+        const context = createContext();
+        context.options.applyAudioNow = vi.fn(async () => {
+            throw new Error('audio output context failed: oto: device not found');
+        });
+        bindSettingsControllerEvents(context);
+
+        context.elements.settingsApplyAudioNow.click();
+        await flushPromises();
+
+        expect(context.setSettingsStatusMessage).toHaveBeenCalledWith('Refreshing audio settings...');
+        expect(context.setSettingsStatusMessage).toHaveBeenCalledWith(
+            'Unable to refresh audio settings right now: audio output context failed: oto: device not found',
+        );
     });
 });

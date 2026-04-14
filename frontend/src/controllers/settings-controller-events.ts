@@ -15,6 +15,7 @@ import {
     normalizeScrobbleRules,
     validateScrobbleRules,
 } from '../utils/main-helpers';
+import { errorMessage } from '../utils/display-helpers';
 import type {
     LibraryFolderDialogValues,
     ScrobbleRuleDialogValues,
@@ -546,12 +547,15 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
                 throw new Error(validationMessage);
             }
 
-            const refreshedDevices = await options.applyAudioNow(formValues);
-            refreshAudioOutputDevices(refreshedDevices, formValues.audioOutputDevice || 'default');
-            setSettingsStatusMessage('Audio settings refreshed.');
+            const refreshedAudioState = await options.applyAudioNow(formValues);
+            refreshAudioOutputDevices(refreshedAudioState.devices, refreshedAudioState.selectedDevice || 'default');
+            setSettingsStatusMessage(refreshedAudioState.message || 'Audio settings refreshed.');
         } catch (error) {
             console.error(error);
-            setSettingsStatusMessage('Unable to refresh audio settings right now.');
+            const message = errorMessage(error).trim();
+            setSettingsStatusMessage(message === ''
+                ? 'Unable to refresh audio settings right now.'
+                : `Unable to refresh audio settings right now: ${message}`);
         } finally {
             settingsApplyAudioNow.disabled = false;
         }

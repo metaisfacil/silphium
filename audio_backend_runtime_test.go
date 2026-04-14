@@ -194,6 +194,33 @@ func TestAudioBackendInitializeCloseAndOutputDevices(t *testing.T) {
 		t.Fatal("Initialize(context failure) error = nil, want error")
 	}
 
+	capturedOutputDeviceID := ""
+	originalNewAudioOutputContext := newAudioOutputContext
+	newAudioOutputContext = func(options *oto.NewContextOptions) (audioOutputContext, <-chan struct{}, error) {
+		capturedOutputDeviceID = options.OutputDeviceID
+		ready := make(chan struct{})
+		close(ready)
+		return &fakeAudioContext{}, ready, nil
+	}
+	t.Cleanup(func() {
+		newAudioOutputContext = originalNewAudioOutputContext
+	})
+	listAudioOutputDevices = func() ([]oto.OutputDevice, error) {
+		return []oto.OutputDevice{{ID: "replacement-device", Name: "Speakers", Backend: "wasapi", IsDefault: true}}, nil
+	}
+	backendWithMissingDevice := NewAudioBackend()
+	backendWithMissingDevice.ffmpegPath = helperPath
+	backendWithMissingDevice.outputDevice = "missing-device"
+	if err := backendWithMissingDevice.Initialize(); err != nil {
+		t.Fatalf("Initialize(missing selected device) error = %v", err)
+	}
+	if capturedOutputDeviceID != "" {
+		t.Fatalf("Initialize(missing selected device) OutputDeviceID = %q, want empty string for default fallback", capturedOutputDeviceID)
+	}
+	if backendWithMissingDevice.outputDevice != defaultAudioOutputDevice {
+		t.Fatalf("Initialize(missing selected device) outputDevice = %q, want %q", backendWithMissingDevice.outputDevice, defaultAudioOutputDevice)
+	}
+
 	if err := NewAudioBackend().Close(); err != nil {
 		t.Fatalf("Close(nil context) error = %v, want nil", err)
 	}

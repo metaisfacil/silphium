@@ -7,6 +7,7 @@ import { UI_TIMINGS_MS } from './constants/ui-timings';
 import {
     ScanConfiguredLibraryFolders,
     AudioListOutputDevices,
+    AudioReinitializeBackend,
     AppendTracksToPlaylistFile,
     CopyShareImageToClipboard,
     GetMusicBrainzTagWorkerProgress,
@@ -303,6 +304,7 @@ const runtimePorts = {
     scanConfiguredLibraryFoldersBackend: async (): Promise<LibraryScanResult> => await ScanConfiguredLibraryFolders() as LibraryScanResult,
     audioStop: async (): Promise<AudioPlaybackState> => await AudioStop() as AudioPlaybackState,
     listAudioOutputDevices: async (): Promise<AudioOutputDevice[]> => await AudioListOutputDevices() as AudioOutputDevice[],
+    audioReinitializeBackend: async (): Promise<AudioPlaybackState> => await AudioReinitializeBackend() as AudioPlaybackState,
     getSettings: async (): Promise<AppSettings> => await GetSettings() as unknown as AppSettings,
     getMusicBrainzTagWorkerProgress: async (): Promise<MusicBrainzTagWorkerProgress> => await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
     getAppVersion: async (): Promise<string> => await GetAppVersion(),
