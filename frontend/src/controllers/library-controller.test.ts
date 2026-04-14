@@ -2,11 +2,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ImageLibraryFile, LibraryBrowserEntry, LibraryFolderPage, LibrarySearchPage, TextLibraryFile, Track } from '../types/app-types';
 import { createLibraryController } from './library-controller';
-import { createLibraryControllerState, type LibraryControllerState } from './library-controller-types';
+import { createLibraryControllerState, type LibraryControllerOptions, type LibraryControllerState } from './library-controller-types';
 
 const flushPromises = async (): Promise<void> => {
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let index = 0; index < 8; index += 1) {
+        await Promise.resolve();
+    }
+};
+
+const waitForCondition = async (assertion: () => void): Promise<void> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+        try {
+            assertion();
+            return;
+        } catch (error) {
+            lastError = error;
+            await flushPromises();
+        }
+    }
+
+    throw lastError;
 };
 
 const createTrack = (overrides: Partial<Track> = {}): Track => ({
@@ -61,12 +77,18 @@ const createSearchPageSlice = (query: string, entries: LibraryBrowserEntry[], of
 const mountLibraryController = (overrides?: {
     searchLibrary?: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
     state?: LibraryControllerState;
+    tracks?: Track[];
+    imageFiles?: ImageLibraryFile[];
+    readImageThumbnail?: LibraryControllerOptions['readImageThumbnail'];
+    getFolderCoverPath?: (folderPath: string) => string;
+    getReleaseDepthForTrack?: (track: Track) => number;
 }) => {
     document.body.innerHTML = `
         <div id="app">
             <button id="sidebar-toggle" type="button"></button>
             <aside id="library-sidebar"></aside>
             <span id="library-scan-yield"></span>
+            <button id="library-expand-toggle" type="button"></button>
             <button id="library-back" type="button"></button>
             <p id="library-path"></p>
             <input id="library-search" type="text">
@@ -79,13 +101,14 @@ const mountLibraryController = (overrides?: {
     const sidebarToggle = document.querySelector('#sidebar-toggle') as HTMLButtonElement;
     const librarySidebar = document.querySelector('#library-sidebar') as HTMLElement;
     const libraryScanYieldIndicator = document.querySelector('#library-scan-yield') as HTMLSpanElement;
+    const libraryExpandToggle = document.querySelector('#library-expand-toggle') as HTMLButtonElement;
     const libraryBack = document.querySelector('#library-back') as HTMLButtonElement;
     const libraryPath = document.querySelector('#library-path') as HTMLParagraphElement;
     const librarySearch = document.querySelector('#library-search') as HTMLInputElement;
     const librarySort = document.querySelector('#library-sort') as HTMLSelectElement;
     const libraryBrowser = document.querySelector('#library-browser') as HTMLElement;
 
-    const tracks: Track[] = [
+    const tracks: Track[] = overrides?.tracks || [
         createTrack(),
         createTrack({
             title: 'Track 1',
@@ -100,7 +123,7 @@ const mountLibraryController = (overrides?: {
     ];
 
     const textFiles: TextLibraryFile[] = [];
-    const imageFiles: ImageLibraryFile[] = [];
+    const imageFiles: ImageLibraryFile[] = overrides?.imageFiles || [];
 
     const folderTrackEntry: LibraryBrowserEntry = {
         kind: 'track',
@@ -157,11 +180,19 @@ const mountLibraryController = (overrides?: {
     const onFolderQueueRequested = vi.fn(() => undefined);
     const onSidebarClosed = vi.fn(() => undefined);
 
+    const readImageThumbnailMock = overrides?.readImageThumbnail
+        ? vi.fn(overrides.readImageThumbnail)
+        : vi.fn(async (_path: string, _maxEdge: number) => ({
+            base64: 'thumb',
+            mimeType: 'image/jpeg',
+        }));
+
     const controller = createLibraryController({
         app,
         sidebarToggle,
         librarySidebar,
         libraryScanYieldIndicator,
+        libraryExpandToggle,
         libraryBack,
         libraryPath,
         librarySearch,
@@ -176,6 +207,9 @@ const mountLibraryController = (overrides?: {
         resolveLibraryFolderForAbsolutePath: vi.fn(async () => ''),
         isFolderImmediateDescendantsEnumerated: vi.fn(async () => true),
         searchLibrary,
+        getReleaseDepthForTrack: overrides?.getReleaseDepthForTrack || (() => 2),
+        getFolderCoverPath: overrides?.getFolderCoverPath || ((folderPath: string) => folderPath === 'Library/Artist One/Album One' ? '/music/library/artist-one/album-one/cover.jpg' : ''),
+        readImageThumbnail: async (path: string, maxEdge: number) => await readImageThumbnailMock(path, maxEdge),
         getHighlightMusicBrainzTaggedAlbumFolders: () => false,
         resolveTrackIndex: (path: string) => tracks.findIndex((track) => track.path === path),
         resolveTextFileIndex: () => -1,
@@ -193,6 +227,7 @@ const mountLibraryController = (overrides?: {
         librarySearch,
         librarySort,
         libraryBrowser,
+        readImageThumbnail: readImageThumbnailMock,
         searchLibrary,
         loadFolderPage,
         onFolderQueueRequested,
@@ -281,6 +316,585 @@ describe('createLibraryController', () => {
         await flushPromises();
 
         expect(searchLibrary).toHaveBeenCalledWith('track 0', 0, 100);
+    });
+
+    it('renders an expanded album grid and shrinks back when the search input is used', async () => {
+        const { controller, libraryBrowser, librarySearch } = mountLibraryController();
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        expect(controller.isSidebarExpanded()).toBe(true);
+        const albumButton = libraryBrowser.querySelector('[data-folder-path="Library/Artist One/Album One"]') as HTMLButtonElement | null;
+        expect(albumButton).not.toBeNull();
+        expect(albumButton?.title).toBe('Library/Artist One/Album One');
+        expect(libraryBrowser.querySelector('.library-album-title')).toBeNull();
+        expect(libraryBrowser.querySelector('.library-album-artist')).toBeNull();
+
+        librarySearch.value = 'intro';
+        librarySearch.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(controller.isSidebarExpanded()).toBe(false);
+    });
+
+    it('eagerly hydrates the first expanded album covers', async () => {
+        const { controller, libraryBrowser, readImageThumbnail } = mountLibraryController();
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        const firstCoverImage = libraryBrowser.querySelector('.library-album-cover-image') as HTMLImageElement | null;
+        expect(firstCoverImage).not.toBeNull();
+        await waitForCondition(() => {
+            expect(readImageThumbnail).toHaveBeenCalledWith('/music/library/artist-one/album-one/cover.jpg', 420);
+            expect(firstCoverImage?.getAttribute('src')).toBe('data:image/jpeg;base64,thumb');
+            expect(firstCoverImage?.dataset.coverLoaded).toBe('true');
+            expect(firstCoverImage?.closest('.library-album-cover')?.classList.contains('has-image')).toBe(true);
+        });
+    });
+
+    it('shows a cover skeleton until a thumbnail finishes loading', async () => {
+        let resolveThumbnail: ((value: { base64: string; mimeType: string }) => void) | null = null;
+        const readImageThumbnail = vi.fn(async (_path: string, _maxEdge: number) => {
+            return await new Promise<{ base64: string; mimeType: string }>((resolve) => {
+                resolveThumbnail = resolve;
+            });
+        });
+        const { controller, libraryBrowser } = mountLibraryController({
+            readImageThumbnail,
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        const firstCover = libraryBrowser.querySelector('.library-album-cover') as HTMLElement | null;
+        const firstCoverImage = libraryBrowser.querySelector('.library-album-cover-image') as HTMLImageElement | null;
+        const firstCoverSkeleton = libraryBrowser.querySelector('.library-album-cover-skeleton') as HTMLElement | null;
+        expect(firstCover).not.toBeNull();
+        expect(firstCoverImage).not.toBeNull();
+        expect(firstCoverSkeleton).not.toBeNull();
+        expect(firstCover?.classList.contains('is-loading')).toBe(true);
+        expect(firstCoverImage?.getAttribute('src')).toBeNull();
+
+        expect(resolveThumbnail).not.toBeNull();
+        resolveThumbnail!({
+            base64: 'thumb',
+            mimeType: 'image/jpeg',
+        });
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(firstCover?.classList.contains('is-loading')).toBe(false);
+            expect(firstCover?.classList.contains('has-image')).toBe(true);
+            expect(firstCoverImage?.getAttribute('src')).toBe('data:image/jpeg;base64,thumb');
+        });
+    });
+
+    it('animates into album view by mounting a transitional browser pane', async () => {
+        const { controller, libraryBrowser } = mountLibraryController();
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        expect(libraryBrowser.querySelectorAll('.library-browser-pane')).toHaveLength(1);
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        expect(libraryBrowser.querySelectorAll('.library-browser-pane')).toHaveLength(2);
+        expect(libraryBrowser.querySelector('.library-album-grid-pane')).not.toBeNull();
+
+        await vi.advanceTimersByTimeAsync(260);
+        await flushPromises();
+
+        expect(libraryBrowser.querySelectorAll('.library-browser-pane')).toHaveLength(1);
+        expect(libraryBrowser.querySelector('.library-album-grid-pane')).not.toBeNull();
+    });
+
+    it('only hydrates mounted album covers instead of the full library upfront', async () => {
+        const tracks = Array.from({ length: 160 }, (_, index) => createTrack({
+            title: `Track ${index}`,
+            name: `Track ${index}`,
+            path: `/music/library/artist-${index}/album-${index}/01 Track.flac`,
+            relativePath: `Library/Artist ${index}/Album ${index}/01 Track.flac`,
+            folderPath: `Library/Artist ${index}/Album ${index}`,
+            displayAlbum: `Album ${index}`,
+            displayArtist: `Artist ${index}`,
+        }));
+        const readImageThumbnail = vi.fn(async (_path: string, _maxEdge: number) => ({
+            base64: 'thumb',
+            mimeType: 'image/jpeg',
+        }));
+        const { controller } = mountLibraryController({
+            tracks,
+            readImageThumbnail,
+            getFolderCoverPath: (folderPath: string) => `/covers/${folderPath.replace(/\s+/g, '-').toLowerCase()}.jpg`,
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist 0');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(readImageThumbnail).toHaveBeenCalled();
+        });
+
+        expect(readImageThumbnail.mock.calls.length).toBeLessThan(tracks.length);
+    });
+
+    it('reuses overlapping album card elements when the virtualized window shifts', async () => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return 240;
+            }
+
+            return 720;
+        });
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return 240;
+            }
+
+            return 720;
+        });
+
+        const tracks = Array.from({ length: 160 }, (_, index) => createTrack({
+            title: `Track ${index}`,
+            name: `Track ${index}`,
+            path: `/music/library/artist-${index}/album-${index}/01 Track.flac`,
+            relativePath: `Library/Artist ${index}/Album ${index}/01 Track.flac`,
+            folderPath: `Library/Artist ${index}/Album ${index}`,
+            displayAlbum: `Album ${index}`,
+            displayArtist: `Artist ${index}`,
+        }));
+        const { controller, libraryBrowser } = mountLibraryController({
+            tracks,
+            getFolderCoverPath: (folderPath: string) => `/covers/${folderPath.replace(/\s+/g, '-').toLowerCase()}.jpg`,
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist 0');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        const persistentAlbumSelector = '[data-folder-path="Library/Artist 12/Album 12"]';
+        await waitForCondition(() => {
+            expect(libraryBrowser.querySelector(persistentAlbumSelector)).not.toBeNull();
+        });
+
+        const albumPane = libraryBrowser.querySelector('.library-album-grid-pane') as HTMLDivElement | null;
+        const albumButtonBeforeScroll = libraryBrowser.querySelector(persistentAlbumSelector) as HTMLButtonElement | null;
+        const albumImageBeforeScroll = albumButtonBeforeScroll?.querySelector('.library-album-cover-image') as HTMLImageElement | null;
+        expect(albumPane).not.toBeNull();
+        expect(albumButtonBeforeScroll).not.toBeNull();
+        expect(albumImageBeforeScroll).not.toBeNull();
+
+        albumPane!.scrollTop = 320;
+        albumPane!.dispatchEvent(new Event('scroll'));
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(libraryBrowser.querySelector(persistentAlbumSelector)).toBe(albumButtonBeforeScroll);
+        });
+
+        const albumButtonAfterScroll = libraryBrowser.querySelector(persistentAlbumSelector) as HTMLButtonElement | null;
+        const albumImageAfterScroll = albumButtonAfterScroll?.querySelector('.library-album-cover-image') as HTMLImageElement | null;
+        expect(albumButtonAfterScroll).toBe(albumButtonBeforeScroll);
+        expect(albumImageAfterScroll).toBe(albumImageBeforeScroll);
+    });
+
+    it('disposes album card image bindings once a card leaves the virtualized window', async () => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return 240;
+            }
+
+            return 720;
+        });
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return 240;
+            }
+
+            return 720;
+        });
+
+        const tracks = Array.from({ length: 160 }, (_, index) => createTrack({
+            title: `Track ${index}`,
+            name: `Track ${index}`,
+            path: `/music/library/artist-${index}/album-${index}/01 Track.flac`,
+            relativePath: `Library/Artist ${index}/Album ${index}/01 Track.flac`,
+            folderPath: `Library/Artist ${index}/Album ${index}`,
+            displayAlbum: `Album ${index}`,
+            displayArtist: `Artist ${index}`,
+        }));
+        const { controller, libraryBrowser } = mountLibraryController({
+            tracks,
+            getFolderCoverPath: (folderPath: string) => `/covers/${folderPath.replace(/\s+/g, '-').toLowerCase()}.jpg`,
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist 0');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        const albumPane = libraryBrowser.querySelector('.library-album-grid-pane') as HTMLDivElement | null;
+        const firstAlbumButton = libraryBrowser.querySelector('[data-folder-path="Library/Artist 0/Album 0"]') as HTMLButtonElement | null;
+        const firstAlbumImage = firstAlbumButton?.querySelector('.library-album-cover-image') as HTMLImageElement | null;
+        expect(albumPane).not.toBeNull();
+        expect(firstAlbumButton).not.toBeNull();
+        expect(firstAlbumImage).not.toBeNull();
+
+        await waitForCondition(() => {
+            expect(firstAlbumImage?.getAttribute('src')).toBe('data:image/jpeg;base64,thumb');
+        });
+
+        albumPane!.scrollTop = 1500;
+        albumPane!.dispatchEvent(new Event('scroll'));
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(firstAlbumButton?.isConnected).toBe(false);
+        });
+
+        expect(firstAlbumImage?.hasAttribute('src')).toBe(false);
+        expect(firstAlbumImage?.dataset.coverPath).toBeUndefined();
+    });
+
+    it('mounts more album cards when the expanded cover viewport grows', async () => {
+        let paneHeight = 240;
+        let resizeObserverCallback: ResizeObserverCallback | null = null;
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(callback: ResizeObserverCallback) {
+                resizeObserverCallback = callback;
+            }
+
+            observe(): void {
+                return undefined;
+            }
+
+            disconnect(): void {
+                return undefined;
+            }
+
+            unobserve(): void {
+                return undefined;
+            }
+        });
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return 240;
+            }
+
+            return 720;
+        });
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return paneHeight;
+            }
+
+            return 720;
+        });
+
+        const tracks = Array.from({ length: 160 }, (_, index) => createTrack({
+            title: `Track ${index}`,
+            name: `Track ${index}`,
+            path: `/music/library/artist-${index}/album-${index}/01 Track.flac`,
+            relativePath: `Library/Artist ${index}/Album ${index}/01 Track.flac`,
+            folderPath: `Library/Artist ${index}/Album ${index}`,
+            displayAlbum: `Album ${index}`,
+            displayArtist: `Artist ${index}`,
+        }));
+        const { controller, libraryBrowser } = mountLibraryController({
+            tracks,
+            getFolderCoverPath: (folderPath: string) => `/covers/${folderPath.replace(/\s+/g, '-').toLowerCase()}.jpg`,
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist 0');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(libraryBrowser.querySelectorAll('.library-album-card').length).toBeGreaterThan(0);
+        });
+
+        const initialCardCount = libraryBrowser.querySelectorAll('.library-album-card').length;
+        await waitForCondition(() => {
+            expect(resizeObserverCallback).not.toBeNull();
+        });
+        paneHeight = 480;
+        resizeObserverCallback!([], {} as ResizeObserver);
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(libraryBrowser.querySelectorAll('.library-album-card').length).toBeGreaterThan(initialCardCount);
+        });
+    });
+
+    it('disables the album-view bottom fade once the pane reaches the end of the scroll range', async () => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return 240;
+            }
+
+            return 720;
+        });
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return 240;
+            }
+
+            return 720;
+        });
+
+        const tracks = Array.from({ length: 160 }, (_, index) => createTrack({
+            title: `Track ${index}`,
+            name: `Track ${index}`,
+            path: `/music/library/artist-${index}/album-${index}/01 Track.flac`,
+            relativePath: `Library/Artist ${index}/Album ${index}/01 Track.flac`,
+            folderPath: `Library/Artist ${index}/Album ${index}`,
+            displayAlbum: `Album ${index}`,
+            displayArtist: `Artist ${index}`,
+        }));
+        const { controller, libraryBrowser } = mountLibraryController({
+            tracks,
+            getFolderCoverPath: (folderPath: string) => `/covers/${folderPath.replace(/\s+/g, '-').toLowerCase()}.jpg`,
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist 0');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        const albumPane = libraryBrowser.querySelector('.library-album-grid-pane') as HTMLDivElement | null;
+        expect(albumPane).not.toBeNull();
+        Object.defineProperty(albumPane!, 'scrollHeight', {
+            configurable: true,
+            get: () => 1200,
+        });
+        albumPane!.dispatchEvent(new Event('scroll'));
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(albumPane?.classList.contains('has-bottom-fade')).toBe(true);
+        });
+
+        albumPane!.scrollTop = 960;
+        albumPane!.dispatchEvent(new Event('scroll'));
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(albumPane?.classList.contains('has-bottom-fade')).toBe(false);
+        });
+    });
+
+    it('evicts older album thumbnails after scrolling past the cache limit', async () => {
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return 240;
+            }
+
+            return 720;
+        });
+        vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function(this: HTMLElement) {
+            if (this.classList.contains('library-album-grid-pane')) {
+                return 240;
+            }
+
+            return 720;
+        });
+
+        const tracks = Array.from({ length: 800 }, (_, index) => createTrack({
+            title: `Track ${index}`,
+            name: `Track ${index}`,
+            path: `/music/library/artist-${index}/album-${index}/01 Track.flac`,
+            relativePath: `Library/Artist ${index}/Album ${index}/01 Track.flac`,
+            folderPath: `Library/Artist ${index}/Album ${index}`,
+            displayAlbum: `Album ${index}`,
+            displayArtist: `Artist ${index}`,
+        }));
+        const firstCoverPath = '/covers/artist-0/album-0.jpg';
+        const readImageThumbnail = vi.fn(async (_path: string, _maxEdge: number) => ({
+            base64: 'thumb',
+            mimeType: 'image/jpeg',
+        }));
+        const { controller, libraryBrowser } = mountLibraryController({
+            tracks,
+            readImageThumbnail,
+            getFolderCoverPath: (folderPath: string) => {
+                const normalizedFolderPath = folderPath
+                    .replace(/^Library\//, '')
+                    .replace(/\s+/g, '-')
+                    .replace(/\/+/g, '/')
+                    .toLowerCase();
+                return `/covers/${normalizedFolderPath}.jpg`;
+            },
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist 0');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        const countCallsForCoverPath = (coverPath: string): number => {
+            return readImageThumbnail.mock.calls.filter(([path]) => path === coverPath).length;
+        };
+
+        await waitForCondition(() => {
+            expect(countCallsForCoverPath(firstCoverPath)).toBe(1);
+        });
+        const initialThumbnailLoadCount = readImageThumbnail.mock.calls.length;
+
+        const albumPane = libraryBrowser.querySelector('.library-album-grid-pane') as HTMLDivElement | null;
+        expect(albumPane).not.toBeNull();
+        let lastThumbnailLoadCount = initialThumbnailLoadCount;
+        for (const scrollTop of [1500, 3000, 4500, 6000, 7500, 9000]) {
+            albumPane!.scrollTop = scrollTop;
+            albumPane!.dispatchEvent(new Event('scroll'));
+            await flushPromises();
+
+            await waitForCondition(() => {
+                expect(readImageThumbnail.mock.calls.length).toBeGreaterThan(lastThumbnailLoadCount);
+            });
+            lastThumbnailLoadCount = readImageThumbnail.mock.calls.length;
+        }
+
+        albumPane!.scrollTop = 0;
+        albumPane!.dispatchEvent(new Event('scroll'));
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(countCallsForCoverPath(firstCoverPath)).toBeGreaterThan(1);
+        });
+    });
+
+    it('groups multi-disc releases into one card at the configured release depth', async () => {
+        const tracks = [
+            createTrack({
+                path: '/music/library/artist-one/album-one/disc-1/01 Intro.flac',
+                relativePath: 'Library/Artist One/Album One/Disc 1/01 Intro.flac',
+                folderPath: 'Library/Artist One/Album One/Disc 1',
+                displayAlbum: 'Disc 1',
+            }),
+            createTrack({
+                title: 'Track 1',
+                name: 'Track 1',
+                path: '/music/library/artist-one/album-one/disc-2/02 Outro.flac',
+                relativePath: 'Library/Artist One/Album One/Disc 2/02 Outro.flac',
+                folderPath: 'Library/Artist One/Album One/Disc 2',
+                displayAlbum: 'Disc 2',
+            }),
+        ];
+        const { controller, libraryBrowser } = mountLibraryController({
+            tracks,
+            getReleaseDepthForTrack: () => 2,
+            getFolderCoverPath: (folderPath: string) => folderPath === 'Library/Artist One/Album One' ? '/music/library/artist-one/album-one/cover.jpg' : '',
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(libraryBrowser.querySelectorAll('.library-album-card')).toHaveLength(1);
+        });
+
+        const albumButton = libraryBrowser.querySelector('[data-folder-path="Library/Artist One/Album One"]') as HTMLButtonElement | null;
+        expect(albumButton).not.toBeNull();
+        expect(albumButton?.title).toBe('Library/Artist One/Album One');
+    });
+
+    it('recursively finds a cover image inside a grouped multi-disc album subtree', async () => {
+        const tracks = [
+            createTrack({
+                path: '/music/library/artist-one/album-one/disc-1/01 Intro.flac',
+                relativePath: 'Library/Artist One/Album One/Disc 1/01 Intro.flac',
+                folderPath: 'Library/Artist One/Album One/Disc 1',
+                displayAlbum: 'Disc 1',
+            }),
+            createTrack({
+                title: 'Track 1',
+                name: 'Track 1',
+                path: '/music/library/artist-one/album-one/disc-2/02 Outro.flac',
+                relativePath: 'Library/Artist One/Album One/Disc 2/02 Outro.flac',
+                folderPath: 'Library/Artist One/Album One/Disc 2',
+                displayAlbum: 'Disc 2',
+            }),
+        ];
+        const imageFiles: ImageLibraryFile[] = [{
+            name: 'cover.jpg',
+            path: '/music/library/artist-one/album-one/disc-1/cover.jpg',
+            relativePath: 'Library/Artist One/Album One/Disc 1/cover.jpg',
+            folderPath: 'Library/Artist One/Album One/Disc 1',
+            rootPath: '/music/library',
+            rootName: 'Library',
+        }];
+        const readImageThumbnail = vi.fn(async (_path: string, _maxEdge: number) => ({
+            base64: 'thumb',
+            mimeType: 'image/jpeg',
+        }));
+        const { controller, libraryBrowser } = mountLibraryController({
+            tracks,
+            imageFiles,
+            readImageThumbnail,
+            getReleaseDepthForTrack: () => 2,
+            getFolderCoverPath: () => '',
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(readImageThumbnail).toHaveBeenCalledWith('/music/library/artist-one/album-one/disc-1/cover.jpg', 420);
+        });
+
+        expect(libraryBrowser.querySelector('[data-folder-path="Library/Artist One/Album One"]')).not.toBeNull();
     });
 
     it('reloads the current folder when the browser sort mode changes', async () => {
@@ -471,6 +1085,7 @@ describe('createLibraryController', () => {
         expect(state.libraryRootName).toBe('Library');
         expect(state.currentFolderPath).toBe('Library/Artist One');
         expect(state.sidebarOpen).toBe(true);
+        expect(state.sidebarExpanded).toBe(false);
         expect(state.librarySearchQuery).toBe('intro');
         expect(state.librarySearchPending).toBe(true);
 
@@ -484,6 +1099,7 @@ describe('createLibraryController', () => {
         expect(state.libraryRootName).toBe('');
         expect(state.currentFolderPath).toBe('');
         expect(state.sidebarAutoFolderPath).toBe('');
+        expect(state.sidebarExpanded).toBe(false);
         expect(state.librarySearchQuery).toBe('');
         expect(state.librarySearchPending).toBe(false);
         expect(state.activeSearchResult).toBeNull();

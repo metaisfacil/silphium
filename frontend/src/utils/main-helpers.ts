@@ -545,6 +545,74 @@ export const findLibraryFolderForFilePath = (filePath: string, folders: AppLibra
     return bestMatch;
 };
 
+export const findLibraryFolderForTrack = (
+    track: Pick<Track, 'rootPath' | 'path'>,
+    folders: AppLibraryFolder[],
+): AppLibraryFolder | null => {
+    let bestMatch: AppLibraryFolder | null = null;
+    let bestMatchLength = -1;
+
+    for (const candidatePath of [track.rootPath || '', track.path || '']) {
+        const match = findLibraryFolderForFilePath(candidatePath, folders);
+        if (!match) {
+            continue;
+        }
+
+        const matchLength = libraryFolderPathKey(match.path).length;
+        if (matchLength <= bestMatchLength) {
+            continue;
+        }
+
+        bestMatch = match;
+        bestMatchLength = matchLength;
+    }
+
+    return bestMatch;
+};
+
+export const relativeFolderSegmentsForTrack = (
+    folderPath: string,
+    rootName: string,
+): string[] => {
+    const segments = folderPath.split('/').filter((segment) => segment !== '');
+    if (segments.length === 0) {
+        return [];
+    }
+
+    const normalizedRootName = rootName.trim().toLowerCase();
+    if (!normalizedRootName) {
+        return segments;
+    }
+
+    return segments[0]?.trim().toLowerCase() === normalizedRootName
+        ? segments.slice(1)
+        : segments;
+};
+
+export const releaseFolderPathForTrackAtDepth = (
+    track: Pick<Track, 'folderPath' | 'rootName'>,
+    releaseDepth: number,
+): string => {
+    const normalizedFolderPath = track.folderPath || '';
+    const segments = normalizedFolderPath.split('/').filter((segment) => segment !== '');
+    if (segments.length === 0) {
+        return normalizedFolderPath;
+    }
+
+    const relativeSegments = relativeFolderSegmentsForTrack(normalizedFolderPath, track.rootName || '');
+    if (releaseDepth <= 0 || relativeSegments.length === 0 || releaseDepth >= relativeSegments.length) {
+        return normalizedFolderPath;
+    }
+
+    const normalizedRootName = (track.rootName || '').trim().toLowerCase();
+    const hasRootSegment = normalizedRootName !== '' && segments[0]?.trim().toLowerCase() === normalizedRootName;
+    const scopedSegments = hasRootSegment
+        ? [segments[0], ...relativeSegments.slice(0, releaseDepth)]
+        : relativeSegments.slice(0, releaseDepth);
+
+    return scopedSegments.join('/');
+};
+
 export const formatTime = (seconds: number): string => {
     if (!Number.isFinite(seconds) || seconds <= 0) {
         return '0:00';

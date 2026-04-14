@@ -15,6 +15,7 @@ import {
     asReleaseDepth,
     buildLibraryRootNameByPath,
     findLibraryFolderForFilePath,
+    findLibraryFolderForTrack,
     formatTime,
     isTrackScrobbleAllowed,
     libraryFolderPathKey,
@@ -84,7 +85,8 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     };
 
     const releaseDepthForTrack = (track: Pick<Track, 'rootPath'>): number => {
-        const folder = configuredLibraryFolderForPath(track.rootPath || '');
+        const folder = findLibraryFolderForTrack(track as Pick<Track, 'rootPath' | 'path'>, context.currentSettings.libraryFolders)
+            || configuredLibraryFolderForPath(track.rootPath || '');
         return folder ? asReleaseDepth(folder.releaseDepth) : 0;
     };
 

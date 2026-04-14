@@ -5,10 +5,12 @@ export interface LibraryControllerViewContext {
     sidebarToggle: HTMLButtonElement;
     librarySidebar: HTMLElement;
     libraryScanYieldIndicator: HTMLSpanElement;
+    libraryExpandToggle: HTMLButtonElement;
     libraryBack: HTMLButtonElement;
     libraryPath: HTMLParagraphElement;
     libraryBrowser: HTMLElement;
     sidebarOpen: boolean;
+    sidebarExpanded: boolean;
     libraryRootName: string;
     currentFolderPath: string;
     libraryIndexTruncated: boolean;
@@ -138,6 +140,7 @@ export const createLibraryControllerViewRuntime = (context: LibraryControllerVie
     };
 
     const refreshSidebarToggleState = (): void => {
+        context.app.classList.toggle('sidebar-expanded', context.sidebarOpen && context.sidebarExpanded);
         context.sidebarToggle.classList.toggle('is-loading', context.libraryLoading);
         context.libraryScanYieldIndicator.classList.toggle('is-visible', context.libraryLoading);
         context.libraryScanYieldIndicator.setAttribute('aria-hidden', context.libraryLoading ? 'false' : 'true');
@@ -156,6 +159,16 @@ export const createLibraryControllerViewRuntime = (context: LibraryControllerVie
 
         context.sidebarToggle.setAttribute('aria-busy', 'false');
         context.sidebarToggle.setAttribute('aria-label', context.sidebarOpen ? 'Close sidebar' : 'Open sidebar');
+    };
+
+    const refreshSidebarExpandedState = (): void => {
+        const canExpand = context.libraryRootName !== '' && !context.isLibrarySearchActive();
+        context.libraryExpandToggle.classList.toggle('is-active', context.sidebarExpanded);
+        context.libraryExpandToggle.disabled = !canExpand;
+        context.libraryExpandToggle.setAttribute('aria-pressed', context.sidebarExpanded ? 'true' : 'false');
+        context.libraryExpandToggle.setAttribute('aria-label', context.sidebarExpanded ? 'Shrink album view' : 'Expand album view');
+        context.libraryExpandToggle.title = context.sidebarExpanded ? 'Shrink album view' : 'Expand album view';
+        context.app.classList.toggle('sidebar-expanded', context.sidebarOpen && context.sidebarExpanded);
     };
 
     const setLibraryLoading = (loading: boolean): void => {
@@ -235,6 +248,12 @@ export const createLibraryControllerViewRuntime = (context: LibraryControllerVie
             return;
         }
 
+        if (context.sidebarExpanded) {
+            appendText(`${context.libraryRootName}${partialSuffix} · Albums`);
+            context.libraryBack.disabled = true;
+            return;
+        }
+
         if (!context.currentFolderPath) {
             appendText(`${context.libraryRootName}${partialSuffix}`);
             context.libraryBack.disabled = true;
@@ -289,6 +308,7 @@ export const createLibraryControllerViewRuntime = (context: LibraryControllerVie
     return {
         hideFolderEnumerationTooltip,
         showFolderEnumerationTooltip,
+        refreshSidebarExpandedState,
         refreshSidebarToggleState,
         setHoveredBrowserButton,
         syncHoveredBrowserButton,

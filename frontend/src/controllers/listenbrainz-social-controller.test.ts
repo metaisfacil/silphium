@@ -37,9 +37,11 @@ const mountController = (options?: {
     openUserProfile?: (provider: 'listenbrainz' | 'lastfm', userName: string) => void | Promise<void>;
     openLocalReleaseFolder?: (folderPath: string) => void | Promise<void>;
     openLibrarySearch?: (query: string) => void | Promise<void>;
+    onShowSocial?: () => void;
 }) => {
     document.body.innerHTML = `
         <button id="sidebar-toggle" type="button"></button>
+        <button id="library-expand-toggle" type="button"></button>
         <button id="sidebar-section-trigger" type="button"><span id="sidebar-section-trigger-label"></span></button>
         <div id="sidebar-section-menu" hidden>
             <button id="sidebar-section-option-library" type="button"></button>
@@ -52,6 +54,7 @@ const mountController = (options?: {
     `;
 
     const sidebarToggle = document.querySelector('#sidebar-toggle') as HTMLButtonElement;
+    const libraryExpandToggle = document.querySelector('#library-expand-toggle') as HTMLButtonElement;
     const sidebarSectionTrigger = document.querySelector('#sidebar-section-trigger') as HTMLButtonElement;
     const sidebarSectionTriggerLabel = document.querySelector('#sidebar-section-trigger-label') as HTMLSpanElement;
     const sidebarSectionMenu = document.querySelector('#sidebar-section-menu') as HTMLDivElement;
@@ -71,6 +74,7 @@ const mountController = (options?: {
     const controller = createListenBrainzSocialController({
         elements: {
             sidebarToggle,
+            libraryExpandToggle,
             sidebarSectionTrigger,
             sidebarSectionTriggerLabel,
             sidebarSectionMenu,
@@ -88,6 +92,7 @@ const mountController = (options?: {
         openUserProfile,
         openLocalReleaseFolder,
         openLibrarySearch,
+        onShowSocial: options?.onShowSocial,
     });
 
     return {
@@ -95,6 +100,7 @@ const mountController = (options?: {
         sidebarSectionTrigger,
         sidebarSectionTriggerLabel,
         sidebarSectionMenu,
+        libraryExpandToggle,
         sidebarSectionOptionLibrary,
         sidebarSectionOptionSocial,
         sidebarPaneLibrary,
@@ -124,6 +130,7 @@ describe('createListenBrainzSocialController', () => {
 
     it('loads and renders the social feed when the social tab opens', async () => {
         const {
+            libraryExpandToggle,
             sidebarSectionTrigger,
             sidebarSectionTriggerLabel,
             sidebarSectionMenu,
@@ -182,6 +189,7 @@ describe('createListenBrainzSocialController', () => {
         expect(fetchFollowingUsers).toHaveBeenCalledTimes(1);
         expect(fetchFollowingFeed).toHaveBeenCalledWith(40);
         expect(sidebarSectionTriggerLabel.textContent).toBe('SOCIAL');
+        expect(libraryExpandToggle.hidden).toBe(true);
         expect(sidebarPaneLibrary.hidden).toBe(true);
         expect(sidebarPaneSocial.hidden).toBe(false);
         expect(socialFeedList.textContent).toContain('Track Two');
@@ -326,7 +334,7 @@ describe('createListenBrainzSocialController', () => {
     });
 
     it('switches back to the library pane when requested programmatically', async () => {
-        const { controller, sidebarSectionOptionSocial, sidebarSectionTriggerLabel, sidebarPaneLibrary, sidebarPaneSocial } = mountController();
+        const { controller, libraryExpandToggle, sidebarSectionOptionSocial, sidebarSectionTriggerLabel, sidebarPaneLibrary, sidebarPaneSocial } = mountController();
 
         sidebarSectionOptionSocial.click();
         await flushPromises();
@@ -334,9 +342,20 @@ describe('createListenBrainzSocialController', () => {
         controller.showLibrary();
 
         expect(sidebarSectionTriggerLabel.textContent).toBe('LIBRARY');
+        expect(libraryExpandToggle.hidden).toBe(false);
         expect(sidebarPaneLibrary.hidden).toBe(false);
         expect(sidebarPaneSocial.hidden).toBe(true);
         expect(controller.isSocialActive()).toBe(false);
+    });
+
+    it('notifies callers when switching into the social pane', async () => {
+        const onShowSocial = vi.fn();
+        const { sidebarSectionOptionSocial } = mountController({ onShowSocial });
+
+        sidebarSectionOptionSocial.click();
+        await flushPromises();
+
+        expect(onShowSocial).toHaveBeenCalledTimes(1);
     });
 
     it('opens the user profile when a username is clicked', async () => {

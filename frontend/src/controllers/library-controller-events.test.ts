@@ -11,6 +11,7 @@ const flushPromises = async (): Promise<void> => {
 const createDeps = () => {
     document.body.innerHTML = `
         <button id="sidebar-toggle" type="button"></button>
+        <button id="library-expand-toggle" type="button"></button>
         <button id="library-back" type="button"></button>
         <p id="library-path"></p>
         <input id="library-search" type="text">
@@ -19,6 +20,7 @@ const createDeps = () => {
     `;
 
     const sidebarToggle = document.querySelector('#sidebar-toggle') as HTMLButtonElement;
+    const libraryExpandToggle = document.querySelector('#library-expand-toggle') as HTMLButtonElement;
     const libraryBack = document.querySelector('#library-back') as HTMLButtonElement;
     const libraryPath = document.querySelector('#library-path') as HTMLParagraphElement;
     const librarySearch = document.querySelector('#library-search') as HTMLInputElement;
@@ -30,6 +32,7 @@ const createDeps = () => {
     let libraryBrowserSortMode: 'name' | 'date-desc' | 'date-asc' = 'name';
     let currentFolderPath = 'Library/Artist';
     let librarySearchActive = false;
+        let sidebarExpanded = false;
     const expandedSearchFolders = new Set<string>();
 
     const options: LibraryControllerOptions = {
@@ -37,6 +40,7 @@ const createDeps = () => {
             app: document.createElement('div'),
             librarySidebar: document.createElement('div'),
             libraryBack,
+            libraryExpandToggle,
             libraryPath,
             librarySearch,
             librarySort,
@@ -50,6 +54,9 @@ const createDeps = () => {
             resolveLibraryFolderForAbsolutePath: vi.fn(async () => ''),
             isFolderImmediateDescendantsEnumerated: vi.fn(async () => true),
             searchLibrary: vi.fn(async () => ({ query: '', offset: 0, limit: 0, totalEntries: 0, entries: [] })),
+            getReleaseDepthForTrack: vi.fn(() => 1),
+            getFolderCoverPath: vi.fn(() => ''),
+            readImageThumbnail: vi.fn(async () => ({})),
             getHighlightMusicBrainzTaggedAlbumFolders: () => false,
             resolveTrackIndex: vi.fn(() => -1),
             resolveTextFileIndex: vi.fn(() => -1),
@@ -95,6 +102,10 @@ const createDeps = () => {
         renderFolder: vi.fn(),
         setSidebarOpen: vi.fn(),
         isSidebarOpen: vi.fn(() => true),
+        getSidebarExpanded: () => sidebarExpanded,
+        setSidebarExpanded: vi.fn((expanded: boolean) => {
+            sidebarExpanded = expanded;
+        }),
         setHoveredBrowserButton: vi.fn(),
         showFolderEnumerationTooltip: vi.fn(),
         hideFolderEnumerationTooltip: vi.fn(),
@@ -106,10 +117,14 @@ const createDeps = () => {
     return {
         deps,
         libraryBack,
+        libraryExpandToggle,
         librarySearch,
         libraryBrowser,
         setLibrarySearchActive: (value: boolean) => {
             librarySearchActive = value;
+        },
+        setSidebarExpanded: (value: boolean) => {
+            sidebarExpanded = value;
         },
     };
 };
@@ -134,6 +149,15 @@ describe('setupLibraryEventHandlers', () => {
 
         expect(event.defaultPrevented).toBe(true);
         expect(deps.tryHandlePastedLibraryPath).toHaveBeenCalledWith('C:\\Music\\Artist\\Album');
+    });
+
+    it('toggles expanded mode from the expand button', () => {
+        const { deps, libraryExpandToggle } = createDeps();
+        setupLibraryEventHandlers(deps);
+
+        libraryExpandToggle.click();
+
+        expect(deps.setSidebarExpanded).toHaveBeenCalledWith(true);
     });
 
     it('treats pasted library-relative paths as jump candidates from the input event', async () => {
@@ -179,6 +203,17 @@ describe('setupLibraryEventHandlers', () => {
 
         expect(deps.clearLibrarySearch).toHaveBeenCalledTimes(1);
         expect(deps.renderFolder).toHaveBeenCalledWith('none');
+    });
+
+    it('shrinks expanded mode when the library search input changes', () => {
+        const { deps, librarySearch, setSidebarExpanded } = createDeps();
+        setupLibraryEventHandlers(deps);
+        setSidebarExpanded(true);
+
+        librarySearch.value = 'album';
+        librarySearch.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(deps.setSidebarExpanded).toHaveBeenCalledWith(false);
     });
 
     it('shows the enumeration tooltip instead of navigating when descendants are not ready', async () => {

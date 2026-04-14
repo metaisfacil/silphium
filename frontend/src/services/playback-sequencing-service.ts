@@ -1,4 +1,5 @@
 import type { PlaybackOrderMode, Track } from '../types/app-types';
+import { releaseFolderPathForTrackAtDepth } from '../utils/main-helpers';
 
 type PlaybackSequencingServiceOptions = {
     getTracks: () => Track[];
@@ -36,30 +37,8 @@ export const createPlaybackSequencingService = (
 ) => {
 
     const albumScopePathForTrack = (track: Track): string => {
-        const folderPath = track.folderPath || '';
         const releaseDepth = options.getReleaseDepthForTrack(track);
-        if (releaseDepth <= 0) {
-            return folderPath.toLowerCase();
-        }
-
-        const segments = folderPath
-            .split('/')
-            .filter((segment) => segment !== '');
-
-        if (segments.length === 0) {
-            return '';
-        }
-
-        const relativeSegments = track.rootName ? segments.slice(1) : segments;
-        if (relativeSegments.length === 0 || releaseDepth >= relativeSegments.length) {
-            return folderPath.toLowerCase();
-        }
-
-        const scopedSegments = track.rootName
-            ? [segments[0], ...relativeSegments.slice(0, releaseDepth)]
-            : relativeSegments.slice(0, releaseDepth);
-
-        return scopedSegments.join('/').toLowerCase();
+        return releaseFolderPathForTrackAtDepth(track, releaseDepth).toLowerCase();
     };
 
     const albumScopeKeyForTrack = (track: Track): string => `folder::${albumScopePathForTrack(track)}`;

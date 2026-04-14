@@ -35,6 +35,7 @@ const createScope = () => {
         imageFiles: [{ path: '/art/cover.jpg' }],
         libraryControllerState: {
             sidebarOpen: false,
+            sidebarExpanded: false,
             libraryRootName: '',
             currentFolderPath: '',
             sidebarAutoFolderPath: '',
@@ -162,6 +163,7 @@ const createScope = () => {
         lookupArtistByMBID: vi.fn(async () => ({ name: 'Artist' })),
         app: document.createElement('div'),
         sidebarToggle: document.createElement('button'),
+        libraryExpandToggle: document.createElement('button'),
         librarySidebar: document.createElement('aside'),
         libraryBack: document.createElement('button'),
         libraryPath: document.createElement('p'),
@@ -173,6 +175,7 @@ const createScope = () => {
         resolveLibraryFolderForAbsolutePath: vi.fn(async () => '/music'),
         isFolderImmediateDescendantsEnumerated: vi.fn(async () => true),
         searchLibrary: vi.fn(async () => ({ entries: [] })),
+        releaseDepthForTrack: vi.fn(() => 1),
         ensureTrackIndexForPath: vi.fn(() => 0),
         textFileIndexByPath: vi.fn(() => 0),
         imageFileIndexByPath: vi.fn(() => 0),

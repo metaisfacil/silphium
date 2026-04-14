@@ -1,6 +1,6 @@
 import { AudioGetReplayGainReleaseDynamicRange } from '../wailsjs/go/main/App';
 import type { AppSettings, ImageLibraryFile, Track } from './types/app-types';
-import { libraryFolderPathKey } from './utils/main-helpers';
+import { libraryFolderPathKey, releaseFolderPathForTrackAtDepth } from './utils/main-helpers';
 
 type AppReleaseRuntimeContext = {
     tracks: Track[];
@@ -24,23 +24,8 @@ type AppReleaseRuntimeContext = {
 
 export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
     const releaseRootPathForTrack = (track: Track): string => {
-        const normalizedFolderPath = track.folderPath || '';
-        const segments = normalizedFolderPath.split('/').filter((segment) => segment !== '');
-        if (segments.length === 0) {
-            return '';
-        }
-
         const releaseDepth = context.releaseDepthForTrack(track);
-        const relativeSegments = track.rootName ? segments.slice(1) : segments;
-        if (releaseDepth <= 0 || relativeSegments.length === 0 || releaseDepth >= relativeSegments.length) {
-            return normalizedFolderPath;
-        }
-
-        const scopedSegments = track.rootName
-            ? [segments[0], ...relativeSegments.slice(0, releaseDepth)]
-            : relativeSegments.slice(0, releaseDepth);
-
-        return scopedSegments.join('/');
+        return releaseFolderPathForTrackAtDepth(track, releaseDepth);
     };
 
     const replayGainReleaseKeyForTrack = (track: Track): string => {

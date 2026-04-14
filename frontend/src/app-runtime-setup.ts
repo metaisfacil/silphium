@@ -36,6 +36,7 @@ type AppCoreServicesRuntimeScope = RuntimeScope<
     | 'libraryControllerRef'
     | 'librarySearch'
     | 'sidebarToggle'
+    | 'libraryExpandToggle'
     | 'sidebarSectionTrigger'
     | 'sidebarSectionTriggerLabel'
     | 'sidebarSectionMenu'
@@ -409,6 +410,7 @@ const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) =>
     libraryController: () => scope.libraryControllerRef,
     librarySearch: scope.librarySearch,
     sidebarToggle: scope.sidebarToggle,
+    libraryExpandToggle: scope.libraryExpandToggle,
     sidebarSectionTrigger: scope.sidebarSectionTrigger,
     sidebarSectionTriggerLabel: scope.sidebarSectionTriggerLabel,
     sidebarSectionMenu: scope.sidebarSectionMenu,

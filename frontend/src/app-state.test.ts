@@ -18,6 +18,7 @@ describe('createAppState', () => {
         expect(first.currentTrackIndex).toBe(-1);
         expect(first.libraryControllerState).toEqual({
             sidebarOpen: false,
+            sidebarExpanded: false,
             libraryRootName: '',
             currentFolderPath: '',
             sidebarAutoFolderPath: '',

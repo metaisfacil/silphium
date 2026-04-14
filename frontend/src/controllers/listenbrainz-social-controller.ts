@@ -4,7 +4,7 @@ import type { ListenBrainzSocialEvent } from '../types/app-types';
 type SidebarSection = 'library' | 'social';
 
 type ListenBrainzSocialControllerOptions = {
-    elements: Pick<SidebarElements, 'sidebarToggle' | 'sidebarSectionTrigger' | 'sidebarSectionTriggerLabel' | 'sidebarSectionMenu' | 'sidebarSectionOptionLibrary' | 'sidebarSectionOptionSocial' | 'sidebarPaneLibrary' | 'sidebarPaneSocial' | 'socialFeedStatus' | 'socialFeedList'>;
+    elements: Pick<SidebarElements, 'sidebarToggle' | 'libraryExpandToggle' | 'sidebarSectionTrigger' | 'sidebarSectionTriggerLabel' | 'sidebarSectionMenu' | 'sidebarSectionOptionLibrary' | 'sidebarSectionOptionSocial' | 'sidebarPaneLibrary' | 'sidebarPaneSocial' | 'socialFeedStatus' | 'socialFeedList'>;
     hasAnyProviderConfigured: () => boolean;
     isSidebarVisible: () => boolean;
     fetchFollowingUsers: () => Promise<string[]>;
@@ -12,6 +12,8 @@ type ListenBrainzSocialControllerOptions = {
     openUserProfile: (provider: 'listenbrainz' | 'lastfm', userName: string) => void | Promise<void>;
     openLocalReleaseFolder: (folderPath: string) => void | Promise<void>;
     openLibrarySearch: (query: string) => void | Promise<void>;
+    onShowLibrary?: () => void;
+    onShowSocial?: () => void;
 };
 
 export type ListenBrainzSocialController = ReturnType<typeof createListenBrainzSocialController>;
@@ -171,6 +173,7 @@ const socialFeedEventSignature = (events: ListenBrainzSocialEvent[]): string => 
 export const createListenBrainzSocialController = (options: ListenBrainzSocialControllerOptions) => {
     const {
         sidebarToggle,
+        libraryExpandToggle,
         sidebarSectionTrigger,
         sidebarSectionTriggerLabel,
         sidebarSectionMenu,
@@ -378,6 +381,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         sidebarSectionOptionSocial.classList.toggle('is-active', !showingLibrary);
         sidebarSectionOptionSocial.setAttribute('aria-checked', showingLibrary ? 'false' : 'true');
 
+        libraryExpandToggle.hidden = !showingLibrary;
         sidebarPaneLibrary.hidden = !showingLibrary;
         sidebarPaneSocial.hidden = showingLibrary;
 
@@ -469,6 +473,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         stopPolling();
         closeSocialFeedContextMenu();
         setSectionMenuOpen(false);
+        options.onShowLibrary?.();
         render();
         animateSectionSwitch();
     };
@@ -483,6 +488,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         activeSection = 'social';
         closeSocialFeedContextMenu();
         setSectionMenuOpen(false);
+        options.onShowSocial?.();
         animateSectionSwitch();
         void refreshSocialFeed(false);
         scheduleNextPoll();
