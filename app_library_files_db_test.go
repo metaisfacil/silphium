@@ -47,6 +47,84 @@ func TestLibraryFilesDatabaseSnapshotRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLibraryFilesDatabaseIncrementalChangesUpdateSubtree(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library One", ReleaseDepth: 0}, {Path: fixture.rootTwo, Name: "Library Two", ReleaseDepth: 0}}
+	snapshot := libraryFilesDatabaseSnapshot{
+		Roots:        roots,
+		TotalEntries: 6,
+		TrackFiles: []LibraryIndexedFile{
+			{Name: "01 Intro.flac", Path: fixture.trackOne, RelativePath: "Library One/Artist One/Album One/01 Intro.flac", FolderPath: "Library One/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library One"},
+			{Name: "02 Outro.flac", Path: fixture.trackTwo, RelativePath: "Library Two/Artist Two/Album Two/02 Outro.flac", FolderPath: "Library Two/Artist Two/Album Two", RootPath: fixture.rootTwo, RootName: "Library Two"},
+		},
+		TextFiles: []LibraryIndexedFile{{Name: "notes.txt", Path: fixture.noteOne, RelativePath: "Library One/Artist One/Album One/notes.txt", FolderPath: "Library One/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library One"}},
+		ImageFiles: []LibraryIndexedFile{
+			{Name: "cover.jpg", Path: fixture.coverOne, RelativePath: "Library One/Artist One/Album One/cover.jpg", FolderPath: "Library One/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library One"},
+			{Name: "folder.jpg", Path: fixture.folderCoverOne, RelativePath: "Library One/Artist One/Album One/folder.jpg", FolderPath: "Library One/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library One"},
+			{Name: "booklet.png", Path: fixture.imageTwo, RelativePath: "Library Two/Artist Two/Album Two/booklet.png", FolderPath: "Library Two/Artist Two/Album Two", RootPath: fixture.rootTwo, RootName: "Library Two"},
+		},
+	}
+
+	databasePath := filepath.Join(t.TempDir(), libraryFilesDatabaseFileName)
+	if err := writeLibraryFilesDatabaseSnapshotToSQLite(databasePath, snapshot); err != nil {
+		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite() error = %v", err)
+	}
+
+	bonusTrack := filepath.Join(fixture.albumOneFolder, "03 Bonus.flac")
+	writeTestFile(t, bonusTrack, "bonus track")
+	change := preparedIncrementalLibraryChange{
+		root:       roots[0],
+		targetPath: fixture.albumOneFolder,
+		trackFiles: []LibraryIndexedFile{
+			{Name: "01 Intro.flac", Path: fixture.trackOne, RelativePath: "Library One/Artist One/Album One/01 Intro.flac", FolderPath: "Library One/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library One"},
+			{Name: "03 Bonus.flac", Path: bonusTrack, RelativePath: "Library One/Artist One/Album One/03 Bonus.flac", FolderPath: "Library One/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library One"},
+		},
+		imageFiles: []LibraryIndexedFile{{Name: "folder.jpg", Path: fixture.folderCoverOne, RelativePath: "Library One/Artist One/Album One/folder.jpg", FolderPath: "Library One/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library One"}},
+	}
+
+	if err := writeLibraryFilesDatabaseIncrementalChangesToSQLite(databasePath, []preparedIncrementalLibraryChange{change}, 5); err != nil {
+		t.Fatalf("writeLibraryFilesDatabaseIncrementalChangesToSQLite() error = %v", err)
+	}
+
+	loaded, ok := loadLibraryFilesDatabaseSnapshot(databasePath, roots)
+	if !ok {
+		t.Fatal("loadLibraryFilesDatabaseSnapshot() = false, want true")
+	}
+
+	result := loaded.scanResult()
+	if result.TotalEntries != 5 || result.TrackCount != 3 || result.TextFileCount != 0 || result.ImageFileCount != 2 {
+		t.Fatalf("incremental database scan result = %#v, want counts 5/3/0/2", result)
+	}
+	if got := result.CoverPathByFolder["library one/artist one/album one"]; got != fixture.folderCoverOne {
+		t.Fatalf("loaded cover path after incremental update = %q, want %q", got, fixture.folderCoverOne)
+	}
+
+	trackPaths := make(map[string]struct{}, len(result.TrackFiles))
+	for _, entry := range result.TrackFiles {
+		trackPaths[entry.Path] = struct{}{}
+	}
+	if _, ok := trackPaths[fixture.trackOne]; !ok {
+		t.Fatalf("track %q missing after incremental update", fixture.trackOne)
+	}
+	if _, ok := trackPaths[bonusTrack]; !ok {
+		t.Fatalf("track %q missing after incremental update", bonusTrack)
+	}
+	if _, ok := trackPaths[fixture.trackTwo]; !ok {
+		t.Fatalf("unrelated track %q missing after incremental update", fixture.trackTwo)
+	}
+
+	for _, entry := range result.TextFiles {
+		if entry.Path == fixture.noteOne {
+			t.Fatalf("removed text file %q still present after incremental update", fixture.noteOne)
+		}
+	}
+	for _, entry := range result.ImageFiles {
+		if entry.Path == fixture.coverOne {
+			t.Fatalf("removed image file %q still present after incremental update", fixture.coverOne)
+		}
+	}
+}
+
 func TestScanLibraryFoldersDeferredLoadsFromDatabaseBeforeFilesystemRefresh(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	app := NewApp()

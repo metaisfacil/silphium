@@ -63,6 +63,15 @@ type appWatcherState struct {
 	mediaKeys appMediaKeyWatcherState
 }
 
+type libraryEventWatcher interface {
+	Close() error
+	Events() <-chan fsnotify.Event
+	Errors() <-chan error
+	HandleCreatePath(path string)
+	DebounceDuration() time.Duration
+	IsClosed() bool
+}
+
 type appLibraryState struct {
 	appLibraryContentState
 	appTrackTagsCacheState
@@ -109,6 +118,9 @@ type appLibraryIndexState struct {
 	folderEntriesByFolder         map[string][]LibraryBrowserEntry
 	folderChildPathsByFolder      map[string][]string
 	trackFilesByFolder            map[string][]LibraryIndexedFile
+	directTextEntriesByFolder     map[string][]LibraryBrowserEntry
+	directImageEntriesByFolder    map[string][]LibraryBrowserEntry
+	folderModifiedAtByPath        map[string]int64
 	searchFolderEntries           []LibraryBrowserEntry
 	searchTrackEntries            []LibraryBrowserEntry
 	searchTextEntries             []LibraryBrowserEntry
@@ -124,15 +136,18 @@ type appLibraryIndexState struct {
 }
 
 type appLibraryDatabaseState struct {
-	mu     sync.Mutex
-	wakeCh chan struct{}
-	stopCh chan struct{}
-	doneCh chan struct{}
+	mu                             sync.Mutex
+	wakeCh                         chan struct{}
+	stopCh                         chan struct{}
+	doneCh                         chan struct{}
+	pendingFullSnapshot            bool
+	pendingIncrementalTotalEntries int
+	pendingIncrementalChanges      []preparedIncrementalLibraryChange
 }
 
 type appLibraryWatcherState struct {
 	mu         sync.Mutex
-	watcher    *fsnotify.Watcher
+	watcher    libraryEventWatcher
 	stopCh     chan struct{}
 	generation atomic.Uint64
 }

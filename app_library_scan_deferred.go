@@ -689,7 +689,6 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 		if generationState.libraryScanGeneration.Load() == expectedScanGeneration {
 			indexState.libraryFileHydrationPending = false
 			indexState.libraryFolderEntriesCache = nil
-			a.maybeStartLibraryDerivedIndexRebuildLocked()
 			shouldEmitUpdate = true
 			payload = compactLibraryScanResult(contentState.libraryScan)
 		}

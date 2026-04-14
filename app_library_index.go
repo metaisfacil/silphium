@@ -1,21 +1,40 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 )
 
 const librarySearchCacheLimit = 24
 
+type libraryFolderIndexData struct {
+	folderEntriesByFolder      map[string][]LibraryBrowserEntry
+	folderChildPathsByFolder   map[string][]string
+	trackFilesByFolder         map[string][]LibraryIndexedFile
+	directTextEntriesByFolder  map[string][]LibraryBrowserEntry
+	directImageEntriesByFolder map[string][]LibraryBrowserEntry
+	folderModifiedAtByPath     map[string]int64
+	searchFolderEntries        []LibraryBrowserEntry
+}
+
+type librarySearchIndexData struct {
+	searchTrackEntries []LibraryBrowserEntry
+	searchTextEntries  []LibraryBrowserEntry
+	searchImageEntries []LibraryBrowserEntry
+}
+
 type libraryDerivedIndexData struct {
-	folderEntriesByFolder    map[string][]LibraryBrowserEntry
-	folderChildPathsByFolder map[string][]string
-	trackFilesByFolder       map[string][]LibraryIndexedFile
-	searchFolderEntries      []LibraryBrowserEntry
-	searchTrackEntries       []LibraryBrowserEntry
-	searchTextEntries        []LibraryBrowserEntry
-	searchImageEntries       []LibraryBrowserEntry
+	libraryFolderIndexData
+	librarySearchIndexData
+}
+
+type incrementalDerivedIndexUpdate struct {
+	targetFolderPath       string
+	previousSubtreeFolders map[string]struct{}
+	subtreeFolderIndex     libraryFolderIndexData
+	affectedCoverFolders   map[string]struct{}
 }
 
 func (a *App) markLibraryDerivedIndexDirtyLocked() {
@@ -25,7 +44,23 @@ func (a *App) markLibraryDerivedIndexDirtyLocked() {
 	indexState.folderEntriesByFolder = nil
 	indexState.folderChildPathsByFolder = nil
 	indexState.trackFilesByFolder = nil
+	indexState.directTextEntriesByFolder = nil
+	indexState.directImageEntriesByFolder = nil
+	indexState.folderModifiedAtByPath = nil
 	indexState.searchFolderEntries = nil
+	a.invalidateLibrarySearchIndexLocked()
+}
+
+func (a *App) markLibrarySearchIndexDirtyLocked() {
+	indexState := a.libraryIndexState()
+	indexState.libraryDerivedIndexGeneration++
+	indexState.libraryDerivedIndexDirty = true
+	indexState.libraryDerivedIndexBuilding = false
+	a.invalidateLibrarySearchIndexLocked()
+}
+
+func (a *App) invalidateLibrarySearchIndexLocked() {
+	indexState := a.libraryIndexState()
 	indexState.searchTrackEntries = nil
 	indexState.searchTextEntries = nil
 	indexState.searchImageEntries = nil
@@ -35,13 +70,19 @@ func (a *App) markLibraryDerivedIndexDirtyLocked() {
 	indexState.searchLastResults = nil
 }
 
-func (a *App) isLibraryDerivedIndexReadyLocked() bool {
+func (a *App) isLibraryFolderIndexReadyLocked() bool {
 	indexState := a.libraryIndexState()
-	return !indexState.libraryDerivedIndexDirty &&
-		!indexState.libraryDerivedIndexBuilding &&
-		indexState.folderEntriesByFolder != nil &&
+	return indexState.folderEntriesByFolder != nil &&
 		indexState.folderChildPathsByFolder != nil &&
 		indexState.trackFilesByFolder != nil &&
+		indexState.directTextEntriesByFolder != nil &&
+		indexState.directImageEntriesByFolder != nil &&
+		indexState.folderModifiedAtByPath != nil
+}
+
+func (a *App) isLibrarySearchIndexReadyLocked() bool {
+	indexState := a.libraryIndexState()
+	return a.isLibraryFolderIndexReadyLocked() &&
 		indexState.searchFolderEntries != nil &&
 		indexState.searchTrackEntries != nil &&
 		indexState.searchTextEntries != nil &&
@@ -49,80 +90,376 @@ func (a *App) isLibraryDerivedIndexReadyLocked() bool {
 		indexState.searchResultsByQuery != nil
 }
 
-func (a *App) maybeStartLibraryDerivedIndexRebuildLocked() {
-	scanState := a.libraryScanState()
-	contentState := a.libraryContentState()
-	indexState := a.libraryIndexState()
-	if scanState.scanInProgress || indexState.libraryFileHydrationPending || !indexState.libraryDerivedIndexDirty || indexState.libraryDerivedIndexBuilding {
-		return
+func cloneIndexedFiles(entries []LibraryIndexedFile) []LibraryIndexedFile {
+	if len(entries) == 0 {
+		return []LibraryIndexedFile{}
 	}
 
-	generation := indexState.libraryDerivedIndexGeneration
-	trackFiles := make([]LibraryIndexedFile, 0, len(contentState.trackByPath))
-	for _, indexed := range contentState.trackByPath {
-		trackFiles = append(trackFiles, indexed)
-	}
-
-	textFiles := make([]LibraryIndexedFile, 0, len(contentState.textByPath))
-	for _, indexed := range contentState.textByPath {
-		textFiles = append(textFiles, indexed)
-	}
-
-	imageFiles := make([]LibraryIndexedFile, 0, len(contentState.imageByPath))
-	for _, indexed := range contentState.imageByPath {
-		imageFiles = append(imageFiles, indexed)
-	}
-
-	indexState.libraryDerivedIndexBuilding = true
-	a.logRescanEvent(
-		"rebuildLibraryDerivedIndex START (async): %d tracks, %d text, %d images",
-		len(trackFiles),
-		len(textFiles),
-		len(imageFiles),
-	)
-
-	go a.rebuildLibraryDerivedIndexAsync(generation, trackFiles, textFiles, imageFiles)
+	return append([]LibraryIndexedFile(nil), entries...)
 }
 
-func (a *App) rebuildLibraryDerivedIndexAsync(generation uint64, trackFiles []LibraryIndexedFile, textFiles []LibraryIndexedFile, imageFiles []LibraryIndexedFile) {
-	rebuildStartedAt := time.Now()
-	indexData := buildLibraryDerivedIndexData(trackFiles, textFiles, imageFiles)
-	rebuildDurationMs := time.Since(rebuildStartedAt).Seconds() * 1000
-	contentState := a.libraryContentState()
-	scanState := a.libraryScanState()
-	indexState := a.libraryIndexState()
-
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
-
-	if scanState.scanInProgress || generation != indexState.libraryDerivedIndexGeneration {
-		indexState.libraryDerivedIndexBuilding = false
-		a.maybeStartLibraryDerivedIndexRebuildLocked()
-		return
+func cloneBrowserEntries(entries []LibraryBrowserEntry) []LibraryBrowserEntry {
+	if len(entries) == 0 {
+		return []LibraryBrowserEntry{}
 	}
 
-	indexState.folderEntriesByFolder = indexData.folderEntriesByFolder
-	indexState.folderChildPathsByFolder = indexData.folderChildPathsByFolder
-	indexState.trackFilesByFolder = indexData.trackFilesByFolder
-	indexState.searchFolderEntries = indexData.searchFolderEntries
-	indexState.searchTrackEntries = indexData.searchTrackEntries
-	indexState.searchTextEntries = indexData.searchTextEntries
-	indexState.searchImageEntries = indexData.searchImageEntries
-	indexState.searchResultsByQuery = make(map[string][]LibraryBrowserEntry)
-	indexState.searchCacheOrder = make([]string, 0, librarySearchCacheLimit)
-	indexState.searchLastQuery = ""
-	indexState.searchLastResults = nil
-	indexState.libraryDerivedIndexDirty = false
-	indexState.libraryDerivedIndexBuilding = false
+	return append([]LibraryBrowserEntry(nil), entries...)
+}
 
-	a.logRescanEvent(
-		"rebuildLibraryDerivedIndex END: %d folders, %d track files, %d text files, %d images in %.2fms",
-		len(indexData.searchFolderEntries),
-		len(indexData.searchTrackEntries),
-		len(indexData.searchTextEntries),
-		len(indexData.searchImageEntries),
-		rebuildDurationMs,
-	)
+func virtualPathWithinSubtree(rootPath string, candidatePath string) bool {
+	if rootPath == "" {
+		return true
+	}
+
+	return candidatePath == rootPath || strings.HasPrefix(candidatePath, rootPath+"/")
+}
+
+func (a *App) pathHasIndexedContentLocked(path string) bool {
+	contentState := a.libraryContentState()
+	prefix := path + string(filepath.Separator)
+
+	hasIndexedContent := func(indexedByPath map[string]LibraryIndexedFile) bool {
+		for indexedPath := range indexedByPath {
+			if indexedPath == path || strings.HasPrefix(indexedPath, prefix) {
+				return true
+			}
+		}
+		return false
+	}
+
+	return hasIndexedContent(contentState.trackByPath) ||
+		hasIndexedContent(contentState.textByPath) ||
+		hasIndexedContent(contentState.imageByPath)
+}
+
+func (a *App) collectExistingDerivedFoldersInSubtreeLocked(targetFolderPath string) map[string]struct{} {
+	indexState := a.libraryIndexState()
+	folders := make(map[string]struct{})
+	collect := func(values map[string][]LibraryBrowserEntry) {
+		for folderPath := range values {
+			if virtualPathWithinSubtree(targetFolderPath, folderPath) {
+				folders[folderPath] = struct{}{}
+			}
+		}
+	}
+	collectTrackFiles := func(values map[string][]LibraryIndexedFile) {
+		for folderPath := range values {
+			if virtualPathWithinSubtree(targetFolderPath, folderPath) {
+				folders[folderPath] = struct{}{}
+			}
+		}
+	}
+	collect(indexState.folderEntriesByFolder)
+	collectTrackFiles(indexState.trackFilesByFolder)
+	collect(indexState.directTextEntriesByFolder)
+	collect(indexState.directImageEntriesByFolder)
+	for folderPath := range indexState.folderChildPathsByFolder {
+		if virtualPathWithinSubtree(targetFolderPath, folderPath) {
+			folders[folderPath] = struct{}{}
+		}
+	}
+	for folderPath := range indexState.folderModifiedAtByPath {
+		if virtualPathWithinSubtree(targetFolderPath, folderPath) {
+			folders[folderPath] = struct{}{}
+		}
+	}
+	return folders
+}
+
+func libraryFolderPathForIncrementalTarget(root libraryRootConfig, targetPath string) string {
+	absoluteTargetPath, ok := absoluteNormalizedPath(targetPath)
+	if !ok || !pathWithinRoot(root.Path, absoluteTargetPath) {
+		return ""
+	}
+
+	relativePath, err := filepath.Rel(root.Path, absoluteTargetPath)
+	if err != nil {
+		return ""
+	}
+	relativePath = filepath.ToSlash(filepath.Clean(relativePath))
+	if relativePath == "." {
+		relativePath = ""
+	}
+
+	if info, statErr := os.Stat(absoluteTargetPath); statErr == nil && info.IsDir() {
+		return buildVirtualLibraryPath(root.Name, relativePath)
+	}
+
+	parentPath := filepath.ToSlash(filepath.Dir(relativePath))
+	if parentPath == "." {
+		parentPath = ""
+	}
+	return buildVirtualLibraryPath(root.Name, parentPath)
+}
+
+func (a *App) collectIncrementalDerivedIndexUpdateLocked(prepared preparedIncrementalLibraryChange) incrementalDerivedIndexUpdate {
+	update := incrementalDerivedIndexUpdate{
+		previousSubtreeFolders: make(map[string]struct{}),
+		affectedCoverFolders:   make(map[string]struct{}),
+	}
+
+	update.targetFolderPath = libraryFolderPathForIncrementalTarget(prepared.root, prepared.targetPath)
+	update.previousSubtreeFolders = a.collectExistingDerivedFoldersInSubtreeLocked(update.targetFolderPath)
+	update.subtreeFolderIndex = buildLibraryFolderIndexData(prepared.trackFiles, prepared.textFiles, prepared.imageFiles)
+
+	for folderPath := range update.previousSubtreeFolders {
+		update.affectedCoverFolders[folderPath] = struct{}{}
+	}
+	for folderPath := range update.subtreeFolderIndex.directImageEntriesByFolder {
+		if virtualPathWithinSubtree(update.targetFolderPath, folderPath) {
+			update.affectedCoverFolders[folderPath] = struct{}{}
+		}
+	}
+
+	return update
+}
+
+func directTrackEntriesFromFiles(trackFiles []LibraryIndexedFile) []LibraryBrowserEntry {
+	entries := make([]LibraryBrowserEntry, 0, len(trackFiles))
+	for _, indexed := range trackFiles {
+		entries = append(entries, browserEntryFromIndexedFile("track", indexed))
+	}
+	sortBrowserEntriesByName(entries)
+	return entries
+}
+
+func (a *App) bestCoverPathForFolderFromContentLocked(folderPath string) string {
+	contentState := a.libraryContentState()
+	folderKey := strings.ToLower(strings.TrimSpace(folderPath))
+	selectedPriority := 0
+	selectedName := ""
+	selectedPath := ""
+	hasSelection := false
+
+	for _, indexed := range contentState.imageByPath {
+		if strings.ToLower(indexed.FolderPath) != folderKey || !isPreferredCoverImagePath(indexed.Path) {
+			continue
+		}
+
+		name := strings.ToLower(indexed.Name)
+		priority := coverPriority(name)
+		if !hasSelection || priority < selectedPriority || (priority == selectedPriority && name < selectedName) {
+			hasSelection = true
+			selectedPriority = priority
+			selectedName = name
+			selectedPath = indexed.Path
+		}
+	}
+
+	return selectedPath
+}
+
+func appendSortedUniqueChildPath(childPaths []string, childPath string) []string {
+	for _, existing := range childPaths {
+		if existing == childPath {
+			return childPaths
+		}
+	}
+	childPaths = append(childPaths, childPath)
+	sortPathsCaseInsensitive(childPaths)
+	return childPaths
+}
+
+func removeChildPath(childPaths []string, childPath string) []string {
+	for index, existing := range childPaths {
+		if existing != childPath {
+			continue
+		}
+		updated := append([]string(nil), childPaths[:index]...)
+		updated = append(updated, childPaths[index+1:]...)
+		return updated
+	}
+	return childPaths
+}
+
+func parentFolderPath(folderPath string) string {
+	if folderPath == "" {
+		return ""
+	}
+
+	lastSlash := strings.LastIndex(folderPath, "/")
+	if lastSlash < 0 {
+		return ""
+	}
+
+	return folderPath[:lastSlash]
+}
+
+func ancestorFolderPathsBottomUp(folderPath string) []string {
+	ancestors := make([]string, 0, 8)
+	current := folderPath
+	for {
+		ancestors = append(ancestors, current)
+		if current == "" {
+			break
+		}
+		current = parentFolderPath(current)
+	}
+	return ancestors
+}
+
+func (a *App) folderExistsInDerivedIndexLocked(folderPath string) bool {
+	if folderPath == "" {
+		return true
+	}
+
+	indexState := a.libraryIndexState()
+	return len(indexState.trackFilesByFolder[folderPath]) > 0 ||
+		len(indexState.directTextEntriesByFolder[folderPath]) > 0 ||
+		len(indexState.directImageEntriesByFolder[folderPath]) > 0 ||
+		len(indexState.folderChildPathsByFolder[folderPath]) > 0
+}
+
+func (a *App) recomputeFolderModifiedAtFromDerivedIndexLocked(folderPath string) int64 {
+	indexState := a.libraryIndexState()
+	maxModifiedAtMs := int64(0)
+	for _, indexed := range indexState.trackFilesByFolder[folderPath] {
+		if indexed.ModifiedAtMs > maxModifiedAtMs {
+			maxModifiedAtMs = indexed.ModifiedAtMs
+		}
+	}
+	for _, entry := range indexState.directTextEntriesByFolder[folderPath] {
+		if entry.ModifiedAtMs > maxModifiedAtMs {
+			maxModifiedAtMs = entry.ModifiedAtMs
+		}
+	}
+	for _, entry := range indexState.directImageEntriesByFolder[folderPath] {
+		if entry.ModifiedAtMs > maxModifiedAtMs {
+			maxModifiedAtMs = entry.ModifiedAtMs
+		}
+	}
+	for _, childPath := range indexState.folderChildPathsByFolder[folderPath] {
+		if indexState.folderModifiedAtByPath[childPath] > maxModifiedAtMs {
+			maxModifiedAtMs = indexState.folderModifiedAtByPath[childPath]
+		}
+	}
+	return maxModifiedAtMs
+}
+
+func (a *App) buildFolderEntriesFromDerivedCachesLocked(folderPath string) []LibraryBrowserEntry {
+	indexState := a.libraryIndexState()
+	childPaths := indexState.folderChildPathsByFolder[folderPath]
+	entries := make([]LibraryBrowserEntry, 0, len(childPaths)+len(indexState.trackFilesByFolder[folderPath])+len(indexState.directTextEntriesByFolder[folderPath])+len(indexState.directImageEntriesByFolder[folderPath]))
+	for _, childPath := range childPaths {
+		entries = append(entries, folderBrowserEntry(childPath, indexState.folderModifiedAtByPath[childPath]))
+	}
+	entries = append(entries, directTrackEntriesFromFiles(indexState.trackFilesByFolder[folderPath])...)
+	entries = append(entries, cloneBrowserEntries(indexState.directTextEntriesByFolder[folderPath])...)
+	entries = append(entries, cloneBrowserEntries(indexState.directImageEntriesByFolder[folderPath])...)
+	return entries
+}
+
+func folderSetFromFolderIndexData(indexData libraryFolderIndexData, targetFolderPath string) map[string]struct{} {
+	folders := make(map[string]struct{})
+	collectEntries := func(values map[string][]LibraryBrowserEntry) {
+		for folderPath := range values {
+			if virtualPathWithinSubtree(targetFolderPath, folderPath) {
+				folders[folderPath] = struct{}{}
+			}
+		}
+	}
+	collectTracks := func(values map[string][]LibraryIndexedFile) {
+		for folderPath := range values {
+			if virtualPathWithinSubtree(targetFolderPath, folderPath) {
+				folders[folderPath] = struct{}{}
+			}
+		}
+	}
+	collectEntries(indexData.folderEntriesByFolder)
+	collectTracks(indexData.trackFilesByFolder)
+	collectEntries(indexData.directTextEntriesByFolder)
+	collectEntries(indexData.directImageEntriesByFolder)
+	for folderPath := range indexData.folderChildPathsByFolder {
+		if virtualPathWithinSubtree(targetFolderPath, folderPath) {
+			folders[folderPath] = struct{}{}
+		}
+	}
+	for folderPath := range indexData.folderModifiedAtByPath {
+		if virtualPathWithinSubtree(targetFolderPath, folderPath) {
+			folders[folderPath] = struct{}{}
+		}
+	}
+	return folders
+}
+
+func (a *App) applyIncrementalDerivedIndexUpdatesLocked(updates []incrementalDerivedIndexUpdate) {
+	indexState := a.libraryIndexState()
+	contentState := a.libraryContentState()
+	if !a.isLibraryFolderIndexReadyLocked() {
+		a.markLibrarySearchIndexDirtyLocked()
+		return
+	}
+	affectedCoverFolders := make(map[string]struct{})
+	for _, update := range updates {
+		for folderPath := range update.affectedCoverFolders {
+			affectedCoverFolders[folderPath] = struct{}{}
+		}
+
+		newSubtreeFolders := folderSetFromFolderIndexData(update.subtreeFolderIndex, update.targetFolderPath)
+		for folderPath := range update.previousSubtreeFolders {
+			if _, exists := newSubtreeFolders[folderPath]; exists {
+				continue
+			}
+			delete(indexState.folderEntriesByFolder, folderPath)
+			delete(indexState.folderChildPathsByFolder, folderPath)
+			delete(indexState.trackFilesByFolder, folderPath)
+			delete(indexState.directTextEntriesByFolder, folderPath)
+			delete(indexState.directImageEntriesByFolder, folderPath)
+			delete(indexState.folderModifiedAtByPath, folderPath)
+		}
+
+		for folderPath := range newSubtreeFolders {
+			indexState.folderChildPathsByFolder[folderPath] = append([]string(nil), update.subtreeFolderIndex.folderChildPathsByFolder[folderPath]...)
+			indexState.trackFilesByFolder[folderPath] = cloneIndexedFiles(update.subtreeFolderIndex.trackFilesByFolder[folderPath])
+			indexState.directTextEntriesByFolder[folderPath] = cloneBrowserEntries(update.subtreeFolderIndex.directTextEntriesByFolder[folderPath])
+			indexState.directImageEntriesByFolder[folderPath] = cloneBrowserEntries(update.subtreeFolderIndex.directImageEntriesByFolder[folderPath])
+			indexState.folderModifiedAtByPath[folderPath] = update.subtreeFolderIndex.folderModifiedAtByPath[folderPath]
+			indexState.folderEntriesByFolder[folderPath] = cloneBrowserEntries(update.subtreeFolderIndex.folderEntriesByFolder[folderPath])
+		}
+
+		ancestors := ancestorFolderPathsBottomUp(update.targetFolderPath)
+		for index, folderPath := range ancestors {
+			if index > 0 {
+				parentPath := ancestors[index]
+				childPath := ancestors[index-1]
+				childPaths := indexState.folderChildPathsByFolder[parentPath]
+				if a.folderExistsInDerivedIndexLocked(childPath) {
+					indexState.folderChildPathsByFolder[parentPath] = appendSortedUniqueChildPath(childPaths, childPath)
+				} else {
+					indexState.folderChildPathsByFolder[parentPath] = removeChildPath(childPaths, childPath)
+				}
+			}
+
+			folderExists := a.folderExistsInDerivedIndexLocked(folderPath)
+			if !folderExists && folderPath != "" {
+				delete(indexState.folderEntriesByFolder, folderPath)
+				delete(indexState.folderChildPathsByFolder, folderPath)
+				delete(indexState.trackFilesByFolder, folderPath)
+				delete(indexState.directTextEntriesByFolder, folderPath)
+				delete(indexState.directImageEntriesByFolder, folderPath)
+				delete(indexState.folderModifiedAtByPath, folderPath)
+				continue
+			}
+
+			indexState.folderModifiedAtByPath[folderPath] = a.recomputeFolderModifiedAtFromDerivedIndexLocked(folderPath)
+			indexState.folderEntriesByFolder[folderPath] = a.buildFolderEntriesFromDerivedCachesLocked(folderPath)
+		}
+	}
+
+	if contentState.libraryScan.CoverPathByFolder == nil {
+		contentState.libraryScan.CoverPathByFolder = make(map[string]string)
+	}
+	for folderPath := range affectedCoverFolders {
+		folderKey := strings.ToLower(folderPath)
+		coverPath := a.bestCoverPathForFolderFromContentLocked(folderPath)
+		if coverPath == "" {
+			delete(contentState.libraryScan.CoverPathByFolder, folderKey)
+		} else {
+			contentState.libraryScan.CoverPathByFolder[folderKey] = coverPath
+		}
+	}
+
+	a.markLibrarySearchIndexDirtyLocked()
 }
 
 func addFolderAncestorsToIndex(folderPath string, folderChildSetByParent map[string]map[string]struct{}, folderPaths map[string]struct{}) {
@@ -216,7 +553,7 @@ func noteFolderModifiedAt(folderModifiedAtByPath map[string]int64, folderPath st
 	}
 }
 
-func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []LibraryIndexedFile, imageFiles []LibraryIndexedFile) libraryDerivedIndexData {
+func buildLibraryFolderIndexData(trackFiles []LibraryIndexedFile, textFiles []LibraryIndexedFile, imageFiles []LibraryIndexedFile) libraryFolderIndexData {
 	folderChildSetByParent := make(map[string]map[string]struct{})
 	folderPaths := map[string]struct{}{}
 	folderModifiedAtByPath := make(map[string]int64)
@@ -226,17 +563,12 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 	imageEntriesByFolder := make(map[string][]LibraryBrowserEntry)
 	trackFilesByFolder := make(map[string][]LibraryIndexedFile)
 
-	searchTrackEntries := make([]LibraryBrowserEntry, 0, len(trackFiles))
-	searchTextEntries := make([]LibraryBrowserEntry, 0, len(textFiles))
-	searchImageEntries := make([]LibraryBrowserEntry, 0, len(imageFiles))
-
 	for _, indexed := range trackFiles {
 		addFolderAncestorsToIndex(indexed.FolderPath, folderChildSetByParent, folderPaths)
 		noteFolderModifiedAt(folderModifiedAtByPath, indexed.FolderPath, indexed.ModifiedAtMs)
 		entry := browserEntryFromIndexedFile("track", indexed)
 		trackEntriesByFolder[indexed.FolderPath] = append(trackEntriesByFolder[indexed.FolderPath], entry)
 		trackFilesByFolder[indexed.FolderPath] = append(trackFilesByFolder[indexed.FolderPath], indexed)
-		searchTrackEntries = append(searchTrackEntries, entry)
 	}
 
 	for _, indexed := range textFiles {
@@ -244,7 +576,6 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 		noteFolderModifiedAt(folderModifiedAtByPath, indexed.FolderPath, indexed.ModifiedAtMs)
 		entry := browserEntryFromIndexedFile("text-file", indexed)
 		textEntriesByFolder[indexed.FolderPath] = append(textEntriesByFolder[indexed.FolderPath], entry)
-		searchTextEntries = append(searchTextEntries, entry)
 	}
 
 	for _, indexed := range imageFiles {
@@ -252,7 +583,6 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 		noteFolderModifiedAt(folderModifiedAtByPath, indexed.FolderPath, indexed.ModifiedAtMs)
 		entry := browserEntryFromIndexedFile("image-file", indexed)
 		imageEntriesByFolder[indexed.FolderPath] = append(imageEntriesByFolder[indexed.FolderPath], entry)
-		searchImageEntries = append(searchImageEntries, entry)
 	}
 
 	folderKeys := map[string]struct{}{"": {}}
@@ -275,6 +605,8 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 	folderEntriesByFolder := make(map[string][]LibraryBrowserEntry, len(folderKeys))
 	folderChildPathsByFolder := make(map[string][]string, len(folderKeys))
 	sortedTrackFilesByFolder := make(map[string][]LibraryIndexedFile, len(folderKeys))
+	sortedTextEntriesByFolder := make(map[string][]LibraryBrowserEntry, len(folderKeys))
+	sortedImageEntriesByFolder := make(map[string][]LibraryBrowserEntry, len(folderKeys))
 
 	for folderPath := range folderKeys {
 		childPaths := make([]string, 0)
@@ -298,6 +630,8 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 		sortBrowserEntriesByName(directTrackEntries)
 		sortBrowserEntriesByName(directTextEntries)
 		sortBrowserEntriesByName(directImageEntries)
+		sortedTextEntriesByFolder[folderPath] = directTextEntries
+		sortedImageEntriesByFolder[folderPath] = directImageEntries
 
 		entries := make([]LibraryBrowserEntry, 0, len(childEntries)+len(directTrackEntries)+len(directTextEntries)+len(directImageEntries))
 		entries = append(entries, childEntries...)
@@ -323,18 +657,48 @@ func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []L
 	}
 
 	sortBrowserEntriesByPath(searchFolderEntries)
+
+	return libraryFolderIndexData{
+		folderEntriesByFolder:      folderEntriesByFolder,
+		folderChildPathsByFolder:   folderChildPathsByFolder,
+		trackFilesByFolder:         sortedTrackFilesByFolder,
+		directTextEntriesByFolder:  sortedTextEntriesByFolder,
+		directImageEntriesByFolder: sortedImageEntriesByFolder,
+		folderModifiedAtByPath:     folderModifiedAtByPath,
+		searchFolderEntries:        searchFolderEntries,
+	}
+}
+
+func buildLibrarySearchIndexData(trackFiles []LibraryIndexedFile, textFiles []LibraryIndexedFile, imageFiles []LibraryIndexedFile) librarySearchIndexData {
+	searchTrackEntries := make([]LibraryBrowserEntry, 0, len(trackFiles))
+	searchTextEntries := make([]LibraryBrowserEntry, 0, len(textFiles))
+	searchImageEntries := make([]LibraryBrowserEntry, 0, len(imageFiles))
+
+	for _, indexed := range trackFiles {
+		searchTrackEntries = append(searchTrackEntries, browserEntryFromIndexedFile("track", indexed))
+	}
+	for _, indexed := range textFiles {
+		searchTextEntries = append(searchTextEntries, browserEntryFromIndexedFile("text-file", indexed))
+	}
+	for _, indexed := range imageFiles {
+		searchImageEntries = append(searchImageEntries, browserEntryFromIndexedFile("image-file", indexed))
+	}
+
 	sortBrowserEntriesByRelativePath(searchTrackEntries)
 	sortBrowserEntriesByRelativePath(searchTextEntries)
 	sortBrowserEntriesByRelativePath(searchImageEntries)
 
+	return librarySearchIndexData{
+		searchTrackEntries: searchTrackEntries,
+		searchTextEntries:  searchTextEntries,
+		searchImageEntries: searchImageEntries,
+	}
+}
+
+func buildLibraryDerivedIndexData(trackFiles []LibraryIndexedFile, textFiles []LibraryIndexedFile, imageFiles []LibraryIndexedFile) libraryDerivedIndexData {
 	return libraryDerivedIndexData{
-		folderEntriesByFolder:    folderEntriesByFolder,
-		folderChildPathsByFolder: folderChildPathsByFolder,
-		trackFilesByFolder:       sortedTrackFilesByFolder,
-		searchFolderEntries:      searchFolderEntries,
-		searchTrackEntries:       searchTrackEntries,
-		searchTextEntries:        searchTextEntries,
-		searchImageEntries:       searchImageEntries,
+		libraryFolderIndexData: buildLibraryFolderIndexData(trackFiles, textFiles, imageFiles),
+		librarySearchIndexData: buildLibrarySearchIndexData(trackFiles, textFiles, imageFiles),
 	}
 }
 

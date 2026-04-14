@@ -41,6 +41,44 @@ type sqliteExecRunner interface {
 	Exec(query string, args ...any) (sql.Result, error)
 }
 
+func libraryFilesDatabaseRelativePath(entry LibraryIndexedFile) string {
+	relativePath := strings.TrimSpace(entry.RelativePath)
+	if entry.RootName != "" {
+		prefix := entry.RootName + "/"
+		if relativePath == entry.RootName {
+			relativePath = ""
+		} else if strings.HasPrefix(relativePath, prefix) {
+			relativePath = strings.TrimPrefix(relativePath, prefix)
+		}
+	}
+
+	return relativePath
+}
+
+func writeLibraryFilesDatabaseEntries(runner sqliteExecRunner, kind string, entries []LibraryIndexedFile) error {
+	for _, entry := range entries {
+		relativePath := libraryFilesDatabaseRelativePath(entry)
+		if strings.TrimSpace(relativePath) == "" {
+			continue
+		}
+
+		modUnixNs := entry.ModifiedAtMs * int64(time.Millisecond)
+		if _, err := runner.Exec(
+			`INSERT INTO files (path, root_path, relative_path, kind, size, mod_unix_ns) VALUES (?, ?, ?, ?, ?, ?)`,
+			entry.Path,
+			entry.RootPath,
+			relativePath,
+			kind,
+			int64(0),
+			modUnixNs,
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 var libraryFilesSQLiteSchemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS meta (
 		key TEXT PRIMARY KEY,
@@ -251,53 +289,13 @@ func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFile
 		}
 	}
 
-	writeEntries := func(kind string, entries []LibraryIndexedFile) error {
-		for _, entry := range entries {
-			relativePath := strings.TrimSpace(entry.RelativePath)
-			if entry.RootName != "" {
-				prefix := entry.RootName + "/"
-				if relativePath == entry.RootName {
-					relativePath = ""
-				} else if strings.HasPrefix(relativePath, prefix) {
-					relativePath = strings.TrimPrefix(relativePath, prefix)
-				}
-			}
-			if strings.TrimSpace(relativePath) == "" {
-				continue
-			}
-
-			var size int64
-			modUnixNs := entry.ModifiedAtMs * int64(time.Millisecond)
-			if info, statErr := os.Stat(entry.Path); statErr == nil {
-				size = info.Size()
-				if modUnixNs <= 0 {
-					modUnixNs = info.ModTime().UnixNano()
-				}
-			}
-
-			if _, err := transaction.Exec(
-				`INSERT INTO files (path, root_path, relative_path, kind, size, mod_unix_ns) VALUES (?, ?, ?, ?, ?, ?)`,
-				entry.Path,
-				entry.RootPath,
-				relativePath,
-				kind,
-				size,
-				modUnixNs,
-			); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
-
-	if err := writeEntries("track", snapshot.TrackFiles); err != nil {
+	if err := writeLibraryFilesDatabaseEntries(transaction, "track", snapshot.TrackFiles); err != nil {
 		return err
 	}
-	if err := writeEntries("text-file", snapshot.TextFiles); err != nil {
+	if err := writeLibraryFilesDatabaseEntries(transaction, "text-file", snapshot.TextFiles); err != nil {
 		return err
 	}
-	if err := writeEntries("image-file", snapshot.ImageFiles); err != nil {
+	if err := writeLibraryFilesDatabaseEntries(transaction, "image-file", snapshot.ImageFiles); err != nil {
 		return err
 	}
 
@@ -306,6 +304,88 @@ func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFile
 	}
 	committed = true
 
+	return nil
+}
+
+func writeLibraryFilesDatabaseIncrementalChangesToSQLite(path string, changes []preparedIncrementalLibraryChange, totalEntries int) error {
+	if len(changes) == 0 {
+		return nil
+	}
+
+	database, err := openLibraryFilesSQLite(path)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	if err := initializeLibraryFilesSQLite(database); err != nil {
+		return err
+	}
+
+	transaction, err := database.Begin()
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		_ = transaction.Rollback()
+	}()
+
+	if _, err := transaction.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('version', ?)`, strconv.Itoa(libraryFilesDatabaseVersion)); err != nil {
+		return err
+	}
+	if totalEntries >= 0 {
+		if _, err := transaction.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('total_entries', ?)`, strconv.Itoa(totalEntries)); err != nil {
+			return err
+		}
+	}
+
+	for _, change := range changes {
+		_, relativeTargetPath, ok := folderAndRelative(change.root.Path, change.targetPath)
+		if !ok {
+			continue
+		}
+		relativeTargetPath, ok = normalizeLibraryRelativePath(relativeTargetPath)
+		if !ok {
+			continue
+		}
+
+		if _, err := transaction.Exec(
+			`INSERT OR REPLACE INTO roots (path, release_depth) VALUES (?, ?)`,
+			change.root.Path,
+			change.root.ReleaseDepth,
+		); err != nil {
+			return err
+		}
+
+		deleteArgs := []any{change.root.Path}
+		deleteQuery := `DELETE FROM files WHERE root_path = ?`
+		if relativeTargetPath != "" {
+			deleteQuery += ` AND (relative_path = ? OR relative_path LIKE ?)`
+			deleteArgs = append(deleteArgs, relativeTargetPath, relativeTargetPath+`/%`)
+		}
+		if _, err := transaction.Exec(deleteQuery, deleteArgs...); err != nil {
+			return err
+		}
+
+		if err := writeLibraryFilesDatabaseEntries(transaction, "track", change.trackFiles); err != nil {
+			return err
+		}
+		if err := writeLibraryFilesDatabaseEntries(transaction, "text-file", change.textFiles); err != nil {
+			return err
+		}
+		if err := writeLibraryFilesDatabaseEntries(transaction, "image-file", change.imageFiles); err != nil {
+			return err
+		}
+	}
+
+	if err := transaction.Commit(); err != nil {
+		return err
+	}
+	committed = true
 	return nil
 }
 
