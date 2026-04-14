@@ -44,6 +44,7 @@ export type SearchResultState = {
 
 export type LibraryControllerState = {
     sidebarOpen: boolean;
+    sidebarExpanded: boolean;
     libraryRootName: string;
     currentFolderPath: string;
     sidebarAutoFolderPath: string;
@@ -60,6 +61,7 @@ export type LibraryControllerState = {
 
 export const createLibraryControllerState = (): LibraryControllerState => ({
     sidebarOpen: false,
+    sidebarExpanded: false,
     libraryRootName: '',
     currentFolderPath: '',
     sidebarAutoFolderPath: '',
@@ -92,6 +94,7 @@ export type LibraryControllerOptions = {
     sidebarToggle: HTMLButtonElement;
     librarySidebar: HTMLElement;
     libraryScanYieldIndicator: HTMLSpanElement;
+    libraryExpandToggle: HTMLButtonElement;
     libraryBack: HTMLButtonElement;
     libraryPath: HTMLParagraphElement;
     librarySearch: HTMLInputElement;
@@ -106,6 +109,9 @@ export type LibraryControllerOptions = {
     resolveLibraryFolderForAbsolutePath: (path: string) => Promise<string>;
     isFolderImmediateDescendantsEnumerated: (folderPath: string) => Promise<boolean>;
     searchLibrary: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
+    getReleaseDepthForTrack: (track: Track) => number;
+    getFolderCoverPath: (folderPath: string) => string | undefined;
+    readImageThumbnail: (path: string, maxEdge: number) => Promise<{ base64?: string; mimeType?: string }>;
     getHighlightMusicBrainzTaggedAlbumFolders: () => boolean;
     resolveTrackIndex: (path: string) => number;
     resolveTextFileIndex: (path: string) => number;

@@ -275,6 +275,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     const socialController = createListenBrainzSocialController({
         elements: {
             sidebarToggle: context.sidebarToggle,
+            libraryExpandToggle: context.libraryExpandToggle,
             sidebarSectionTrigger: context.sidebarSectionTrigger,
             sidebarSectionTriggerLabel: context.sidebarSectionTriggerLabel,
             sidebarSectionMenu: context.sidebarSectionMenu,
@@ -344,6 +345,9 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         },
         openLocalReleaseFolder,
         openLibrarySearch,
+        onShowSocial: () => {
+            context.libraryController().setSidebarExpanded(false);
+        },
     });
     const sidebarController = createSidebarController({
         showLibrary: () => {

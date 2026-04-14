@@ -56,7 +56,7 @@ import type {
 } from './types/app-types';
 import {
     asReleaseDepth,
-    findLibraryFolderForFilePath,
+    findLibraryFolderForTrack,
     formatTime,
 } from './utils/main-helpers'; 
 import { installHmrFullReset } from './utils/hmr-full-reset';
@@ -236,7 +236,7 @@ const scheduleLibraryIncrementalFolderRefresh = (): void => {
 };
 
 const releaseDepthForTrack = (track: Pick<Track, 'rootPath'>): number => {
-    const folder = findLibraryFolderForFilePath(track.rootPath || '', state.currentSettings.libraryFolders);
+    const folder = findLibraryFolderForTrack(track as Pick<Track, 'rootPath' | 'path'>, state.currentSettings.libraryFolders);
     return folder ? asReleaseDepth(folder.releaseDepth) : 0;
 };
 

@@ -33,6 +33,8 @@ export type LibraryEventDeps = {
     renderFolder: (direction: 'none' | 'forward' | 'back') => void;
     setSidebarOpen: (open: boolean) => void;
     isSidebarOpen: () => boolean;
+    getSidebarExpanded: () => boolean;
+    setSidebarExpanded: (expanded: boolean) => void;
     setHoveredBrowserButton: (button: HTMLButtonElement | null) => void;
     showFolderEnumerationTooltip: (anchor: HTMLElement) => void;
     hideFolderEnumerationTooltip: () => void;
@@ -61,6 +63,8 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
         renderFolder,
         setSidebarOpen,
         isSidebarOpen,
+        getSidebarExpanded,
+        setSidebarExpanded,
         setHoveredBrowserButton,
         showFolderEnumerationTooltip,
         hideFolderEnumerationTooltip,
@@ -71,6 +75,7 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
 
     const {
         sidebarToggle,
+        libraryExpandToggle,
         libraryBack,
         libraryPath,
         librarySearch,
@@ -120,6 +125,10 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
         setSidebarOpen(!isSidebarOpen());
     });
 
+    libraryExpandToggle.addEventListener('click', () => {
+        setSidebarExpanded(!getSidebarExpanded());
+    });
+
     librarySearch.addEventListener('beforeinput', (event) => {
         if (!(event instanceof InputEvent) || event.inputType !== 'insertFromPaste') {
             return;
@@ -137,6 +146,10 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
     });
 
     librarySearch.addEventListener('input', (event) => {
+        if (getSidebarExpanded()) {
+            setSidebarExpanded(false);
+        }
+
         if (getSuppressNextLibrarySearchPasteInput()) {
             setSuppressNextLibrarySearchPasteInput(false);
             librarySearch.value = getLibrarySearchQuery();
@@ -186,6 +199,10 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
     });
 
     librarySort.addEventListener('change', () => {
+        if (getSidebarExpanded()) {
+            setSidebarExpanded(false);
+        }
+
         const nextValue = librarySort.value === 'date-asc' || librarySort.value === 'date-desc'
             ? librarySort.value
             : 'name';
@@ -258,6 +275,9 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
                 }
 
                 hideFolderEnumerationTooltip();
+                if (getSidebarExpanded()) {
+                    setSidebarExpanded(false);
+                }
                 navigateToFolder(nextFolder);
             }).catch((error) => {
                 console.error(error);

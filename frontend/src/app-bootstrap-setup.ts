@@ -89,6 +89,7 @@ type AppControllerSetupScope = RuntimeScope<
     | 'lookupArtistByMBID'
     | 'app'
     | 'sidebarToggle'
+    | 'libraryExpandToggle'
     | 'librarySidebar'
     | 'libraryBack'
     | 'libraryPath'
@@ -100,6 +101,7 @@ type AppControllerSetupScope = RuntimeScope<
     | 'resolveLibraryFolderForAbsolutePath'
     | 'isFolderImmediateDescendantsEnumerated'
     | 'searchLibrary'
+    | 'releaseDepthForTrack'
     | 'fetchVisualizationFrame'
     | 'ensureTrackIndexForPath'
     | 'textFileIndexForPath'
@@ -435,6 +437,7 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
     openUrl: scope.browserOpenUrl,
     app: scope.app,
     sidebarToggle: scope.sidebarToggle,
+    libraryExpandToggle: scope.libraryExpandToggle,
     librarySidebar: scope.librarySidebar,
     libraryBack: scope.libraryBack,
     libraryPath: scope.libraryPath,
@@ -446,6 +449,8 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
     resolveLibraryFolderForAbsolutePath: scope.resolveLibraryFolderForAbsolutePath,
     isFolderImmediateDescendantsEnumerated: scope.isFolderImmediateDescendantsEnumerated,
     searchLibrary: scope.searchLibrary,
+    getReleaseDepthForTrack: (track: Track) => scope.releaseDepthForTrack(track),
+    getFolderCoverPath: (folderPath: string) => scope.coverArtService.getFolderCoverPath(folderPath),
     fetchVisualizationFrame: scope.fetchVisualizationFrame,
     resolveTrackIndex: scope.ensureTrackIndexForPath,
     resolveTextFileIndex: scope.textFileIndexForPath,

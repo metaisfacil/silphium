@@ -7,6 +7,9 @@ import {
     describeScrobbleRule,
     buildLibraryRootNameByPath,
     findLibraryFolderForFilePath,
+    findLibraryFolderForTrack,
+    relativeFolderSegmentsForTrack,
+    releaseFolderPathForTrackAtDepth,
     formatTechnicalMetadata,
     hasExternalFileDragPayload,
     isSupportedAudioFilePath,
@@ -68,6 +71,14 @@ describe('main helpers', () => {
         expect(names.get(libraryFolderPathKey('/music/library-a'))).toBe('Road Trip (1)');
         expect(names.get(libraryFolderPathKey('/music/library-b'))).toBe('Road Trip (2)');
         expect(findLibraryFolderForFilePath('/music/library-b/live/show/track.flac', folders)).toEqual(folders[2]);
+        expect(findLibraryFolderForTrack({ rootPath: '/missing-root', path: '/music/library-b/live/show/track.flac' }, folders)).toEqual(folders[2]);
+    });
+
+    it('only strips the leading folder segment when it actually matches the root label', () => {
+        expect(relativeFolderSegmentsForTrack('Library/Artist/Album/Disc 1', 'Library')).toEqual(['Artist', 'Album', 'Disc 1']);
+        expect(relativeFolderSegmentsForTrack('Artist/Album/Disc 1', 'Selected folders')).toEqual(['Artist', 'Album', 'Disc 1']);
+        expect(releaseFolderPathForTrackAtDepth({ folderPath: 'Artist/Album/Disc 1', rootName: 'Selected folders' }, 2)).toBe('Artist/Album');
+        expect(releaseFolderPathForTrackAtDepth({ folderPath: 'Library/Artist/Album/Disc 1', rootName: 'Library' }, 2)).toBe('Library/Artist/Album');
     });
 
     it('formats technical metadata for lossless and lossy codecs', () => {

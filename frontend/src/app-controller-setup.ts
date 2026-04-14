@@ -208,6 +208,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         app: context.app,
         sidebarToggle: context.sidebarToggle,
         librarySidebar: context.librarySidebar,
+        libraryExpandToggle: context.libraryExpandToggle,
         libraryBack: context.libraryBack,
         libraryPath: context.libraryPath,
         librarySearch: context.librarySearch,
@@ -230,6 +231,11 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         },
         searchLibrary: async (query: string, offset: number, limit: number) => {
             return await context.searchLibrary(query, offset, limit);
+        },
+        getReleaseDepthForTrack: (track: Track) => context.getReleaseDepthForTrack(track),
+        getFolderCoverPath: (folderPath: string) => context.getFolderCoverPath(folderPath),
+        readImageThumbnail: async (path: string, maxEdge: number) => {
+            return await context.readImageThumbnail(path, maxEdge);
         },
         getHighlightMusicBrainzTaggedAlbumFolders: () => (
             context.currentSettings.musicBrainzTagDatabaseEnabled

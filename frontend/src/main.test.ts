@@ -247,6 +247,7 @@ vi.mock('./app-cover-flip-runtime', () => ({
 vi.mock('./utils/main-helpers', () => ({
     asReleaseDepth: vi.fn(() => 0),
     findLibraryFolderForFilePath: vi.fn(() => null),
+    findLibraryFolderForTrack: vi.fn(() => null),
     formatTime: vi.fn((value: number) => `${value}`),
 }));
 
