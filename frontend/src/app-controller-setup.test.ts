@@ -340,7 +340,11 @@ describe('app-controller-setup', () => {
         await expect(settingsConfig.fetchLastFmSessionKey(' key ', ' secret ')).rejects.toThrow('Last.fm authorization was cancelled.');
         context.openQueueConfirmModal.mockResolvedValueOnce(true);
         expect(await settingsConfig.fetchLastFmSessionKey(' key ', ' secret ')).toBe('session-key');
-        expect(await settingsConfig.applyAudioNow(saveValues)).toEqual([{ id: 'usb', name: 'USB DAC', backend: 'wasapi', isDefault: false }]);
+        expect(await settingsConfig.applyAudioNow(saveValues)).toEqual({
+            devices: [{ id: 'usb', name: 'USB DAC', backend: 'wasapi', isDefault: false }],
+            selectedDevice: 'default',
+            message: 'Audio settings refreshed.',
+        });
         await settingsConfig.forceReload();
         context.ffmpegConfigurationRequired = false;
         expect(await settingsConfig.beforeClose()).toBeNull();
@@ -451,5 +455,77 @@ describe('app-controller-setup', () => {
         expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(30, 40, [0], undefined, false, '', '/music/library', 'Library', true, true, undefined);
         expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(50, 60, [], undefined, false, '', '/music/library', 'Library', true, false, undefined);
         expect(context.closeSidebarQueueMenu).toHaveBeenCalled();
+    });
+
+    it('falls back to the default output device when the refreshed list no longer contains the saved device', async () => {
+        createSettingsControllerMock.mockImplementation((config) => ({ config }));
+        createPlaylistControllerMock.mockReturnValue({
+            refreshFavorites: vi.fn(),
+            activatePlaybackQueueSource: vi.fn(),
+        });
+        createPlaylistTargetModalControllerMock.mockReturnValue({ modal: true });
+        createShareControllerMock.mockReturnValue({ share: true });
+        createImageModalControllerMock.mockReturnValue({ openImageFile: vi.fn() });
+        createArtistInfoControllerMock.mockReturnValue({ artist: true });
+        createLibraryControllerMock.mockReturnValue({ library: true });
+
+        const context = createContext();
+        context.refreshAvailableAudioOutputDevices.mockResolvedValueOnce([
+            { id: 'fresh-device', name: 'USB DAC', backend: 'wasapi', isDefault: false },
+        ]);
+
+        setupAppControllers(context as unknown as AppControllerSetupContext);
+        const settingsConfig = createSettingsControllerMock.mock.calls.at(-1)?.[0];
+
+        const applyValues = {
+            libraryFolders: [{ path: '/music/library', label: 'Library', releaseDepth: 1 }],
+            localLibraryFilesDatabaseEnabled: true,
+            localLibraryFilesDatabaseLoadOnStartup: true,
+            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryLimit: 0,
+            ffmpegPath: 'ffmpeg',
+            listenBrainzUserToken: 'token',
+            lastFmApiKey: 'key',
+            lastFmApiSecret: 'secret',
+            lastFmSessionKey: 'session',
+            scrobbleFilterMode: 'blacklist',
+            scrobbleRules: [],
+            musicBrainzServerUrl: '',
+            musicBrainzRequestRateMs: 1000,
+            listenBrainzServerUrl: '',
+            listenBrainzRequestRateMs: 1000,
+            favoritePlaylists: ['favorites.m3u'],
+            coverArtPriority: ['file', 'embedded'],
+            audioOutputDevice: 'stale-device',
+            audioOutputBufferMs: 64,
+            gaplessPlayback: false,
+            replayGainEnabled: true,
+            preferMusicBrainzMetadata: false,
+            musicBrainzTagDatabaseEnabled: false,
+            highlightMusicBrainzTaggedAlbumFolders: false,
+            musicBrainzTagStaleDays: 30,
+            musicBrainzTagRequestStaggeringEnabled: false,
+            musicBrainzTagWorkerCores: 2,
+            lissajousEnabled: true,
+            lissajousScale: 0.4,
+            visualizerMode: 'equalizer',
+            equalizerPosition: 'top',
+            uiDitheringEnabled: true,
+            minimizeToTrayOnClose: false,
+            customSendToActions: [],
+            keyboardShortcuts: defaultAppSettings.keyboardShortcuts,
+        };
+
+        const result = await settingsConfig.applyAudioNow(applyValues);
+
+        expect(result).toEqual({
+            devices: [{ id: 'fresh-device', name: 'USB DAC', backend: 'wasapi', isDefault: false }],
+            selectedDevice: 'default',
+            message: 'Audio settings refreshed. Switched to Primary Sound Driver because the selected audio device is unavailable.',
+        });
+        expect(context.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+            audio: expect.objectContaining({ outputDevice: 'default' }),
+        }));
+        expect(context.audioReinitializeBackend).toHaveBeenCalledTimes(1);
     });
 });

@@ -62,6 +62,12 @@ export type SettingsViewValues = SettingsFormValues & {
     musicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
 };
 
+export type ApplyAudioNowResult = {
+    devices: AudioOutputDevice[];
+    selectedDevice: string;
+    message?: string;
+};
+
 export type SettingsPrimaryTab = 'general' | 'library' | 'network' | 'playlists' | 'scrobbling' | 'audio' | 'ui' | 'actions';
 export type SettingsTab = SettingsPrimaryTab | 'database' | 'shortcuts';
 
@@ -74,7 +80,7 @@ export type SettingsControllerOptions = {
     selectPlaylistFile: () => Promise<string>;
     save: (values: SettingsFormValues) => Promise<void>;
     fetchLastFmSessionKey: (apiKey: string, apiSecret: string) => Promise<string>;
-    applyAudioNow: (values: SettingsFormValues) => Promise<AudioOutputDevice[]>;
+    applyAudioNow: (values: SettingsFormValues) => Promise<ApplyAudioNowResult>;
     forceReload: (values: SettingsFormValues) => Promise<void>;
     beforeClose?: () => Promise<string | null>;
     onCloseBlocked?: (message: string) => void;

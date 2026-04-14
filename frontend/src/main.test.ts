@@ -266,6 +266,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
     AppendTracksToPlaylistFile: vi.fn(async () => true),
     AudioListOutputDevices: vi.fn(async () => []),
     AudioQueueNextTrack: vi.fn(async () => undefined),
+    AudioReinitializeBackend: vi.fn(async () => ({ loaded: false })),
     AudioSeek: vi.fn(async () => ({ loaded: false })),
     AudioSetVolume: vi.fn(async () => ({ loaded: false })),
     AudioStop: vi.fn(async () => ({ loaded: false })),
@@ -362,5 +363,17 @@ describe('main entrypoint runtime scope', () => {
         }
 
         expect(scope?.isSeeking).toBe(true);
+    });
+
+    it('exposes audioReinitializeBackend on the runtime scope passed to controller setup', async () => {
+        await import('./main');
+
+        const scope = testState.getControllerScope() as {
+            audioReinitializeBackend?: () => Promise<unknown>;
+        } | null;
+
+        expect(scope).not.toBeNull();
+        expect(scope?.audioReinitializeBackend).toBeTypeOf('function');
+        await expect(scope?.audioReinitializeBackend?.()).resolves.toEqual({ loaded: false });
     });
 });
