@@ -33,6 +33,7 @@ export const setupVolumeControlBindings = (context: VolumeControlBindingsContext
     } = context;
 
     const volumeRow = volumeBtn.closest('.volume-wrap') as HTMLElement;
+    const volumeHoverTarget = volumeBtn.querySelector('.control-icon') as HTMLElement | null;
     const HIDE_DELAY_MS = 500;
     const WHEEL_STEP = 0.05;
     let closeTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -54,6 +55,8 @@ export const setupVolumeControlBindings = (context: VolumeControlBindingsContext
         clearCloseTimeout();
         volumeRow.classList.add('open');
     };
+
+    const isVolumePopoutOpen = (): boolean => volumeRow.classList.contains('open');
 
     const queueCloseVolumePopout = (): void => {
         clearCloseTimeout();
@@ -112,7 +115,15 @@ export const setupVolumeControlBindings = (context: VolumeControlBindingsContext
         setVolume(nextVolume);
     }, { passive: false });
 
+    (volumeHoverTarget ?? volumeBtn).addEventListener('pointerenter', () => {
+        showVolumePopout();
+    });
+
     volumeRow.addEventListener('pointerenter', () => {
+        if (!isVolumePopoutOpen()) {
+            return;
+        }
+
         showVolumePopout();
     });
 
