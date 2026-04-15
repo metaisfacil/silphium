@@ -14,14 +14,20 @@ import (
 )
 
 const (
-	audioSampleRate                 = 44100
-	audioChannelCount               = 2
-	audioBytesPerFrame              = audioChannelCount * 2
-	minVisualizationFrameCount      = 64
-	maxVisualizationFrameCount      = 2048
-	visualizationWindowFactor       = 6
-	longVisualizationFrameThreshold = 768
-	longVisualizationWindowSeconds  = 10
+	audioSampleRate                  = 44100
+	audioChannelCount                = 2
+	audioBytesPerFrame               = audioChannelCount * 2
+	defaultAudioOutputBuffer         = 256 * time.Millisecond
+	defaultAudioPlayerBuffer         = 1500 * time.Millisecond
+	maxAudioPlayerBuffer             = 3 * time.Second
+	playerBufferHeadroomFactor       = 4
+	playbackHeadroomLowThreshold     = 150 * time.Millisecond
+	playbackHeadroomRecoverThreshold = 500 * time.Millisecond
+	minVisualizationFrameCount       = 64
+	maxVisualizationFrameCount       = 2048
+	visualizationWindowFactor        = 6
+	longVisualizationFrameThreshold  = 768
+	longVisualizationWindowSeconds   = 10
 )
 
 var audioBytesPerSecond = audioSampleRate * audioBytesPerFrame
@@ -97,6 +103,8 @@ func (s *audioPlayerSource) Seek(offset int64, whence int) (int64, error) {
 
 type audioOutputPlayer interface {
 	SetVolume(volume float64)
+	SetBufferSize(bufferSize int)
+	BufferedSize() int
 	Play()
 	Pause()
 	Err() error
@@ -111,6 +119,8 @@ type audioOutputContext interface {
 
 type otoPlayerAdapter struct {
 	setVolume func(volume float64)
+	setBuffer func(bufferSize int)
+	buffered  func() int
 	play      func()
 	pause     func()
 	err       func() error
@@ -121,6 +131,20 @@ func (a *otoPlayerAdapter) SetVolume(volume float64) {
 	if a.setVolume != nil {
 		a.setVolume(volume)
 	}
+}
+
+func (a *otoPlayerAdapter) SetBufferSize(bufferSize int) {
+	if a.setBuffer != nil {
+		a.setBuffer(bufferSize)
+	}
+}
+
+func (a *otoPlayerAdapter) BufferedSize() int {
+	if a.buffered == nil {
+		return 0
+	}
+
+	return a.buffered()
 }
 
 func (a *otoPlayerAdapter) Play() {
@@ -192,6 +216,8 @@ var newAudioOutputContext = func(options *oto.NewContextOptions) (audioOutputCon
 			player := context.NewPlayer(source)
 			return &otoPlayerAdapter{
 				setVolume: player.SetVolume,
+				setBuffer: player.SetBufferSize,
+				buffered:  player.BufferedSize,
 				play:      player.Play,
 				pause:     player.Pause,
 				err:       player.Err,
@@ -223,6 +249,7 @@ type AudioBackend struct {
 	outputBuffer                time.Duration
 	gaplessPlayback             bool
 	replayGainEnabled           bool
+	playbackHeadroomLow         bool
 	replayGainCacheMu           sync.Mutex
 	replayGainCacheByPath       map[string]replayGainCacheEntry
 	replayGainCacheOrder        []string
@@ -265,6 +292,111 @@ func normalizeReplayGainScale(scale float64) float64 {
 	}
 
 	return scale
+}
+
+func durationToAlignedAudioBytes(duration time.Duration) int {
+	if duration <= 0 {
+		return 0
+	}
+
+	byteCount := int((duration * time.Duration(audioBytesPerSecond)) / time.Second)
+	if byteCount <= 0 {
+		return 0
+	}
+
+	remainder := byteCount % audioBytesPerFrame
+	if remainder != 0 {
+		byteCount += audioBytesPerFrame - remainder
+	}
+
+	return byteCount
+}
+
+func audioDurationForByteCount(byteCount int64) time.Duration {
+	if byteCount <= 0 {
+		return 0
+	}
+
+	return (time.Duration(byteCount) * time.Second) / time.Duration(audioBytesPerSecond)
+}
+
+func (b *AudioBackend) effectiveOutputBufferLocked() time.Duration {
+	if b.outputBuffer > 0 {
+		return b.outputBuffer
+	}
+
+	return defaultAudioOutputBuffer
+}
+
+func (b *AudioBackend) desiredPlayerBufferSizeLocked() int {
+	target := defaultAudioPlayerBuffer
+	headroomTarget := b.effectiveOutputBufferLocked() * playerBufferHeadroomFactor
+	if headroomTarget > target {
+		target = headroomTarget
+	}
+	if target > maxAudioPlayerBuffer {
+		target = maxAudioPlayerBuffer
+	}
+
+	return durationToAlignedAudioBytes(target)
+}
+
+func (b *AudioBackend) playerBufferedBytesLocked() int64 {
+	if b.player == nil {
+		return 0
+	}
+
+	bufferedBytes := int64(b.player.BufferedSize())
+	if bufferedBytes < 0 {
+		return 0
+	}
+	if bufferedBytes > b.streamReadOffset {
+		return b.streamReadOffset
+	}
+
+	return bufferedBytes
+}
+
+func (b *AudioBackend) reportPlaybackHeadroomLocked() {
+	if !b.playing || len(b.streamSegments) == 0 || b.player == nil {
+		b.playbackHeadroomLow = false
+		return
+	}
+
+	bufferedDuration := audioDurationForByteCount(b.playerBufferedBytesLocked())
+	lowThreshold := playbackHeadroomLowThreshold
+	if derivedThreshold := b.effectiveOutputBufferLocked() / 2; derivedThreshold > lowThreshold {
+		lowThreshold = derivedThreshold
+	}
+	recoverThreshold := playbackHeadroomRecoverThreshold
+	if derivedThreshold := b.effectiveOutputBufferLocked(); derivedThreshold > recoverThreshold {
+		recoverThreshold = derivedThreshold
+	}
+
+	if bufferedDuration <= lowThreshold {
+		if !b.playbackHeadroomLow {
+			b.playbackHeadroomLow = true
+			logAudioEvent(
+				"PlaybackHeadroomLow buffered=%s threshold=%s playerBuffer=%s outputBuffer=%s state=%s",
+				bufferedDuration,
+				lowThreshold,
+				audioDurationForByteCount(int64(b.desiredPlayerBufferSizeLocked())),
+				b.effectiveOutputBufferLocked(),
+				b.stateSummaryLocked(),
+			)
+		}
+		return
+	}
+
+	if b.playbackHeadroomLow && bufferedDuration >= recoverThreshold {
+		b.playbackHeadroomLow = false
+		logAudioEvent(
+			"PlaybackHeadroomRecovered buffered=%s threshold=%s state=%s",
+			bufferedDuration,
+			recoverThreshold,
+			b.stateSummaryLocked(),
+		)
+	}
 }
 
 func (b *AudioBackend) effectivePlayerVolumeLocked() float64 {
@@ -361,11 +493,15 @@ func (b *AudioBackend) ApplyAudioSettings(settings AudioSettings) {
 			b.player.SetVolume(b.effectivePlayerVolumeLocked())
 		}
 	}
+	if b.player != nil {
+		b.player.SetBufferSize(b.desiredPlayerBufferSizeLocked())
+	}
 
 	logAudioEvent(
-		"ApplyAudioSettings device=%q buffer=%s gapless=%t replayGain=%t state=%s",
+		"ApplyAudioSettings device=%q buffer=%s effectiveBuffer=%s gapless=%t replayGain=%t state=%s",
 		b.outputDevice,
 		b.outputBuffer,
+		b.effectiveOutputBufferLocked(),
 		b.gaplessPlayback,
 		b.replayGainEnabled,
 		b.stateSummaryLocked(),
@@ -457,6 +593,7 @@ func (b *AudioBackend) Initialize() error {
 	if b.context != nil {
 		if b.player == nil {
 			b.player = b.context.NewPlayer(&audioPlayerSource{backend: b})
+			b.player.SetBufferSize(b.desiredPlayerBufferSizeLocked())
 			b.player.SetVolume(b.effectivePlayerVolumeLocked())
 			logAudioEvent("Initialize attached player to existing context state=%s", b.stateSummaryLocked())
 		}
@@ -469,7 +606,7 @@ func (b *AudioBackend) Initialize() error {
 		SampleRate:     audioSampleRate,
 		ChannelCount:   audioChannelCount,
 		Format:         oto.FormatSignedInt16LE,
-		BufferSize:     b.outputBuffer,
+		BufferSize:     b.effectiveOutputBufferLocked(),
 		OutputDeviceID: selectedOutputDeviceID,
 	})
 	if err != nil {
@@ -483,8 +620,9 @@ func (b *AudioBackend) Initialize() error {
 
 	b.context = context
 	b.player = context.NewPlayer(&audioPlayerSource{backend: b})
+	b.player.SetBufferSize(b.desiredPlayerBufferSizeLocked())
 	b.player.SetVolume(b.effectivePlayerVolumeLocked())
-	logAudioEvent("Initialize created context device=%q buffer=%s gapless=%t", b.outputDevice, b.outputBuffer, b.gaplessPlayback)
+	logAudioEvent("Initialize created context device=%q buffer=%s effectiveBuffer=%s gapless=%t playerBuffer=%s", b.outputDevice, b.outputBuffer, b.effectiveOutputBufferLocked(), b.gaplessPlayback, audioDurationForByteCount(int64(b.desiredPlayerBufferSizeLocked())))
 	return nil
 }
 
@@ -634,7 +772,10 @@ func (b *AudioBackend) currentPlayedGlobalBytesLocked() int64 {
 		return 0
 	}
 
-	maxReadableGlobalBytes := b.streamDroppedBytes + b.streamReadOffset
+	maxReadableGlobalBytes := b.streamDroppedBytes + b.streamReadOffset - b.playerBufferedBytesLocked()
+	if maxReadableGlobalBytes < b.streamDroppedBytes {
+		maxReadableGlobalBytes = b.streamDroppedBytes
+	}
 	if playedBytes > maxReadableGlobalBytes {
 		playedBytes = maxReadableGlobalBytes
 	}
@@ -765,6 +906,7 @@ func (b *AudioBackend) syncPlaybackLocked() {
 		b.playStarted = time.Time{}
 		b.playbackBaseBytes = 0
 		b.endEventSent = false
+		b.playbackHeadroomLow = false
 		return
 	}
 
@@ -780,6 +922,7 @@ func (b *AudioBackend) syncPlaybackLocked() {
 		if b.playing {
 			b.playing = false
 		}
+		b.playbackHeadroomLow = false
 		if !b.endEventSent {
 			b.endEventID++
 			b.endEventSent = true
@@ -794,6 +937,7 @@ func (b *AudioBackend) syncPlaybackLocked() {
 	}
 
 	b.endEventSent = false
+	b.reportPlaybackHeadroomLocked()
 }
 
 func (b *AudioBackend) snapshotLocked() AudioPlaybackState {
@@ -837,6 +981,7 @@ func (b *AudioBackend) unloadTrackLocked() {
 	b.playStarted = time.Time{}
 	b.playbackBaseBytes = 0
 	b.playing = false
+	b.playbackHeadroomLow = false
 	b.endEventSent = false
 	b.streamCond.Broadcast()
 }

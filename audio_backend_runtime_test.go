@@ -27,10 +27,13 @@ func TestOTOAdapters(t *testing.T) {
 	playerPlayed := false
 	playerPaused := false
 	playerVolume := 0.0
+	playerBufferSize := 0
 	playerSeekCalls := 0
 	playerErr := errors.New("player failed")
 	playerAdapter := &otoPlayerAdapter{
 		setVolume: func(volume float64) { playerVolume = volume },
+		setBuffer: func(bufferSize int) { playerBufferSize = bufferSize },
+		buffered:  func() int { return 128 },
 		play:      func() { playerPlayed = true },
 		pause:     func() { playerPaused = true },
 		err:       func() error { return playerErr },
@@ -40,13 +43,14 @@ func TestOTOAdapters(t *testing.T) {
 		},
 	}
 	playerAdapter.SetVolume(0.5)
+	playerAdapter.SetBufferSize(256)
 	playerAdapter.Play()
 	playerAdapter.Pause()
 	if got, err := playerAdapter.Seek(4, io.SeekCurrent); err != nil || got != 5 {
 		t.Fatalf("otoPlayerAdapter.Seek() = (%d, %v), want (5, nil)", got, err)
 	}
-	if !playerPlayed || !playerPaused || playerVolume != 0.5 || playerSeekCalls != 1 || !errors.Is(playerAdapter.Err(), playerErr) {
-		t.Fatalf("otoPlayerAdapter() state = played:%t paused:%t volume:%.2f seeks:%d err:%v", playerPlayed, playerPaused, playerVolume, playerSeekCalls, playerAdapter.Err())
+	if !playerPlayed || !playerPaused || playerVolume != 0.5 || playerBufferSize != 256 || playerAdapter.BufferedSize() != 128 || playerSeekCalls != 1 || !errors.Is(playerAdapter.Err(), playerErr) {
+		t.Fatalf("otoPlayerAdapter() state = played:%t paused:%t volume:%.2f buffer:%d buffered:%d seeks:%d err:%v", playerPlayed, playerPaused, playerVolume, playerBufferSize, playerAdapter.BufferedSize(), playerSeekCalls, playerAdapter.Err())
 	}
 
 	contextClosed := false
@@ -72,6 +76,8 @@ func TestOTOAdapters(t *testing.T) {
 
 type fakeAudioPlayer struct {
 	volume     float64
+	bufferSize int
+	buffered   int
 	playCalls  int
 	pauseCalls int
 	seekCalls  int
@@ -81,6 +87,14 @@ type fakeAudioPlayer struct {
 
 func (p *fakeAudioPlayer) SetVolume(volume float64) {
 	p.volume = volume
+}
+
+func (p *fakeAudioPlayer) SetBufferSize(bufferSize int) {
+	p.bufferSize = bufferSize
+}
+
+func (p *fakeAudioPlayer) BufferedSize() int {
+	return p.buffered
 }
 
 func (p *fakeAudioPlayer) Play() {
@@ -140,6 +154,23 @@ func useFakeAudioContext(t *testing.T, context audioOutputContext, err error) {
 	})
 }
 
+func useFakeAudioContextWithOptionsCapture(t *testing.T, context audioOutputContext, err error, capture func(options *oto.NewContextOptions)) {
+	t.Helper()
+
+	originalNewAudioOutputContext := newAudioOutputContext
+	newAudioOutputContext = func(options *oto.NewContextOptions) (audioOutputContext, <-chan struct{}, error) {
+		if capture != nil {
+			capture(options)
+		}
+		ready := make(chan struct{})
+		close(ready)
+		return context, ready, err
+	}
+	t.Cleanup(func() {
+		newAudioOutputContext = originalNewAudioOutputContext
+	})
+}
+
 func TestAudioBackendInitializeCloseAndOutputDevices(t *testing.T) {
 	originalListAudioOutputDevices := listAudioOutputDevices
 	t.Cleanup(func() {
@@ -166,7 +197,10 @@ func TestAudioBackendInitializeCloseAndOutputDevices(t *testing.T) {
 	}
 
 	fakeContext := &fakeAudioContext{}
-	useFakeAudioContext(t, fakeContext, nil)
+	capturedContextBufferSize := time.Duration(0)
+	useFakeAudioContextWithOptionsCapture(t, fakeContext, nil, func(options *oto.NewContextOptions) {
+		capturedContextBufferSize = options.BufferSize
+	})
 	backend := NewAudioBackend()
 	backend.ffmpegPath = helperPath
 	if err := backend.Initialize(); err != nil {
@@ -174,6 +208,12 @@ func TestAudioBackendInitializeCloseAndOutputDevices(t *testing.T) {
 	}
 	if backend.context == nil || backend.player == nil {
 		t.Fatal("Initialize(success) should populate the audio context and player")
+	}
+	if fakeContext.player.bufferSize != durationToAlignedAudioBytes(defaultAudioPlayerBuffer) {
+		t.Fatalf("Initialize(success) player buffer size = %d, want %d", fakeContext.player.bufferSize, durationToAlignedAudioBytes(defaultAudioPlayerBuffer))
+	}
+	if capturedContextBufferSize != defaultAudioOutputBuffer {
+		t.Fatalf("Initialize(success) context buffer size = %s, want %s", capturedContextBufferSize, defaultAudioOutputBuffer)
 	}
 
 	backendWithExistingContext := NewAudioBackend()
@@ -184,6 +224,9 @@ func TestAudioBackendInitializeCloseAndOutputDevices(t *testing.T) {
 	}
 	if backendWithExistingContext.player == nil {
 		t.Fatal("Initialize(existing context) should attach a player when one is missing")
+	}
+	if fakeContext.player.bufferSize != durationToAlignedAudioBytes(defaultAudioPlayerBuffer) {
+		t.Fatalf("Initialize(existing context) player buffer size = %d, want %d", fakeContext.player.bufferSize, durationToAlignedAudioBytes(defaultAudioPlayerBuffer))
 	}
 
 	failingContext := &fakeAudioContext{err: errors.New("context failed")}
@@ -313,6 +356,16 @@ func TestAudioBackendTransportAndStateHelpers(t *testing.T) {
 	if got := transportBackend.effectivePlayerVolumeLocked(); got != 0 {
 		t.Fatalf("effectivePlayerVolumeLocked(negative volume) = %.2f, want 0", got)
 	}
+	if got, want := transportBackend.effectiveOutputBufferLocked(), defaultAudioOutputBuffer; got != want {
+		t.Fatalf("effectiveOutputBufferLocked(default) = %s, want %s", got, want)
+	}
+	transportBackend.outputBuffer = 900 * time.Millisecond
+	if got, want := transportBackend.effectiveOutputBufferLocked(), 900*time.Millisecond; got != want {
+		t.Fatalf("effectiveOutputBufferLocked(explicit) = %s, want %s", got, want)
+	}
+	if got, want := transportBackend.desiredPlayerBufferSizeLocked(), durationToAlignedAudioBytes(maxAudioPlayerBuffer); got != want {
+		t.Fatalf("desiredPlayerBufferSizeLocked(cap) = %d, want %d", got, want)
+	}
 
 	seekBackend := NewAudioBackend()
 	if err := seekBackend.seekLocked(1); err == nil {
@@ -425,6 +478,40 @@ func TestAudioBackendStateHelperEdgeCases(t *testing.T) {
 	state := snapshotBackend.snapshotLocked()
 	if state.CurrentTime != state.Duration || state.Duration != 1 {
 		t.Fatalf("snapshotLocked(clamped) = %#v, want clamped currentTime=duration=1", state)
+	}
+}
+
+func TestCurrentPlayedGlobalBytesSubtractsPlayerBufferedBytes(t *testing.T) {
+	backend := NewAudioBackend()
+	backend.streamSegments = []audioTrackSegment{{SourcePath: "track.flac", PCMData: make([]byte, 3*audioBytesPerSecond)}}
+	backend.player = &fakeAudioPlayer{buffered: audioBytesPerSecond}
+	backend.streamReadOffset = int64(3 * audioBytesPerSecond)
+	backend.playbackBaseBytes = int64(3 * audioBytesPerSecond)
+
+	if got, want := backend.currentPlayedGlobalBytesLocked(), int64(2*audioBytesPerSecond); got != want {
+		t.Fatalf("currentPlayedGlobalBytesLocked(buffered clamp) = %d, want %d", got, want)
+	}
+}
+
+func TestSyncPlaybackLockedDoesNotEndWhilePlayerStillBuffered(t *testing.T) {
+	backend := NewAudioBackend()
+	backend.streamSegments = []audioTrackSegment{{SourcePath: "track.flac", PCMData: make([]byte, 2*audioBytesPerSecond)}}
+	backend.player = &fakeAudioPlayer{buffered: audioBytesPerSecond}
+	backend.streamReadOffset = int64(2 * audioBytesPerSecond)
+	backend.playbackBaseBytes = int64(2 * audioBytesPerSecond)
+	backend.playing = true
+	backend.playStarted = time.Now().Add(-2 * time.Second)
+
+	backend.syncPlaybackLocked()
+
+	if !backend.playing {
+		t.Fatal("syncPlaybackLocked() should keep playing while buffered audio remains queued")
+	}
+	if backend.endEventID != 0 {
+		t.Fatalf("syncPlaybackLocked() endEventID = %d, want 0 while buffered audio remains", backend.endEventID)
+	}
+	if got, want := backend.playbackBaseBytes, int64(audioBytesPerSecond); got != want {
+		t.Fatalf("syncPlaybackLocked() playbackBaseBytes = %d, want %d", got, want)
 	}
 }
 
