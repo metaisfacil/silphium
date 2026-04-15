@@ -70,10 +70,20 @@ const albumGridMinColumnWidthPx = 75;
 const albumGridOverscanRows = 3;
 const albumGridInitialThumbnailBatchSize = 12;
 const albumGridCoverResolutionBatchSize = 24;
-const albumGridMinimumThumbnailCacheSize = 96;
+const albumGridThumbnailLoadConcurrency = 4;
+const albumGridMinimumThumbnailCacheSize = 32;
 const albumGridThumbnailCacheWindowMultiplier = 2;
 const unknownAlbumLabel = 'Unknown Album';
 const unknownArtistLabel = 'Unknown Artist';
+
+type RecursiveAlbumCoverCandidate = {
+    path: string;
+    descendantDistance: number;
+    priority: number;
+    sortKey: string;
+};
+
+type AlbumThumbnailLoadPriority = 'eager' | 'normal';
 
 export const createLibraryController = (options: LibraryControllerOptions) => {
     const {
@@ -104,7 +114,11 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     let albumGridRenderVersion = 0;
     let cachedAlbumGridEntries: AlbumGridEntry[] | null = null;
     let cachedAlbumGridEntriesPromise: Promise<AlbumGridEntry[]> | null = null;
+    let indexedRecursiveAlbumCoverPathByFolder: Map<string, string> | null = null;
     let albumGridThumbnailCacheLimit = albumGridMinimumThumbnailCacheSize;
+    let albumThumbnailLoadsInFlight = 0;
+    const eagerAlbumThumbnailLoadWaiters: Array<() => void> = [];
+    const normalAlbumThumbnailLoadWaiters: Array<() => void> = [];
     const resolvedAlbumCoverPathByFolder = new Map<string, string>();
     const paneStateByElement = new WeakMap<HTMLUListElement, PaneState>();
     const albumThumbnailDataUrlByCoverPath = new Map<string, string | null>();
@@ -221,10 +235,80 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
     };
 
-    const folderDepth = (path: string): number => path.split('/').filter((segment) => segment.trim() !== '').length;
+    const normalizedFolderKey = (path: string): string => path.trim().toLowerCase();
+
+    const folderPathSegments = (path: string): string[] => {
+        return path
+            .split('/')
+            .map((segment) => segment.trim())
+            .filter((segment) => segment !== '');
+    };
+
+    const shouldReplaceRecursiveAlbumCoverCandidate = (
+        nextCandidate: RecursiveAlbumCoverCandidate,
+        existingCandidate?: RecursiveAlbumCoverCandidate,
+    ): boolean => {
+        if (!existingCandidate) {
+            return true;
+        }
+        if (nextCandidate.descendantDistance !== existingCandidate.descendantDistance) {
+            return nextCandidate.descendantDistance < existingCandidate.descendantDistance;
+        }
+        if (nextCandidate.priority !== existingCandidate.priority) {
+            return nextCandidate.priority < existingCandidate.priority;
+        }
+
+        return naturalOrderCollator.compare(nextCandidate.sortKey, existingCandidate.sortKey) < 0;
+    };
+
+    const recursiveAlbumCoverPathIndex = (): Map<string, string> => {
+        if (indexedRecursiveAlbumCoverPathByFolder) {
+            return indexedRecursiveAlbumCoverPathByFolder;
+        }
+
+        const bestCoverCandidateByFolder = new Map<string, RecursiveAlbumCoverCandidate>();
+        for (const imageFile of options.getImageFiles()) {
+            if (!isPreferredAlbumCoverImagePath(imageFile.path || imageFile.name || '')) {
+                continue;
+            }
+
+            const imageFolderSegments = folderPathSegments(imageFile.folderPath || '');
+            if (imageFolderSegments.length === 0) {
+                continue;
+            }
+
+            const candidatePath = (imageFile.path || '').trim();
+            if (candidatePath === '') {
+                continue;
+            }
+
+            const priority = albumCoverPriority(imageFile.name || '');
+            const sortKey = imageFile.relativePath || imageFile.path || imageFile.name || candidatePath;
+            for (let ancestorLength = 1; ancestorLength <= imageFolderSegments.length; ancestorLength += 1) {
+                const ancestorFolderPath = imageFolderSegments.slice(0, ancestorLength).join('/');
+                const ancestorFolderKey = normalizedFolderKey(ancestorFolderPath);
+                const nextCandidate: RecursiveAlbumCoverCandidate = {
+                    path: candidatePath,
+                    descendantDistance: imageFolderSegments.length - ancestorLength,
+                    priority,
+                    sortKey,
+                };
+                const existingCandidate = bestCoverCandidateByFolder.get(ancestorFolderKey);
+                if (shouldReplaceRecursiveAlbumCoverCandidate(nextCandidate, existingCandidate)) {
+                    bestCoverCandidateByFolder.set(ancestorFolderKey, nextCandidate);
+                }
+            }
+        }
+
+        indexedRecursiveAlbumCoverPathByFolder = new Map(
+            Array.from(bestCoverCandidateByFolder.entries()).map(([folderKey, candidate]) => [folderKey, candidate.path]),
+        );
+
+        return indexedRecursiveAlbumCoverPathByFolder;
+    };
 
     const resolveAlbumCoverPath = (albumFolderPath: string, candidateFolders: string[]): string => {
-        const cacheKey = albumFolderPath.trim().toLowerCase();
+        const cacheKey = normalizedFolderKey(albumFolderPath);
         const cachedCoverPath = resolvedAlbumCoverPathByFolder.get(cacheKey);
         if (cachedCoverPath !== undefined) {
             return cachedCoverPath;
@@ -239,26 +323,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         if (cacheKey !== '') {
-            const recursiveCoverPath = options.getImageFiles()
-                .filter((imageFile) => {
-                    const imageFolderPath = (imageFile.folderPath || '').trim().toLowerCase();
-                    return imageFolderPath === cacheKey || imageFolderPath.startsWith(`${cacheKey}/`);
-                })
-                .filter((imageFile) => isPreferredAlbumCoverImagePath(imageFile.path || imageFile.name || ''))
-                .sort((left, right) => {
-                    const depthComparison = folderDepth(left.folderPath || '') - folderDepth(right.folderPath || '');
-                    if (depthComparison !== 0) {
-                        return depthComparison;
-                    }
-
-                    const priorityComparison = albumCoverPriority(left.name || '') - albumCoverPriority(right.name || '');
-                    if (priorityComparison !== 0) {
-                        return priorityComparison;
-                    }
-
-                    return naturalOrderCollator.compare(left.relativePath || left.path || left.name, right.relativePath || right.path || right.name);
-                })[0]?.path || '';
-
+            const recursiveCoverPath = recursiveAlbumCoverPathIndex().get(cacheKey) || '';
             resolvedAlbumCoverPathByFolder.set(cacheKey, recursiveCoverPath);
             return recursiveCoverPath;
         }
@@ -275,9 +340,36 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         });
     };
 
+    const acquireAlbumThumbnailLoadSlot = async (priority: AlbumThumbnailLoadPriority): Promise<void> => {
+        while (albumThumbnailLoadsInFlight >= albumGridThumbnailLoadConcurrency) {
+            await new Promise<void>((resolve) => {
+                if (priority === 'eager') {
+                    eagerAlbumThumbnailLoadWaiters.push(resolve);
+                    return;
+                }
+
+                normalAlbumThumbnailLoadWaiters.push(resolve);
+            });
+        }
+
+        albumThumbnailLoadsInFlight += 1;
+    };
+
+    const releaseAlbumThumbnailLoadSlot = (): void => {
+        if (albumThumbnailLoadsInFlight > 0) {
+            albumThumbnailLoadsInFlight -= 1;
+        }
+
+        const nextWaiter = eagerAlbumThumbnailLoadWaiters.shift() ?? normalAlbumThumbnailLoadWaiters.shift();
+        if (nextWaiter) {
+            nextWaiter();
+        }
+    };
+
     const invalidateAlbumGridCache = (): void => {
         cachedAlbumGridEntries = null;
         cachedAlbumGridEntriesPromise = null;
+        indexedRecursiveAlbumCoverPathByFolder = null;
         resolvedAlbumCoverPathByFolder.clear();
         albumGridRenderVersion += 1;
     };
@@ -436,7 +528,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         return cachedDataUrl;
     };
 
-    const loadAlbumThumbnailDataUrl = async (coverPath: string): Promise<string | null> => {
+    const loadAlbumThumbnailDataUrl = async (coverPath: string, priority: AlbumThumbnailLoadPriority = 'normal'): Promise<string | null> => {
         const cachedDataUrl = getCachedAlbumThumbnailDataUrl(coverPath);
         if (cachedDataUrl !== undefined) {
             return cachedDataUrl;
@@ -447,8 +539,10 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             return await pendingLoad;
         }
 
-        const loadPromise = options.readImageThumbnail(coverPath, albumCoverThumbnailMaxEdgePx)
-            .then((thumbnail) => {
+        const loadPromise = (async () => {
+            await acquireAlbumThumbnailLoadSlot(priority);
+            try {
+                const thumbnail = await options.readImageThumbnail(coverPath, albumCoverThumbnailMaxEdgePx);
                 const base64 = (thumbnail.base64 || '').trim();
                 if (base64 === '') {
                     touchAlbumThumbnailCacheEntry(coverPath, null);
@@ -463,15 +557,15 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 touchAlbumThumbnailCacheEntry(coverPath, dataUrl);
                 pruneAlbumThumbnailCache();
                 return dataUrl;
-            })
-            .catch(() => {
+            } catch {
                 touchAlbumThumbnailCacheEntry(coverPath, null);
                 pruneAlbumThumbnailCache();
                 return null;
-            })
-            .finally(() => {
+            } finally {
+                releaseAlbumThumbnailLoadSlot();
                 albumThumbnailLoadPromiseByCoverPath.delete(coverPath);
-            });
+            }
+        })();
 
         albumThumbnailLoadPromiseByCoverPath.set(coverPath, loadPromise);
         return await loadPromise;
@@ -493,7 +587,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         });
     };
 
-    const hydrateAlbumCoverImage = async (image: HTMLImageElement): Promise<void> => {
+    const hydrateAlbumCoverImage = async (image: HTMLImageElement, priority: AlbumThumbnailLoadPriority = 'normal'): Promise<void> => {
         const coverPath = (image.dataset.coverPath || '').trim();
         if (coverPath === '' || image.dataset.coverLoaded === 'true') {
             return;
@@ -501,7 +595,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         image.dataset.coverLoaded = 'true';
         const coverElement = image.closest('.library-album-cover');
-        const dataUrl = await loadAlbumThumbnailDataUrl(coverPath);
+        const dataUrl = await loadAlbumThumbnailDataUrl(coverPath, priority);
         if (!(coverElement instanceof HTMLElement) || !image.isConnected) {
             return;
         }
@@ -518,7 +612,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     const hydrateAlbumGridThumbnailBatch = async (images: HTMLImageElement[]): Promise<void> => {
         await Promise.all(images.map(async (image) => {
-            await hydrateAlbumCoverImage(image);
+            await hydrateAlbumCoverImage(image, 'eager');
         }));
     };
 
@@ -642,6 +736,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     };
 
     const disposeAlbumGridCard = (cardElements: AlbumGridCardElements): void => {
+        const coverPath = (cardElements.image.dataset.coverPath || '').trim();
         albumGridThumbnailObserver?.unobserve(cardElements.image);
         cardElements.image.removeAttribute('src');
         delete cardElements.image.dataset.coverPath;
@@ -649,6 +744,10 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         cardElements.cover.classList.remove('has-image');
         cardElements.cover.classList.remove('is-unavailable');
         cardElements.cover.classList.add('is-loading');
+        if (coverPath !== '') {
+            albumThumbnailDataUrlByCoverPath.delete(coverPath);
+            albumThumbnailLoadPromiseByCoverPath.delete(coverPath);
+        }
     };
 
     const renderExpandedAlbumGrid = (direction: RenderDirection): void => {
@@ -800,10 +899,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 }
 
                 if (eagerThumbnailImages.length > 0) {
-                    await hydrateAlbumGridThumbnailBatch(eagerThumbnailImages);
-                    if (!isAlbumGridRenderCurrent(renderVersion, pane)) {
-                        return;
-                    }
+                    void hydrateAlbumGridThumbnailBatch(eagerThumbnailImages);
                 }
 
                 const queuedImages = Array.from(grid.querySelectorAll('.library-album-cover-image[data-cover-path]')) as HTMLImageElement[];
@@ -826,6 +922,13 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 });
             };
 
+            const handlePaneScroll = (): void => {
+                updateAlbumGridPaneEdgeFade();
+                scheduleVirtualizedAlbumRender();
+            };
+
+            pane.addEventListener('scroll', handlePaneScroll, { passive: true });
+
             if (!isAlbumGridRenderCurrent(renderVersion, pane)) {
                 return;
             }
@@ -835,7 +938,6 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 return;
             }
 
-            pane.addEventListener('scroll', scheduleVirtualizedAlbumRender, { passive: true });
             albumGridWindowResizeListener = () => {
                 scheduleVirtualizedAlbumRender();
             };
