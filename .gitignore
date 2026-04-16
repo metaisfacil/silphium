@@ -28,6 +28,7 @@ build/darwin/iconfile.icns
 /.vscode/
 /.idea/
 /docs/
+/scripts/
 *.instructions.md
 
 # ---- Logs ----
