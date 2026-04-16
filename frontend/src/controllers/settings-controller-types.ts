@@ -35,6 +35,7 @@ export type SettingsFormValues = {
     lastFmApiKey: string;
     lastFmApiSecret: string;
     lastFmSessionKey: string;
+    scrobblingEnabled: boolean;
     scrobbleFilterMode: ScrobbleFilterMode;
     scrobbleRules: ScrobbleRule[];
     musicBrainzServerUrl: string;

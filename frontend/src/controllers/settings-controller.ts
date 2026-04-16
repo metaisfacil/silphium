@@ -81,6 +81,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsRemoveLibraryFolder,
         settingsFavoritePlaylistList,
         settingsRemoveFavoritePlaylist,
+        settingsScrobblingEnabled,
         settingsScrobbleFilterMode,
         settingsScrobbleRuleList,
         settingsRemoveScrobbleRule,
@@ -615,6 +616,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         lastFmApiKey: settingsLastFmApiKey.value,
         lastFmApiSecret: settingsLastFmApiSecret.value,
         lastFmSessionKey: settingsLastFmSessionKey.value,
+        scrobblingEnabled: settingsScrobblingEnabled.checked,
         scrobbleFilterMode: settingsScrobbleFilterMode.value === 'whitelist' ? 'whitelist' : 'blacklist',
         scrobbleRules: normalizeScrobbleRules(controllerState.scrobbleRules).map((rule) => ({ ...rule })),
         musicBrainzServerUrl: settingsMusicBrainzServerUrl.value,
@@ -788,6 +790,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLastFmApiKey.value = values.lastFmApiKey || '';
         settingsLastFmApiSecret.value = values.lastFmApiSecret || '';
         settingsLastFmSessionKey.value = values.lastFmSessionKey || '';
+        settingsScrobblingEnabled.checked = values.scrobblingEnabled !== false;
         settingsScrobbleFilterMode.value = values.scrobbleFilterMode === 'whitelist' ? 'whitelist' : 'blacklist';
         controllerState.scrobbleRules = normalizeScrobbleRules(values.scrobbleRules);
         settingsMusicBrainzServerUrl.value = values.musicBrainzServerUrl || '';
@@ -887,7 +890,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
         if (primaryTab === 'scrobbling') {
-            settingsScrobbleFilterMode.focus();
+            settingsScrobblingEnabled.focus();
             return;
         }
         if (primaryTab === 'audio') {

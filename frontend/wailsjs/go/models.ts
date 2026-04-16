@@ -122,6 +122,7 @@ export namespace main {
 	    lastFmApiKey: string;
 	    lastFmApiSecret: string;
 	    lastFmSessionKey: string;
+	    scrobblingEnabled?: boolean;
 	    scrobbleFilterMode?: string;
 	    scrobbleRules?: ScrobbleRule[];
 	    scrobbleFolders?: string[];
@@ -178,6 +179,7 @@ export namespace main {
 	        this.lastFmApiKey = source["lastFmApiKey"];
 	        this.lastFmApiSecret = source["lastFmApiSecret"];
 	        this.lastFmSessionKey = source["lastFmSessionKey"];
+	        this.scrobblingEnabled = source["scrobblingEnabled"];
 	        this.scrobbleFilterMode = source["scrobbleFilterMode"];
 	        this.scrobbleRules = this.convertValues(source["scrobbleRules"], ScrobbleRule);
 	        this.scrobbleFolders = source["scrobbleFolders"];

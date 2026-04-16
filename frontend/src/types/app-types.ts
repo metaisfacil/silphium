@@ -370,6 +370,7 @@ export type AppSettings = {
     lastFmApiKey: string;
     lastFmApiSecret: string;
     lastFmSessionKey: string;
+    scrobblingEnabled: boolean;
     scrobbleFilterMode: ScrobbleFilterMode;
     scrobbleRules: ScrobbleRule[];
     musicBrainzServerUrl: string;

@@ -46,6 +46,7 @@ const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     lastFmApiKey: 'lastfm-key',
     lastFmApiSecret: 'lastfm-secret',
     lastFmSessionKey: 'lastfm-session',
+    scrobblingEnabled: true,
     scrobbleFilterMode: 'blacklist',
     scrobbleRules: [],
     musicBrainzServerUrl: 'https://musicbrainz.org',

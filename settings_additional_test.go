@@ -172,6 +172,7 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 		MusicBrainzTagStaleDays:                intPointer(0),
 		MusicBrainzTagRequestStaggeringEnabled: true,
 		MusicBrainzTagWorkerCores:              0,
+		ScrobblingEnabled:                      boolPointer(false),
 		KeyboardShortcuts:                      FocusedKeyboardShortcuts{NextTrack: "J"},
 		PreferMusicBrainzMetadata:              true,
 		MusicBrainzTagDatabaseEnabled:          true,
@@ -219,6 +220,9 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 	}
 	if settings.MusicBrainzTagWorkerCores < 1 || settings.MusicBrainzTagWorkerCores > maxMusicBrainzTagWorkerCores() {
 		t.Fatalf("MusicBrainzTagWorkerCores = %d, want value in [1, %d]", settings.MusicBrainzTagWorkerCores, maxMusicBrainzTagWorkerCores())
+	}
+	if settings.ScrobblingEnabled == nil || *settings.ScrobblingEnabled {
+		t.Fatalf("ScrobblingEnabled = %#v, want false", settings.ScrobblingEnabled)
 	}
 	if settings.KeyboardShortcuts.NextTrack != "J" {
 		t.Fatalf("NextTrack shortcut = %q, want %q", settings.KeyboardShortcuts.NextTrack, "J")

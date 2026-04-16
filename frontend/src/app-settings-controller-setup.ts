@@ -134,6 +134,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         lastFmApiKey: string;
         lastFmApiSecret: string;
         lastFmSessionKey: string;
+        scrobblingEnabled: boolean;
         scrobbleFilterMode: AppSettings['scrobbleFilterMode'];
         scrobbleRules: AppSettings['scrobbleRules'];
         musicBrainzServerUrl: string;
@@ -191,6 +192,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             lastFmApiKey: values.lastFmApiKey,
             lastFmApiSecret: values.lastFmApiSecret,
             lastFmSessionKey: values.lastFmSessionKey,
+            scrobblingEnabled: values.scrobblingEnabled,
             scrobbleFilterMode: values.scrobbleFilterMode,
             scrobbleRules: values.scrobbleRules,
             musicBrainzServerUrl: values.musicBrainzServerUrl,
@@ -286,6 +288,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             lastFmApiKey: context.currentSettings.lastFmApiKey,
             lastFmApiSecret: context.currentSettings.lastFmApiSecret,
             lastFmSessionKey: context.currentSettings.lastFmSessionKey,
+            scrobblingEnabled: context.currentSettings.scrobblingEnabled,
             scrobbleFilterMode: context.currentSettings.scrobbleFilterMode,
             scrobbleRules: context.currentSettings.scrobbleRules,
             musicBrainzServerUrl: context.currentSettings.musicBrainzServerUrl,

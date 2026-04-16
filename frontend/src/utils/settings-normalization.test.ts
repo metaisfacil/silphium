@@ -93,6 +93,7 @@ describe('settings normalization', () => {
             lastFmApiKey: ' api-key ',
             lastFmApiSecret: ' api-secret ',
             lastFmSessionKey: ' session-key ',
+            scrobblingEnabled: false,
             scrobbleFilterMode: 'whitelist',
             musicBrainzServerUrl: ' https://musicbrainz.example ',
             musicBrainzRequestRateMs: 2000.9,
@@ -134,6 +135,7 @@ describe('settings normalization', () => {
         expect(normalized.lastFmApiKey).toBe('api-key');
         expect(normalized.lastFmApiSecret).toBe('api-secret');
         expect(normalized.lastFmSessionKey).toBe('session-key');
+        expect(normalized.scrobblingEnabled).toBe(false);
         expect(normalized.scrobbleFilterMode).toBe('whitelist');
         expect(normalized.scrobbleRules).toEqual([]);
         expect(normalized.musicBrainzServerUrl).toBe('https://musicbrainz.example');
@@ -243,6 +245,7 @@ describe('settings normalization', () => {
         expect(normalized.favoritePlaylists).toEqual([]);
         expect(normalized.localLibraryFilesDatabaseEnabled).toBe(true);
         expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(true);
+        expect(normalized.scrobblingEnabled).toBe(true);
         expect(normalized.lissajousEnabled).toBe(true);
         expect(normalized.lissajousScale).toBe(defaultLissajousScale);
         expect(normalized.visualizerMode).toBe('lissajous');
@@ -265,6 +268,7 @@ describe('settings normalization', () => {
         expect(normalized.audio).toEqual(defaultAppSettings.audio);
         expect(normalized.localLibraryFilesDatabaseEnabled).toBe(true);
         expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(true);
+        expect(normalized.scrobblingEnabled).toBe(true);
         expect(normalized.musicBrainzTagStaleDays).toBe(defaultMusicBrainzTagStaleDays);
         expect(normalized.customSendToActions).toEqual([]);
         expect(normalized.visualizerMode).toBe(defaultAppSettings.visualizerMode);

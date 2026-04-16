@@ -89,6 +89,7 @@ type AppSettings struct {
 	LastFmAPIKey                                  string                   `json:"lastFmApiKey"`
 	LastFmAPISecret                               string                   `json:"lastFmApiSecret"`
 	LastFmSessionKey                              string                   `json:"lastFmSessionKey"`
+	ScrobblingEnabled                             *bool                    `json:"scrobblingEnabled,omitempty"`
 	ScrobbleFilterMode                            string                   `json:"scrobbleFilterMode,omitempty"`
 	ScrobbleRules                                 []ScrobbleRule           `json:"scrobbleRules,omitempty"`
 	ScrobbleFolders                               []string                 `json:"scrobbleFolders,omitempty"`
@@ -786,6 +787,10 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	lastFmAPIKey := strings.TrimSpace(settings.LastFmAPIKey)
 	lastFmAPISecret := strings.TrimSpace(settings.LastFmAPISecret)
 	lastFmSessionKey := strings.TrimSpace(settings.LastFmSessionKey)
+	scrobblingEnabled := true
+	if settings.ScrobblingEnabled != nil {
+		scrobblingEnabled = *settings.ScrobblingEnabled
+	}
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
 	libraryFolders := normalizeLibraryFolders(settings.LibraryFolders, settings.LibraryPath, settings.ReleaseDepth)
 	openSubsonicAPIKeyHash := normalizeNetworkPasswordHashForSettings(settings.OpenSubsonicAPIKey, settings.OpenSubsonicAPIKeyHash)
@@ -875,6 +880,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		LastFmAPIKey:                           lastFmAPIKey,
 		LastFmAPISecret:                        lastFmAPISecret,
 		LastFmSessionKey:                       lastFmSessionKey,
+		ScrobblingEnabled:                      boolPointer(scrobblingEnabled),
 		ScrobbleFilterMode:                     scrobbleFilterMode,
 		ScrobbleRules:                          scrobbleRules,
 		MusicBrainzServerURL:                   musicBrainzServerURL,

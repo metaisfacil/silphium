@@ -29,6 +29,7 @@ export type SettingsModalElements = {
     settingsFavoritePlaylistList: HTMLUListElement;
     settingsAddFavoritePlaylist: HTMLButtonElement;
     settingsRemoveFavoritePlaylist: HTMLButtonElement;
+    settingsScrobblingEnabled: HTMLInputElement;
     settingsScrobbleFilterMode: HTMLSelectElement;
     settingsScrobbleRuleList: HTMLUListElement;
     settingsAddScrobbleRule: HTMLButtonElement;
@@ -331,6 +332,9 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-scrobbling" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-scrobbling" hidden>
                     <div class="settings-field">
+                        ${renderSettingsCheckboxLabel('settings-scrobbling-enabled', 'Enable automatic scrobbling', 'Turns automatic scrobble and now-playing submissions on or off for connected providers. ListenBrainz social and feedback features remain available when credentials are configured.')}
+                    </div>
+                    <div class="settings-field">
                         ${renderSettingsLabel('settings-scrobble-filter-mode', 'Scrobble mode', 'In blacklist mode matching rules block scrobbles. In whitelist mode at least one rule must match before a scrobble is submitted. The same rules apply to all scrobble providers.')}
                         <select id="settings-scrobble-filter-mode" class="settings-input settings-select">
                             <option value="blacklist">Blacklist: scrobble unless a rule matches</option>
@@ -590,6 +594,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsFavoritePlaylistList: root.querySelector('#settings-favourite-playlist-list') as HTMLUListElement,
     settingsAddFavoritePlaylist: root.querySelector('#settings-add-favorite-playlist') as HTMLButtonElement,
     settingsRemoveFavoritePlaylist: root.querySelector('#settings-remove-favorite-playlist') as HTMLButtonElement,
+    settingsScrobblingEnabled: root.querySelector('#settings-scrobbling-enabled') as HTMLInputElement,
     settingsScrobbleFilterMode: root.querySelector('#settings-scrobble-filter-mode') as HTMLSelectElement,
     settingsScrobbleRuleList: root.querySelector('#settings-scrobble-rule-list') as HTMLUListElement,
     settingsAddScrobbleRule: root.querySelector('#settings-add-scrobble-rule') as HTMLButtonElement,

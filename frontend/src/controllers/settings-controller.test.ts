@@ -57,6 +57,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     lastFmApiKey: '',
     lastFmApiSecret: '',
     lastFmSessionKey: '',
+    scrobblingEnabled: true,
     scrobbleFilterMode: 'blacklist',
     scrobbleRules: [{ field: 'path', operator: 'starts_with', value: '/music/private' }],
     musicBrainzServerUrl: 'https://musicbrainz.org',
@@ -171,6 +172,7 @@ describe('createSettingsController', () => {
         expect(document.querySelector('#settings-lastfm-session-key-fetch')?.textContent).toBe('Fetch');
         expect(document.querySelector('label[for="settings-musicbrainz-server-url"]')?.textContent).toBe('MusicBrainz server URL');
         expect(document.querySelector('label[for="settings-listenbrainz-server-url"]')?.textContent).toBe('ListenBrainz server URL');
+        expect(document.querySelector('label[for="settings-scrobbling-enabled"]')?.textContent?.trim()).toBe('Enable automatic scrobbling');
         expect(document.querySelector('[aria-label="Show help for Enable OpenSubsonic server"]')).not.toBeNull();
         expect(document.querySelector('[aria-label="Show help for OpenSubsonic port"]')).not.toBeNull();
         expect(document.querySelector('[aria-label="Show help for OpenSubsonic API key"]')).not.toBeNull();
@@ -269,6 +271,7 @@ describe('createSettingsController', () => {
             localLibraryFilesDatabaseListenHistoryEnabled: false,
             localLibraryFilesDatabaseListenHistoryLimit: 0,
             ffmpegPath: 'D:/tools/ffmpeg.exe',
+            scrobblingEnabled: true,
             scrobbleFilterMode: 'blacklist',
             scrobbleRules: [{ field: 'path', operator: 'starts_with', value: '/music/private' }],
             favoritePlaylists: ['/playlists/favorites.m3u8'],
@@ -299,6 +302,7 @@ describe('createSettingsController', () => {
         expect(state.scrobbleRules).toEqual([{ field: 'path', operator: 'starts_with', value: '/music/private' }]);
         expect(state.selectedLibraryFolderIndex).toBe(0);
         expect(state.selectedFavoritePlaylistIndex).toBe(-1);
+        expect(elements.settingsScrobblingEnabled.checked).toBe(true);
 
         const favoriteButton = elements.settingsFavoritePlaylistList.querySelector('[data-favorite-playlist-index="0"]') as HTMLButtonElement;
         favoriteButton.click();
@@ -448,6 +452,23 @@ describe('createSettingsController', () => {
 
         expect(save).toHaveBeenCalledWith(expect.objectContaining({
             scrobbleRules: [{ field: 'trackTitle', operator: 'regex', value: '/live/i' }],
+        }));
+    });
+
+    it('saves automatic scrobbling when toggled off', async () => {
+        const { controller, elements, save } = mountSettingsController();
+
+        controller.open('scrobbling');
+
+        expect(document.activeElement).toBe(elements.settingsScrobblingEnabled);
+
+        elements.settingsScrobblingEnabled.checked = false;
+        elements.settingsSave.click();
+
+        await flushPromises();
+
+        expect(save).toHaveBeenCalledWith(expect.objectContaining({
+            scrobblingEnabled: false,
         }));
     });
 

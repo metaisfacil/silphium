@@ -673,6 +673,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
     const maybeSubmitListenBrainz = (state: AudioPlaybackState): void => {
         const track = currentTrackForPlaybackState(state);
+        const automaticScrobblingEnabled = context.currentSettings.scrobblingEnabled !== false;
         const allowTrack = !!track && isTrackScrobbleAllowed(track, state.duration, context.currentSettings.scrobbleFilterMode, context.currentSettings.scrobbleRules);
         const deferLastFmNowPlaying = !!track
             && context.currentSettings.preferMusicBrainzMetadata
@@ -680,8 +681,8 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             && (track.mbIds.releaseId || '').trim() !== '';
 
         context.scrobbleService.maybeSubmit(state, track, {
-            listenBrainz: context.hasListenBrainzScrobbling(),
-            lastFm: hasLastFmCredentialsConfigured() && allowTrack,
+            listenBrainz: automaticScrobblingEnabled && context.hasListenBrainzScrobbling(),
+            lastFm: automaticScrobblingEnabled && hasLastFmCredentialsConfigured() && allowTrack,
         }, {
             deferLastFmNowPlaying,
         });

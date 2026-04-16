@@ -275,6 +275,12 @@ func TestNormalizeAppSettingsDefaultsLissajousEnabledToTrue(t *testing.T) {
 	if !*settings.LocalLibraryFilesDatabaseLoadOnStartup {
 		t.Fatal("LocalLibraryFilesDatabaseLoadOnStartup should default to true")
 	}
+	if settings.ScrobblingEnabled == nil {
+		t.Fatal("ScrobblingEnabled should be populated")
+	}
+	if !*settings.ScrobblingEnabled {
+		t.Fatal("ScrobblingEnabled should default to true")
+	}
 	if settings.LissajousEnabled == nil {
 		t.Fatal("LissajousEnabled should be populated")
 	}
@@ -501,10 +507,12 @@ func TestNormalizeScrobbleFilterMode(t *testing.T) {
 }
 
 func TestNormalizeAppSettingsScrobbleRules(t *testing.T) {
+	disabled := false
 	settings := normalizeAppSettings(AppSettings{
 		LastFmAPIKey:       " api-key ",
 		LastFmAPISecret:    " shared-secret ",
 		LastFmSessionKey:   " session-key ",
+		ScrobblingEnabled:  &disabled,
 		ScrobbleFilterMode: "whitelist",
 		ScrobbleRules: []ScrobbleRule{
 			{Field: scrobbleRuleFieldTrackArtist, Operator: scrobbleRuleOperatorRegex, Value: " /foo/i "},
@@ -522,6 +530,9 @@ func TestNormalizeAppSettingsScrobbleRules(t *testing.T) {
 
 	if settings.LastFmAPIKey != "api-key" || settings.LastFmAPISecret != "shared-secret" || settings.LastFmSessionKey != "session-key" {
 		t.Fatalf("Last.fm credentials = (%q, %q, %q), want trimmed values", settings.LastFmAPIKey, settings.LastFmAPISecret, settings.LastFmSessionKey)
+	}
+	if settings.ScrobblingEnabled == nil || *settings.ScrobblingEnabled {
+		t.Fatalf("ScrobblingEnabled = %#v, want false", settings.ScrobblingEnabled)
 	}
 
 	if len(settings.ScrobbleRules) != 3 {
