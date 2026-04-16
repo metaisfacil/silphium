@@ -73,6 +73,7 @@ type PlaylistControllerOptions = {
     savePlaylistTrackMetadataCache: (entries: PlaylistTrackMetadataCacheEntry[]) => Promise<boolean>;
     savePlaylistData: (playlistPath: string, trackPaths: string[]) => Promise<boolean>;
     appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => Promise<boolean>;
+    openErrorModal: (title: string, message: string) => void;
     getFavoritePlaylists: () => string[];
     hasListenHistoryPlaylist: () => boolean;
     onTrackChosen: (index: number, context: PlaylistTrackChosenContext) => Promise<void>;
@@ -105,6 +106,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistHydrationProgress,
         playlistHydrationCount,
         playlistList,
+        playlistPreventDuplicateCheckbox,
         playlistOpen,
         playlistCreate,
         playlistAddCurrent,
@@ -120,6 +122,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const queueMutationChunkSize = 512;
     const playlistModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     const playlistViewTransitionMs = 220;
+    const playlistSourceMenuMaxHeightPx = 100;
     const queueVisibleRadius = 50;
     const queueHydrationLookahead = 50;
     let playlistModalHideTimer: number | undefined;
@@ -632,6 +635,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const closePlaylistSourceMenu = (restoreFocus = false): void => {
         playlistSourceMenu.hidden = true;
         playlistSourceWrap.classList.remove('is-open');
+        playlistSourceWrap.classList.remove('opens-upward');
+        playlistSourceMenu.style.maxHeight = '';
         playlistSourceButton.setAttribute('aria-expanded', 'false');
         if (restoreFocus) {
             playlistSourceButton.focus();
@@ -649,6 +654,21 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const openPlaylistSourceMenu = (): void => {
         if (playlistSource.options.length === 0) {
             return;
+        }
+
+        const dialogRect = playlistDialog.getBoundingClientRect();
+        const sourceWrapRect = playlistSourceWrap.getBoundingClientRect();
+        const menuMargin = 8;
+        const spaceBelow = Math.max(0, Math.floor(dialogRect.bottom - sourceWrapRect.bottom - menuMargin));
+        const spaceAbove = Math.max(0, Math.floor(sourceWrapRect.top - dialogRect.top - menuMargin));
+        const shouldOpenUpward = spaceBelow < 180 && spaceAbove > spaceBelow;
+
+        playlistSourceWrap.classList.toggle('opens-upward', shouldOpenUpward);
+        const availableMenuHeight = shouldOpenUpward ? spaceAbove : spaceBelow;
+        if (availableMenuHeight > 0) {
+            playlistSourceMenu.style.maxHeight = `${Math.min(availableMenuHeight, playlistSourceMenuMaxHeightPx)}px`;
+        } else {
+            playlistSourceMenu.style.maxHeight = '';
         }
 
         playlistSourceMenu.hidden = false;
@@ -1158,6 +1178,23 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         return true;
     };
 
+    const isTrackAlreadyInLoadedPlaylist = (playlistPath: string, trackIndex: number): boolean => {
+        const cleanPlaylistPath = playlistPath.trim();
+        if (cleanPlaylistPath === '') {
+            return false;
+        }
+
+        if (!Number.isInteger(trackIndex) || trackIndex < 0 || !controllerState.loadedPlaylistTrackIndexes) {
+            return false;
+        }
+
+        if (normalizePlaylistPath(controllerState.loadedPlaylistPath) !== normalizePlaylistPath(cleanPlaylistPath)) {
+            return false;
+        }
+
+        return controllerState.loadedPlaylistTrackIndexes.includes(trackIndex);
+    };
+
     const enqueueTracks = (trackIndexes: number[], placement: 'next' | 'end'): void => {
         const normalizedTrackIndexes = normalizeQueueEligibleTrackIndexes(trackIndexes);
 
@@ -1277,6 +1314,14 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         const activeQueue = mutableCurrentSequence();
+        if (playlistPreventDuplicateCheckbox.checked && activeQueue.includes(currentTrackIndex)) {
+            options.openErrorModal(
+                'Track already in playlist',
+                'The current track is already in the active playlist. Disable duplicate prevention to add it again.',
+            );
+            return;
+        }
+
         activeQueue.push(currentTrackIndex);
         hydrateTrackMetadataInBackground([currentTrackIndex]);
         renderPlaylist(true);
@@ -1781,6 +1826,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             updateHeaderSourceControl();
         },
         getAvailablePlaylistTargets,
+        isTrackAlreadyInLoadedPlaylist,
         appendTracksToPlaylist,
         openPlaylistTarget,
         createPlaylistTarget,
