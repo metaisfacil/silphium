@@ -137,7 +137,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const playlistViewTransitionMs = 220;
     const playlistFilterDebounceMs = 300;
     const playlistSourceMenuMaxHeightPx = 100;
-    const queueVisibleRadius = 50;
+    const queueVisibleAheadCount = 50;
     const queueHydrationLookahead = 50;
     const playlistHydrationVisibleRows = 72;
     const playlistHydrationOverscan = 24;
@@ -1101,10 +1101,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         const playlistVisibleWindow = viewingPlaylist ? getPlaylistVisibleWindow(indexes) : null;
         const start = viewingPlaylist
             ? (playlistVisibleWindow?.start || 0)
-            : Math.max(0, anchorPosition - queueVisibleRadius);
+            : Math.max(0, anchorPosition);
         const end = viewingPlaylist
             ? (playlistVisibleWindow?.end || 0)
-            : Math.min(indexes.length, anchorPosition + queueVisibleRadius + 1);
+            : Math.min(indexes.length, anchorPosition + queueVisibleAheadCount + 1);
         const cachedItemsByTrackIndex = cachedPlaylistItemsByTrackIndex();
         const filterTerms = playlistFilterTerms();
         const usePlaylistWindowSpacers = viewingPlaylist && filterTerms.length === 0;
@@ -1346,8 +1346,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return;
         }
 
-        const start = Math.max(0, currentPosition - queueVisibleRadius);
-        const end = Math.min(indexes.length, currentPosition + queueVisibleRadius + 1 + queueHydrationLookahead);
+        const start = Math.max(0, currentPosition);
+        const end = Math.min(indexes.length, currentPosition + queueVisibleAheadCount + 1 + queueHydrationLookahead);
         requestTrackMetadataHydration(indexes.slice(start, end));
     };
 

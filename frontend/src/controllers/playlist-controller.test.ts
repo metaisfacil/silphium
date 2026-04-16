@@ -659,6 +659,57 @@ describe('createPlaylistController', () => {
         );
     });
 
+    it('renders the playback queue from the current track through the next 50 tracks', async () => {
+        document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+
+        const menu = getPlaylistMenuElements(document);
+        const modal = getPlaylistModalElements(document);
+        const trackViews = Array.from({ length: 120 }, (_, index) => ({
+            displayTitle: `Track ${index}`,
+            name: `Track ${index}`,
+            displayArtist: `Artist ${index}`,
+            tagsResolved: true,
+        }));
+
+        const controller = createPlaylistController({
+            trigger,
+            menu,
+            modal,
+            getTrack: (index: number) => trackViews[index],
+            getTrackPath: (index: number) => `/music/track-${index}.flac`,
+            getTrackCount: () => trackViews.length,
+            getCurrentTrackIndex: () => 50,
+            getPlaybackOrderLabel: () => 'Ordered',
+            getBaseSequence: () => ({
+                indexes: trackViews.map((_, index) => index),
+                currentPosition: 50,
+            }),
+            ensureTrackTagsResolvedBatch: vi.fn(async () => undefined),
+            selectPlaylistFile: vi.fn(async () => ''),
+            selectPlaylistSaveFile: vi.fn(async () => ''),
+            loadPlaylistData: vi.fn(async () => null),
+            loadListenHistoryData: vi.fn(async () => null),
+            savePlaylistTrackMetadataCache: vi.fn(async () => true),
+            savePlaylistData: vi.fn(async () => true),
+            appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
+            getFavoritePlaylists: () => [],
+            hasListenHistoryPlaylist: () => false,
+            onTrackChosen: vi.fn(async () => undefined),
+            onExternalPlaylistLoaded: vi.fn(() => undefined),
+        });
+
+        controller.openModal();
+        await flushPromises();
+
+        const renderedIndexes = Array.from(modal.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]'))
+            .map((button) => Number(button.dataset.playlistTrackIndex));
+
+        expect(renderedIndexes).toEqual(Array.from({ length: 51 }, (_, offset) => 50 + offset));
+    });
+
     it('hydrates newly visible queue rows after the queue advances', async () => {
         document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
         const trigger = document.createElement('button');
