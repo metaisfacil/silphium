@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMain(m *testing.M) {
@@ -22,7 +23,22 @@ func TestMain(m *testing.M) {
 func runSilphiumHelperProcess() bool {
 	switch strings.ToLower(filepath.Base(os.Args[0])) {
 	case "ffmpeg", "ffmpeg.exe":
-		if encoded := os.Getenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64"); encoded != "" {
+		if chunkSpec := strings.TrimSpace(os.Getenv("SILPHIUM_TEST_FFMPEG_STREAM_CHUNK_BYTES")); chunkSpec != "" {
+			chunkDelayMs, _ := strconv.Atoi(strings.TrimSpace(os.Getenv("SILPHIUM_TEST_FFMPEG_STREAM_CHUNK_DELAY_MS")))
+			byteValue, _ := strconv.Atoi(strings.TrimSpace(os.Getenv("SILPHIUM_TEST_FFMPEG_STREAM_BYTE")))
+			for index, rawChunkSize := range strings.Split(chunkSpec, ";") {
+				chunkSize, err := strconv.Atoi(strings.TrimSpace(rawChunkSize))
+				if err != nil || chunkSize <= 0 {
+					continue
+				}
+
+				payload := bytesRepeat(byte(byteValue), chunkSize)
+				_, _ = os.Stdout.Write(payload)
+				if chunkDelayMs > 0 && index < len(strings.Split(chunkSpec, ";"))-1 {
+					time.Sleep(time.Duration(chunkDelayMs) * time.Millisecond)
+				}
+			}
+		} else if encoded := os.Getenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64"); encoded != "" {
 			decoded, err := base64.StdEncoding.DecodeString(encoded)
 			if err == nil {
 				_, _ = os.Stdout.Write(decoded)
@@ -57,6 +73,19 @@ func runSilphiumHelperProcess() bool {
 	}
 
 	return false
+}
+
+func bytesRepeat(value byte, count int) []byte {
+	if count <= 0 {
+		return nil
+	}
+
+	payload := make([]byte, count)
+	for index := range payload {
+		payload[index] = value
+	}
+
+	return payload
 }
 
 func helperProcessExitCode(envName string) int {

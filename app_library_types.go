@@ -8,6 +8,7 @@ type LibraryIndexedFile struct {
 	FolderPath       string `json:"folderPath"`
 	RootPath         string `json:"rootPath"`
 	RootName         string `json:"rootName"`
+	ReleaseDepth     int    `json:"releaseDepth,omitempty"`
 	CachedTrackTitle string `json:"cachedTrackTitle,omitempty"`
 	CachedArtistName string `json:"cachedArtistName,omitempty"`
 	ListenedAt       int64  `json:"listenedAt,omitempty"`

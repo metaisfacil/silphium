@@ -246,3 +246,124 @@ func TestScanLibraryFolderPersistsLibraryFilesDatabase(t *testing.T) {
 
 	t.Fatal("timed out waiting for persisted library files database snapshot")
 }
+
+func TestMetadataDatabaseMigratesLegacyMusicBrainzAndLibraryFilesData(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	settingsDir := t.TempDir()
+	app := NewApp()
+	app.settingsPath = filepath.Join(settingsDir, "settings.json")
+	app.settingsLoaded = true
+	app.settings = normalizeAppSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled:              boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryEnabled: boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryLimit:   10,
+	})
+
+	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
+	app.activeLibraryRoots = roots
+
+	legacyLibraryPath := filepath.Join(settingsDir, legacyLibraryFilesDatabaseFileName)
+	legacyMusicBrainzPath := filepath.Join(settingsDir, legacyMusicBrainzTagDatabaseFileName)
+	snapshot := libraryFilesDatabaseSnapshot{
+		Roots:        roots,
+		TotalEntries: 4,
+		TrackFiles: []LibraryIndexedFile{{
+			Name:         "01 Intro.flac",
+			Path:         fixture.trackOne,
+			RelativePath: "Library/Artist One/Album One/01 Intro.flac",
+			FolderPath:   "Library/Artist One/Album One",
+			RootPath:     fixture.rootOne,
+			RootName:     "Library",
+		}},
+		TextFiles: []LibraryIndexedFile{{
+			Name:         "notes.txt",
+			Path:         fixture.noteOne,
+			RelativePath: "Library/Artist One/Album One/notes.txt",
+			FolderPath:   "Library/Artist One/Album One",
+			RootPath:     fixture.rootOne,
+			RootName:     "Library",
+		}},
+		ImageFiles: []LibraryIndexedFile{{
+			Name:         "cover.jpg",
+			Path:         fixture.coverOne,
+			RelativePath: "Library/Artist One/Album One/cover.jpg",
+			FolderPath:   "Library/Artist One/Album One",
+			RootPath:     fixture.rootOne,
+			RootName:     "Library",
+		}},
+	}
+
+	if err := writeLibraryFilesDatabaseSnapshotToSQLite(legacyLibraryPath, snapshot); err != nil {
+		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite(legacy) error = %v", err)
+	}
+	if err := appendLibraryListenHistoryRecordToSQLite(legacyLibraryPath, libraryListenHistoryRecord{
+		TrackPath:   fixture.trackOne,
+		TrackName:   "Intro",
+		ArtistName:  "Artist One",
+		ReleaseName: "Album One",
+		ListenedAt:  123,
+	}, 10); err != nil {
+		t.Fatalf("appendLibraryListenHistoryRecordToSQLite(legacy) error = %v", err)
+	}
+	if err := savePlaylistTrackCacheRecordsToSQLite(legacyLibraryPath, []playlistTrackCacheRecord{{
+		TrackPath:  fixture.trackOne,
+		TrackName:  "Intro",
+		ArtistName: "Artist One",
+	}}); err != nil {
+		t.Fatalf("savePlaylistTrackCacheRecordsToSQLite(legacy) error = %v", err)
+	}
+
+	releaseID := "22222222-2222-4222-8222-222222222222"
+	store := newMusicBrainzTagDatabaseStore()
+	store.Tracks[fixture.trackOne] = musicBrainzTagTrackRecord{
+		Signature: trackTagsFileSignature{Size: 1, ModUnixNs: 2},
+		Title:     "Intro",
+		ReleaseID: releaseID,
+	}
+	store.Entities[musicBrainzTagEntityKey("release", releaseID)] = musicBrainzTagEntityRecord{
+		EntityType: "release",
+		MBID:       releaseID,
+		Title:      "Album One",
+	}
+	if err := writeMusicBrainzTagDatabaseStoreToSQLite(legacyMusicBrainzPath, store); err != nil {
+		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite(legacy) error = %v", err)
+	}
+
+	if got, want := app.libraryFilesDatabasePath(), app.musicBrainzTagDatabasePath(); got != want {
+		t.Fatalf("libraryFilesDatabasePath() = %q, want %q", got, want)
+	}
+	if got := filepath.Base(app.libraryFilesDatabasePath()); got != metadataDatabaseFileName {
+		t.Fatalf("metadata database file name = %q, want %q", got, metadataDatabaseFileName)
+	}
+
+	loadedSnapshot, ok := loadLibraryFilesDatabaseSnapshot(app.libraryFilesDatabasePath(), roots)
+	if !ok {
+		t.Fatal("loadLibraryFilesDatabaseSnapshot(metadata) = false, want true")
+	}
+	if loadedSnapshot.TotalEntries != snapshot.TotalEntries || len(loadedSnapshot.TrackFiles) != 1 || len(loadedSnapshot.TextFiles) != 1 || len(loadedSnapshot.ImageFiles) != 1 {
+		t.Fatalf("loaded migrated snapshot = %#v, want legacy counts preserved", loadedSnapshot)
+	}
+	if !musicBrainzTagDatabaseFileExists(app.metadataDatabasePath()) {
+		t.Fatalf("expected migrated metadata database at %q", app.metadataDatabasePath())
+	}
+
+	history := app.LoadListenHistoryPlaylist()
+	if len(history.TrackFiles) != 1 || history.TrackFiles[0].Path != fixture.trackOne || history.TrackFiles[0].CachedTrackTitle != "Intro" {
+		t.Fatalf("LoadListenHistoryPlaylist() after migration = %#v, want migrated history entry", history)
+	}
+
+	cacheByPath := loadPlaylistTrackCacheRecordsFromSQLite(app.libraryFilesDatabasePath(), []string{fixture.trackOne})
+	cacheRecord, ok := cacheByPath[fixture.trackOne]
+	if !ok || cacheRecord.TrackName != "Intro" || cacheRecord.ArtistName != "Artist One" {
+		t.Fatalf("playlist track cache after migration = %#v, want migrated cache for %q", cacheByPath, fixture.trackOne)
+	}
+
+	loadedStore := loadMusicBrainzTagDatabaseStore(app.musicBrainzTagDatabasePath())
+	loadedTrack, ok := loadedStore.Tracks[fixture.trackOne]
+	if !ok || loadedTrack.ReleaseID != releaseID || loadedTrack.Title != "Intro" {
+		t.Fatalf("loaded migrated MusicBrainz track = %#v, want release %q title Intro", loadedTrack, releaseID)
+	}
+	if loadedRelease, ok := loadedStore.Entities[musicBrainzTagEntityKey("release", releaseID)]; !ok || loadedRelease.Title != "Album One" {
+		t.Fatalf("loaded migrated MusicBrainz release = %#v, want Album One", loadedRelease)
+	}
+}

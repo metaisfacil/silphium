@@ -7,12 +7,18 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 const musicBrainzTagSQLiteDriverName = "sqlite"
+const musicBrainzTagMetaVersionKey = "musicbrainz_version"
+const libraryFilesMetaVersionKey = "library_version"
+const libraryFilesMetaTotalEntriesKey = "library_total_entries"
+
+var metadataDatabaseMigrationMu sync.Mutex
 
 var musicBrainzTagSQLiteSchemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS meta (
@@ -23,6 +29,24 @@ var musicBrainzTagSQLiteSchemaStatements = []string{
 		path TEXT PRIMARY KEY,
 		size INTEGER NOT NULL,
 		mod_unix_ns INTEGER NOT NULL,
+		title TEXT NOT NULL DEFAULT '',
+		track_artist TEXT NOT NULL DEFAULT '',
+		album_title TEXT NOT NULL DEFAULT '',
+		album_artist TEXT NOT NULL DEFAULT '',
+		date_text TEXT NOT NULL DEFAULT '',
+		record_label TEXT NOT NULL DEFAULT '',
+		catalog_number TEXT NOT NULL DEFAULT '',
+		track_number INTEGER NOT NULL DEFAULT 0,
+		track_total INTEGER NOT NULL DEFAULT 0,
+		disc_number INTEGER NOT NULL DEFAULT 0,
+		disc_total INTEGER NOT NULL DEFAULT 0,
+		duration_seconds REAL NOT NULL DEFAULT 0,
+		bit_rate INTEGER NOT NULL DEFAULT 0,
+		bit_depth INTEGER NOT NULL DEFAULT 0,
+		sample_rate INTEGER NOT NULL DEFAULT 0,
+		channels INTEGER NOT NULL DEFAULT 0,
+		file_size_bytes INTEGER NOT NULL DEFAULT 0,
+		recording_id TEXT NOT NULL DEFAULT '',
 		release_id TEXT NOT NULL DEFAULT '',
 		release_folder_path TEXT NOT NULL DEFAULT '',
 		last_scanned_unix_ns INTEGER NOT NULL DEFAULT 0
@@ -34,11 +58,24 @@ var musicBrainzTagSQLiteSchemaStatements = []string{
 		PRIMARY KEY (path, artist_id)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_track_scan_artist_ids_artist_id ON track_scan_artist_ids (artist_id)`,
+	`CREATE TABLE IF NOT EXISTS track_scan_album_artist_ids (
+		path TEXT NOT NULL,
+		artist_id TEXT NOT NULL,
+		position INTEGER NOT NULL,
+		PRIMARY KEY (path, artist_id)
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_track_scan_album_artist_ids_artist_id ON track_scan_album_artist_ids (artist_id)`,
 	`CREATE TABLE IF NOT EXISTS track_scan_artist_folders (
 		path TEXT NOT NULL,
 		folder_path TEXT NOT NULL,
 		position INTEGER NOT NULL,
 		PRIMARY KEY (path, folder_path)
+	)`,
+	`CREATE TABLE IF NOT EXISTS track_scan_genres (
+		path TEXT NOT NULL,
+		genre TEXT NOT NULL,
+		position INTEGER NOT NULL,
+		PRIMARY KEY (path, genre)
 	)`,
 	`CREATE TABLE IF NOT EXISTS entities (
 		entity_type TEXT NOT NULL,
@@ -68,7 +105,7 @@ func musicBrainzTagDatabaseFileExists(path string) bool {
 	return !info.IsDir()
 }
 
-func openMusicBrainzTagSQLite(path string) (*sql.DB, error) {
+func openMetadataSQLiteNoMigration(path string) (*sql.DB, error) {
 	directory := filepath.Dir(path)
 	if directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
@@ -88,6 +125,67 @@ func openMusicBrainzTagSQLite(path string) (*sql.DB, error) {
 	return database, nil
 }
 
+func ensureMetadataDatabaseMigrated(path string) error {
+	cleanPath := strings.TrimSpace(path)
+	if cleanPath == "" || musicBrainzTagDatabaseFileExists(cleanPath) {
+		return nil
+	}
+
+	metadataDatabaseMigrationMu.Lock()
+	defer metadataDatabaseMigrationMu.Unlock()
+
+	if musicBrainzTagDatabaseFileExists(cleanPath) {
+		return nil
+	}
+
+	directory := filepath.Dir(cleanPath)
+	legacyMusicBrainzPath := filepath.Join(directory, legacyMusicBrainzTagDatabaseFileName)
+	legacyLibraryPath := filepath.Join(directory, legacyLibraryFilesDatabaseFileName)
+	legacyMusicBrainzExists := legacyMusicBrainzPath != cleanPath && musicBrainzTagDatabaseFileExists(legacyMusicBrainzPath)
+	legacyLibraryExists := legacyLibraryPath != cleanPath && libraryFilesDatabaseFileExists(legacyLibraryPath)
+	if !legacyMusicBrainzExists && !legacyLibraryExists {
+		return nil
+	}
+
+	database, err := openMetadataSQLiteNoMigration(cleanPath)
+	if err != nil {
+		return err
+	}
+	if err := initializeMusicBrainzTagSQLite(database); err != nil {
+		database.Close()
+		return err
+	}
+	if err := initializeLibraryFilesSQLite(database); err != nil {
+		database.Close()
+		return err
+	}
+	if err := database.Close(); err != nil {
+		return err
+	}
+
+	if legacyMusicBrainzExists {
+		store, err := loadMusicBrainzTagDatabaseStoreFromLegacySQLite(legacyMusicBrainzPath)
+		if err != nil {
+			return err
+		}
+		if err := writeMusicBrainzTagDatabaseStoreToSQLite(cleanPath, store); err != nil {
+			return err
+		}
+	}
+
+	if legacyLibraryExists {
+		if err := migrateLegacyLibraryFilesDatabaseToMetadata(cleanPath, legacyLibraryPath); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func openMusicBrainzTagSQLite(path string) (*sql.DB, error) {
+	return openMetadataSQLiteNoMigration(path)
+}
+
 func configureMusicBrainzTagSQLite(database *sql.DB) error {
 	var journalMode string
 	if err := database.QueryRow(`PRAGMA journal_mode=WAL`).Scan(&journalMode); err != nil {
@@ -104,6 +202,31 @@ func configureMusicBrainzTagSQLite(database *sql.DB) error {
 func initializeMusicBrainzTagSQLite(database *sql.DB) error {
 	for _, statement := range musicBrainzTagSQLiteSchemaStatements {
 		if _, err := database.Exec(statement); err != nil {
+			return err
+		}
+	}
+
+	for _, statement := range []string{
+		`ALTER TABLE track_scans ADD COLUMN title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE track_scans ADD COLUMN track_artist TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE track_scans ADD COLUMN album_title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE track_scans ADD COLUMN album_artist TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE track_scans ADD COLUMN date_text TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE track_scans ADD COLUMN record_label TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE track_scans ADD COLUMN catalog_number TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE track_scans ADD COLUMN track_number INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN track_total INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN disc_number INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN disc_total INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN duration_seconds REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN bit_rate INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN bit_depth INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN sample_rate INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN channels INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN file_size_bytes INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE track_scans ADD COLUMN recording_id TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := database.Exec(statement); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
 			return err
 		}
 	}
@@ -148,6 +271,10 @@ func sortedMusicBrainzTagEntityKeys(store musicBrainzTagDatabaseStore) []string 
 }
 
 func loadMusicBrainzTagDatabaseStore(databasePath string) musicBrainzTagDatabaseStore {
+	if err := ensureMetadataDatabaseMigrated(databasePath); err != nil {
+		return newMusicBrainzTagDatabaseStore()
+	}
+
 	if musicBrainzTagDatabaseFileExists(databasePath) {
 		if store, err := loadMusicBrainzTagDatabaseStoreFromSQLite(databasePath); err == nil {
 			return store
@@ -159,7 +286,7 @@ func loadMusicBrainzTagDatabaseStore(databasePath string) musicBrainzTagDatabase
 
 func loadMusicBrainzTagDatabaseStoreFromSQLite(path string) (musicBrainzTagDatabaseStore, error) {
 	store := newMusicBrainzTagDatabaseStore()
-	database, err := openMusicBrainzTagSQLite(path)
+	database, err := openMetadataSQLiteNoMigration(path)
 	if err != nil {
 		return store, err
 	}
@@ -175,7 +302,7 @@ func loadMusicBrainzTagDatabaseStoreFromSQLite(path string) (musicBrainzTagDatab
 func loadMusicBrainzTagDatabaseStoreFromSQLiteConnection(database *sql.DB) (musicBrainzTagDatabaseStore, error) {
 	store := newMusicBrainzTagDatabaseStore()
 
-	trackRows, err := database.Query(`SELECT path, size, mod_unix_ns, release_id, release_folder_path, last_scanned_unix_ns FROM track_scans ORDER BY path`)
+	trackRows, err := database.Query(`SELECT path, size, mod_unix_ns, title, track_artist, album_title, album_artist, date_text, record_label, catalog_number, track_number, track_total, disc_number, disc_total, duration_seconds, bit_rate, bit_depth, sample_rate, channels, file_size_bytes, recording_id, release_id, release_folder_path, last_scanned_unix_ns FROM track_scans ORDER BY path`)
 	if err != nil {
 		return store, err
 	}
@@ -183,10 +310,28 @@ func loadMusicBrainzTagDatabaseStoreFromSQLiteConnection(database *sql.DB) (musi
 		var path string
 		var size int64
 		var modUnixNs int64
+		var title string
+		var trackArtist string
+		var albumTitle string
+		var albumArtist string
+		var dateText string
+		var recordLabel string
+		var catalogNumber string
+		var trackNumber int
+		var trackTotal int
+		var discNumber int
+		var discTotal int
+		var durationSeconds float64
+		var bitRate int
+		var bitDepth int
+		var sampleRate int
+		var channels int
+		var fileSizeBytes int64
+		var recordingID string
 		var releaseID string
 		var releaseFolderPath string
 		var lastScannedUnixNs int64
-		if err := trackRows.Scan(&path, &size, &modUnixNs, &releaseID, &releaseFolderPath, &lastScannedUnixNs); err != nil {
+		if err := trackRows.Scan(&path, &size, &modUnixNs, &title, &trackArtist, &albumTitle, &albumArtist, &dateText, &recordLabel, &catalogNumber, &trackNumber, &trackTotal, &discNumber, &discTotal, &durationSeconds, &bitRate, &bitDepth, &sampleRate, &channels, &fileSizeBytes, &recordingID, &releaseID, &releaseFolderPath, &lastScannedUnixNs); err != nil {
 			trackRows.Close()
 			return store, err
 		}
@@ -196,6 +341,24 @@ func loadMusicBrainzTagDatabaseStoreFromSQLiteConnection(database *sql.DB) (musi
 				Size:      size,
 				ModUnixNs: modUnixNs,
 			},
+			Title:             title,
+			TrackArtist:       trackArtist,
+			AlbumTitle:        albumTitle,
+			AlbumArtist:       albumArtist,
+			Date:              dateText,
+			RecordLabel:       recordLabel,
+			CatalogNumber:     catalogNumber,
+			TrackNumber:       trackNumber,
+			TrackTotal:        trackTotal,
+			DiscNumber:        discNumber,
+			DiscTotal:         discTotal,
+			DurationSeconds:   durationSeconds,
+			BitRate:           bitRate,
+			BitDepth:          bitDepth,
+			SampleRate:        sampleRate,
+			Channels:          channels,
+			FileSizeBytes:     fileSizeBytes,
+			RecordingID:       recordingID,
 			ReleaseID:         releaseID,
 			ReleaseFolderPath: releaseFolderPath,
 			LastScannedAt:     timeFromUnixNanoValue(lastScannedUnixNs),
@@ -233,6 +396,32 @@ func loadMusicBrainzTagDatabaseStoreFromSQLiteConnection(database *sql.DB) (musi
 	}
 	trackArtistRows.Close()
 
+	trackAlbumArtistRows, err := database.Query(`SELECT path, artist_id FROM track_scan_album_artist_ids ORDER BY path, position`)
+	if err != nil {
+		return store, err
+	}
+	for trackAlbumArtistRows.Next() {
+		var path string
+		var artistID string
+		if err := trackAlbumArtistRows.Scan(&path, &artistID); err != nil {
+			trackAlbumArtistRows.Close()
+			return store, err
+		}
+
+		record, exists := store.Tracks[path]
+		if !exists {
+			continue
+		}
+
+		record.AlbumArtistIDs = append(record.AlbumArtistIDs, artistID)
+		store.Tracks[path] = record
+	}
+	if err := trackAlbumArtistRows.Err(); err != nil {
+		trackAlbumArtistRows.Close()
+		return store, err
+	}
+	trackAlbumArtistRows.Close()
+
 	trackFolderRows, err := database.Query(`SELECT path, folder_path FROM track_scan_artist_folders ORDER BY path, position`)
 	if err != nil {
 		return store, err
@@ -258,6 +447,32 @@ func loadMusicBrainzTagDatabaseStoreFromSQLiteConnection(database *sql.DB) (musi
 		return store, err
 	}
 	trackFolderRows.Close()
+
+	trackGenreRows, err := database.Query(`SELECT path, genre FROM track_scan_genres ORDER BY path, position`)
+	if err != nil {
+		return store, err
+	}
+	for trackGenreRows.Next() {
+		var path string
+		var genre string
+		if err := trackGenreRows.Scan(&path, &genre); err != nil {
+			trackGenreRows.Close()
+			return store, err
+		}
+
+		record, exists := store.Tracks[path]
+		if !exists {
+			continue
+		}
+
+		record.Genres = append(record.Genres, genre)
+		store.Tracks[path] = record
+	}
+	if err := trackGenreRows.Err(); err != nil {
+		trackGenreRows.Close()
+		return store, err
+	}
+	trackGenreRows.Close()
 
 	entityRows, err := database.Query(`SELECT entity_type, mbid, title, last_fetched_unix_ns, last_attempt_unix_ns, last_error FROM entities ORDER BY entity_type, mbid`)
 	if err != nil {
@@ -326,10 +541,45 @@ func loadMusicBrainzTagDatabaseStoreFromSQLiteConnection(database *sql.DB) (musi
 	return normalizeMusicBrainzTagDatabaseStore(store), nil
 }
 
+func loadMusicBrainzTagDatabaseStoreFromLegacySQLite(path string) (musicBrainzTagDatabaseStore, error) {
+	store := newMusicBrainzTagDatabaseStore()
+	database, err := openMetadataSQLiteNoMigration(path)
+	if err != nil {
+		return store, err
+	}
+	defer database.Close()
+
+	if err := initializeMusicBrainzTagSQLite(database); err != nil {
+		return store, err
+	}
+
+	return loadMusicBrainzTagDatabaseStoreFromSQLiteConnection(database)
+}
+
 func musicBrainzTagTrackRecordsEqual(left musicBrainzTagTrackRecord, right musicBrainzTagTrackRecord) bool {
 	return left.Signature == right.Signature &&
+		left.Title == right.Title &&
+		left.TrackArtist == right.TrackArtist &&
+		left.AlbumTitle == right.AlbumTitle &&
+		left.AlbumArtist == right.AlbumArtist &&
+		left.Date == right.Date &&
+		left.RecordLabel == right.RecordLabel &&
+		left.CatalogNumber == right.CatalogNumber &&
+		stringSlicesEqual(left.Genres, right.Genres) &&
+		left.TrackNumber == right.TrackNumber &&
+		left.TrackTotal == right.TrackTotal &&
+		left.DiscNumber == right.DiscNumber &&
+		left.DiscTotal == right.DiscTotal &&
+		left.DurationSeconds == right.DurationSeconds &&
+		left.BitRate == right.BitRate &&
+		left.BitDepth == right.BitDepth &&
+		left.SampleRate == right.SampleRate &&
+		left.Channels == right.Channels &&
+		left.FileSizeBytes == right.FileSizeBytes &&
+		left.RecordingID == right.RecordingID &&
 		left.ReleaseID == right.ReleaseID &&
 		stringSlicesEqual(left.ArtistIDs, right.ArtistIDs) &&
+		stringSlicesEqual(left.AlbumArtistIDs, right.AlbumArtistIDs) &&
 		left.ReleaseFolderPath == right.ReleaseFolderPath &&
 		stringSlicesEqual(left.ArtistFolderPaths, right.ArtistFolderPaths) &&
 		timeToUnixNanoValue(left.LastScannedAt) == timeToUnixNanoValue(right.LastScannedAt)
@@ -348,7 +598,9 @@ func musicBrainzTagEntityRecordsEqual(left musicBrainzTagEntityRecord, right mus
 func deleteMusicBrainzTagTrackRow(transaction *sql.Tx, path string) error {
 	for _, statement := range []string{
 		`DELETE FROM track_scan_artist_ids WHERE path = ?`,
+		`DELETE FROM track_scan_album_artist_ids WHERE path = ?`,
 		`DELETE FROM track_scan_artist_folders WHERE path = ?`,
+		`DELETE FROM track_scan_genres WHERE path = ?`,
 		`DELETE FROM track_scans WHERE path = ?`,
 	} {
 		if _, err := transaction.Exec(statement, path); err != nil {
@@ -360,20 +612,57 @@ func deleteMusicBrainzTagTrackRow(transaction *sql.Tx, path string) error {
 }
 
 func upsertMusicBrainzTagTrackRow(transaction *sql.Tx, path string, record musicBrainzTagTrackRecord) error {
+	record = normalizeMusicBrainzTagTrackRecord(record)
 	if _, err := transaction.Exec(
-		`INSERT INTO track_scans(path, size, mod_unix_ns, release_id, release_folder_path, last_scanned_unix_ns)
-		 VALUES (?, ?, ?, ?, ?, ?)
+		`INSERT INTO track_scans(path, size, mod_unix_ns, title, track_artist, album_title, album_artist, date_text, record_label, catalog_number, track_number, track_total, disc_number, disc_total, duration_seconds, bit_rate, bit_depth, sample_rate, channels, file_size_bytes, recording_id, release_id, release_folder_path, last_scanned_unix_ns)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(path) DO UPDATE SET
 		 	size = excluded.size,
 		 	mod_unix_ns = excluded.mod_unix_ns,
+		 	title = excluded.title,
+		 	track_artist = excluded.track_artist,
+		 	album_title = excluded.album_title,
+		 	album_artist = excluded.album_artist,
+		 	date_text = excluded.date_text,
+		 	record_label = excluded.record_label,
+		 	catalog_number = excluded.catalog_number,
+		 	track_number = excluded.track_number,
+		 	track_total = excluded.track_total,
+		 	disc_number = excluded.disc_number,
+		 	disc_total = excluded.disc_total,
+		 	duration_seconds = excluded.duration_seconds,
+		 	bit_rate = excluded.bit_rate,
+		 	bit_depth = excluded.bit_depth,
+		 	sample_rate = excluded.sample_rate,
+		 	channels = excluded.channels,
+		 	file_size_bytes = excluded.file_size_bytes,
+		 	recording_id = excluded.recording_id,
 		 	release_id = excluded.release_id,
 		 	release_folder_path = excluded.release_folder_path,
 		 	last_scanned_unix_ns = excluded.last_scanned_unix_ns`,
 		path,
 		record.Signature.Size,
 		record.Signature.ModUnixNs,
-		sanitizeMusicBrainzID(record.ReleaseID),
-		normalizeMusicBrainzTagFolderPath(record.ReleaseFolderPath),
+		record.Title,
+		record.TrackArtist,
+		record.AlbumTitle,
+		record.AlbumArtist,
+		record.Date,
+		record.RecordLabel,
+		record.CatalogNumber,
+		record.TrackNumber,
+		record.TrackTotal,
+		record.DiscNumber,
+		record.DiscTotal,
+		record.DurationSeconds,
+		record.BitRate,
+		record.BitDepth,
+		record.SampleRate,
+		record.Channels,
+		record.FileSizeBytes,
+		record.RecordingID,
+		record.ReleaseID,
+		record.ReleaseFolderPath,
 		timeToUnixNanoValue(record.LastScannedAt),
 	); err != nil {
 		return err
@@ -388,11 +677,29 @@ func upsertMusicBrainzTagTrackRow(transaction *sql.Tx, path string, record music
 		}
 	}
 
+	if _, err := transaction.Exec(`DELETE FROM track_scan_album_artist_ids WHERE path = ?`, path); err != nil {
+		return err
+	}
+	for position, artistID := range sanitizeMusicBrainzIDs(record.AlbumArtistIDs) {
+		if _, err := transaction.Exec(`INSERT INTO track_scan_album_artist_ids(path, artist_id, position) VALUES (?, ?, ?)`, path, artistID, position); err != nil {
+			return err
+		}
+	}
+
 	if _, err := transaction.Exec(`DELETE FROM track_scan_artist_folders WHERE path = ?`, path); err != nil {
 		return err
 	}
 	for position, folderPath := range normalizeMusicBrainzTagFolderPaths(record.ArtistFolderPaths) {
 		if _, err := transaction.Exec(`INSERT INTO track_scan_artist_folders(path, folder_path, position) VALUES (?, ?, ?)`, path, folderPath, position); err != nil {
+			return err
+		}
+	}
+
+	if _, err := transaction.Exec(`DELETE FROM track_scan_genres WHERE path = ?`, path); err != nil {
+		return err
+	}
+	for position, genre := range normalizeMusicBrainzTrackGenres(record.Genres) {
+		if _, err := transaction.Exec(`INSERT INTO track_scan_genres(path, genre, position) VALUES (?, ?, ?)`, path, genre, position); err != nil {
 			return err
 		}
 	}
@@ -453,6 +760,10 @@ func upsertMusicBrainzTagEntityRow(transaction *sql.Tx, entityKey string, record
 }
 
 func writeMusicBrainzTagDatabaseStoreToSQLite(path string, store musicBrainzTagDatabaseStore) error {
+	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+		return err
+	}
+
 	normalizedStore := normalizeMusicBrainzTagDatabaseStore(store)
 	database, err := openMusicBrainzTagSQLite(path)
 	if err != nil {
@@ -481,7 +792,9 @@ func writeMusicBrainzTagDatabaseStoreToSQLite(path string, store musicBrainzTagD
 		`DELETE FROM entities WHERE entity_type NOT IN ('artist', 'release')`,
 		`DELETE FROM entity_tags WHERE NOT EXISTS (SELECT 1 FROM entities WHERE entities.entity_type = entity_tags.entity_type AND entities.mbid = entity_tags.mbid)`,
 		`DELETE FROM track_scan_artist_ids WHERE NOT EXISTS (SELECT 1 FROM track_scans WHERE track_scans.path = track_scan_artist_ids.path)`,
+		`DELETE FROM track_scan_album_artist_ids WHERE NOT EXISTS (SELECT 1 FROM track_scans WHERE track_scans.path = track_scan_album_artist_ids.path)`,
 		`DELETE FROM track_scan_artist_folders WHERE NOT EXISTS (SELECT 1 FROM track_scans WHERE track_scans.path = track_scan_artist_folders.path)`,
+		`DELETE FROM track_scan_genres WHERE NOT EXISTS (SELECT 1 FROM track_scans WHERE track_scans.path = track_scan_genres.path)`,
 	} {
 		if _, err := transaction.Exec(statement); err != nil {
 			return err
@@ -489,9 +802,10 @@ func writeMusicBrainzTagDatabaseStoreToSQLite(path string, store musicBrainzTagD
 	}
 
 	if _, err := transaction.Exec(
-		`INSERT INTO meta(key, value) VALUES ('version', ?)
+		`INSERT INTO meta(key, value) VALUES (?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value
 		 WHERE meta.value <> excluded.value`,
+		musicBrainzTagMetaVersionKey,
 		strconv.Itoa(musicBrainzTagDatabaseVersion),
 	); err != nil {
 		return err

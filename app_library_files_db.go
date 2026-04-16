@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const libraryFilesDatabaseFileName = "silphium.library.files.sqlite3"
+const libraryFilesDatabaseFileName = legacyLibraryFilesDatabaseFileName
 
 type libraryFilesDatabaseSnapshot struct {
 	Roots        []libraryRootConfig
@@ -119,8 +119,7 @@ func (a *App) localLibraryFilesDatabaseListenHistoryLimit() int {
 }
 
 func (a *App) libraryFilesDatabasePath() string {
-	settingsPath := a.ensureSettingsPath()
-	return filepath.Join(filepath.Dir(settingsPath), libraryFilesDatabaseFileName)
+	return a.metadataDatabasePath()
 }
 
 func (a *App) snapshotLibraryFilesDatabaseState() (libraryFilesDatabaseSnapshot, bool) {

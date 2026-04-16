@@ -87,6 +87,8 @@ describe('settings normalization', () => {
             libraryPath: ' /music/library ',
             releaseDepth: 2,
             ffmpegPath: ' ffmpeg ',
+            librarySharingEnabled: true,
+            librarySharingPort: 5005,
             listenBrainzUserToken: 'token',
             lastFmApiKey: ' api-key ',
             lastFmApiSecret: ' api-secret ',
@@ -127,6 +129,8 @@ describe('settings normalization', () => {
         expect(normalized.libraryFolders).toEqual([{ path: '/music/library', label: '', releaseDepth: 2 }]);
         expect(normalized.libraryPath).toBe('/music/library');
         expect(normalized.ffmpegPath).toBe('ffmpeg');
+        expect(normalized.librarySharingEnabled).toBe(true);
+        expect(normalized.librarySharingPort).toBe(5005);
         expect(normalized.lastFmApiKey).toBe('api-key');
         expect(normalized.lastFmApiSecret).toBe('api-secret');
         expect(normalized.lastFmSessionKey).toBe('session-key');
@@ -170,6 +174,7 @@ describe('settings normalization', () => {
                 { path: '/music/library', label: ' Main ', releaseDepth: 3 },
                 { path: ' /MUSIC/LIBRARY ', label: 'Duplicate', releaseDepth: 99 },
             ],
+            librarySharingPort: -1,
             scrobbleFilterMode: 'invalid',
             scrobbleFolders: [' /music/skip ', '/music/keep', '/music/keep '],
             musicBrainzRequestRateMs: -1,
@@ -192,6 +197,8 @@ describe('settings normalization', () => {
         } as unknown as Parameters<typeof normalizeAppSettings>[0] & { scrobbleFolders: string[] });
 
         expect(normalized.libraryFolders).toEqual([{ path: '/music/library', label: 'Main', releaseDepth: 3 }]);
+        expect(normalized.librarySharingEnabled).toBe(false);
+        expect(normalized.librarySharingPort).toBe(defaultAppSettings.librarySharingPort);
         expect(normalized.scrobbleFilterMode).toBe('blacklist');
         expect(normalized.scrobbleRules).toEqual([
             { field: 'path', operator: 'starts_with', value: '/music/skip' },
@@ -251,6 +258,8 @@ describe('settings normalization', () => {
     it('uses default app settings when optional values are omitted entirely', () => {
         const normalized = normalizeAppSettings({});
 
+        expect(normalized.librarySharingEnabled).toBe(false);
+        expect(normalized.librarySharingPort).toBe(defaultAppSettings.librarySharingPort);
         expect(normalized.musicBrainzRequestRateMs).toBe(0);
         expect(normalized.listenBrainzRequestRateMs).toBe(0);
         expect(normalized.audio).toEqual(defaultAppSettings.audio);
@@ -259,6 +268,19 @@ describe('settings normalization', () => {
         expect(normalized.musicBrainzTagStaleDays).toBe(defaultMusicBrainzTagStaleDays);
         expect(normalized.customSendToActions).toEqual([]);
         expect(normalized.visualizerMode).toBe(defaultAppSettings.visualizerMode);
+    });
+
+    it('normalizes remote library folders in settings payloads', () => {
+        const normalized = normalizeAppSettings({
+            libraryFolders: [
+                { path: '', kind: 'remote', host: ' http://example.com:5005/share ', port: 0, label: ' Friend ', releaseDepth: 2 },
+            ],
+        });
+
+        expect(normalized.libraryFolders).toEqual([
+            { path: 'silphium-remote://example.com:5005', kind: 'remote', host: 'example.com', port: 5005, label: 'Friend', releaseDepth: 2 },
+        ]);
+        expect(normalized.libraryPath).toBe('silphium-remote://example.com:5005');
     });
 
     it('preserves disabled local library database settings', () => {

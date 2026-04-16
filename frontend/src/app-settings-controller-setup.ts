@@ -11,10 +11,37 @@ import type {
     Track,
 } from './types/app-types';
 import type { SettingsControllerState } from './controllers/settings-controller-types';
-import { normalizeLibraryFolders } from './utils/main-helpers';
+import { normalizeLibraryFolderKind, normalizeLibraryFolders } from './utils/main-helpers';
 import { normalizeAppSettings } from './utils/settings-normalization';
 
+const defaultOpenSubsonicPort = 4040;
+
+const sameLibraryFolder = (left: AppLibraryFolder, right: AppLibraryFolder): boolean => (
+    (left.path || '') === (right.path || '')
+    && (left.label || '') === (right.label || '')
+    && (left.releaseDepth || 0) === (right.releaseDepth || 0)
+    && (left.kind || 'local') === (right.kind || 'local')
+    && (left.host || '') === (right.host || '')
+    && (left.port || 0) === (right.port || 0)
+    && (left.password || '') === (right.password || '')
+    && (left.passwordHash || '') === (right.passwordHash || '')
+);
+
+const libraryFoldersChanged = (left: AppLibraryFolder[], right: AppLibraryFolder[]): boolean => {
+    const normalizedLeft = normalizeLibraryFolders(left);
+    const normalizedRight = normalizeLibraryFolders(right);
+    if (normalizedLeft.length !== normalizedRight.length) {
+        return true;
+    }
+
+    return normalizedLeft.some((folder, index) => !sameLibraryFolder(folder, normalizedRight[index]));
+};
+
 const defaultAudioOutputDeviceId = 'default';
+
+const filterLocalLibraryFolders = (folders: AppLibraryFolder[]): AppLibraryFolder[] => (
+    folders.filter((folder) => normalizeLibraryFolderKind(folder.kind) !== 'remote')
+);
 
 const resolveAvailableAudioOutputDevice = (
     requestedDevice: string,
@@ -46,6 +73,7 @@ export interface AppSettingsControllerSetupContext {
     currentSettings: AppSettings;
     currentMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress;
     availableAudioOutputDevices: AudioOutputDevice[];
+    getMusicBrainzTagWorkerProgress: () => Promise<MusicBrainzTagWorkerProgress>;
     currentTrackIndex: number;
     tracks: Track[];
     ffmpegConfigurationRequired: boolean;
@@ -96,6 +124,12 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         localLibraryFilesDatabaseListenHistoryEnabled: boolean;
         localLibraryFilesDatabaseListenHistoryLimit: number;
         ffmpegPath: string;
+        remoteLibraryTranscodingEnabled: boolean;
+        remoteLibraryTranscodingBitrateKbps: number;
+        librarySharingEnabled: boolean;
+        librarySharingPort: number;
+        librarySharingPassword?: string;
+        librarySharingPasswordHash?: string;
         listenBrainzUserToken: string;
         lastFmApiKey: string;
         lastFmApiSecret: string;
@@ -132,6 +166,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             throw new Error(context.missingFFmpegMessage(ffmpegStatus));
         }
 
+        const shouldRescanLibrary = libraryFoldersChanged(context.currentSettings.libraryFolders, values.libraryFolders);
         const normalizedLibraryFolders = normalizeLibraryFolders(values.libraryFolders);
         const primaryLibraryFolder = normalizedLibraryFolders[0];
         const savedSettings = await context.saveSettings({
@@ -142,6 +177,16 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             localLibraryFilesDatabaseListenHistoryEnabled: values.localLibraryFilesDatabaseListenHistoryEnabled,
             localLibraryFilesDatabaseListenHistoryLimit: values.localLibraryFilesDatabaseListenHistoryLimit,
             ffmpegPath: values.ffmpegPath,
+            openSubsonicEnabled: values.librarySharingEnabled,
+            openSubsonicPort: values.librarySharingPort,
+            openSubsonicApiKey: values.librarySharingPassword || '',
+            openSubsonicApiKeyHash: values.librarySharingPasswordHash || '',
+            remoteLibraryTranscodingEnabled: false,
+            remoteLibraryTranscodingBitrateKbps: 192,
+            librarySharingEnabled: values.librarySharingEnabled,
+            librarySharingPort: values.librarySharingPort,
+            librarySharingPassword: values.librarySharingPassword || '',
+            librarySharingPasswordHash: values.librarySharingPasswordHash || '',
             listenBrainzUserToken: values.listenBrainzUserToken,
             lastFmApiKey: values.lastFmApiKey,
             lastFmApiSecret: values.lastFmApiSecret,
@@ -210,6 +255,11 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
 
         await context.completeStartupIfReady();
         void context.refreshListenBrainzFeedbackForCurrentTrack(true);
+        if (shouldRescanLibrary) {
+            void context.scanConfiguredLibraryFolders().catch((error: unknown) => {
+                console.error(error);
+            });
+        }
     };
 
     return createSettingsController({
@@ -220,12 +270,18 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         isMac: context.isMacRuntime,
         isLinux: context.isLinuxRuntime,
         getValues: () => ({
-            libraryFolders: context.currentSettings.libraryFolders,
+            libraryFolders: filterLocalLibraryFolders(context.currentSettings.libraryFolders),
             localLibraryFilesDatabaseEnabled: context.currentSettings.localLibraryFilesDatabaseEnabled,
             localLibraryFilesDatabaseLoadOnStartup: context.currentSettings.localLibraryFilesDatabaseLoadOnStartup,
             localLibraryFilesDatabaseListenHistoryEnabled: context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled,
             localLibraryFilesDatabaseListenHistoryLimit: context.currentSettings.localLibraryFilesDatabaseListenHistoryLimit,
             ffmpegPath: context.currentSettings.ffmpegPath,
+            remoteLibraryTranscodingEnabled: false,
+            remoteLibraryTranscodingBitrateKbps: 192,
+            librarySharingEnabled: !!context.currentSettings.openSubsonicEnabled,
+            librarySharingPort: context.currentSettings.openSubsonicPort || defaultOpenSubsonicPort,
+            librarySharingPassword: context.currentSettings.openSubsonicApiKey || '',
+            librarySharingPasswordHash: context.currentSettings.openSubsonicApiKeyHash || '',
             listenBrainzUserToken: context.currentSettings.listenBrainzUserToken,
             lastFmApiKey: context.currentSettings.lastFmApiKey,
             lastFmApiSecret: context.currentSettings.lastFmApiSecret,
@@ -259,6 +315,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             musicBrainzTagWorkerProgress: context.currentMusicBrainzTagWorkerProgress,
             keyboardShortcuts: context.currentSettings.keyboardShortcuts,
         }),
+        getMusicBrainzTagWorkerProgress: async () => await context.getMusicBrainzTagWorkerProgress(),
         selectLibraryFolder: context.selectLibraryFolder,
         selectPlaylistFile: context.selectPlaylistFile,
         save: saveNormalizedSettings,

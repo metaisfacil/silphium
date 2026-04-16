@@ -15,6 +15,7 @@ type AppControllerSetupScope = RuntimeScope<
     | 'currentSettings'
     | 'currentMusicBrainzTagWorkerProgress'
     | 'availableAudioOutputDevices'
+    | 'getMusicBrainzTagWorkerProgress'
     | 'currentTrackIndex'
     | 'tracks'
     | 'textFiles'
@@ -218,6 +219,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'logSendToFrontend'
     | 'runCustomSendToAction'
     | 'suppressTrackMetaClicks'
+    | 'openErrorModal'
     | 'closeErrorModal'
     | 'closeQueueConfirmModal'
     | 'closeTextFileModal'
@@ -291,6 +293,7 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
     set currentMusicBrainzTagWorkerProgress(value) {
         scope.currentMusicBrainzTagWorkerProgress = value;
     },
+    getMusicBrainzTagWorkerProgress: async () => await scope.getMusicBrainzTagWorkerProgress(),
     get availableAudioOutputDevices() {
         return scope.availableAudioOutputDevices;
     },
@@ -584,6 +587,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         logSendToFrontend: scope.logSendToFrontend,
         runCustomSendToAction: scope.runCustomSendToAction,
         suppressTrackMetaClicks: scope.suppressTrackMetaClicks,
+        openErrorModal: scope.openErrorModal,
         closeErrorModal: scope.closeErrorModal,
         closeQueueConfirmModal: scope.closeQueueConfirmModal,
         closeTextFileModal: scope.closeTextFileModal,

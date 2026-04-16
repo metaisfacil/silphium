@@ -1,7 +1,7 @@
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
 import type { AudioOutputDevice, CoverArtPrioritySource, MusicBrainzTagWorkerProgress, ScrobbleRuleOperator } from '../types/app-types';
-import { normalizeLibraryFolders, normalizeScrobbleRules } from '../utils/main-helpers';
 import { normalizeLissajousScale } from '../utils/settings-normalization';
+import { defaultLibrarySharingPort, normalizeLibraryFolders, normalizeLibrarySharingPort, normalizeScrobbleRules } from '../utils/main-helpers';
 import { normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
 import {
     type DialogTimers,
@@ -121,6 +121,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsSendToActionCancel,
         settingsSendToActionConfirm,
         settingsFFmpegPath,
+        settingsLibrarySharingEnabled,
+        settingsLibrarySharingPort,
+        settingsLibrarySharingPassword,
         settingsLocalLibraryFilesDatabaseEnabled,
         settingsLocalLibraryFilesDatabaseLoadOnStartup,
         settingsLocalLibraryFilesDatabaseListenHistoryEnabled,
@@ -180,6 +183,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         ? settingsTabs.parentElement
         : null;
     const statusFadeDelayMs = 5000;
+    const musicBrainzTagWorkerRefreshIntervalMs = 2000;
     const showMinimizeToTrayOption = options.isWindows ?? true;
     const isWindowsRuntime = options.isWindows ?? false;
     const isMacRuntime = options.isMac ?? false;
@@ -189,6 +193,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let settingsStatusFadeTimer: number | undefined;
     let shortcutAccordionHideTimer: number | undefined;
     let coverArtPriorityAccordionHideTimer: number | undefined;
+    let musicBrainzTagWorkerRefreshHandle: number | undefined;
+    let musicBrainzTagWorkerRefreshInFlight = false;
+    let librarySharingPasswordHash = '';
     const libraryFolderRepeatClickWindowMs = 400;
 
     // Dialog state
@@ -285,6 +292,45 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             controllerState.musicBrainzTagWorkerProgress,
             mbProgressEta,
         );
+    };
+
+    const stopMusicBrainzTagWorkerProgressRefresh = (): void => {
+        if (musicBrainzTagWorkerRefreshHandle === undefined) {
+            return;
+        }
+
+        window.clearInterval(musicBrainzTagWorkerRefreshHandle);
+        musicBrainzTagWorkerRefreshHandle = undefined;
+    };
+
+    const refreshMusicBrainzTagWorkerProgressFromBackend = async (): Promise<void> => {
+        if (options.getMusicBrainzTagWorkerProgress === undefined) {
+            return;
+        }
+
+        if (settingsModal.hidden || musicBrainzTagWorkerRefreshInFlight) {
+            return;
+        }
+
+        musicBrainzTagWorkerRefreshInFlight = true;
+        try {
+            renderMusicBrainzTagWorkerProgress(await options.getMusicBrainzTagWorkerProgress());
+        } catch (error) {
+            console.debug(error);
+        } finally {
+            musicBrainzTagWorkerRefreshInFlight = false;
+        }
+    };
+
+    const startMusicBrainzTagWorkerProgressRefresh = (): void => {
+        if (options.getMusicBrainzTagWorkerProgress === undefined || musicBrainzTagWorkerRefreshHandle !== undefined) {
+            return;
+        }
+
+        void refreshMusicBrainzTagWorkerProgressFromBackend();
+        musicBrainzTagWorkerRefreshHandle = window.setInterval(() => {
+            void refreshMusicBrainzTagWorkerProgressFromBackend();
+        }, musicBrainzTagWorkerRefreshIntervalMs);
     };
 
     const {
@@ -559,6 +605,12 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         localLibraryFilesDatabaseListenHistoryEnabled: settingsLocalLibraryFilesDatabaseListenHistoryEnabled.checked,
         localLibraryFilesDatabaseListenHistoryLimit: Math.max(0, Number.parseInt(settingsLocalLibraryFilesDatabaseListenHistoryLimit.value.trim(), 10) || 0),
         ffmpegPath: settingsFFmpegPath.value,
+        remoteLibraryTranscodingEnabled: false,
+        remoteLibraryTranscodingBitrateKbps: 192,
+        librarySharingEnabled: settingsLibrarySharingEnabled.checked,
+        librarySharingPort: normalizeLibrarySharingPort(settingsLibrarySharingPort.value || defaultLibrarySharingPort),
+        librarySharingPassword: settingsLibrarySharingPassword.value,
+        librarySharingPasswordHash: librarySharingPasswordHash,
         listenBrainzUserToken: settingsListenBrainzToken.value,
         lastFmApiKey: settingsLastFmApiKey.value,
         lastFmApiSecret: settingsLastFmApiSecret.value,
@@ -679,6 +731,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     };
 
     const finalizeClose = (): void => {
+        stopMusicBrainzTagWorkerProgressRefresh();
         doCloseLibraryDepthDialog(null, false, true);
         doCloseScrobbleRuleDialog(null, false, true);
         doCloseSendToActionDialog(null, false, true);
@@ -727,6 +780,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             ? String(values.localLibraryFilesDatabaseListenHistoryLimit)
             : '0';
         settingsFFmpegPath.value = values.ffmpegPath || '';
+        settingsLibrarySharingEnabled.checked = !!values.librarySharingEnabled;
+        settingsLibrarySharingPort.value = values.librarySharingPort && values.librarySharingPort > 0 ? String(values.librarySharingPort) : String(defaultLibrarySharingPort);
+        settingsLibrarySharingPassword.value = values.librarySharingPassword || '';
+        librarySharingPasswordHash = values.librarySharingPasswordHash || '';
         settingsListenBrainzToken.value = values.listenBrainzUserToken || '';
         settingsLastFmApiKey.value = values.lastFmApiKey || '';
         settingsLastFmApiSecret.value = values.lastFmApiSecret || '';
@@ -792,6 +849,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         setCoverArtPriorityAccordionExpanded(false, false);
         setActiveTab(initialTab);
         settingsModal.hidden = false;
+        startMusicBrainzTagWorkerProgressRefresh();
         window.requestAnimationFrame(() => {
             settingsModal.classList.add('is-visible');
             updateTabScrollControls();
@@ -821,7 +879,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
         if (primaryTab === 'network') {
-            settingsListenBrainzToken.focus();
+            settingsLibrarySharingEnabled.focus();
             return;
         }
         if (primaryTab === 'playlists') {

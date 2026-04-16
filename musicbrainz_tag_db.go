@@ -7,15 +7,39 @@ import (
 	"time"
 )
 
-const musicBrainzTagDatabaseFileName = "silphium.musicbrainz.tags.sqlite3"
-const musicBrainzTagDatabaseVersion = 1
+const metadataDatabaseFileName = "silphium.metadata.sqlite3"
+const metadataDatabaseVersion = 4
+const legacyMusicBrainzTagDatabaseFileName = "silphium.musicbrainz.tags.sqlite3"
+const legacyLibraryFilesDatabaseFileName = "silphium.library.files.sqlite3"
+const musicBrainzTagDatabaseFileName = metadataDatabaseFileName
+const musicBrainzTagDatabaseVersion = metadataDatabaseVersion
 const musicBrainzTagEntityRetryInterval = 6 * time.Hour
 const musicBrainzTagDatabaseFlushInterval = 5 * time.Second
 
 type musicBrainzTagTrackRecord struct {
 	Signature         trackTagsFileSignature `json:"signature"`
+	Title             string                 `json:"title,omitempty"`
+	TrackArtist       string                 `json:"trackArtist,omitempty"`
+	AlbumTitle        string                 `json:"albumTitle,omitempty"`
+	AlbumArtist       string                 `json:"albumArtist,omitempty"`
+	Date              string                 `json:"date,omitempty"`
+	RecordLabel       string                 `json:"recordLabel,omitempty"`
+	CatalogNumber     string                 `json:"catalogNumber,omitempty"`
+	Genres            []string               `json:"genres,omitempty"`
+	TrackNumber       int                    `json:"trackNumber,omitempty"`
+	TrackTotal        int                    `json:"trackTotal,omitempty"`
+	DiscNumber        int                    `json:"discNumber,omitempty"`
+	DiscTotal         int                    `json:"discTotal,omitempty"`
+	DurationSeconds   float64                `json:"durationSeconds,omitempty"`
+	BitRate           int                    `json:"bitRate,omitempty"`
+	BitDepth          int                    `json:"bitDepth,omitempty"`
+	SampleRate        int                    `json:"sampleRate,omitempty"`
+	Channels          int                    `json:"channels,omitempty"`
+	FileSizeBytes     int64                  `json:"fileSizeBytes,omitempty"`
+	RecordingID       string                 `json:"recordingId,omitempty"`
 	ReleaseID         string                 `json:"releaseId,omitempty"`
 	ArtistIDs         []string               `json:"artistIds,omitempty"`
+	AlbumArtistIDs    []string               `json:"albumArtistIds,omitempty"`
 	ReleaseFolderPath string                 `json:"releaseFolderPath,omitempty"`
 	ArtistFolderPaths []string               `json:"artistFolderPaths,omitempty"`
 	LastScannedAt     time.Time              `json:"lastScannedAt,omitempty"`
@@ -41,11 +65,13 @@ type musicBrainzTagWorkerState struct {
 	generation             uint64
 	indexedByPath          map[string]LibraryIndexedFile
 	pendingTrackPaths      []string
+	inFlightTrackScans     int
 	totalTrackPaths        int
 	completedTrackPaths    int
 	referencedEntityKeys   map[string]struct{}
 	pendingEntityKeys      map[string]struct{}
 	pendingEntityOrder     []string
+	inFlightEntityLookups  int
 	totalEntityLookups     int
 	completedEntityLookups int
 }
@@ -103,7 +129,7 @@ func clampMusicBrainzTagWorkerProgress(value float64) float64 {
 }
 
 func (state musicBrainzTagWorkerState) progressSnapshot(enabled bool) MusicBrainzTagWorkerProgress {
-	pendingTrackScans := len(state.pendingTrackPaths)
+	pendingTrackScans := len(state.pendingTrackPaths) + state.inFlightTrackScans
 	completedTrackScans := state.completedTrackPaths
 	if completedTrackScans < 0 {
 		completedTrackScans = 0
@@ -112,7 +138,7 @@ func (state musicBrainzTagWorkerState) progressSnapshot(enabled bool) MusicBrain
 		completedTrackScans = state.totalTrackPaths
 	}
 
-	pendingEntityLookups := len(state.pendingEntityKeys)
+	pendingEntityLookups := len(state.pendingEntityKeys) + state.inFlightEntityLookups
 	completedEntityLookups := state.completedEntityLookups
 	if completedEntityLookups < 0 {
 		completedEntityLookups = 0
@@ -366,6 +392,91 @@ func normalizeMusicBrainzArtistIDsForTags(artistID string, artistIDs []string) [
 	return cleanIDs
 }
 
+func normalizeMusicBrainzTrackGenres(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		genre := strings.TrimSpace(value)
+		if genre == "" {
+			continue
+		}
+
+		lookupKey := strings.ToLower(genre)
+		if _, exists := seen[lookupKey]; exists {
+			continue
+		}
+
+		seen[lookupKey] = struct{}{}
+		normalized = append(normalized, genre)
+	}
+
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	return normalized
+}
+
+func normalizeMusicBrainzTagTrackRecord(record musicBrainzTagTrackRecord) musicBrainzTagTrackRecord {
+	record.Title = strings.TrimSpace(record.Title)
+	record.TrackArtist = strings.TrimSpace(record.TrackArtist)
+	record.AlbumTitle = strings.TrimSpace(record.AlbumTitle)
+	record.AlbumArtist = strings.TrimSpace(record.AlbumArtist)
+	record.Date = strings.TrimSpace(record.Date)
+	record.RecordLabel = strings.TrimSpace(record.RecordLabel)
+	record.CatalogNumber = strings.TrimSpace(record.CatalogNumber)
+	record.Genres = normalizeMusicBrainzTrackGenres(record.Genres)
+	if record.TrackNumber < 0 {
+		record.TrackNumber = 0
+	}
+	if record.TrackTotal < 0 {
+		record.TrackTotal = 0
+	}
+	if record.DiscNumber < 0 {
+		record.DiscNumber = 0
+	}
+	if record.DiscTotal < 0 {
+		record.DiscTotal = 0
+	}
+	if record.DurationSeconds < 0 {
+		record.DurationSeconds = 0
+	}
+	if record.BitRate < 0 {
+		record.BitRate = 0
+	}
+	if record.BitDepth < 0 {
+		record.BitDepth = 0
+	}
+	if record.SampleRate < 0 {
+		record.SampleRate = 0
+	}
+	if record.Channels < 0 {
+		record.Channels = 0
+	}
+	if record.FileSizeBytes < 0 {
+		record.FileSizeBytes = 0
+	}
+	record.RecordingID = sanitizeMusicBrainzID(record.RecordingID)
+	record.ReleaseID = sanitizeMusicBrainzID(record.ReleaseID)
+	record.ArtistIDs = sanitizeMusicBrainzIDs(record.ArtistIDs)
+	record.AlbumArtistIDs = sanitizeMusicBrainzIDs(record.AlbumArtistIDs)
+	record.ReleaseFolderPath = normalizeMusicBrainzTagFolderPath(record.ReleaseFolderPath)
+	record.ArtistFolderPaths = normalizeMusicBrainzTagFolderPaths(record.ArtistFolderPaths)
+	return record
+}
+
+func musicBrainzTagBrowseArtistIDs(record musicBrainzTagTrackRecord) []string {
+	if len(record.AlbumArtistIDs) > 0 {
+		return record.AlbumArtistIDs
+	}
+
+	return record.ArtistIDs
+}
+
 func musicBrainzTagEntityKey(entityType string, mbid string) string {
 	cleanEntityType := strings.ToLower(strings.TrimSpace(entityType))
 	cleanMBID := sanitizeMusicBrainzID(mbid)
@@ -392,8 +503,9 @@ func parseMusicBrainzTagEntityKey(entityKey string) (string, string, bool) {
 }
 
 func musicBrainzTagEntityKeysForTrackRecord(record musicBrainzTagTrackRecord) []string {
-	keys := make([]string, 0, len(record.ArtistIDs)+1)
-	seen := make(map[string]struct{}, len(record.ArtistIDs)+1)
+	artistIDs := musicBrainzTagBrowseArtistIDs(record)
+	keys := make([]string, 0, len(artistIDs)+1)
+	seen := make(map[string]struct{}, len(artistIDs)+1)
 
 	if entityKey := musicBrainzTagEntityKey("release", record.ReleaseID); entityKey != "" && record.ReleaseFolderPath != "" {
 		seen[entityKey] = struct{}{}
@@ -401,7 +513,7 @@ func musicBrainzTagEntityKeysForTrackRecord(record musicBrainzTagTrackRecord) []
 	}
 
 	if len(record.ArtistFolderPaths) > 0 {
-		for _, artistID := range record.ArtistIDs {
+		for _, artistID := range artistIDs {
 			entityKey := musicBrainzTagEntityKey("artist", artistID)
 			if entityKey == "" {
 				continue
@@ -497,8 +609,12 @@ func artistFolderPathsForIndexedTrack(indexed LibraryIndexedFile, releaseDepth i
 }
 
 func (a *App) musicBrainzTagDatabasePath() string {
+	return a.metadataDatabasePath()
+}
+
+func (a *App) metadataDatabasePath() string {
 	settingsPath := a.ensureSettingsPath()
-	return filepath.Join(filepath.Dir(settingsPath), musicBrainzTagDatabaseFileName)
+	return filepath.Join(filepath.Dir(settingsPath), metadataDatabaseFileName)
 }
 
 func normalizeMusicBrainzTagDatabaseStore(store musicBrainzTagDatabaseStore) musicBrainzTagDatabaseStore {
@@ -510,14 +626,10 @@ func normalizeMusicBrainzTagDatabaseStore(store musicBrainzTagDatabaseStore) mus
 			continue
 		}
 
-		normalized.Tracks[cleanPath] = musicBrainzTagTrackRecord{
-			Signature:         record.Signature,
-			ReleaseID:         sanitizeMusicBrainzID(record.ReleaseID),
-			ArtistIDs:         sanitizeMusicBrainzIDs(record.ArtistIDs),
-			ReleaseFolderPath: normalizeMusicBrainzTagFolderPath(record.ReleaseFolderPath),
-			ArtistFolderPaths: normalizeMusicBrainzTagFolderPaths(record.ArtistFolderPaths),
-			LastScannedAt:     record.LastScannedAt,
-		}
+		normalizedRecord := normalizeMusicBrainzTagTrackRecord(record)
+		normalizedRecord.Signature = record.Signature
+		normalizedRecord.LastScannedAt = record.LastScannedAt
+		normalized.Tracks[cleanPath] = normalizedRecord
 	}
 
 	for _, record := range store.Entities {

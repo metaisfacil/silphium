@@ -126,12 +126,12 @@ func resolvePlaylistEntryPath(playlistPath string, entry string) (string, bool) 
 		return "", false
 	}
 
-	if strings.Contains(clean, "://") {
+	trimmed := strings.TrimLeftFunc(clean, unicode.IsSpace)
+	if trimmed == "" {
 		return "", false
 	}
 
-	trimmed := strings.TrimLeftFunc(clean, unicode.IsSpace)
-	if trimmed == "" {
+	if strings.Contains(trimmed, "://") {
 		return "", false
 	}
 
@@ -206,6 +206,7 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 			FolderPath:   folderPath,
 			RootPath:     rootPath,
 			RootName:     rootName,
+			ReleaseDepth: 0,
 		})
 	}
 

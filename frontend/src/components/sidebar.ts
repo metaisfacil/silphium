@@ -2,7 +2,8 @@ export type SidebarElements = {
     sidebarToggle: HTMLButtonElement;
     librarySidebar: HTMLElement;
     libraryScanYieldIndicator: HTMLSpanElement;
-  libraryExpandToggle: HTMLButtonElement;
+    libraryShareConnectionsIndicator: HTMLSpanElement;
+    libraryExpandToggle: HTMLButtonElement;
     librarySettings: HTMLButtonElement;
     libraryAbout: HTMLButtonElement;
   sidebarSectionTrigger: HTMLButtonElement;
@@ -27,7 +28,7 @@ export const renderSidebar = (): string => `
     <aside id="library-sidebar" class="library-sidebar" aria-hidden="true">
       <div class="library-header">
         <div class="library-header-title-wrap">
-          <h2 class="library-header-title"><button id="sidebar-section-trigger" class="sidebar-section-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="sidebar-section-menu"><span id="sidebar-section-trigger-label">LIBRARY</span><svg class="sidebar-section-trigger-arrow" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M7.41 9.59C7.79 9.21 8.4 9.21 8.78 9.59L12 12.81L15.22 9.59C15.6 9.21 16.21 9.21 16.59 9.59C16.97 9.97 16.97 10.58 16.59 10.96L12.69 14.86C12.31 15.24 11.69 15.24 11.31 14.86L7.41 10.96C7.03 10.58 7.03 9.97 7.41 9.59Z"/></svg></button><span id="library-scan-yield-indicator" class="library-scan-yield-indicator" role="img" aria-label="Performance will be degraded until the library scan completes." title="Performance will be degraded until the library scan completes."><svg class="library-scan-yield-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M11.12 3.86C11.51 3.18 12.49 3.18 12.88 3.86L21.02 18.14C21.4 18.81 20.92 19.65 20.15 19.65H3.85C3.08 19.65 2.6 18.81 2.98 18.14L11.12 3.86Z"/><rect x="11" y="8" width="2" height="7" rx="1" fill="#101010"/><circle cx="12" cy="17.5" r="1.35" fill="#101010"/></svg></span></h2>
+          <h2 class="library-header-title"><button id="sidebar-section-trigger" class="sidebar-section-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="sidebar-section-menu"><span id="sidebar-section-trigger-label">LIBRARY</span><svg class="sidebar-section-trigger-arrow" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M7.41 9.59C7.79 9.21 8.4 9.21 8.78 9.59L12 12.81L15.22 9.59C15.6 9.21 16.21 9.21 16.59 9.59C16.97 9.97 16.97 10.58 16.59 10.96L12.69 14.86C12.31 15.24 11.69 15.24 11.31 14.86L7.41 10.96C7.03 10.58 7.03 9.97 7.41 9.59Z"/></svg></button><span id="library-share-connections-indicator" class="library-share-connections-indicator" role="status" aria-live="polite" hidden><svg class="library-share-connections-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M9 11.5C10.93 11.5 12.5 9.93 12.5 8S10.93 4.5 9 4.5 5.5 6.07 5.5 8 7.07 11.5 9 11.5Zm6 0c1.66 0 3-1.57 3-3.5S16.66 4.5 15 4.5s-3 1.57-3 3.5 1.34 3.5 3 3.5ZM9 13c-2.78 0-5.5 1.37-5.5 3.25V18a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.75C14.5 14.37 11.78 13 9 13Zm6 1.25c-.75 0-1.56.14-2.32.4.84.65 1.32 1.46 1.32 2.35V18c0 .17-.02.33-.05.49h5.05a1 1 0 0 0 1-1v-.74c0-1.43-2.02-2.5-5-2.5Z"/></svg><span class="library-share-connections-count">0</span></span><span id="library-scan-yield-indicator" class="library-scan-yield-indicator" role="img" aria-label="Performance will be degraded until the library scan completes." title="Performance will be degraded until the library scan completes."><svg class="library-scan-yield-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M11.12 3.86C11.51 3.18 12.49 3.18 12.88 3.86L21.02 18.14C21.4 18.81 20.92 19.65 20.15 19.65H3.85C3.08 19.65 2.6 18.81 2.98 18.14L11.12 3.86Z"/><rect x="11" y="8" width="2" height="7" rx="1" fill="#101010"/><circle cx="12" cy="17.5" r="1.35" fill="#101010"/></svg></span></h2>
           <div id="sidebar-section-menu" class="sidebar-section-menu" role="menu" aria-label="Sidebar sections" hidden>
             <button id="sidebar-section-option-library" class="sidebar-section-menu-item is-active" type="button" role="menuitemradio" aria-checked="true">LIBRARY</button>
             <button id="sidebar-section-option-social" class="sidebar-section-menu-item" type="button" role="menuitemradio" aria-checked="false">SOCIAL</button>
@@ -72,7 +73,8 @@ export const getSidebarElements = (root: ParentNode): SidebarElements => ({
     sidebarToggle: root.querySelector('#sidebar-toggle') as HTMLButtonElement,
     librarySidebar: root.querySelector('#library-sidebar') as HTMLElement,
     libraryScanYieldIndicator: root.querySelector('#library-scan-yield-indicator') as HTMLSpanElement,
-    libraryExpandToggle: root.querySelector('#library-expand-toggle') as HTMLButtonElement,
+  libraryShareConnectionsIndicator: root.querySelector('#library-share-connections-indicator') as HTMLSpanElement,
+  libraryExpandToggle: root.querySelector('#library-expand-toggle') as HTMLButtonElement,
     librarySettings: root.querySelector('#library-settings') as HTMLButtonElement,
     libraryAbout: root.querySelector('#library-about') as HTMLButtonElement,
     sidebarSectionTrigger: root.querySelector('#sidebar-section-trigger') as HTMLButtonElement,
@@ -90,3 +92,21 @@ export const getSidebarElements = (root: ParentNode): SidebarElements => ({
     socialFeedStatus: root.querySelector('#social-feed-status') as HTMLParagraphElement,
     socialFeedList: root.querySelector('#social-feed-list') as HTMLDivElement,
 });
+
+  export const setLibraryShareConnectionsIndicator = (indicator: HTMLSpanElement, count: number): void => {
+    const normalizedCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+    const visible = normalizedCount > 0;
+    const countLabel = indicator.querySelector('.library-share-connections-count') as HTMLSpanElement | null;
+    if (countLabel) {
+      countLabel.textContent = String(normalizedCount);
+    }
+
+    indicator.hidden = !visible;
+    indicator.classList.toggle('is-visible', visible);
+
+    const label = visible
+      ? `${normalizedCount} remote ${normalizedCount === 1 ? 'listener' : 'listeners'} connected`
+      : 'No remote listeners connected';
+    indicator.setAttribute('aria-label', label);
+    indicator.setAttribute('title', label);
+  };

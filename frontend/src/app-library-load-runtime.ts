@@ -468,8 +468,22 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
                 ? context.tracks.findIndex((candidate) => candidate.path.toLowerCase() === normalizedSourcePath)
                 : -1;
 
-            if (context.currentTrackIndex < 0 && normalizedSourcePath && context.ensureTrackIndexForPath) {
-                context.currentTrackIndex = context.ensureTrackIndexForPath(playbackStateBeforeScanSwap.sourcePath);
+            if (context.currentTrackIndex < 0 && previouslyPlayingTrack) {
+                const normalizedPreviousRelativePath = previouslyPlayingTrack.relativePath.trim().toLowerCase();
+                if (normalizedPreviousRelativePath) {
+                    context.currentTrackIndex = context.tracks.findIndex((candidate) => {
+                        return candidate.relativePath.trim().toLowerCase() === normalizedPreviousRelativePath;
+                    });
+                }
+
+                if (context.currentTrackIndex < 0) {
+                    const normalizedPreviousName = previouslyPlayingTrack.name.trim().toLowerCase();
+                    if (normalizedPreviousName) {
+                        context.currentTrackIndex = context.tracks.findIndex((candidate) => {
+                            return candidate.name.trim().toLowerCase() === normalizedPreviousName;
+                        });
+                    }
+                }
             }
 
             if (context.currentTrackIndex >= 0) {
@@ -658,6 +672,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
 
         context.setLibraryRootName(nextRootName);
         context.setLibraryIndexTruncated(!!scanResult.truncated);
+        context.clearCoverArtCache();
         context.scheduleLibraryIncrementalFolderRefresh();
         context.scheduleNowPlayingCoverRefresh();
         context.logRescan('handleLibraryScanUpdatedEvent END: took %.2fms', performance.now() - startTime);

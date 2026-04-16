@@ -50,6 +50,7 @@ coverage.out
 
 # ---- Local app settings ----
 /silphium.settings.json
+*.sqlite3
 
 # ---- OS/editor noise ----
 .DS_Store
@@ -59,3 +60,7 @@ Thumbs.db
 
 # ---- Test build ----
 build/test-client/silphium.settings.json
+
+# ---- Misc ----
+scripts/import_musicbrainz_backup.py
+*.old

@@ -53,9 +53,13 @@ func TestReadFileBase64AndSaveShareImageFile(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	app := &App{}
 	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
+	remoteTrackPath := buildRemoteLibraryPath(buildRemoteLibraryBasePath("example.com", 5005), "Library/Artist/Album/01 Track.flac")
 
 	if got := app.ReadFileBase64(fixture.outsideTrack); got != "" {
 		t.Fatalf("ReadFileBase64(outside) = %q, want empty", got)
+	}
+	if got := app.ReadFileBase64(remoteTrackPath); got != "" {
+		t.Fatalf("ReadFileBase64(remote) = %q, want empty", got)
 	}
 	if got := app.ReadFileBase64(filepath.Join(fixture.rootOne, "missing.flac")); got != "" {
 		t.Fatalf("ReadFileBase64(missing) = %q, want empty", got)
@@ -224,6 +228,7 @@ func TestTextDecodingHelpers(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	app := &App{}
 	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
+	remoteTextPath := buildRemoteLibraryPath(buildRemoteLibraryBasePath("example.com", 5005), "Library/Artist/Album/notes.txt")
 
 	textPath := filepath.Join(fixture.albumOneFolder, "utf8.txt")
 	writeTestFile(t, textPath, "plain text")
@@ -232,6 +237,9 @@ func TestTextDecodingHelpers(t *testing.T) {
 	}
 	if got := app.ReadTextFile(fixture.outsideTrack); got != "" {
 		t.Fatalf("ReadTextFile(outside) = %q, want empty", got)
+	}
+	if got := app.ReadTextFile(remoteTextPath); got != "" {
+		t.Fatalf("ReadTextFile(remote) = %q, want empty", got)
 	}
 	if got := app.ReadTextFile(filepath.Join(fixture.albumOneFolder, "missing.txt")); got != "" {
 		t.Fatalf("ReadTextFile(missing) = %q, want empty", got)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,6 +38,14 @@ type App struct {
 	appLibraryState
 	appMusicBrainzTagState
 	scrobble appScrobbleState
+
+	openSubsonicMu          sync.Mutex
+	openSubsonicServer      *http.Server
+	openSubsonicAlbumListMu sync.Mutex
+	openSubsonicAlbumList   *openSubsonicAlbumListIndex
+	openSubsonicAlbumListCh chan struct{}
+	openSubsonicBrowseMu    sync.Mutex
+	openSubsonicBrowse      *openSubsonicBrowseIndex
 }
 
 type appAudioState struct {
@@ -174,6 +183,7 @@ type appMusicBrainzTagDatabaseState struct {
 	musicBrainzTagStore                    musicBrainzTagDatabaseStore
 	musicBrainzTagStoreLoaded              bool
 	musicBrainzTagStoreDirty               bool
+	musicBrainzTagVersion                  atomic.Uint64
 	musicBrainzTagLastPersistAt            time.Time
 	musicBrainzTagEntityKeysByTag          map[string]map[string]struct{}
 	musicBrainzTagReleaseFoldersByID       map[string]map[string]struct{}
@@ -192,7 +202,9 @@ type appMusicBrainzTagWorkerRuntimeState struct {
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{appAudioState: appAudioState{audio: NewAudioBackend()}}
+	return &App{
+		appAudioState: appAudioState{audio: NewAudioBackend()},
+	}
 }
 
 // logRescanEvent logs a rescan-related event with precise timestamp to both console and frontend
@@ -216,6 +228,7 @@ func (a *App) startup(ctx context.Context) {
 	a.loadStoredSettings()
 	a.audioBackend().SetFFmpegPath(settingsState.settings.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(settingsState.settings.Audio)
+	a.syncOpenSubsonicServer()
 	a.refreshSystemTrayForSettings()
 	a.startMediaKeyWatcher()
 	a.startMusicBrainzTagWorker()
@@ -224,6 +237,7 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(context.Context) {
 	a.runtimeState().quitRequested.Store(true)
+	a.stopOpenSubsonicServer()
 	a.stopSystemTray()
 	a.stopMediaKeyWatcher()
 	a.stopLibraryWatcher()

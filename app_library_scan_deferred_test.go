@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -119,6 +122,9 @@ func TestScanLibraryFoldersDeferredUsesFilesystemQuickScan(t *testing.T) {
 
 func TestBuildFilesystemQuickScanAndLazyFilesystemHelpers(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
+	if err := os.Symlink(fixture.outsideTrack, filepath.Join(fixture.albumOneFolder, "outside-link.flac")); err != nil {
+		t.Skipf("Symlink not available in this environment: %v", err)
+	}
 	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library One"}, {Path: fixture.rootTwo, Name: "Library Two"}}
 
 	quickScan, err := buildFilesystemQuickScan(roots, func() bool { return false })
@@ -156,5 +162,15 @@ func TestBuildFilesystemQuickScanAndLazyFilesystemHelpers(t *testing.T) {
 
 	if count, err := countLibraryFolderTracksFromFilesystem(roots, "Library One/Artist One"); err != nil || count != 1 {
 		t.Fatalf("countLibraryFolderTracksFromFilesystem() = (%d, %v), want (1, nil)", count, err)
+	}
+
+	fullScan, err := buildFilesystemFullScan(roots, func() bool { return false })
+	if err != nil {
+		t.Fatalf("buildFilesystemFullScan() error = %v", err)
+	}
+	for _, entry := range fullScan.TrackFiles {
+		if strings.Contains(entry.Path, "outside-link.flac") {
+			t.Fatal("buildFilesystemFullScan() should skip symlinked entries that escape the root")
+		}
 	}
 }

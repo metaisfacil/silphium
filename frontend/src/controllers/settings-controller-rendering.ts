@@ -1,5 +1,5 @@
-import type { AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, MusicBrainzTagWorkerProgress, ScrobbleRule } from '../types/app-types';
-import { describeScrobbleRule } from '../utils/main-helpers';
+import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, MusicBrainzTagWorkerProgress, ScrobbleRule } from '../types/app-types';
+import { describeLibraryFolderConnection, describeScrobbleRule, normalizeLibraryFolderKind } from '../utils/main-helpers';
 import { formatCustomActionScopeLabel, formatEtaLabel, labelForCoverArtPriority, normalizeMusicBrainzTagWorkerProgress } from './settings-controller-utils';
 
 export const renderFavoritePlaylistList = (
@@ -101,7 +101,7 @@ export const renderCustomSendToActionList = (
 export const renderLibraryFolderList = (
     listElement: HTMLUListElement,
     removeButton: HTMLButtonElement,
-    libraryFolders: { path: string; label: string; releaseDepth: number }[],
+    libraryFolders: AppLibraryFolder[],
     selectedLibraryFolderIndex: number,
 ): void => {
     listElement.innerHTML = '';
@@ -113,6 +113,7 @@ export const renderLibraryFolderList = (
     }
 
     libraryFolders.forEach((folder, index) => {
+        const folderKind = normalizeLibraryFolderKind(folder.kind);
         const item = document.createElement('li');
         item.className = 'settings-library-folder-item';
 
@@ -122,13 +123,15 @@ export const renderLibraryFolderList = (
         button.dataset.libraryFolderIndex = String(index);
         button.title = [
             folder.label ? `Label: ${folder.label}` : '',
-            folder.path,
-            'Double-click to change label and release depth',
+            folderKind === 'remote' ? `Remote: ${describeLibraryFolderConnection(folder)}` : folder.path,
+            folderKind === 'remote'
+                ? 'Double-click to change host, port, and label'
+                : 'Double-click to change label and release depth',
         ].filter((line) => line !== '').join('\n');
 
         const pathLabel = document.createElement('span');
         pathLabel.className = 'settings-library-folder-path';
-        pathLabel.textContent = folder.path;
+        pathLabel.textContent = folderKind === 'remote' ? describeLibraryFolderConnection(folder) : folder.path;
 
         const meta = document.createElement('span');
         meta.className = 'settings-library-folder-meta';
@@ -142,7 +145,11 @@ export const renderLibraryFolderList = (
 
         const depthBadge = document.createElement('span');
         depthBadge.className = 'settings-library-folder-depth-badge';
-        depthBadge.textContent = folder.releaseDepth > 0 ? `Depth ${folder.releaseDepth}` : 'Whole folder';
+        depthBadge.textContent = folderKind === 'remote'
+            ? 'Shared library'
+            : folder.releaseDepth > 0
+                ? `Depth ${folder.releaseDepth}`
+                : 'Whole folder';
 
         meta.append(depthBadge);
 
@@ -325,11 +332,32 @@ export const renderMusicBrainzTagWorkerProgressUI = (
     ctx.progressBar.classList.toggle('is-active', nextProgress.active);
     ctx.progressBar.classList.toggle('is-disabled', !nextProgress.enabled);
 
-    const processedEntityCount = nextProgress.completedEntityLookups;
-    const entityCount = nextProgress.pendingEntityLookups;
     const etaLabel = formatEtaLabel(etaSeconds);
-    const remainingLabel = `${entityCount} ${entityCount === 1 ? 'entity' : 'entities'} still to look up`;
-    ctx.progressRemaining.textContent = `${processedEntityCount} ${processedEntityCount === 1 ? 'entity' : 'entities'} processed • ${remainingLabel}${etaLabel ? ` • ${etaLabel} remaining` : '.'}`;
+    const summaryParts: string[] = [];
+    const completedTrackScans = nextProgress.completedTrackScans;
+    const pendingTrackScans = nextProgress.pendingTrackScans;
+    const completedEntityLookups = nextProgress.completedEntityLookups;
+    const pendingEntityLookups = nextProgress.pendingEntityLookups;
+
+    if (completedTrackScans > 0 || pendingTrackScans > 0 || (nextProgress.totalTrackScans > 0 && nextProgress.totalEntityLookups <= 0)) {
+        summaryParts.push(`${completedTrackScans} ${completedTrackScans === 1 ? 'track' : 'tracks'} scanned`);
+        if (pendingTrackScans > 0) {
+            summaryParts.push(`${pendingTrackScans} ${pendingTrackScans === 1 ? 'track' : 'tracks'} still to scan`);
+        }
+    }
+
+    if (completedEntityLookups > 0 || pendingEntityLookups > 0 || (nextProgress.totalEntityLookups > 0 && nextProgress.totalTrackScans <= 0)) {
+        summaryParts.push(`${completedEntityLookups} ${completedEntityLookups === 1 ? 'entity' : 'entities'} processed`);
+        if (pendingEntityLookups > 0) {
+            summaryParts.push(`${pendingEntityLookups} ${pendingEntityLookups === 1 ? 'entity' : 'entities'} still to look up`);
+        }
+    }
+
+    if (summaryParts.length === 0) {
+        summaryParts.push('No metadata work queued');
+    }
+
+    ctx.progressRemaining.textContent = `${summaryParts.join(' • ')}${etaLabel ? ` • ${etaLabel} remaining` : '.'}`;
 
     if (!nextProgress.enabled) {
         ctx.progressStatus.textContent = 'MusicBrainz tag database is disabled.';

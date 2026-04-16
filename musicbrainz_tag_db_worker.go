@@ -112,97 +112,76 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 	sortPathsCaseInsensitive(paths)
 
 	releaseDepthByRootPath := a.musicBrainzTagReleaseDepthByRootPath()
-	releaseFolderOrder := make([]string, 0, len(paths))
-	candidatesByReleaseFolder := make(map[string][]musicBrainzTagTrackScanCandidate, len(paths))
-	for _, path := range paths {
-		indexed := snapshot[path]
-		releaseDepth := releaseDepthByRootPath[strings.ToLower(normalizePath(indexed.RootPath))]
-		releaseFolderPath := releaseFolderPathForIndexedTrack(indexed, releaseDepth)
-		if _, exists := candidatesByReleaseFolder[releaseFolderPath]; !exists {
-			releaseFolderOrder = append(releaseFolderOrder, releaseFolderPath)
-		}
-
-		candidatesByReleaseFolder[releaseFolderPath] = append(candidatesByReleaseFolder[releaseFolderPath], musicBrainzTagTrackScanCandidate{
-			path:              path,
-			releaseFolderPath: releaseFolderPath,
-			artistFolderPaths: artistFolderPathsForIndexedTrack(indexed, releaseDepth),
-		})
-	}
-
-	representatives := make([]musicBrainzTagTrackRepresentative, 0, len(releaseFolderOrder))
-	releaseFoldersWithoutRepresentative := make(map[string]struct{})
-	for _, releaseFolderPath := range releaseFolderOrder {
-		representative, ok := selectMusicBrainzTagRepresentativeTrack(candidatesByReleaseFolder[releaseFolderPath])
-		if !ok {
-			releaseFoldersWithoutRepresentative[releaseFolderPath] = struct{}{}
-			continue
-		}
-
-		representatives = append(representatives, representative)
-	}
-
 	now := time.Now()
 
 	a.musicBrainzTagMu.Lock()
-	defer a.musicBrainzTagMu.Unlock()
 	a.ensureMusicBrainzTagDatabaseLoadedLocked()
-	existingRecordsByReleaseFolder := a.storedMusicBrainzTagTrackRecordsByReleaseFolderLocked()
-	representativePaths := make(map[string]struct{}, len(representatives))
-	tracksChanged := false
+	storedTracks := make(map[string]musicBrainzTagTrackRecord, len(a.musicBrainzTagStore.Tracks))
+	for path, record := range a.musicBrainzTagStore.Tracks {
+		storedTracks[path] = record
+	}
+	storedEntities := make(map[string]musicBrainzTagEntityRecord, len(a.musicBrainzTagStore.Entities))
+	for entityKey, record := range a.musicBrainzTagStore.Entities {
+		storedEntities[entityKey] = record
+	}
+	a.musicBrainzTagMu.Unlock()
 
-	for releaseFolderPath := range releaseFoldersWithoutRepresentative {
-		existingRecord, exists := existingRecordsByReleaseFolder[releaseFolderPath]
-		if !exists {
+	activePaths := make(map[string]struct{}, len(paths))
+	actualTrackPaths := 0
+	trackUpdates := make(map[string]musicBrainzTagTrackRecord)
+	trackRemovals := make([]string, 0)
+	for _, path := range paths {
+		activePaths[path] = struct{}{}
+		indexed := snapshot[path]
+		releaseDepth := releaseDepthByRootPath[strings.ToLower(normalizePath(indexed.RootPath))]
+		releaseFolderPath := releaseFolderPathForIndexedTrack(indexed, releaseDepth)
+		artistFolderPaths := artistFolderPathsForIndexedTrack(indexed, releaseDepth)
+		signature, ok := trackTagsFileSignatureForPath(path)
+		if !ok {
+			if _, exists := storedTracks[path]; exists {
+				delete(storedTracks, path)
+				trackRemovals = append(trackRemovals, path)
+			}
 			continue
 		}
+		actualTrackPaths++
 
-		a.removeMusicBrainzTagTrackRecordLocked(existingRecord.path)
-		tracksChanged = true
-	}
-
-	for _, representative := range representatives {
-		representativePaths[representative.path] = struct{}{}
-
-		existingAtPath, existsAtPath := a.musicBrainzTagStore.Tracks[representative.path]
-		if existsAtPath && existingAtPath.Signature == representative.signature {
-			if existingAtPath.ReleaseFolderPath != representative.releaseFolderPath || !stringSlicesEqual(existingAtPath.ArtistFolderPaths, representative.artistFolderPaths) {
-				existingAtPath.ReleaseFolderPath = representative.releaseFolderPath
-				existingAtPath.ArtistFolderPaths = representative.artistFolderPaths
-				a.upsertMusicBrainzTagTrackRecordLocked(representative.path, existingAtPath)
-				tracksChanged = true
+		existingRecord, exists := storedTracks[path]
+		if exists && existingRecord.Signature == signature {
+			if existingRecord.ReleaseFolderPath != releaseFolderPath || !stringSlicesEqual(existingRecord.ArtistFolderPaths, artistFolderPaths) {
+				existingRecord.ReleaseFolderPath = releaseFolderPath
+				existingRecord.ArtistFolderPaths = artistFolderPaths
+				storedTracks[path] = existingRecord
+				trackUpdates[path] = existingRecord
 			}
 			state.completedTrackPaths++
 			continue
 		}
 
-		existingReleaseRecord, hasExistingReleaseRecord := existingRecordsByReleaseFolder[representative.releaseFolderPath]
-		if hasExistingReleaseRecord && existingReleaseRecord.path != representative.path {
-			migratedRecord := existingReleaseRecord.record
-			migratedRecord.Signature = representative.signature
-			migratedRecord.ReleaseFolderPath = representative.releaseFolderPath
-			migratedRecord.ArtistFolderPaths = representative.artistFolderPaths
-			a.upsertMusicBrainzTagTrackRecordLocked(representative.path, migratedRecord)
-			tracksChanged = true
-			state.completedTrackPaths++
+		state.pendingTrackPaths = append(state.pendingTrackPaths, path)
+	}
+
+	for path := range storedTracks {
+		if _, exists := activePaths[path]; exists {
 			continue
 		}
 
-		state.pendingTrackPaths = append(state.pendingTrackPaths, representative.path)
+		delete(storedTracks, path)
+		trackRemovals = append(trackRemovals, path)
 	}
 
-	for path := range a.musicBrainzTagStore.Tracks {
-		if _, exists := representativePaths[path]; exists {
-			continue
+	if len(trackRemovals) > 0 || len(trackUpdates) > 0 {
+		a.musicBrainzTagMu.Lock()
+		a.ensureMusicBrainzTagDatabaseLoadedLocked()
+		for _, path := range trackRemovals {
+			a.removeMusicBrainzTagTrackRecordLocked(path)
 		}
-
-		a.removeMusicBrainzTagTrackRecordLocked(path)
-		tracksChanged = true
+		for path, record := range trackUpdates {
+			a.upsertMusicBrainzTagTrackRecordLocked(path, record)
+		}
+		a.musicBrainzTagMu.Unlock()
 	}
-
-	if tracksChanged {
-		a.rebuildMusicBrainzTagIndexesLocked()
-	}
-	state.totalTrackPaths = len(representatives)
+	state.totalTrackPaths = actualTrackPaths
 
 	staggeringEnabled := a.musicBrainzTagRequestStaggeringEnabled()
 	staleDays := a.musicBrainzTagStaleDays()
@@ -225,8 +204,9 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 		pendingEntityOrder = append(pendingEntityOrder, cleanEntityKey)
 	}
 
-	for _, path := range sortedMusicBrainzTagTrackPaths(a.musicBrainzTagStore) {
-		record := a.musicBrainzTagStore.Tracks[path]
+	storedStore := musicBrainzTagDatabaseStore{Tracks: storedTracks, Entities: storedEntities}
+	for _, path := range sortedMusicBrainzTagTrackPaths(storedStore) {
+		record := storedTracks[path]
 		for _, entityKey := range musicBrainzTagEntityKeysForTrackRecord(record) {
 			cleanEntityKey := strings.TrimSpace(entityKey)
 			if cleanEntityKey == "" {
@@ -238,7 +218,7 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 			}
 
 			referencedEntityKeys[cleanEntityKey] = struct{}{}
-			storedRecord, exists := a.musicBrainzTagStore.Entities[cleanEntityKey]
+			storedRecord, exists := storedEntities[cleanEntityKey]
 			if !exists {
 				queuePendingEntityKey(cleanEntityKey)
 				continue
@@ -306,12 +286,17 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 	state.totalEntityLookups = len(referencedEntityKeys)
 	state.completedEntityLookups = state.totalEntityLookups - len(pendingEntityKeys)
 
-	for entityKey := range a.musicBrainzTagStore.Entities {
-		if _, exists := state.referencedEntityKeys[entityKey]; exists {
-			continue
-		}
+	if len(storedEntities) > 0 {
+		a.musicBrainzTagMu.Lock()
+		a.ensureMusicBrainzTagDatabaseLoadedLocked()
+		for entityKey := range storedEntities {
+			if _, exists := state.referencedEntityKeys[entityKey]; exists {
+				continue
+			}
 
-		a.removeMusicBrainzTagEntityRecordLocked(entityKey)
+			a.removeMusicBrainzTagEntityRecordLocked(entityKey)
+		}
+		a.musicBrainzTagMu.Unlock()
 	}
 
 	return state
@@ -330,6 +315,24 @@ func (a *App) setMusicBrainzTagWorkerProgress(progress MusicBrainzTagWorkerProgr
 	if changed && runtimeState.ctx != nil {
 		runtimeEventsEmit(runtimeState.ctx, musicBrainzTagWorkerProgressEvent, progress)
 	}
+}
+
+func (a *App) musicBrainzTagWorkerProgressSnapshot() MusicBrainzTagWorkerProgress {
+	workerState := a.musicBrainzTagWorkerState()
+	workerState.progressMu.Lock()
+	progress := workerState.progress
+	workerState.progressMu.Unlock()
+	return progress
+}
+
+func (a *App) markMusicBrainzTagWorkerActive() {
+	workerState := a.musicBrainzTagWorkerState()
+	workerState.progressMu.Lock()
+	progress := workerState.progress
+	progress.Enabled = true
+	progress.Active = true
+	workerState.progress = progress
+	workerState.progressMu.Unlock()
 }
 
 // GetMusicBrainzTagWorkerProgress returns the current MusicBrainz tag worker snapshot.
@@ -433,8 +436,28 @@ func (a *App) scanMusicBrainzTagTrack(indexed LibraryIndexedFile, releaseDepth i
 
 	record := musicBrainzTagTrackRecord{
 		Signature:         signature,
+		Title:             strings.TrimSpace(trackTags.Title),
+		TrackArtist:       strings.TrimSpace(trackTags.Artist),
+		AlbumTitle:        strings.TrimSpace(trackTags.Album),
+		AlbumArtist:       strings.TrimSpace(trackTags.AlbumArtist),
+		Date:              strings.TrimSpace(trackTags.Date),
+		RecordLabel:       strings.TrimSpace(trackTags.RecordLabel),
+		CatalogNumber:     strings.TrimSpace(trackTags.CatalogNumber),
+		Genres:            append([]string(nil), trackTags.Genres...),
+		TrackNumber:       parseIntValue(trackTags.TrackNumber),
+		TrackTotal:        parseIntValue(trackTags.TrackTotal),
+		DiscNumber:        parseIntValue(trackTags.DiscNumber),
+		DiscTotal:         parseIntValue(trackTags.DiscTotal),
+		DurationSeconds:   trackTags.DurationSecs,
+		BitRate:           trackTags.BitRate,
+		BitDepth:          trackTags.BitDepth,
+		SampleRate:        trackTags.SampleRate,
+		Channels:          trackTags.Channels,
+		FileSizeBytes:     signature.Size,
+		RecordingID:       sanitizeMusicBrainzID(trackTags.RecordingID),
 		ReleaseID:         sanitizeMusicBrainzID(trackTags.ReleaseID),
 		ArtistIDs:         normalizeMusicBrainzArtistIDsForTags(trackTags.ArtistID, trackTags.ArtistIDs),
+		AlbumArtistIDs:    sanitizeMusicBrainzIDs(trackTags.AlbumArtistIDs),
 		ReleaseFolderPath: releaseFolderPathForIndexedTrack(indexed, releaseDepth),
 		ArtistFolderPaths: artistFolderPathsForIndexedTrack(indexed, releaseDepth),
 		LastScannedAt:     time.Now(),
@@ -460,7 +483,7 @@ func (a *App) scanMusicBrainzTagTrack(indexed LibraryIndexedFile, releaseDepth i
 	return result
 }
 
-func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIndexedFile, paths []string) musicBrainzTagTrackScanResult {
+func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIndexedFile, paths []string, onProgress func(musicBrainzTagTrackScanResult)) musicBrainzTagTrackScanResult {
 	if len(paths) == 0 {
 		return musicBrainzTagTrackScanResult{}
 	}
@@ -496,13 +519,19 @@ func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIn
 	}
 	close(jobs)
 
-	waitGroup.Wait()
-	close(results)
+	go func() {
+		waitGroup.Wait()
+		close(results)
+	}()
 
 	batchResult := musicBrainzTagTrackScanResult{}
 	seenCompleted := make(map[string]struct{})
 	seenPending := make(map[string]struct{})
 	for result := range results {
+		if onProgress != nil {
+			onProgress(result)
+		}
+
 		for _, entityKey := range result.completedEntityKeys {
 			if entityKey == "" {
 				continue
@@ -673,6 +702,7 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 
 		currentGeneration := a.musicBrainzTagWorkerState().generation.Load()
 		if state.generation != currentGeneration {
+			a.markMusicBrainzTagWorkerActive()
 			state = a.buildMusicBrainzTagWorkerState(currentGeneration)
 			a.setMusicBrainzTagWorkerProgress(state.progressSnapshot(true))
 		}
@@ -686,14 +716,20 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 
 			batch := append([]string(nil), state.pendingTrackPaths[:batchSize]...)
 			state.pendingTrackPaths = state.pendingTrackPaths[batchSize:]
-			batchResult := a.processMusicBrainzTagTrackBatch(state.indexedByPath, batch)
-			for _, entityKey := range batchResult.completedEntityKeys {
-				state.noteCompletedEntityKey(entityKey)
-			}
-			for _, entityKey := range batchResult.pendingEntityKeys {
-				state.notePendingEntityKey(entityKey)
-			}
-			state.completedTrackPaths += len(batch)
+			state.inFlightTrackScans += len(batch)
+			a.processMusicBrainzTagTrackBatch(state.indexedByPath, batch, func(result musicBrainzTagTrackScanResult) {
+				if state.inFlightTrackScans > 0 {
+					state.inFlightTrackScans--
+				}
+				for _, entityKey := range result.completedEntityKeys {
+					state.noteCompletedEntityKey(entityKey)
+				}
+				for _, entityKey := range result.pendingEntityKeys {
+					state.notePendingEntityKey(entityKey)
+				}
+				state.completedTrackPaths++
+				a.setMusicBrainzTagWorkerProgress(state.progressSnapshot(true))
+			})
 			didWork = true
 		}
 
@@ -705,6 +741,7 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 				completionCh := make(chan struct{}, workerCount)
 
 				launchFetch := func(entityKey string) {
+					state.inFlightEntityLookups++
 					activeWorkers++
 					go func(activeEntityKey string) {
 						a.processMusicBrainzTagEntityFetch(activeEntityKey)
@@ -724,6 +761,9 @@ func (a *App) musicBrainzTagWorkerLoop(stopCh <-chan struct{}, wakeCh <-chan str
 				for activeWorkers > 0 {
 					<-completionCh
 					activeWorkers--
+					if state.inFlightEntityLookups > 0 {
+						state.inFlightEntityLookups--
+					}
 					completedEntityFetches++
 					state.completedEntityLookups++
 

@@ -22,13 +22,21 @@ var writeTaglibTags = taglib.WriteTags
 // TrackTags contains resolved textual, technical, and MusicBrainz metadata for a track.
 type TrackTags struct {
 	Artist         string              `json:"artist"`
+	AlbumArtist    string              `json:"albumArtist,omitempty"`
 	Album          string              `json:"album"`
 	Title          string              `json:"title"`
+	Date           string              `json:"date,omitempty"`
+	Genre          string              `json:"genre,omitempty"`
+	RecordLabel    string              `json:"recordLabel,omitempty"`
+	CatalogNumber  string              `json:"catalogNumber,omitempty"`
+	Genres         []string            `json:"genres,omitempty"`
 	AllTags        map[string][]string `json:"allTags,omitempty"`
 	Lyrics         string              `json:"lyrics,omitempty"`
 	UnsyncedLyrics string              `json:"unsyncedLyrics,omitempty"`
 	TrackNumber    string              `json:"trackNumber,omitempty"`
 	TrackTotal     string              `json:"trackTotal,omitempty"`
+	DiscNumber     string              `json:"discNumber,omitempty"`
+	DiscTotal      string              `json:"discTotal,omitempty"`
 	BitDepth       int                 `json:"bitDepth,omitempty"`
 	SampleRate     int                 `json:"sampleRate,omitempty"`
 	Codec          string              `json:"codec,omitempty"`
@@ -46,6 +54,8 @@ type TrackTags struct {
 	ReleaseID      string              `json:"releaseId,omitempty"`
 	ArtistID       string              `json:"artistId,omitempty"`
 	ArtistIDs      []string            `json:"artistIds,omitempty"`
+	AlbumArtistID  string              `json:"albumArtistId,omitempty"`
+	AlbumArtistIDs []string            `json:"albumArtistIds,omitempty"`
 }
 
 // TrackBlob carries in-memory file data used for tag extraction without disk references.
@@ -56,8 +66,9 @@ type TrackBlob struct {
 }
 
 const (
-	trackTagsWorkerLimit = 8
-	trackTagsCacheLimit  = 4096
+	trackTagsWorkerLimit       = 8
+	remoteTrackTagsWorkerLimit = 2
+	trackTagsCacheLimit        = 4096
 )
 
 type trackTagsFileSignature struct {
@@ -125,6 +136,36 @@ func firstTagValue(tags map[string][]string, keys ...string) string {
 	return ""
 }
 
+func collectTagValues(tags map[string][]string, keys ...string) []string {
+	if len(tags) == 0 || len(keys) == 0 {
+		return nil
+	}
+
+	values := make([]string, 0)
+	for _, key := range keys {
+		for tagKey, tagValues := range tags {
+			if !strings.EqualFold(tagKey, key) {
+				continue
+			}
+
+			for _, value := range tagValues {
+				trimmedValue := strings.TrimSpace(value)
+				if trimmedValue == "" {
+					continue
+				}
+
+				values = append(values, trimmedValue)
+			}
+		}
+	}
+
+	if len(values) == 0 {
+		return nil
+	}
+
+	return values
+}
+
 func collectAllTags(tags map[string][]string) map[string][]string {
 	if len(tags) == 0 {
 		return nil
@@ -178,6 +219,26 @@ func splitSlashPair(value string) (string, string) {
 func extractTrackNumbers(tags map[string][]string) (string, string) {
 	number := firstTagValue(tags, "TRACKNUMBER", "TRACK", "TRCK")
 	total := firstTagValue(tags, "TRACKTOTAL", "TOTALTRACKS", "TOTALTRACKCOUNT")
+
+	numberPart, totalPart := splitSlashPair(number)
+	if numberPart != "" {
+		number = numberPart
+	}
+
+	if total == "" && totalPart != "" {
+		total = totalPart
+	}
+
+	if total != "" {
+		total, _ = splitSlashPair(total)
+	}
+
+	return strings.TrimSpace(number), strings.TrimSpace(total)
+}
+
+func extractDiscNumbers(tags map[string][]string) (string, string) {
+	number := firstTagValue(tags, "DISCNUMBER", "DISC", "TPOS")
+	total := firstTagValue(tags, "DISCTOTAL", "TOTALDISCS", "TOTALDISCCOUNT")
 
 	numberPart, totalPart := splitSlashPair(number)
 	if numberPart != "" {
@@ -526,50 +587,107 @@ func readTrackTechnicalMetadata(path string, tags map[string][]string, ffprobePa
 
 var mbidPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b`)
 
-func extractArtistMBIDs(tags map[string][]string) []string {
-	keys := []string{"MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id", "TXXX:MusicBrainz Artist Id"}
+func extractMusicBrainzIDs(tags map[string][]string, keys ...string) []string {
 	unique := make(map[string]struct{})
 	mbids := make([]string, 0)
 
-	for _, targetKey := range keys {
-		for key, values := range tags {
-			if !strings.EqualFold(key, targetKey) {
+	for _, value := range collectTagValues(tags, keys...) {
+		for _, match := range mbidPattern.FindAllString(value, -1) {
+			normalized := strings.ToLower(strings.TrimSpace(match))
+			if normalized == "" {
 				continue
 			}
 
-			for _, value := range values {
-				for _, match := range mbidPattern.FindAllString(value, -1) {
-					normalized := strings.ToLower(strings.TrimSpace(match))
-					if normalized == "" {
-						continue
-					}
-
-					if _, exists := unique[normalized]; exists {
-						continue
-					}
-
-					unique[normalized] = struct{}{}
-					mbids = append(mbids, normalized)
-				}
+			if _, exists := unique[normalized]; exists {
+				continue
 			}
+
+			unique[normalized] = struct{}{}
+			mbids = append(mbids, normalized)
 		}
 	}
 
 	return mbids
 }
 
+func extractArtistMBIDs(tags map[string][]string) []string {
+	return extractMusicBrainzIDs(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id", "TXXX:MusicBrainz Artist Id")
+}
+
+func extractAlbumArtistMBIDs(tags map[string][]string) []string {
+	return extractMusicBrainzIDs(tags, "MUSICBRAINZ_ALBUMARTISTID", "MusicBrainz Album Artist Id", "TXXX:MusicBrainz Album Artist Id")
+}
+
+func extractFirstMusicBrainzID(tags map[string][]string, keys ...string) string {
+	ids := extractMusicBrainzIDs(tags, keys...)
+	if len(ids) == 0 {
+		return ""
+	}
+
+	return ids[0]
+}
+
+func extractGenres(tags map[string][]string) []string {
+	rawValues := collectTagValues(tags, "GENRE")
+	if len(rawValues) == 0 {
+		return nil
+	}
+
+	genres := make([]string, 0, len(rawValues))
+	seen := make(map[string]struct{}, len(rawValues))
+	for _, rawValue := range rawValues {
+		parts := strings.Split(rawValue, ";")
+		for _, part := range parts {
+			genre := strings.TrimSpace(part)
+			if genre == "" {
+				continue
+			}
+
+			lookupKey := strings.ToLower(genre)
+			if _, exists := seen[lookupKey]; exists {
+				continue
+			}
+
+			seen[lookupKey] = struct{}{}
+			genres = append(genres, genre)
+		}
+	}
+
+	if len(genres) == 0 {
+		return nil
+	}
+
+	return genres
+}
+
 func buildTrackTags(tags map[string][]string, technical TrackTechnicalMetadata) TrackTags {
 	trackNumber, trackTotal := extractTrackNumbers(tags)
+	discNumber, discTotal := extractDiscNumbers(tags)
+	artistIDs := extractArtistMBIDs(tags)
+	albumArtistIDs := extractAlbumArtistMBIDs(tags)
+	genres := extractGenres(tags)
+	genre := ""
+	if len(genres) > 0 {
+		genre = genres[0]
+	}
 
 	return TrackTags{
 		Artist:         firstTagValue(tags, "ARTIST", "ALBUMARTIST"),
+		AlbumArtist:    firstTagValue(tags, "ALBUMARTIST", "ALBUM_ARTIST", "Album Artist", "ARTIST"),
 		Album:          firstTagValue(tags, "ALBUM"),
 		Title:          firstTagValue(tags, "TITLE"),
+		Date:           firstTagValue(tags, "DATE", "YEAR", "ORIGINALDATE"),
+		Genre:          genre,
+		RecordLabel:    firstTagValue(tags, "LABEL", "ORGANIZATION"),
+		CatalogNumber:  firstTagValue(tags, "CATALOGNUMBER", "CATALOG"),
+		Genres:         genres,
 		AllTags:        collectAllTags(tags),
 		Lyrics:         firstTagValue(tags, "LYRICS"),
 		UnsyncedLyrics: firstTagValue(tags, "UNSYNCEDLYRICS"),
 		TrackNumber:    trackNumber,
 		TrackTotal:     trackTotal,
+		DiscNumber:     discNumber,
+		DiscTotal:      discTotal,
 		BitDepth:       technical.BitDepth,
 		SampleRate:     technical.SampleRate,
 		Codec:          technical.Codec,
@@ -583,20 +701,41 @@ func buildTrackTags(tags map[string][]string, technical TrackTechnicalMetadata) 
 		DurationSecs:   technical.DurationSeconds,
 		Container:      technical.Container,
 		FileSizeBytes:  technical.FileSizeBytes,
-		RecordingID:    firstTagValue(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
-		ReleaseID:      firstTagValue(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
-		ArtistID:       firstTagValue(tags, "MUSICBRAINZ_ARTISTID", "MusicBrainz Artist Id"),
-		ArtistIDs:      extractArtistMBIDs(tags),
+		RecordingID:    extractFirstMusicBrainzID(tags, "MUSICBRAINZ_TRACKID", "MusicBrainz Track Id"),
+		ReleaseID:      extractFirstMusicBrainzID(tags, "MUSICBRAINZ_ALBUMID", "MusicBrainz Album Id"),
+		ArtistID:       firstNonEmptyString(artistIDs...),
+		ArtistIDs:      artistIDs,
+		AlbumArtistID:  firstNonEmptyString(albumArtistIDs...),
+		AlbumArtistIDs: albumArtistIDs,
 	}
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+
+	return ""
 }
 
 func hasAnyTrackMetadata(trackTags TrackTags) bool {
 	return trackTags.Artist != "" ||
+		trackTags.AlbumArtist != "" ||
 		trackTags.Album != "" ||
 		trackTags.Title != "" ||
+		trackTags.Date != "" ||
+		trackTags.Genre != "" ||
+		trackTags.RecordLabel != "" ||
+		trackTags.CatalogNumber != "" ||
+		len(trackTags.Genres) > 0 ||
 		len(trackTags.AllTags) > 0 ||
 		trackTags.TrackNumber != "" ||
 		trackTags.TrackTotal != "" ||
+		trackTags.DiscNumber != "" ||
+		trackTags.DiscTotal != "" ||
 		trackTags.BitDepth != 0 ||
 		trackTags.SampleRate != 0 ||
 		trackTags.Codec != "" ||
@@ -605,6 +744,12 @@ func hasAnyTrackMetadata(trackTags TrackTags) bool {
 		trackTags.DurationSecs != 0 ||
 		trackTags.Container != "" ||
 		trackTags.FileSizeBytes != 0 ||
+		trackTags.RecordingID != "" ||
+		trackTags.ReleaseID != "" ||
+		trackTags.ArtistID != "" ||
+		len(trackTags.ArtistIDs) > 0 ||
+		trackTags.AlbumArtistID != "" ||
+		len(trackTags.AlbumArtistIDs) > 0 ||
 		trackTags.Lyrics != "" ||
 		trackTags.UnsyncedLyrics != ""
 }
@@ -642,8 +787,11 @@ func (a *App) normalizeTrackTagPaths(paths []string) []string {
 	return normalized
 }
 
-func resolveTrackTagsWorkerCount(jobCount int) int {
+func resolveTrackTagsWorkerCountWithMax(jobCount int, maxWorkerCount int) int {
 	if jobCount <= 0 {
+		return 0
+	}
+	if maxWorkerCount <= 0 {
 		return 0
 	}
 
@@ -651,14 +799,18 @@ func resolveTrackTagsWorkerCount(jobCount int) int {
 	if workerCount < 2 {
 		workerCount = 2
 	}
-	if workerCount > trackTagsWorkerLimit {
-		workerCount = trackTagsWorkerLimit
+	if workerCount > maxWorkerCount {
+		workerCount = maxWorkerCount
 	}
 	if workerCount > jobCount {
 		workerCount = jobCount
 	}
 
 	return workerCount
+}
+
+func resolveTrackTagsWorkerCount(jobCount int) int {
+	return resolveTrackTagsWorkerCountWithMax(jobCount, trackTagsWorkerLimit)
 }
 
 func (a *App) removeTrackTagsCacheOrderEntryLocked(path string) {
@@ -749,6 +901,10 @@ func readTrackTagsForPath(path string, ffprobePath string) (TrackTags, bool) {
 
 // ReadTrackTags reads tag and technical metadata for track files by path.
 func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
+	return a.readTrackTagsWithWorkerLimit(paths, trackTagsWorkerLimit)
+}
+
+func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int) map[string]TrackTags {
 	startedAt := time.Now()
 	normalizedPaths := a.normalizeTrackTagPaths(paths)
 	tagByPath := make(map[string]TrackTags, len(normalizedPaths))
@@ -756,14 +912,22 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 		return tagByPath
 	}
 
-	jobs := make(chan readTrackTagsJob, len(normalizedPaths))
-	results := make(chan readTrackTagsResult, len(normalizedPaths))
+	localPaths := make([]string, 0, len(normalizedPaths))
+	for _, path := range normalizedPaths {
+		if _, ok := parseRemoteLibraryPath(path); ok {
+			continue
+		}
+		localPaths = append(localPaths, path)
+	}
+
+	jobs := make(chan readTrackTagsJob, len(localPaths))
+	results := make(chan readTrackTagsResult, len(localPaths))
 	queuedJobs := 0
 	cacheHits := 0
 	a.ensureSettingsLoaded()
 	ffprobePath := resolveFFProbePath(a.settingsState().settings.FFmpegPath)
 
-	for _, path := range normalizedPaths {
+	for _, path := range localPaths {
 		signature, ok := trackTagsFileSignatureForPath(path)
 		if !ok {
 			continue
@@ -785,51 +949,38 @@ func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 	}
 	close(jobs)
 
-	workerCount := resolveTrackTagsWorkerCount(queuedJobs)
-	if workerCount == 0 {
-		if len(normalizedPaths) > 1 {
-			a.logRescanEvent(
-				"ReadTrackTags END: requested=%d cacheHits=%d parsed=%d returned=%d workers=%d took %.2fms",
-				len(normalizedPaths),
-				cacheHits,
-				queuedJobs,
-				len(tagByPath),
-				workerCount,
-				time.Since(startedAt).Seconds()*1000,
-			)
-		}
-		return tagByPath
-	}
-
-	var workerWaitGroup sync.WaitGroup
-	for workerIndex := 0; workerIndex < workerCount; workerIndex++ {
-		workerWaitGroup.Add(1)
-		go func() {
-			defer workerWaitGroup.Done()
-			for job := range jobs {
-				trackTags, hasMetadata := readTrackTagsForPath(job.path, ffprobePath)
-				results <- readTrackTagsResult{
-					path:        job.path,
-					signature:   job.signature,
-					tags:        trackTags,
-					hasMetadata: hasMetadata,
+	workerCount := resolveTrackTagsWorkerCountWithMax(queuedJobs, maxWorkerCount)
+	if workerCount > 0 {
+		var workerWaitGroup sync.WaitGroup
+		for workerIndex := 0; workerIndex < workerCount; workerIndex++ {
+			workerWaitGroup.Add(1)
+			go func() {
+				defer workerWaitGroup.Done()
+				for job := range jobs {
+					trackTags, hasMetadata := readTrackTagsForPath(job.path, ffprobePath)
+					results <- readTrackTagsResult{
+						path:        job.path,
+						signature:   job.signature,
+						tags:        trackTags,
+						hasMetadata: hasMetadata,
+					}
 				}
-			}
-		}()
-	}
-
-	go func() {
-		workerWaitGroup.Wait()
-		close(results)
-	}()
-
-	for result := range results {
-		a.putTrackTagsCache(result.path, result.signature, result.tags, result.hasMetadata)
-		if !result.hasMetadata {
-			continue
+			}()
 		}
 
-		tagByPath[result.path] = result.tags
+		go func() {
+			workerWaitGroup.Wait()
+			close(results)
+		}()
+
+		for result := range results {
+			a.putTrackTagsCache(result.path, result.signature, result.tags, result.hasMetadata)
+			if !result.hasMetadata {
+				continue
+			}
+
+			tagByPath[result.path] = result.tags
+		}
 	}
 
 	if len(normalizedPaths) > 1 {

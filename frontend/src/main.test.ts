@@ -278,6 +278,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
     GetLibraryFolderPage: vi.fn(async () => ({ entries: [], folderPath: '', limit: 0, offset: 0, totalEntries: 0 })),
     GetLibraryFolderPageSorted: vi.fn(async () => ({ entries: [], folderPath: '', limit: 0, offset: 0, totalEntries: 0 })),
     GetLibraryIndexedFilePage: vi.fn(async () => ({ entries: [], kind: 'track', limit: 0, offset: 0, totalEntries: 0 })),
+    GetLibraryShareConnectionCount: vi.fn(async () => 0),
     GetMusicBrainzTagWorkerProgress: vi.fn(async () => testState.musicBrainzProgress),
     GetSettings: vi.fn(async () => testState.normalizedSettings),
     IsLibraryFolderImmediateDescendantsEnumerated: vi.fn(async () => true),
@@ -301,6 +302,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
 
 vi.mock('../wailsjs/runtime/runtime', () => ({
     BrowserOpenURL: vi.fn(async () => undefined),
+    EventsOn: vi.fn(() => vi.fn()),
 }));
 
 describe('main entrypoint runtime scope', () => {

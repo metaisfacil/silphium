@@ -23,6 +23,19 @@ import (
 const defaultImageThumbnailMaxEdge = 96
 const maxImageThumbnailMaxEdge = 512
 
+func (a *App) readLibraryFileBytes(path string) ([]byte, bool) {
+	if !a.isAllowedLibraryPath(path) {
+		return nil, false
+	}
+
+	rawBytes, err := os.ReadFile(path)
+	if err != nil || len(rawBytes) == 0 {
+		return nil, false
+	}
+
+	return rawBytes, true
+}
+
 // ReadFileBase64 reads a file from the allowed library scope and returns its base64 content.
 func (a *App) ReadFileBase64(path string) string {
 	if !a.isAllowedLibraryPath(path) {
@@ -82,12 +95,8 @@ func (a *App) CopyShareImageToClipboard(imageBase64 string) bool {
 
 // ReadImageThumbnail reads an image from the allowed library scope and returns a cheap thumbnail.
 func (a *App) ReadImageThumbnail(path string, maxEdge int) EmbeddedCoverArt {
-	if !a.isAllowedLibraryPath(path) {
-		return EmbeddedCoverArt{}
-	}
-
-	rawBytes, err := os.ReadFile(path)
-	if err != nil || len(rawBytes) == 0 {
+	rawBytes, ok := a.readLibraryFileBytes(path)
+	if !ok {
 		return EmbeddedCoverArt{}
 	}
 

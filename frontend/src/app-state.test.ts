@@ -22,6 +22,7 @@ describe('createAppState', () => {
             libraryRootName: '',
             currentFolderPath: '',
             sidebarAutoFolderPath: '',
+            loadingTrackPath: '',
             libraryIndexTruncated: false,
             libraryLoading: false,
             libraryLoadingEtaSeconds: null,

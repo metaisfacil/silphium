@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -10,41 +11,47 @@ import (
 )
 
 func (b *AudioBackend) prepareTrackSegment(path string, replayGainReleasePaths []string) (audioTrackSegment, error) {
+	return b.prepareTrackSegmentForSource(path, path, nil, replayGainReleasePaths, audioDecodeHints{})
+}
+
+func (b *AudioBackend) prepareTrackSegmentForSource(displayPath string, decodePath string, preloadedTags map[string][]string, replayGainReleasePaths []string, decodeHints audioDecodeHints) (audioTrackSegment, error) {
 	b.mutex.Lock()
 	gaplessPlayback := b.gaplessPlayback
 	replayGainEnabled := b.replayGainEnabled
 	b.mutex.Unlock()
 
-	var tags map[string][]string
-	if gaplessPlayback {
-		loadedTags, err := readTaglibTags(path)
+	tags := preloadedTags
+	if gaplessPlayback && tags == nil {
+		loadedTags, err := readTaglibTags(displayPath)
 		if err == nil {
 			tags = loadedTags
 		}
 	}
 
+	trimInfo := gaplessTrimInfo{}
+
 	replayGainInfo := ReplayGainInfo{}
 	if replayGainEnabled {
-		replayGainInfo = b.resolveReplayGainInfo(path, tags, replayGainReleasePaths)
+		replayGainInfo = b.resolveReplayGainInfo(decodePath, tags, replayGainReleasePaths)
 	}
 
-	decodedPCM, err := b.decodeTrack(path, replayGainInfo.Scale())
+	decodedPCM, err := b.decodeTrack(decodePath, replayGainInfo.Scale())
 	if err != nil {
 		return audioTrackSegment{}, err
 	}
 
 	if gaplessPlayback {
-		trimInfo := readGaplessTrimInfoFromTags(tags)
+		trimInfo = readGaplessTrimInfoFromTags(tags)
 		decodedPCM = trimPCMForGapless(decodedPCM, trimInfo)
 		if trimInfo.LeadSamples > 0 || trimInfo.TailSamples > 0 {
-			logAudioEvent("prepareTrackSegment path=%q leadSamples=%d tailSamples=%d trimmedBytes=%d", path, trimInfo.LeadSamples, trimInfo.TailSamples, len(decodedPCM))
+			logAudioEvent("prepareTrackSegment path=%q leadSamples=%d tailSamples=%d trimmedBytes=%d", displayPath, trimInfo.LeadSamples, trimInfo.TailSamples, len(decodedPCM))
 		}
 	}
 
 	if replayGainEnabled && replayGainInfo.Source != "" {
 		logAudioEvent(
 			"prepareTrackSegment replaygain path=%q source=%s gain=%.2fdB peak=%.6f scale=%.6f",
-			path,
+			displayPath,
 			replayGainInfo.Source,
 			replayGainInfo.GainDB,
 			replayGainInfo.Peak,
@@ -52,25 +59,163 @@ func (b *AudioBackend) prepareTrackSegment(path string, replayGainReleasePaths [
 		)
 	}
 
+	expectedPCMBytes := expectedPCMBytesFromDurationSeconds(decodeHints.ExpectedDurationSeconds)
+	if expectedPCMBytes > 0 && gaplessPlayback {
+		trimmedBytes := (trimInfo.LeadSamples + trimInfo.TailSamples) * int64(audioBytesPerFrame)
+		if trimmedBytes > 0 && expectedPCMBytes > trimmedBytes {
+			expectedPCMBytes -= trimmedBytes
+		}
+	}
+
 	return audioTrackSegment{
-		SourcePath:      path,
-		PCMData:         decodedPCM,
-		ReplayGainScale: replayGainInfo.Scale(),
+		SourcePath:       displayPath,
+		PCMData:          decodedPCM,
+		ReplayGainScale:  replayGainInfo.Scale(),
+		ExpectedPCMBytes: expectedPCMBytes,
 	}, nil
 }
 
-// LoadTrack decodes and loads a track into the playback backend.
-func (b *AudioBackend) LoadTrack(path string) (AudioPlaybackState, error) {
-	return b.LoadTrackWithReplayGainContext(path, nil)
+func (b *AudioBackend) loadTrackFromStreamingDecodeSource(displayPath string, decodePath string, preloadedTags map[string][]string, replayGainReleasePaths []string, decodeHints audioDecodeHints) (AudioPlaybackState, error) {
+	b.mutex.Lock()
+	gaplessPlayback := b.gaplessPlayback
+	replayGainEnabled := b.replayGainEnabled
+	b.mutex.Unlock()
+
+	tags := preloadedTags
+	if gaplessPlayback && tags == nil {
+		loadedTags, err := readTaglibTags(displayPath)
+		if err == nil {
+			tags = loadedTags
+		}
+	}
+
+	replayGainInfo := ReplayGainInfo{}
+	if replayGainEnabled {
+		replayGainInfo = b.resolveReplayGainInfo(decodePath, tags, replayGainReleasePaths)
+	}
+
+	trimInfo := gaplessTrimInfo{}
+	if gaplessPlayback {
+		trimInfo = readGaplessTrimInfoFromTags(tags)
+	}
+
+	expectedPCMBytes := expectedPCMBytesFromDurationSeconds(decodeHints.ExpectedDurationSeconds)
+	trimmedExpectedBytes := expectedPCMBytes
+	if trimmedExpectedBytes > 0 {
+		trimmedBytes := (trimInfo.LeadSamples + trimInfo.TailSamples) * int64(audioBytesPerFrame)
+		if trimmedBytes > 0 && trimmedExpectedBytes > trimmedBytes {
+			trimmedExpectedBytes -= trimmedBytes
+		}
+	}
+
+	segment := audioTrackSegment{
+		SourcePath:       displayPath,
+		ReplayGainScale:  replayGainInfo.Scale(),
+		ExpectedPCMBytes: trimmedExpectedBytes,
+	}
+
+	decodeCtx, cancelDecode := context.WithCancel(context.Background())
+	b.mutex.Lock()
+	b.unloadTrackLocked()
+	b.streamDecodeGeneration++
+	generation := b.streamDecodeGeneration
+	b.streamDecodeCancel = cancelDecode
+	b.streamDecodeStartedAt = time.Now()
+	b.streamDecodeExpectedBytes = trimmedExpectedBytes
+	b.streamDecodeDone = false
+	b.streamDecodeErr = nil
+	b.streamSegments = []audioTrackSegment{segment}
+	b.streamReadOffset = 0
+	b.streamDroppedBytes = 0
+	b.playStarted = time.Time{}
+	b.playbackBaseBytes = 0
+	b.endEventSent = false
+	b.playing = false
+	player := b.player
+	if b.player != nil {
+		b.player.SetVolume(b.effectivePlayerVolumeLocked())
+	}
+	b.streamCond.Broadcast()
+	b.mutex.Unlock()
+
+	go func() {
+		leadTrimBytes := trimInfo.LeadSamples * int64(audioBytesPerFrame)
+		tailTrimBytes := trimInfo.TailSamples * int64(audioBytesPerFrame)
+		pendingTail := make([]byte, 0, tailTrimBytes+int64(audioBytesPerFrame))
+
+		emit := func(chunk []byte) error {
+			if len(chunk) == 0 {
+				return nil
+			}
+
+			if leadTrimBytes > 0 {
+				if int64(len(chunk)) <= leadTrimBytes {
+					leadTrimBytes -= int64(len(chunk))
+					return nil
+				}
+				chunk = chunk[leadTrimBytes:]
+				leadTrimBytes = 0
+			}
+
+			if tailTrimBytes > 0 {
+				pendingTail = append(pendingTail, chunk...)
+				if int64(len(pendingTail)) <= tailTrimBytes {
+					return nil
+				}
+				emitBytes := len(pendingTail) - int(tailTrimBytes)
+				emitChunk := append([]byte(nil), pendingTail[:emitBytes]...)
+				pendingTail = append(pendingTail[:0], pendingTail[emitBytes:]...)
+				return b.appendStreamDecodedPCM(displayPath, generation, emitChunk)
+			}
+
+			return b.appendStreamDecodedPCM(displayPath, generation, chunk)
+		}
+
+		err := b.decodeTrackStream(decodeCtx, decodePath, replayGainInfo.Scale(), emit)
+		b.finishStreamDecodedPCM(displayPath, generation, err)
+	}()
+
+	if err := b.flushPlayerBuffer(player); err != nil {
+		b.mutex.Lock()
+		b.unloadTrackLocked()
+		state := b.snapshotLocked()
+		b.mutex.Unlock()
+		return state, err
+	}
+
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	for {
+		if generation != b.streamDecodeGeneration {
+			return b.snapshotLocked(), errors.New("track load canceled")
+		}
+
+		if b.streamDecodeErr != nil && !b.remoteStreamReadyLocked() {
+			err := b.streamDecodeErr
+			b.unloadTrackLocked()
+			return b.snapshotLocked(), err
+		}
+
+		if b.remoteStreamReadyLocked() {
+			state := b.snapshotLocked()
+			logAudioEvent("LoadTrack streaming path=%q bufferedBytes=%d expectedBytes=%d state=%s", displayPath, len(b.streamSegments[0].PCMData), b.streamDecodeExpectedBytes, b.stateSummaryLocked())
+			return state, nil
+		}
+
+		b.streamCond.Wait()
+	}
 }
 
-// LoadTrackWithReplayGainContext decodes and loads a track using release-aware ReplayGain when provided.
-func (b *AudioBackend) LoadTrackWithReplayGainContext(path string, replayGainReleasePaths []string) (AudioPlaybackState, error) {
+func (b *AudioBackend) loadTrackFromDecodeSource(displayPath string, decodePath string, preloadedTags map[string][]string, replayGainReleasePaths []string, decodeHints audioDecodeHints) (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
 	}
 
-	segment, err := b.prepareTrackSegment(path, replayGainReleasePaths)
+	if decodeHints.Progressive {
+		return b.loadTrackFromStreamingDecodeSource(displayPath, decodePath, preloadedTags, replayGainReleasePaths, decodeHints)
+	}
+
+	segment, err := b.prepareTrackSegmentForSource(displayPath, decodePath, preloadedTags, replayGainReleasePaths, decodeHints)
 	if err != nil {
 		return AudioPlaybackState{}, err
 	}
@@ -97,29 +242,24 @@ func (b *AudioBackend) LoadTrackWithReplayGainContext(path string, replayGainRel
 		return state, err
 	}
 
-	logAudioEvent("LoadTrack path=%q bytes=%d state=%s", path, len(segment.PCMData), summary)
+	logAudioEvent("LoadTrack path=%q bytes=%d state=%s", displayPath, len(segment.PCMData), summary)
 
 	return state, nil
 }
 
-// QueueNextTrack prepares the immediate next track for seamless playback.
-func (b *AudioBackend) QueueNextTrack(afterPath string, nextPath string) (AudioPlaybackState, error) {
-	return b.QueueNextTrackWithReplayGainContext(afterPath, nextPath, nil)
-}
-
-// QueueNextTrackWithReplayGainContext prepares the immediate next track using release-aware ReplayGain when provided.
-func (b *AudioBackend) QueueNextTrackWithReplayGainContext(afterPath string, nextPath string, replayGainReleasePaths []string) (AudioPlaybackState, error) {
+func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, nextDisplayPath string, nextDecodePath string, preloadedTags map[string][]string, replayGainReleasePaths []string, decodeHints audioDecodeHints) (AudioPlaybackState, error) {
 	if err := b.Initialize(); err != nil {
 		return AudioPlaybackState{}, err
 	}
 
-	trimmedAfterPath := strings.TrimSpace(afterPath)
-	trimmedNextPath := strings.TrimSpace(nextPath)
+	trimmedAfterPath := strings.TrimSpace(afterDisplayPath)
+	trimmedNextDisplayPath := strings.TrimSpace(nextDisplayPath)
+	trimmedNextDecodePath := strings.TrimSpace(nextDecodePath)
 
 	var nextSegment audioTrackSegment
 	var err error
-	if trimmedNextPath != "" {
-		nextSegment, err = b.prepareTrackSegment(trimmedNextPath, replayGainReleasePaths)
+	if trimmedNextDisplayPath != "" && trimmedNextDecodePath != "" {
+		nextSegment, err = b.prepareTrackSegmentForSource(trimmedNextDisplayPath, trimmedNextDecodePath, preloadedTags, replayGainReleasePaths, decodeHints)
 		if err != nil {
 			return AudioPlaybackState{}, err
 		}
@@ -130,7 +270,7 @@ func (b *AudioBackend) QueueNextTrackWithReplayGainContext(afterPath string, nex
 
 	b.syncPlaybackLocked()
 	if len(b.streamSegments) == 0 {
-		if trimmedNextPath == "" {
+		if trimmedNextDisplayPath == "" {
 			logAudioEvent("QueueNextTrack cleared with no active track")
 			return b.snapshotLocked(), nil
 		}
@@ -144,14 +284,14 @@ func (b *AudioBackend) QueueNextTrackWithReplayGainContext(afterPath string, nex
 			if ok {
 				activePath = activeSegment.SourcePath
 			}
-			logAudioEvent("QueueNextTrack skipped afterPath=%q activePath=%q nextPath=%q", trimmedAfterPath, activePath, trimmedNextPath)
+			logAudioEvent("QueueNextTrack skipped afterPath=%q activePath=%q nextPath=%q", trimmedAfterPath, activePath, trimmedNextDisplayPath)
 			return b.snapshotLocked(), nil
 		}
 	}
 
 	b.trimConsumedSegmentsLocked(b.currentPlayedGlobalBytesLocked())
 	b.clearFutureQueueLocked()
-	if !b.gaplessPlayback || trimmedNextPath == "" {
+	if !b.gaplessPlayback || trimmedNextDisplayPath == "" {
 		b.streamCond.Broadcast()
 		logAudioEvent("QueueNextTrack cleared gapless=%t state=%s", b.gaplessPlayback, b.stateSummaryLocked())
 		return b.snapshotLocked(), nil
@@ -159,8 +299,28 @@ func (b *AudioBackend) QueueNextTrackWithReplayGainContext(afterPath string, nex
 
 	b.streamSegments = append(b.streamSegments, nextSegment)
 	b.streamCond.Broadcast()
-	logAudioEvent("QueueNextTrack queued nextPath=%q state=%s", trimmedNextPath, b.stateSummaryLocked())
+	logAudioEvent("QueueNextTrack queued nextPath=%q state=%s", trimmedNextDisplayPath, b.stateSummaryLocked())
 	return b.snapshotLocked(), nil
+}
+
+// LoadTrack decodes and loads a track into the playback backend.
+func (b *AudioBackend) LoadTrack(path string) (AudioPlaybackState, error) {
+	return b.LoadTrackWithReplayGainContext(path, nil)
+}
+
+// LoadTrackWithReplayGainContext decodes and loads a track using release-aware ReplayGain when provided.
+func (b *AudioBackend) LoadTrackWithReplayGainContext(path string, replayGainReleasePaths []string) (AudioPlaybackState, error) {
+	return b.loadTrackFromDecodeSource(path, path, nil, replayGainReleasePaths, audioDecodeHints{})
+}
+
+// QueueNextTrack prepares the immediate next track for seamless playback.
+func (b *AudioBackend) QueueNextTrack(afterPath string, nextPath string) (AudioPlaybackState, error) {
+	return b.QueueNextTrackWithReplayGainContext(afterPath, nextPath, nil)
+}
+
+// QueueNextTrackWithReplayGainContext prepares the immediate next track using release-aware ReplayGain when provided.
+func (b *AudioBackend) QueueNextTrackWithReplayGainContext(afterPath string, nextPath string, replayGainReleasePaths []string) (AudioPlaybackState, error) {
+	return b.queueNextTrackFromDecodeSource(afterPath, nextPath, nextPath, nil, replayGainReleasePaths, audioDecodeHints{})
 }
 
 // ReplayGainReleaseDynamicRange resolves the album dynamic range for a release-scoped ReplayGain context.
