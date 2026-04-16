@@ -10,6 +10,8 @@ export type PlaylistModalElements = {
     playlistSourceLabel: HTMLSpanElement;
     playlistSource: HTMLSelectElement;
     playlistSourceMenu: HTMLDivElement;
+    playlistFilterToggle: HTMLButtonElement;
+    playlistFilterInput: HTMLInputElement;
     playlistHydrationProgress: HTMLParagraphElement;
     playlistHydrationCount: HTMLSpanElement;
     playlistList: HTMLUListElement;
@@ -36,11 +38,18 @@ export const renderPlaylistModal = (): string => `
                     <div id="playlist-source-menu" class="playlist-source-menu" role="listbox" hidden></div>
                     <select id="playlist-source" class="playlist-source-native" aria-label="Select playlist view" tabindex="-1" hidden></select>
                 </div>
+                <div class="playlist-filter-panel">
+                    <label class="playlist-filter-field" for="playlist-filter-input">
+                        <span class="playlist-filter-icon" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M10.5 4.25C7.05 4.25 4.25 7.05 4.25 10.5C4.25 13.95 7.05 16.75 10.5 16.75C11.99 16.75 13.36 16.23 14.44 15.36L18.54 19.46C18.83 19.75 19.3 19.75 19.59 19.46C19.89 19.17 19.89 18.7 19.59 18.41L15.49 14.31C16.36 13.23 16.88 11.86 16.88 10.38C16.88 6.94 14.07 4.25 10.5 4.25ZM5.75 10.5C5.75 7.88 7.88 5.75 10.5 5.75C13.12 5.75 15.25 7.88 15.25 10.5C15.25 13.12 13.12 15.25 10.5 15.25C7.88 15.25 5.75 13.12 5.75 10.5Z"/></svg></span>
+                        <input id="playlist-filter-input" class="playlist-filter-input" type="search" placeholder="Filter tracks in this view" aria-label="Filter tracks in the current playlist view" spellcheck="false" autocomplete="off">
+                    </label>
+                </div>
                 <div class="playlist-header-actions">
                     <p id="playlist-hydration-progress" class="playlist-hydration-progress" hidden aria-live="polite">
                         <span class="playlist-hydration-spinner" aria-hidden="true"></span>
                         <span id="playlist-hydration-count" class="playlist-hydration-count">0 of 0</span>
                     </p>
+                    <button id="playlist-filter-toggle" class="playlist-header-icon-btn playlist-search-toggle" type="button" aria-label="Search playlist" aria-controls="playlist-filter-input" aria-expanded="false"><svg class="overlay-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M10.5 4.25C7.05 4.25 4.25 7.05 4.25 10.5C4.25 13.95 7.05 16.75 10.5 16.75C11.99 16.75 13.36 16.23 14.44 15.36L18.54 19.46C18.83 19.75 19.3 19.75 19.59 19.46C19.89 19.17 19.89 18.7 19.59 18.41L15.49 14.31C16.36 13.23 16.88 11.86 16.88 10.38C16.88 6.94 14.07 4.25 10.5 4.25ZM5.75 10.5C5.75 7.88 7.88 5.75 10.5 5.75C13.12 5.75 15.25 7.88 15.25 10.5C15.25 13.12 13.12 15.25 10.5 15.25C7.88 15.25 5.75 13.12 5.75 10.5Z"/></svg></button>
                     <button id="playlist-close" class="playlist-close" type="button" aria-label="Close playlist"><svg class="overlay-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6.4 5.34C6.11 5.05 5.64 5.05 5.34 5.34C5.05 5.64 5.05 6.11 5.34 6.4L10.94 12L5.34 17.6C5.05 17.89 5.05 18.36 5.34 18.66C5.64 18.95 6.11 18.95 6.4 18.66L12 13.06L17.6 18.66C17.89 18.95 18.36 18.95 18.66 18.66C18.95 18.36 18.95 17.89 18.66 17.6L13.06 12L18.66 6.4C18.95 6.11 18.95 5.64 18.66 5.34C18.36 5.05 17.89 5.05 17.6 5.34L12 10.94L6.4 5.34Z"/></svg></button>
                 </div>
             </header>
@@ -75,6 +84,8 @@ export const getPlaylistModalElements = (root: ParentNode): PlaylistModalElement
     playlistSourceLabel: root.querySelector('#playlist-source-label') as HTMLSpanElement,
     playlistSource: root.querySelector('#playlist-source') as HTMLSelectElement,
     playlistSourceMenu: root.querySelector('#playlist-source-menu') as HTMLDivElement,
+    playlistFilterToggle: root.querySelector('#playlist-filter-toggle') as HTMLButtonElement,
+    playlistFilterInput: root.querySelector('#playlist-filter-input') as HTMLInputElement,
     playlistHydrationProgress: root.querySelector('#playlist-hydration-progress') as HTMLParagraphElement,
     playlistHydrationCount: root.querySelector('#playlist-hydration-count') as HTMLSpanElement,
     playlistList: root.querySelector('#playlist-list') as HTMLUListElement,
