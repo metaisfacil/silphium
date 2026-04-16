@@ -325,6 +325,89 @@ describe('createPlaylistController', () => {
         expect(elements.playlistSource.value).toBe('queue');
     });
 
+    it('filters the current playlist view and clears the filter when the modal closes', () => {
+        const { controller, elements } = mountPlaylistController();
+        vi.useFakeTimers();
+
+        controller.openModal();
+        elements.playlistFilterToggle.click();
+        expect(elements.playlistFilterToggle.getAttribute('aria-expanded')).toBe('true');
+        expect(elements.playlistDialog.classList.contains('is-filter-open')).toBe(true);
+        elements.playlistFilterInput.value = 'Track 2';
+        elements.playlistFilterInput.dispatchEvent(new Event('input', { bubbles: true }));
+        vi.advanceTimersByTime(300);
+
+        expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => button.dataset.playlistTrackIndex)).toEqual(['2']);
+
+        controller.closeModal();
+        controller.openModal();
+
+        expect(elements.playlistFilterToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(elements.playlistDialog.classList.contains('is-filter-open')).toBe(false);
+        expect(elements.playlistFilterInput.value).toBe('');
+        expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => button.dataset.playlistTrackIndex)).toEqual(['0', '1', '2']);
+        vi.useRealTimers();
+    });
+
+    it('waits 300ms after the last typed character before applying the filter', () => {
+        const { controller, elements } = mountPlaylistController();
+        vi.useFakeTimers();
+
+        controller.openModal();
+        elements.playlistFilterToggle.click();
+        elements.playlistFilterInput.value = 'Track 2';
+        elements.playlistFilterInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => button.dataset.playlistTrackIndex)).toEqual(['0', '1', '2']);
+
+        vi.advanceTimersByTime(299);
+        expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => button.dataset.playlistTrackIndex)).toEqual(['0', '1', '2']);
+        expect(elements.playlistList.classList.contains('is-filtering')).toBe(false);
+
+        vi.advanceTimersByTime(1);
+        expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => button.dataset.playlistTrackIndex)).toEqual(['2']);
+        expect(elements.playlistList.classList.contains('is-filtering')).toBe(true);
+
+        vi.advanceTimersByTime(170);
+        expect(elements.playlistList.classList.contains('is-filtering')).toBe(false);
+        vi.useRealTimers();
+    });
+
+    it('clears the filter when the playlist source is switched', async () => {
+        const { controller, elements } = mountPlaylistController();
+        vi.useFakeTimers();
+
+        controller.openModal();
+        elements.playlistFilterToggle.click();
+        elements.playlistFilterInput.value = 'Track 2';
+        elements.playlistFilterInput.dispatchEvent(new Event('input', { bubbles: true }));
+        vi.advanceTimersByTime(300);
+        await selectCustomPlaylistSource(elements, 'favorite:0');
+
+        expect(elements.playlistFilterToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(elements.playlistFilterInput.value).toBe('');
+        expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => button.dataset.playlistTrackIndex)).toEqual(['1', '0']);
+        vi.useRealTimers();
+    });
+
+    it('clears the filter when a different playlist path is loaded directly', async () => {
+        const { controller, elements } = mountPlaylistController();
+        vi.useFakeTimers();
+
+        await expect(controller.loadPlaylistByPath('/playlists/demo.m3u8')).resolves.toBe(true);
+        elements.playlistFilterToggle.click();
+        elements.playlistFilterInput.value = 'Track 2';
+        elements.playlistFilterInput.dispatchEvent(new Event('input', { bubbles: true }));
+        vi.advanceTimersByTime(300);
+
+        await expect(controller.loadPlaylistByPath('/playlists/empty.m3u8')).resolves.toBe(true);
+
+        expect(elements.playlistFilterToggle.getAttribute('aria-expanded')).toBe('false');
+        expect(elements.playlistFilterInput.value).toBe('');
+        expect(elements.playlistList.textContent).toContain('No tracks available');
+        vi.useRealTimers();
+    });
+
     it('loads listen history as a read-only playlist source', async () => {
         const { controller, elements, loadListenHistoryData, onTrackChosen } = mountPlaylistController();
         vi.useFakeTimers();
