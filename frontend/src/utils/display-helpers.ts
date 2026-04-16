@@ -173,10 +173,10 @@ export const describeErrorForLog = (error: unknown): string => {
     }
 };
 
-export const matchesSilenceTitleHeuristic = (track: { displayTitle: string; title: string; name: string }): boolean => {
+export const matchesSilenceTitleHeuristic = (track: { displayTitle: string; title?: string; name: string }): boolean => {
     const titles = [
         track.displayTitle,
-        track.title,
+        track.title || '',
         track.name,
         track.name.replace(/\.[^/.]+$/, ''),
     ];
@@ -185,6 +185,10 @@ export const matchesSilenceTitleHeuristic = (track: { displayTitle: string; titl
         const normalized = value.trim().toLowerCase();
         return normalized === '[silence]' || normalized === '(silence)';
     });
+};
+
+export const isPlaybackQueueEligibleTrack = (track: { displayTitle: string; title?: string; name: string }): boolean => {
+    return !matchesSilenceTitleHeuristic(track);
 };
 
 export const nonTypingInputTypes = new Set([

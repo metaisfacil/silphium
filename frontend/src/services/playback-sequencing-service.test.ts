@@ -51,6 +51,31 @@ describe('createPlaybackSequencingService', () => {
         expect(service.nextTrackIndexForDirection(-1)).toBe(2);
     });
 
+    it('skips silence placeholder tracks when building the playback sequence', () => {
+        const tracks = [
+            createTrack('01 Alpha', 'Library/Album A'),
+            createTrack('02 Silence', 'Library/Album B', { title: '[silence]', displayTitle: '[silence]' }),
+            createTrack('03 Gamma', 'Library/Album C'),
+        ];
+        let currentTrackIndex = 0;
+
+        const service = createPlaybackSequencingService({
+            getTracks: () => tracks,
+            getCurrentTrackIndex: () => currentTrackIndex,
+            getReleaseDepthForTrack: () => 0,
+            initialPlaybackOrderMode: 'ordered-library',
+        });
+
+        expect(service.baseSequenceIndexes()).toEqual({
+            indexes: [0, 2],
+            currentPosition: 0,
+        });
+        expect(service.nextTrackIndexForDirection(1)).toBe(2);
+
+        currentTrackIndex = 2;
+        expect(service.nextTrackIndexForDirection(1)).toBe(0);
+    });
+
     it('keeps ordered-album navigation scoped to the current release depth', () => {
         const tracks = [
             createTrack('02 Song', 'Library/Artist/Album One/Disc 1'),
@@ -102,6 +127,34 @@ describe('createPlaybackSequencingService', () => {
         currentTrackIndex = 0;
         expect(service.nextTrackIndexForDirection(1)).toBe(1);
 
+        expect(randomSpy).toHaveBeenCalled();
+    });
+
+    it('removes silence placeholders from poisoned shuffle history and redraws immediately', () => {
+        const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+        const tracks = [
+            createTrack('01 Alpha', 'Library/Album A'),
+            createTrack('02 Silence', 'Library/Album B', { title: '(silence)', displayTitle: '(silence)' }),
+            createTrack('03 Gamma', 'Library/Album C'),
+        ];
+        let currentTrackIndex = 1;
+        const state = createPlaybackSequencingState('shuffle-library');
+        state.shuffleHistory = [1];
+        state.shuffleCursor = 0;
+        state.shuffleScopeKey = 'library';
+
+        const service = createPlaybackSequencingService({
+            getTracks: () => tracks,
+            getCurrentTrackIndex: () => currentTrackIndex,
+            getReleaseDepthForTrack: () => 0,
+            initialPlaybackOrderMode: 'shuffle-library',
+        }, state);
+
+        const nextTrackIndex = service.peekNextTrackIndexForDirection(1);
+        expect(nextTrackIndex).toBe(2);
+        expect(service.baseSequenceIndexes().indexes).not.toContain(1);
+        expect(state.shuffleHistory).not.toContain(1);
+        expect(state.shuffleHistory[0]).toBe(0);
         expect(randomSpy).toHaveBeenCalled();
     });
 
