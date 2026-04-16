@@ -20,11 +20,15 @@ func TestReadTrackEmbeddedCover(t *testing.T) {
 	root := t.TempDir()
 	trackPath := filepath.Join(root, "track.flac")
 	writeTestFile(t, trackPath, "track")
+	remoteTrackPath := buildRemoteLibraryPath(buildRemoteLibraryBasePath("example.com", 5005), "Library/Album/track.flac")
 	app := &App{}
 	app.activeLibraryRoots = []libraryRootConfig{{Path: normalizePath(root), Name: filepath.Base(root)}}
 
 	if cover := app.ReadTrackEmbeddedCover(filepath.Join(t.TempDir(), "outside.flac")); cover != (EmbeddedCoverArt{}) {
 		t.Fatalf("ReadTrackEmbeddedCover(outside path) = %#v, want empty result", cover)
+	}
+	if cover := app.ReadTrackEmbeddedCover(remoteTrackPath); cover != (EmbeddedCoverArt{}) {
+		t.Fatalf("ReadTrackEmbeddedCover(remote path) = %#v, want empty result", cover)
 	}
 
 	readTaglibImage = func(_ string) ([]byte, error) {

@@ -510,19 +510,15 @@ func (a *App) GetLibraryFolderCoverPath(folderPath string) string {
 	contentState := a.libraryContentState()
 
 	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
-
-	if contentState.libraryScan.CoverPathByFolder == nil {
-		return ""
-	}
-
 	folderKey := strings.ToLower(normalizedFolderPath)
-	coverPath, exists := contentState.libraryScan.CoverPathByFolder[folderKey]
-	if !exists {
-		return ""
+	if contentState.libraryScan.CoverPathByFolder != nil {
+		if coverPath, exists := contentState.libraryScan.CoverPathByFolder[folderKey]; exists {
+			contentState.indexMu.Unlock()
+			return coverPath
+		}
 	}
-
-	return coverPath
+	contentState.indexMu.Unlock()
+	return ""
 }
 
 // GetLibraryFolderTrackPaths resolves all audio tracks under a folder subtree for queue actions.

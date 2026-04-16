@@ -5,6 +5,7 @@ import {
     asScrobbleFilterMode,
     buildDisplayMetadata,
     describeScrobbleRule,
+    effectivePlaybackTechnicalMetadata,
     buildLibraryRootNameByPath,
     findLibraryFolderForFilePath,
     findLibraryFolderForTrack,
@@ -58,6 +59,13 @@ describe('main helpers', () => {
         ])).toEqual([
             { path: 'C:\\Music\\Main\\', label: 'Main Library', releaseDepth: 64 },
         ]);
+
+        expect(normalizeLibraryFolders([
+            { path: '', kind: 'remote', host: ' HTTP://Example.com:5005/library ', port: 0, label: ' Friend ', releaseDepth: 7 },
+            { path: 'silphium-remote://example.com:5005', label: 'Duplicate', releaseDepth: 0 },
+        ])).toEqual([
+            { path: 'silphium-remote://example.com:5005', kind: 'remote', host: 'example.com', port: 5005, label: 'Friend', releaseDepth: 7 },
+        ]);
     });
 
     it('creates stable root names and prefers the deepest folder match', () => {
@@ -71,6 +79,11 @@ describe('main helpers', () => {
         expect(names.get(libraryFolderPathKey('/music/library-a'))).toBe('Road Trip (1)');
         expect(names.get(libraryFolderPathKey('/music/library-b'))).toBe('Road Trip (2)');
         expect(findLibraryFolderForFilePath('/music/library-b/live/show/track.flac', folders)).toEqual(folders[2]);
+
+        const remoteFolders = normalizeLibraryFolders([
+            { path: '', kind: 'remote', host: 'example.com', port: 5005, label: 'Shared', releaseDepth: 0 },
+        ]);
+        expect(findLibraryFolderForFilePath('silphium-remote://example.com:5005/Shared Root/album/track.flac', remoteFolders)).toEqual(remoteFolders[0]);
         expect(findLibraryFolderForTrack({ rootPath: '/missing-root', path: '/music/library-b/live/show/track.flac' }, folders)).toEqual(folders[2]);
     });
 
@@ -84,6 +97,32 @@ describe('main helpers', () => {
     it('formats technical metadata for lossless and lossy codecs', () => {
         expect(formatTechnicalMetadata(24, 48_000, 'flac', 0)).toBe('24/48 • FLAC');
         expect(formatTechnicalMetadata(24, 44_100, 'mp3', 320_000)).toBe('320k/44.1 • MP3');
+    });
+
+    it('prefers effective remote stream metadata for transcoded playback captions', () => {
+        expect(effectivePlaybackTechnicalMetadata(createTrack({
+            path: 'silphium-remote://friend:5005/Friend/Artist/Album/01 Remote Song.flac',
+            displayTechnical: '24/96 • FLAC',
+        }), {
+            remoteLibraryTranscodingEnabled: true,
+            remoteLibraryTranscodingBitrateKbps: 256,
+        })).toBe('256k • OPUS');
+
+        expect(effectivePlaybackTechnicalMetadata(createTrack({
+            path: 'silphium-remote://friend:5005/Friend/Artist/Album/01 Remote Song.flac',
+            displayTechnical: '24/96 • FLAC',
+        }), {
+            remoteLibraryTranscodingEnabled: false,
+            remoteLibraryTranscodingBitrateKbps: 256,
+        })).toBe('24/96 • FLAC');
+
+        expect(effectivePlaybackTechnicalMetadata(createTrack({
+            path: '/music/Artist/Album/01 Local Song.flac',
+            displayTechnical: '24/96 • FLAC',
+        }), {
+            remoteLibraryTranscodingEnabled: true,
+            remoteLibraryTranscodingBitrateKbps: 256,
+        })).toBe('24/96 • FLAC');
     });
 
     it('detects external file drag payloads', () => {

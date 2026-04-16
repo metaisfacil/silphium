@@ -70,6 +70,9 @@ export type SettingsModalElements = {
     settingsSendToActionCancel: HTMLButtonElement;
     settingsSendToActionConfirm: HTMLButtonElement;
     settingsFFmpegPath: HTMLInputElement;
+    settingsLibrarySharingEnabled: HTMLInputElement;
+    settingsLibrarySharingPort: HTMLInputElement;
+    settingsLibrarySharingPassword: HTMLInputElement;
     settingsLocalLibraryFilesDatabaseEnabled: HTMLInputElement;
     settingsLocalLibraryFilesDatabaseLoadOnStartup: HTMLInputElement;
     settingsLocalLibraryFilesDatabaseListenHistoryEnabled: HTMLInputElement;
@@ -194,7 +197,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-general" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-field">
-                        ${renderSettingsLabel('settings-library-folder-list', 'Library folders', 'Add one or more library roots. A folder settings dialog opens after adding a folder, and you can double-click an existing entry to change its label or release depth.')}
+						${renderSettingsLabel('settings-library-folder-list', 'Library folders', 'Add local folders. A folder settings dialog opens after adding a folder, and you can double-click an existing entry to change its label or release depth.')}
                         <ul id="settings-library-folder-list" class="settings-library-folder-list" role="listbox" aria-label="Library folders" tabindex="0"></ul>
                         <div class="settings-list-actions">
                             <button id="settings-add-library-folder" class="settings-list-btn" type="button" title="Add library folder" aria-label="Add library folder">+</button>
@@ -262,6 +265,26 @@ export const renderSettingsModal = (): string => `
                     </div>
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
+                    <div class="settings-field settings-toggle-field">
+                        <label class="settings-checkbox-row" for="settings-library-sharing-enabled">
+                            <input id="settings-library-sharing-enabled" class="settings-checkbox" type="checkbox">
+                            <span class="settings-label">Enable OpenSubsonic server</span>
+                        </label>
+                        <p class="settings-hint">When enabled, OpenSubsonic clients can connect to your local library using the port and API key below.</p>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-library-sharing-port">OpenSubsonic port</label>
+                        <p class="settings-hint">Default is 4040. Point your OpenSubsonic client at this port.</p>
+                        <div class="settings-server-rate-group">
+                            <input id="settings-library-sharing-port" class="settings-input settings-server-rate-input" type="number" min="1" max="65535" step="1" inputmode="numeric" placeholder="4040">
+                            <span class="settings-server-rate-unit">TCP</span>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-label" for="settings-library-sharing-password">OpenSubsonic API key</label>
+                        <p class="settings-hint">Required. Minimum 10 characters. Silphium stores only the hashed API key.</p>
+                        <input id="settings-library-sharing-password" class="settings-input" type="password" spellcheck="false" placeholder="Required">
+                    </div>
                     <div class="settings-field">
                         ${renderSettingsLabel('settings-listenbrainz-token', 'ListenBrainz user token', 'Used to submit scrobbles to your ListenBrainz account.')}
                         <input id="settings-listenbrainz-token" class="settings-input" type="password" placeholder="Optional">
@@ -614,6 +637,9 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsSendToActionCancel: root.querySelector('#settings-send-to-action-cancel') as HTMLButtonElement,
     settingsSendToActionConfirm: root.querySelector('#settings-send-to-action-confirm') as HTMLButtonElement,
     settingsFFmpegPath: root.querySelector('#settings-ffmpeg-path') as HTMLInputElement,
+    settingsLibrarySharingEnabled: root.querySelector('#settings-library-sharing-enabled') as HTMLInputElement,
+    settingsLibrarySharingPort: root.querySelector('#settings-library-sharing-port') as HTMLInputElement,
+    settingsLibrarySharingPassword: root.querySelector('#settings-library-sharing-password') as HTMLInputElement,
     settingsLocalLibraryFilesDatabaseEnabled: root.querySelector('#settings-local-library-files-database-enabled') as HTMLInputElement,
     settingsLocalLibraryFilesDatabaseLoadOnStartup: root.querySelector('#settings-local-library-files-database-load-on-startup') as HTMLInputElement,
     settingsLocalLibraryFilesDatabaseListenHistoryEnabled: root.querySelector('#settings-local-library-files-database-listen-history-enabled') as HTMLInputElement,

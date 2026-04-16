@@ -49,6 +49,7 @@ func TestAppAudioMethodsAndWrappers(t *testing.T) {
 	secondTrack := filepath.Join(fixture.albumOneFolder, "02 Song.flac")
 	writeTestFile(t, secondTrack, "track two")
 	outsideTrack := filepath.Join(t.TempDir(), "outside.flac")
+	remoteTrack := buildRemoteLibraryPath(buildRemoteLibraryBasePath("example.com", 5005), "Library/Album/03 Remote.flac")
 	writeTestFile(t, outsideTrack, "outside")
 
 	if status := app.ValidateFFmpegPath(helperPath); !status.Available {
@@ -78,8 +79,14 @@ func TestAppAudioMethodsAndWrappers(t *testing.T) {
 	if _, err := app.AudioLoadTrack(outsideTrack); err == nil {
 		t.Fatal("AudioLoadTrack(outside path) error = nil, want error")
 	}
+	if _, err := app.AudioLoadTrack(remoteTrack); err == nil {
+		t.Fatal("AudioLoadTrack(remote path) error = nil, want error")
+	}
 	if _, err := app.AudioLoadTrackWithReplayGainContext(fixture.trackOne, []string{outsideTrack}); err == nil {
 		t.Fatal("AudioLoadTrackWithReplayGainContext(outside replaygain path) error = nil, want error")
+	}
+	if _, err := app.AudioLoadTrackWithReplayGainContext(fixture.trackOne, []string{remoteTrack}); err == nil {
+		t.Fatal("AudioLoadTrackWithReplayGainContext(remote replaygain path) error = nil, want error")
 	}
 	if _, err := app.AudioQueueNextTrackWithReplayGainContext(outsideTrack, secondTrack, nil); err == nil {
 		t.Fatal("AudioQueueNextTrackWithReplayGainContext(outside current path) error = nil, want error")
@@ -87,8 +94,14 @@ func TestAppAudioMethodsAndWrappers(t *testing.T) {
 	if _, err := app.AudioQueueNextTrackWithReplayGainContext(fixture.trackOne, outsideTrack, nil); err == nil {
 		t.Fatal("AudioQueueNextTrackWithReplayGainContext(outside next path) error = nil, want error")
 	}
+	if _, err := app.AudioQueueNextTrackWithReplayGainContext(fixture.trackOne, remoteTrack, nil); err == nil {
+		t.Fatal("AudioQueueNextTrackWithReplayGainContext(remote next path) error = nil, want error")
+	}
 	if _, err := app.AudioQueueNextTrackWithReplayGainContext(fixture.trackOne, secondTrack, []string{outsideTrack}); err == nil {
 		t.Fatal("AudioQueueNextTrackWithReplayGainContext(outside replaygain path) error = nil, want error")
+	}
+	if _, err := app.AudioQueueNextTrackWithReplayGainContext(fixture.trackOne, secondTrack, []string{remoteTrack}); err == nil {
+		t.Fatal("AudioQueueNextTrackWithReplayGainContext(remote replaygain path) error = nil, want error")
 	}
 
 	loadState, err := app.AudioLoadTrackWithReplayGainContext(fixture.trackOne, []string{fixture.trackOne, secondTrack})
@@ -152,6 +165,9 @@ func TestAppAudioMethodsAndWrappers(t *testing.T) {
 	}
 	if _, err := app.AudioGetReplayGainReleaseDynamicRange([]string{outsideTrack}); err == nil {
 		t.Fatal("AudioGetReplayGainReleaseDynamicRange(outside path) error = nil, want error")
+	}
+	if _, err := app.AudioGetReplayGainReleaseDynamicRange([]string{remoteTrack}); err == nil {
+		t.Fatal("AudioGetReplayGainReleaseDynamicRange(remote path) error = nil, want error")
 	}
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", "")
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "LRA: 11.0 LU")

@@ -106,6 +106,7 @@ const createContext = () => {
             },
         },
         currentMusicBrainzTagWorkerProgress: { enabled: true, active: false, progress: 0.2 },
+        getMusicBrainzTagWorkerProgress: vi.fn(async () => ({ enabled: true, active: true, progress: 0.4 })),
         availableAudioOutputDevices: [{ id: 'default', name: 'Default', backend: 'wasapi', isDefault: true }],
         currentTrackIndex: 0,
         tracks,
@@ -294,6 +295,7 @@ describe('app-controller-setup', () => {
         });
 
         expect(settingsConfig.getValues().favoritePlaylists).toEqual(['favorites.m3u']);
+        await expect(settingsConfig.getMusicBrainzTagWorkerProgress()).resolves.toEqual({ enabled: true, active: true, progress: 0.4 });
         expect(settingsConfig.state).toBe(context.settingsControllerState);
         expect(libraryConfig.state).toBe(context.libraryControllerState);
         expect(playlistConfig.state).toBe(context.playlistControllerState);
@@ -305,6 +307,8 @@ describe('app-controller-setup', () => {
             localLibraryFilesDatabaseListenHistoryEnabled: false,
             localLibraryFilesDatabaseListenHistoryLimit: 0,
             ffmpegPath: 'ffmpeg',
+            librarySharingEnabled: false,
+            librarySharingPort: 41637,
             listenBrainzUserToken: 'token',
             lastFmApiKey: 'key',
             lastFmApiSecret: 'secret',
@@ -339,6 +343,12 @@ describe('app-controller-setup', () => {
 
         await settingsConfig.save(saveValues);
         await settingsConfig.save({ ...saveValues, gaplessPlayback: true });
+        await settingsConfig.save({
+            ...saveValues,
+            libraryFolders: [{ path: 'silphium-remote://192.168.2.10:41637', kind: 'remote', host: '192.168.2.10', port: 41637, label: 'Laptop', releaseDepth: 0 }],
+        });
+        await flushPromises();
+        expect(context.scanConfiguredLibraryFolders).toHaveBeenCalledTimes(1);
         await expect(settingsConfig.fetchLastFmSessionKey('', 'secret')).rejects.toThrow('Last.fm API key and shared secret are required.');
         context.openQueueConfirmModal.mockResolvedValueOnce(false);
         await expect(settingsConfig.fetchLastFmSessionKey(' key ', ' secret ')).rejects.toThrow('Last.fm authorization was cancelled.');
@@ -361,6 +371,7 @@ describe('app-controller-setup', () => {
         settingsConfig.onCloseBlocked('Missing FFmpeg');
         settingsConfig.setPlayerCardLayout('cover');
         expect(settingsConfig.getPlayerCardLayout()).toBe('release');
+        expect(context.scanConfiguredLibraryFolders).toHaveBeenCalledTimes(3);
 
         await playlistConfig.ensureTrackTagsResolvedBatch([0, 1]);
         expect(playlistConfig.getTrack(0)).toBe(context.tracks[0]);

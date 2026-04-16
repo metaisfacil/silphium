@@ -104,6 +104,11 @@ func TestPlaylistHelpersAndLoading(t *testing.T) {
 	if _, ok := resolvePlaylistEntryPath(playlistPath, "https://example.com"); ok {
 		t.Fatal("resolvePlaylistEntryPath(url) = true, want false")
 	}
+	remoteBasePath := buildRemoteLibraryBasePath("example.com", 5005)
+	remoteTrackPath := buildRemoteLibraryPath(remoteBasePath, "Shared Root/Album/01 Remote.flac")
+	if _, ok := resolvePlaylistEntryPath(playlistPath, remoteTrackPath); ok {
+		t.Fatal("resolvePlaylistEntryPath(remote) = true, want false")
+	}
 
 	outsidePlaylist := filepath.Join(fixture.tempDir, "outside.m3u8")
 	if err := os.WriteFile(outsidePlaylist, []byte("#EXTM3U\n"+fixture.outsideTrack+"\n"+fixture.albumOneFolder+"\n"+filepath.Base(fixture.trackOne)+"\n"), 0o644); err != nil {
@@ -187,5 +192,14 @@ func TestPlaylistHelpersAndLoading(t *testing.T) {
 	}
 	if loadedPlaylist.TrackFiles[0].RootName != "" {
 		t.Fatalf("LoadPlaylistFile(no roots) rootName = %q, want empty", loadedPlaylist.TrackFiles[0].RootName)
+	}
+
+	remotePlaylistPath := filepath.Join(fixture.tempDir, "remote.m3u8")
+	if err := os.WriteFile(remotePlaylistPath, []byte("#EXTM3U\n"+remoteTrackPath+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", remotePlaylistPath, err)
+	}
+	loadedPlaylist = app.LoadPlaylistFile(remotePlaylistPath)
+	if got := len(loadedPlaylist.TrackFiles); got != 0 {
+		t.Fatalf("LoadPlaylistFile(remote) len = %d, want 0", got)
 	}
 }

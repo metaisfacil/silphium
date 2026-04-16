@@ -198,9 +198,11 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsSendToActionCommandInput,
         settingsSendToActionCancel,
         settingsFFmpegPath,
+        settingsLibrarySharingEnabled,
+        settingsLibrarySharingPort,
+        settingsLibrarySharingPassword,
         settingsLocalLibraryFilesDatabaseEnabled,
         settingsLocalLibraryFilesDatabaseListenHistoryEnabled,
-        settingsListenBrainzToken,
         settingsLastFmApiKey,
         settingsLastFmApiSecret,
         settingsLastFmSessionKey,
@@ -264,6 +266,10 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         setLibraryDepthStatusMessage('');
     });
 
+    settingsLibrarySharingPassword.addEventListener('input', () => {
+        setSettingsStatusMessage('');
+    });
+
     settingsScrobbleRuleField.addEventListener('change', () => {
         refreshScrobbleRuleDialogControls();
         setScrobbleRuleStatusMessage('');
@@ -287,6 +293,14 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
     });
 
     settingsFFmpegPath.addEventListener('input', () => {
+        setSettingsStatusMessage('');
+    });
+
+    settingsLibrarySharingPort.addEventListener('input', () => {
+        setSettingsStatusMessage('');
+    });
+
+    settingsLibrarySharingEnabled.addEventListener('change', () => {
         setSettingsStatusMessage('');
     });
 
@@ -450,7 +464,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
 
     settingsTabNetwork.addEventListener('click', () => {
         setActiveTab('network');
-        settingsListenBrainzToken.focus();
+        settingsLibrarySharingEnabled.focus();
     });
 
     settingsTabPlaylists.addEventListener('click', () => {
@@ -990,6 +1004,23 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         doRenderCoverArtPriorityList();
     });
 
+    const validateNetworkSettings = (formValues: SettingsFormValues): string | null => {
+        if (!formValues.librarySharingEnabled) {
+            return null;
+        }
+
+        const apiKey = (formValues.librarySharingPassword || '').trim();
+        const apiKeyHash = (formValues.librarySharingPasswordHash || '').trim();
+        if (apiKey !== '' && apiKey.length < 10) {
+            return 'OpenSubsonic API key must be at least 10 characters.';
+        }
+        if (apiKey === '' && apiKeyHash === '') {
+            return 'Enter an OpenSubsonic API key with at least 10 characters.';
+        }
+
+        return null;
+    };
+
     settingsSave.addEventListener('click', async () => {
         if (settingsSave.disabled) {
             return;
@@ -1001,6 +1032,10 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
 
         try {
             const formValues = buildFormValues();
+            const networkValidationMessage = validateNetworkSettings(formValues);
+            if (networkValidationMessage) {
+                throw new Error(networkValidationMessage);
+            }
             const validationMessage = validateScrobbleRules(formValues.scrobbleRules);
             if (validationMessage) {
                 throw new Error(validationMessage);
@@ -1034,6 +1069,10 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
 
         try {
             const formValues = buildFormValues();
+            const networkValidationMessage = validateNetworkSettings(formValues);
+            if (networkValidationMessage) {
+                throw new Error(networkValidationMessage);
+            }
             const validationMessage = validateScrobbleRules(formValues.scrobbleRules);
             if (validationMessage) {
                 throw new Error(validationMessage);

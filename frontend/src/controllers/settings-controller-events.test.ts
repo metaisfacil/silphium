@@ -126,7 +126,7 @@ describe('bindSettingsControllerEvents', () => {
         context.elements.settingsTabNetwork.click();
 
         expect(context.setActiveTab).toHaveBeenCalledWith('network');
-        expect(document.activeElement).toBe(context.elements.settingsListenBrainzToken);
+        expect(document.activeElement).toBe(context.elements.settingsLibrarySharingEnabled);
     });
 
     it('toggles the shortcuts accordion when clicking the header outside the tooltip', () => {

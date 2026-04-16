@@ -1,4 +1,5 @@
 import type {
+    AppSettings,
     AppLibraryFolder,
     PlaybackOrderMode,
     ScrobbleFilterMode,
@@ -9,6 +10,8 @@ import type {
     TrackTags,
     TrackTechnicalDetails,
 } from '../types/app-types';
+
+export const defaultLibrarySharingPort = 41637;
 
 export const asPlaybackOrderMode = (value: string): PlaybackOrderMode => {
     if (value === 'ordered-album' || value === 'ordered-library' || value === 'shuffle-album' || value === 'shuffle-library') {
@@ -250,6 +253,100 @@ export const asReleaseDepth = (value: unknown): number => {
     return Math.min(Math.floor(numeric), 64);
 };
 
+export const normalizeLibrarySharingPort = (value: unknown): number => {
+    const numeric = typeof value === 'number'
+        ? value
+        : Number.parseInt(String(value ?? ''), 10);
+
+    if (!Number.isFinite(numeric) || numeric <= 0 || numeric > 65535) {
+        return defaultLibrarySharingPort;
+    }
+
+    return Math.floor(numeric);
+};
+
+export const normalizeLibraryFolderKind = (value: unknown): 'local' | 'remote' => {
+    return String(value || '').trim().toLowerCase() === 'remote' ? 'remote' : 'local';
+};
+
+export const parseRemoteLibraryConnectionInput = (value: unknown): { host: string; port: number | null } => {
+    const trimmed = String(value || '').trim();
+    if (trimmed === '') {
+        return { host: '', port: null };
+    }
+
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+        ? trimmed
+        : `silphium-remote://${trimmed}`;
+
+    try {
+        const parsed = new URL(withScheme);
+        const host = (parsed.hostname || '').trim().replace(/^\[(.*)\]$/, '$1').toLowerCase();
+        const port = parsed.port ? Number.parseInt(parsed.port, 10) : null;
+        return {
+            host,
+            port: Number.isFinite(port) ? port : null,
+        };
+    } catch {
+        return { host: '', port: null };
+    }
+};
+
+export const normalizeRemoteLibraryHost = (value: unknown): string => parseRemoteLibraryConnectionInput(value).host;
+
+const remoteLibraryBasePathForFolder = (folder: Pick<AppLibraryFolder, 'path' | 'host' | 'port'>): string => {
+    const parsedPath = String(folder.path || '').trim();
+    if (/^silphium-remote:\/\//i.test(parsedPath)) {
+        try {
+            const parsed = new URL(parsedPath);
+            const host = normalizeRemoteLibraryHost(parsed.hostname);
+            if (host === '') {
+                return '';
+            }
+
+            const port = normalizeLibrarySharingPort(parsed.port ? Number.parseInt(parsed.port, 10) : folder.port);
+            const formattedHost = host.includes(':') ? `[${host}]` : host;
+            return `silphium-remote://${formattedHost}:${port}`;
+        } catch {
+            return '';
+        }
+    }
+
+    const parsedConnection = parseRemoteLibraryConnectionInput(folder.host);
+    const host = parsedConnection.host;
+    if (host === '') {
+        return '';
+    }
+
+    const port = normalizeLibrarySharingPort(
+        typeof folder.port === 'number' && folder.port > 0
+            ? folder.port
+            : parsedConnection.port,
+    );
+    const formattedHost = host.includes(':') ? `[${host}]` : host;
+    return `silphium-remote://${formattedHost}:${port}`;
+};
+
+export const describeLibraryFolderConnection = (folder: AppLibraryFolder): string => {
+    if (normalizeLibraryFolderKind(folder.kind) !== 'remote') {
+        return folder.path.trim();
+    }
+
+    const basePath = remoteLibraryBasePathForFolder(folder);
+    if (basePath === '') {
+        return folder.path.trim();
+    }
+
+    try {
+        const parsed = new URL(basePath);
+        const host = normalizeRemoteLibraryHost(parsed.hostname);
+        const port = normalizeLibrarySharingPort(parsed.port ? Number.parseInt(parsed.port, 10) : folder.port);
+        return host === '' ? folder.path.trim() : `${host}:${port}`;
+    } catch {
+        return folder.path.trim();
+    }
+};
+
 export const hasExternalFileDragPayload = (dataTransfer: { types?: ArrayLike<string> | readonly string[] } | null | undefined): boolean => {
     if (!dataTransfer?.types) {
         return false;
@@ -455,7 +552,8 @@ const libraryFolderBaseName = (path: string): string => {
     return segments[segments.length - 1] || 'Library';
 };
 
-const libraryFolderDisplayBase = (folder: AppLibraryFolder): string => normalizeLibraryFolderLabel(folder.label) || libraryFolderBaseName(folder.path);
+const libraryFolderDisplayBase = (folder: AppLibraryFolder): string => normalizeLibraryFolderLabel(folder.label)
+    || (normalizeLibraryFolderKind(folder.kind) === 'remote' ? describeLibraryFolderConnection(folder) : libraryFolderBaseName(folder.path));
 
 export const normalizeLibraryFolders = (
     folders: AppLibraryFolder[] | undefined,
@@ -471,6 +569,51 @@ export const normalizeLibraryFolders = (
     const normalized: AppLibraryFolder[] = [];
     const seen = new Set<string>();
     for (const candidate of candidates) {
+        const kind = normalizeLibraryFolderKind(candidate?.kind);
+        if (kind === 'remote' || String(candidate?.host || '').trim() !== '' || /^silphium-remote:\/\//i.test(String(candidate?.path || '').trim())) {
+            const path = remoteLibraryBasePathForFolder({
+                path: String(candidate?.path || '').trim(),
+                host: candidate?.host,
+                port: candidate?.port,
+            });
+            if (!path) {
+                continue;
+            }
+
+            const key = libraryFolderPathKey(path);
+            if (!key || seen.has(key)) {
+                continue;
+            }
+
+            seen.add(key);
+            const password = String(candidate?.password || '').trim();
+            const passwordHash = String(candidate?.passwordHash || '').trim();
+            normalized.push({
+                path,
+                kind: 'remote',
+                host: normalizeRemoteLibraryHost(candidate?.host) || (() => {
+                    try {
+                        return normalizeRemoteLibraryHost(new URL(path).hostname);
+                    } catch {
+                        return '';
+                    }
+                })(),
+                port: (() => {
+                    try {
+                        const parsed = new URL(path);
+                        return normalizeLibrarySharingPort(parsed.port ? Number.parseInt(parsed.port, 10) : candidate?.port);
+                    } catch {
+                        return normalizeLibrarySharingPort(candidate?.port);
+                    }
+                })(),
+                label: normalizeLibraryFolderLabel(candidate?.label),
+                ...(password !== '' ? { password } : {}),
+                ...(passwordHash !== '' ? { passwordHash } : {}),
+                releaseDepth: asReleaseDepth(candidate?.releaseDepth),
+            });
+            continue;
+        }
+
         const path = String(candidate?.path || '').trim();
         if (!path) {
             continue;
@@ -782,6 +925,28 @@ export const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, 
     }
 
     return `${technicalParts[0]} • ${technicalParts[1]}`;
+};
+
+const isRemoteTrackPath = (path: string): boolean => /^silphium-remote:\/\//i.test(path.trim());
+
+const normalizeRemoteTranscodingBitrateKbps = (bitrateKbps?: number): number => {
+    if (!Number.isFinite(bitrateKbps)) {
+        return 192;
+    }
+
+    return Math.max(64, Math.min(320, Math.round(bitrateKbps || 192)));
+};
+
+export const effectivePlaybackTechnicalMetadata = (
+    track: Pick<Track, 'path' | 'displayTechnical'>,
+    settings: Pick<AppSettings, 'remoteLibraryTranscodingEnabled' | 'remoteLibraryTranscodingBitrateKbps'>,
+): string => {
+    if (!isRemoteTrackPath(track.path) || !settings.remoteLibraryTranscodingEnabled) {
+        return track.displayTechnical;
+    }
+
+    const bitrateKbps = normalizeRemoteTranscodingBitrateKbps(settings.remoteLibraryTranscodingBitrateKbps);
+    return `${bitrateKbps}k • OPUS`;
 };
 
 export const technicalDetailsFromTags = (tags?: TrackTags): TrackTechnicalDetails => ({

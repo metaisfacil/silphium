@@ -10,10 +10,14 @@ import type {
 import {
     asPlaybackOrderMode,
     asScrobbleFilterMode,
+    defaultLibrarySharingPort,
     normalizeLibraryFolders,
+    normalizeLibrarySharingPort,
     normalizeScrobbleRules,
 } from './main-helpers';
 import { defaultFocusedKeyboardShortcuts, normalizeFocusedKeyboardShortcuts } from './shortcut-bindings';
+
+const defaultOpenSubsonicPort = 4040;
 
 export const defaultMusicBrainzTagWorkerProgress: MusicBrainzTagWorkerProgress = {
     enabled: false,
@@ -44,6 +48,18 @@ export const defaultAppSettings: AppSettings = {
     localLibraryFilesDatabaseListenHistoryEnabled: false,
     localLibraryFilesDatabaseListenHistoryLimit: 0,
     ffmpegPath: '',
+    openSubsonicEnabled: false,
+    openSubsonicPort: defaultOpenSubsonicPort,
+    openSubsonicApiKey: '',
+    openSubsonicApiKeyHash: '',
+    remoteLibraryTranscodingEnabled: false,
+    remoteLibraryTranscodingBitrateKbps: 192,
+    librarySharingEnabled: false,
+    librarySharingPort: defaultLibrarySharingPort,
+    librarySharingPassword: '',
+    librarySharingPasswordHash: '',
+    remoteLibraryPassword: '',
+    remoteLibraryPasswordHash: '',
     listenBrainzUserToken: '',
     lastFmApiKey: '',
     lastFmApiSecret: '',
@@ -225,6 +241,22 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
             ? Math.floor(settings.localLibraryFilesDatabaseListenHistoryLimit)
             : 0,
         ffmpegPath: (settings.ffmpegPath || '').trim(),
+        openSubsonicEnabled: !!settings.openSubsonicEnabled,
+        openSubsonicPort: Number.isFinite(settings.openSubsonicPort)
+            ? Math.max(1, Math.min(65535, Math.round(settings.openSubsonicPort || defaultOpenSubsonicPort)))
+            : defaultOpenSubsonicPort,
+        openSubsonicApiKey: (settings.openSubsonicApiKey || '').trim(),
+        openSubsonicApiKeyHash: (settings.openSubsonicApiKeyHash || '').trim(),
+        remoteLibraryTranscodingEnabled: !!settings.remoteLibraryTranscodingEnabled,
+        remoteLibraryTranscodingBitrateKbps: Number.isFinite(settings.remoteLibraryTranscodingBitrateKbps)
+            ? Math.max(64, Math.min(320, Math.round(settings.remoteLibraryTranscodingBitrateKbps || 192)))
+            : 192,
+        librarySharingEnabled: !!settings.librarySharingEnabled,
+        librarySharingPort: normalizeLibrarySharingPort(settings.librarySharingPort),
+        librarySharingPassword: (settings.librarySharingPassword || '').trim(),
+        librarySharingPasswordHash: (settings.librarySharingPasswordHash || '').trim(),
+        remoteLibraryPassword: (settings.remoteLibraryPassword || '').trim(),
+        remoteLibraryPasswordHash: (settings.remoteLibraryPasswordHash || '').trim(),
         listenBrainzUserToken: settings.listenBrainzUserToken || '',
         lastFmApiKey: (settings.lastFmApiKey || '').trim(),
         lastFmApiSecret: (settings.lastFmApiSecret || '').trim(),

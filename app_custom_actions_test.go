@@ -58,6 +58,12 @@ func TestCustomActionHelpers(t *testing.T) {
 	if _, ok := app.resolveAbsoluteLibraryPathFromVirtualPath("../escape"); ok {
 		t.Fatal("resolveAbsoluteLibraryPathFromVirtualPath(escape) = true, want false")
 	}
+	symlinkPath := filepath.Join(fixture.albumOneFolder, "outside-link.flac")
+	if err := os.Symlink(fixture.outsideTrack, symlinkPath); err == nil {
+		if _, ok := app.resolveAbsoluteLibraryPathFromVirtualPath("Library/Artist One/Album One/outside-link.flac"); ok {
+			t.Fatal("resolveAbsoluteLibraryPathFromVirtualPath(symlink escape) = true, want false")
+		}
+	}
 
 	if got := targetDirectoryForPath(fixture.trackOne); got != fixture.albumOneFolder {
 		t.Fatalf("targetDirectoryForPath(file) = %q, want %q", got, fixture.albumOneFolder)

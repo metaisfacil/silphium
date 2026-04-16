@@ -379,7 +379,7 @@ const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) =>
     get currentTrackIndex() {
         return scope.currentTrackIndex;
     },
-    releaseDepthForTrack: (track: Pick<Track, 'rootPath'>) => scope.releaseDepthForTrack(track),
+    releaseDepthForTrack: (track: Pick<Track, 'rootPath' | 'releaseDepth'>) => scope.releaseDepthForTrack(track),
     get tagRequestVersion() {
         return scope.tagRequestVersion;
     },

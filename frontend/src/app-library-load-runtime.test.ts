@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppLibraryLoadRuntime } from './app-library-load-runtime';
-import type { LibraryIndexedFile, LibraryIndexedFilePage, LibraryScanResult } from './types/app-types';
+import type { LibraryIndexedFile, LibraryIndexedFilePage, LibraryScanResult, Track } from './types/app-types';
 
 const createScanResult = (overrides: Partial<LibraryScanResult> = {}): LibraryScanResult => ({
     rootPath: 'C:/Library',
@@ -32,7 +32,7 @@ const createContext = (quickScanResult: LibraryScanResult, trackEntry: LibraryIn
     libraryIndexedFilePageSize: 1000,
     selectedLibraryRootLabel: 'Library',
     objectUrls: [],
-    tracks: [],
+    tracks: [] as Track[],
     textFiles: [],
     imageFiles: [],
     currentTrackIndex: -1,
@@ -233,6 +233,63 @@ describe('app-library-load-runtime', () => {
         expect(context.fullLibraryScanLoadActive).toBe(false);
     });
 
+    it('resolves preserved playback by falling back to the previous relative path', async () => {
+        const quickScanResult = createScanResult({
+            trackCount: 1,
+            totalEntries: 1,
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Local Song.flac',
+            path: 'C:/Library/Artist/Album/01 Local Song.flac',
+            relativePath: 'Artist/Album/01 Local Song.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        context.suppressAutoSelectAfterFullLibraryScan = true;
+        context.currentTrackIndex = 0;
+        context.tracks = [{
+            title: '01 Local Song.flac',
+            name: '01 Local Song.flac',
+            path: 'C:/Library/Artist/Album/01 Local Song.flac',
+            relativePath: 'Artist/Album/01 Local Song.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+            displayTitle: '01 Local Song.flac',
+            displayAlbum: '',
+            displayArtist: '',
+            displayTrackNumber: '',
+            displayTrackTotal: '',
+            displayTechnical: '',
+            displayLyrics: '',
+            tagsResolved: false,
+            mbMetadataResolved: false,
+            technicalDetails: {},
+            allFileTags: {},
+            mbIds: {},
+            artistMbids: [],
+            mbArtistCredits: [],
+        }];
+        context.getPlaybackState = vi.fn(() => ({
+            loaded: true as boolean,
+            playing: true as boolean,
+            sourcePath: 'C:/Library/Artist/Album/01 Local Song (missing).flac',
+            volume: 0.8,
+            currentTimeSeconds: 12,
+            durationSeconds: 120,
+            endedEventId: 0,
+        }));
+        const runtime = createAppLibraryLoadRuntime(context as never);
+
+        await runtime.scanConfiguredLibraryFolders();
+
+        expect(context.ensureTrackIndexForPath).not.toHaveBeenCalled();
+        expect(context.currentTrackIndex).toBe(0);
+        expect(context.tracks).toHaveLength(1);
+    });
+
     it('queues hydration completion that arrives during the initial deferred scan load', async () => {
         const quickScanResult = createScanResult({
             deferredFiles: true,
@@ -286,5 +343,32 @@ describe('app-library-load-runtime', () => {
         expect(context.finishLibraryLoadTracking).toHaveBeenCalledTimes(1);
         expect(context.setLibraryLoading).toHaveBeenLastCalledWith(false);
         expect(context.fullLibraryScanLoadActive).toBe(false);
+    });
+
+    it('clears cached cover art on incremental scan updates before refreshing the now playing card', async () => {
+        const quickScanResult = createScanResult();
+        const incrementalScanResult = createScanResult({
+            trackCount: 2,
+            imageFileCount: 1,
+            totalEntries: 3,
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        context.getLibraryRootName = vi.fn(() => 'Library');
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+
+        await runtime.handleLibraryScanUpdatedEvent(incrementalScanResult);
+
+        expect(context.clearCoverArtCache).toHaveBeenCalledTimes(1);
+        expect(context.scheduleLibraryIncrementalFolderRefresh).toHaveBeenCalledTimes(1);
+        expect(context.scheduleNowPlayingCoverRefresh).toHaveBeenCalledTimes(1);
     });
 });

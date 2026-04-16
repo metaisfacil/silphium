@@ -30,6 +30,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         set currentMusicBrainzTagWorkerProgress(value) {
             context.currentMusicBrainzTagWorkerProgress = value;
         },
+        getMusicBrainzTagWorkerProgress: async () => await context.getMusicBrainzTagWorkerProgress(),
         get availableAudioOutputDevices() {
             return context.availableAudioOutputDevices;
         },

@@ -149,6 +149,10 @@ func (a *App) removePathAndDescendants(path string) {
 }
 
 func indexFileForRootWithModifiedAt(root libraryRootConfig, fullPath string, fileName string, modifiedAtMs int64) (LibraryIndexedFile, bool) {
+	if !pathResolvesWithinRoot(root.Path, fullPath) {
+		return LibraryIndexedFile{}, false
+	}
+
 	folderPath, relativePath, ok := folderAndRelativeForLibraryRoot(root, fullPath)
 	if !ok {
 		return LibraryIndexedFile{}, false
@@ -161,6 +165,7 @@ func indexFileForRootWithModifiedAt(root libraryRootConfig, fullPath string, fil
 		FolderPath:   folderPath,
 		RootPath:     root.Path,
 		RootName:     root.Name,
+		ReleaseDepth: root.ReleaseDepth,
 		ModifiedAtMs: modifiedAtMs,
 	}, true
 }
@@ -292,6 +297,7 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 	}
 	expectedGeneration := generationState.libraryScanGeneration.Load()
 	rootsSnapshot := append([]libraryRootConfig(nil), contentState.activeLibraryRoots...)
+	beforeSelection := a.collectShareableLocalSelectionLocked(changedPaths)
 	contentState.indexMu.Unlock()
 
 	hasChanges := false
@@ -354,6 +360,29 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 		return LibraryScanResult{}, false
 	}
 
+	affectedFolders := make(map[string]struct{}, len(beforeSelection.affectedFolders))
+	for folderPath := range beforeSelection.affectedFolders {
+		affectedFolders[folderPath] = struct{}{}
+	}
+	afterSelection := a.collectShareableLocalSelectionLocked(changedPaths)
+	for folderPath := range afterSelection.affectedFolders {
+		affectedFolders[folderPath] = struct{}{}
+	}
+	afterCoverPathByFolder := a.localCoverPathsForFoldersLocked(affectedFolders)
+	if contentState.libraryScan.CoverPathByFolder == nil {
+		contentState.libraryScan.CoverPathByFolder = map[string]string{}
+	}
+	for folderPath := range affectedFolders {
+		delete(contentState.libraryScan.CoverPathByFolder, strings.ToLower(folderPath))
+	}
+	for folderPath, virtualPath := range afterCoverPathByFolder {
+		absolutePath, ok := a.resolveAbsoluteLibraryPathFromVirtualPath(virtualPath)
+		if !ok || isRemoteLibraryPath(absolutePath) {
+			continue
+		}
+		contentState.libraryScan.CoverPathByFolder[strings.ToLower(folderPath)] = absolutePath
+	}
+
 	// Avoid expensive full snapshot rebuild for incremental changes.
 	// Just update the counts in the cached snapshot without re-sorting all files.
 	// The file arrays are still valid (items may have been added/removed from the maps,
@@ -394,6 +423,9 @@ func isRelevantWatchEvent(event fsnotify.Event) bool {
 func addLibraryWatchesRecursive(watcher *fsnotify.Watcher, rootPath string, onProgress func()) {
 	_ = filepath.WalkDir(rootPath, func(currentPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
 

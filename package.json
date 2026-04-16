@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "lint:frontend": "npm --prefix frontend run lint",
-    "lint:backend:golangci": "go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run --timeout=5m",
+    "lint:backend:golangci": "node scripts/run-golangci-lint.cjs",
     "lint:backend:golint": "go run golang.org/x/lint/golint@latest ./...",
     "lint:all": "npm run lint:frontend && npm run lint:backend:golangci && npm run lint:backend:golint",
     "test:backend": "go test ./...",

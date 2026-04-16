@@ -14,6 +14,7 @@ import type { AppLibraryFolder, AudioPlaybackState, ImageLibraryFile, TextLibrar
 import {
     asReleaseDepth,
     buildLibraryRootNameByPath,
+    effectivePlaybackTechnicalMetadata,
     findLibraryFolderForFilePath,
     findLibraryFolderForTrack,
     formatTime,
@@ -84,7 +85,11 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         return buildLibraryRootNameByPath(context.currentSettings.libraryFolders);
     };
 
-    const releaseDepthForTrack = (track: Pick<Track, 'rootPath'>): number => {
+    const releaseDepthForTrack = (track: Pick<Track, 'rootPath' | 'path' | 'releaseDepth'>): number => {
+        if (typeof track.releaseDepth === 'number' && Number.isFinite(track.releaseDepth)) {
+            return asReleaseDepth(track.releaseDepth);
+        }
+
         const folder = findLibraryFolderForTrack(track as Pick<Track, 'rootPath' | 'path'>, context.currentSettings.libraryFolders)
             || configuredLibraryFolderForPath(track.rootPath || '');
         return folder ? asReleaseDepth(folder.releaseDepth) : 0;
@@ -743,7 +748,8 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         const activeTrack = context.tracks[context.currentTrackIndex];
-        const label = composeTechnicalLabel(activeTrack.displayTechnical, cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack()) || 'Details';
+        const technicalLabel = effectivePlaybackTechnicalMetadata(activeTrack, context.currentSettings);
+        const label = composeTechnicalLabel(technicalLabel, cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack()) || 'Details';
         setTechnicalLabel(context.trackTechnical, label);
         context.trackTechnical.disabled = false;
         setTechnicalLabel(context.trackTechnicalAlt, label);

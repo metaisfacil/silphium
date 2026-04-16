@@ -48,6 +48,11 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     localLibraryFilesDatabaseListenHistoryEnabled: false,
     localLibraryFilesDatabaseListenHistoryLimit: 0,
     ffmpegPath: '',
+    remoteLibraryTranscodingEnabled: false,
+    remoteLibraryTranscodingBitrateKbps: 192,
+    librarySharingEnabled: true,
+    librarySharingPort: 5005,
+    librarySharingPasswordHash: 'stored-library-share-hash',
     listenBrainzUserToken: '',
     lastFmApiKey: '',
     lastFmApiSecret: '',
@@ -84,6 +89,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
 
 const mountSettingsController = (options: {
     getValues?: () => SettingsViewValues;
+    getMusicBrainzTagWorkerProgress?: () => Promise<MusicBrainzTagWorkerProgress>;
     save?: (values: SettingsFormValues) => Promise<void>;
     forceReload?: (values: SettingsFormValues) => Promise<void>;
     fetchLastFmSessionKey?: (apiKey: string, apiSecret: string) => Promise<string>;
@@ -105,6 +111,7 @@ const mountSettingsController = (options: {
         elements,
         state: options.state,
         getValues: options.getValues ?? createSettingsViewValues,
+        getMusicBrainzTagWorkerProgress: options.getMusicBrainzTagWorkerProgress,
         selectLibraryFolder: vi.fn(async () => ''),
         selectPlaylistFile: vi.fn(async () => ''),
         save,
@@ -329,7 +336,54 @@ describe('createSettingsController', () => {
 
         controller.open('network');
 
-        expect(document.activeElement).toBe(elements.settingsListenBrainzToken);
+        expect(document.activeElement).toBe(elements.settingsLibrarySharingEnabled);
+    });
+
+    it('blocks enabling OpenSubsonic without an API key', async () => {
+        const save = vi.fn(async () => undefined);
+        const { controller, elements } = mountSettingsController({
+            save,
+            getValues: () => ({
+                ...createSettingsViewValues(),
+                librarySharingEnabled: false,
+                librarySharingPasswordHash: '',
+            }),
+        });
+
+        controller.open('network');
+
+        elements.settingsLibrarySharingEnabled.checked = true;
+        elements.settingsSave.click();
+
+        await flushPromises();
+
+        expect(save).not.toHaveBeenCalled();
+        expect(elements.settingsStatus.textContent).toBe('Enter an OpenSubsonic API key with at least 10 characters.');
+        expect(elements.settingsModal.classList.contains('is-visible')).toBe(true);
+    });
+
+    it('blocks too-short OpenSubsonic API keys', async () => {
+        const save = vi.fn(async () => undefined);
+        const { controller, elements } = mountSettingsController({
+            save,
+            getValues: () => ({
+                ...createSettingsViewValues(),
+                librarySharingEnabled: false,
+                librarySharingPasswordHash: '',
+            }),
+        });
+
+        controller.open('network');
+
+        elements.settingsLibrarySharingEnabled.checked = true;
+        elements.settingsLibrarySharingPassword.value = 'short';
+        elements.settingsSave.click();
+
+        await flushPromises();
+
+        expect(save).not.toHaveBeenCalled();
+        expect(elements.settingsStatus.textContent).toBe('OpenSubsonic API key must be at least 10 characters.');
+        expect(elements.settingsModal.classList.contains('is-visible')).toBe(true);
     });
 
     it('fetches Last.fm session key and fills the field', async () => {
@@ -527,7 +581,7 @@ describe('createSettingsController', () => {
         expect(elements.settingsPanelLibrary.hidden).toBe(false);
 
         expect(elements.settingsMusicBrainzTagWorkerProgressValue.textContent).toBe('25%');
-        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('8 entities processed • 12 entities still to look up.');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('5 tracks scanned • 3 tracks still to scan • 8 entities processed • 12 entities still to look up.');
 
         controller.setMusicBrainzTagWorkerProgress({
             enabled: true,
@@ -542,8 +596,125 @@ describe('createSettingsController', () => {
         });
 
         expect(elements.settingsMusicBrainzTagWorkerProgressValue.textContent).toBe('100%');
-        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('20 entities processed • 0 entities still to look up.');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('8 tracks scanned • 20 entities processed.');
         expect(elements.settingsMusicBrainzTagWorkerProgressStatus.textContent).toBe('Background metadata index is up to date.');
+    });
+
+    it('refreshes MusicBrainz tag worker progress from the backend when the modal opens', async () => {
+        const getMusicBrainzTagWorkerProgress = vi.fn(async () => ({
+            enabled: true,
+            active: true,
+            progress: 0.6,
+            pendingTrackScans: 4,
+            totalTrackScans: 10,
+            completedTrackScans: 6,
+            pendingEntityLookups: 0,
+            totalEntityLookups: 0,
+            completedEntityLookups: 0,
+        }));
+        const { controller, elements } = mountSettingsController({
+            getValues: () => ({
+                ...createSettingsViewValues(),
+                musicBrainzTagWorkerProgress: {
+                    enabled: true,
+                    active: false,
+                    progress: 1,
+                    pendingTrackScans: 0,
+                    totalTrackScans: 0,
+                    completedTrackScans: 0,
+                    pendingEntityLookups: 0,
+                    totalEntityLookups: 0,
+                    completedEntityLookups: 0,
+                },
+            }),
+            getMusicBrainzTagWorkerProgress,
+        });
+
+        controller.open('database');
+        await flushPromises();
+
+        expect(getMusicBrainzTagWorkerProgress).toHaveBeenCalledTimes(1);
+        expect(elements.settingsMusicBrainzTagWorkerProgressValue.textContent).toBe('60%');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('6 tracks scanned • 4 tracks still to scan.');
+        expect(elements.settingsMusicBrainzTagWorkerProgressStatus.textContent).toBe('Scanning local track metadata to build the lookup queue.');
+    });
+
+    it('polls MusicBrainz tag worker progress while the modal is visible and stops after close', async () => {
+        const getMusicBrainzTagWorkerProgress = vi
+            .fn(async (): Promise<MusicBrainzTagWorkerProgress> => ({
+                enabled: true,
+                active: false,
+                progress: 1,
+                pendingTrackScans: 0,
+                totalTrackScans: 8,
+                completedTrackScans: 8,
+                pendingEntityLookups: 0,
+                totalEntityLookups: 20,
+                completedEntityLookups: 20,
+            }))
+            .mockResolvedValueOnce({
+                enabled: true,
+                active: true,
+                progress: 0.25,
+                pendingTrackScans: 3,
+                totalTrackScans: 8,
+                completedTrackScans: 5,
+                pendingEntityLookups: 12,
+                totalEntityLookups: 20,
+                completedEntityLookups: 8,
+            })
+            .mockResolvedValueOnce({
+                enabled: true,
+                active: true,
+                progress: 0.75,
+                pendingTrackScans: 0,
+                totalTrackScans: 8,
+                completedTrackScans: 8,
+                pendingEntityLookups: 5,
+                totalEntityLookups: 20,
+                completedEntityLookups: 15,
+            });
+        const { controller, elements } = mountSettingsController({ getMusicBrainzTagWorkerProgress });
+
+        controller.open('database');
+        await flushPromises();
+
+        vi.advanceTimersByTime(2000);
+        await flushPromises();
+
+        expect(getMusicBrainzTagWorkerProgress).toHaveBeenCalledTimes(2);
+        expect(elements.settingsMusicBrainzTagWorkerProgressValue.textContent).toBe('75%');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('8 tracks scanned • 15 entities processed • 5 entities still to look up • ~2s remaining');
+
+        controller.close();
+        vi.advanceTimersByTime(4000);
+        await flushPromises();
+
+        expect(getMusicBrainzTagWorkerProgress).toHaveBeenCalledTimes(2);
+    });
+
+    it('shows track-scan progress when no entity lookups have been queued yet', () => {
+        const { controller, elements } = mountSettingsController({
+            getValues: () => ({
+                ...createSettingsViewValues(),
+                musicBrainzTagWorkerProgress: {
+                    enabled: true,
+                    active: true,
+                    progress: 0.5,
+                    pendingTrackScans: 4,
+                    totalTrackScans: 10,
+                    completedTrackScans: 6,
+                    pendingEntityLookups: 0,
+                    totalEntityLookups: 0,
+                    completedEntityLookups: 0,
+                },
+            }),
+        });
+
+        controller.open('database');
+
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('6 tracks scanned • 4 tracks still to scan.');
+        expect(elements.settingsMusicBrainzTagWorkerProgressStatus.textContent).toBe('Scanning local track metadata to build the lookup queue.');
     });
 
     it('appends an ETA to MusicBrainz tag worker progress once a pace is established', () => {
@@ -565,7 +736,7 @@ describe('createSettingsController', () => {
         });
 
         controller.open('database');
-        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('10 entities processed • 10 entities still to look up.');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('8 tracks scanned • 10 entities processed • 10 entities still to look up.');
 
         vi.setSystemTime(new Date('2026-04-05T00:00:05Z'));
         controller.setMusicBrainzTagWorkerProgress({
@@ -580,6 +751,6 @@ describe('createSettingsController', () => {
             completedEntityLookups: 15,
         });
 
-        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('15 entities processed • 5 entities still to look up • ~5s remaining');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('8 tracks scanned • 15 entities processed • 5 entities still to look up • ~5s remaining');
     });
 });

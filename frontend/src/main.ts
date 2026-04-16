@@ -1,4 +1,5 @@
 import { setupExplorationButton } from './components/media-controls-exploration';
+import { setLibraryShareConnectionsIndicator } from './components/sidebar';
 import './style.css';
 import './app.css';
 import './components/overlays/overlays.css';
@@ -38,8 +39,8 @@ import {
     SelectShareImageSaveFile,
     ValidateFFmpegPath,
 } from '../wailsjs/go/main/App';
-import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 import { createAppState, type AppState } from './app-state';
+import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 import type {
     AppSettings,
     AudioOutputDevice,
@@ -160,6 +161,7 @@ const LIBRARY_TOTAL_LOAD_MS_KEY = 'libraryTotalLoadEstimateMs';
 
 const shell = getAppShellElements(document);
 const { coverFrame } = shell;
+setLibraryShareConnectionsIndicator(shell.libraryShareConnectionsIndicator, 0);
 const storedLibraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
 const storedLibraryTotalLoadEstimateMs = parseFloat(localStorage.getItem(LIBRARY_TOTAL_LOAD_MS_KEY) ?? '') || 0;
 state.libraryClientFinalizeEstimateMs = storedLibraryClientFinalizeEstimateMs;
@@ -235,8 +237,12 @@ const scheduleLibraryIncrementalFolderRefresh = (): void => {
     }, libraryIncrementalRefreshDebounceMs);
 };
 
-const releaseDepthForTrack = (track: Pick<Track, 'rootPath'>): number => {
-    const folder = findLibraryFolderForTrack(track as Pick<Track, 'rootPath' | 'path'>, state.currentSettings.libraryFolders);
+const releaseDepthForTrack = (track: Pick<Track, 'rootPath' | 'releaseDepth'> & { path?: string }): number => {
+    if (typeof track.releaseDepth === 'number' && Number.isFinite(track.releaseDepth)) {
+        return asReleaseDepth(track.releaseDepth);
+    }
+
+    const folder = findLibraryFolderForTrack({ rootPath: track.rootPath, path: track.path || '' }, state.currentSettings.libraryFolders);
     return folder ? asReleaseDepth(folder.releaseDepth) : 0;
 };
 
@@ -398,7 +404,7 @@ const runtimeScope = Object.create(shell, {
 Object.assign(runtimeScope, runtimeRefs, runtimePorts);
 
 Object.assign(runtimeScope, setupCoreServicesRuntime(Object.assign(Object.create(runtimeScope), {
-    releaseDepthForTrack: (track: Pick<Track, 'rootPath'>) => releaseDepthForTrack(track),
+    releaseDepthForTrack: (track: Pick<Track, 'rootPath' | 'releaseDepth'> & { path?: string }) => releaseDepthForTrack(track),
     closePlayOrderMenu: () => {
         runtimeScope.closePlayOrderMenu();
     },

@@ -124,12 +124,14 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     const albumThumbnailDataUrlByCoverPath = new Map<string, string | null>();
     const albumThumbnailLoadPromiseByCoverPath = new Map<string, Promise<string | null>>();
     const getTracks = (): Track[] => options.getTracks();
+    const normalizeTrackPathKey = (path: string): string => path.trim().toLowerCase();
     const naturalOrderCollator = new Intl.Collator(undefined, {
         sensitivity: 'base',
         numeric: true,
     });
 
     const normalizedLibrarySearchQuery = (): string => controllerState.librarySearchQuery.trim().toLowerCase();
+    const normalizedLoadingTrackPath = (): string => normalizeTrackPathKey(controllerState.loadingTrackPath);
 
     const normalizedLibraryBrowserSortMode = (): LibraryBrowserSortMode => {
         switch (controllerState.libraryBrowserSortMode) {
@@ -1202,7 +1204,9 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             button.dataset.folderPath = entry.path;
         } else if (entry.kind === 'track') {
             const trackIndex = options.resolveTrackIndex(entry.path);
-            button.className = `library-entry track${trackIndex >= 0 && trackIndex === options.getCurrentTrackIndex() ? ' active' : ''}`;
+            const isActiveTrack = trackIndex >= 0 && trackIndex === options.getCurrentTrackIndex();
+            const isLoadingTrack = normalizedLoadingTrackPath() !== '' && normalizeTrackPathKey(entry.path) === normalizedLoadingTrackPath();
+            button.className = `library-entry track${isActiveTrack ? ' active' : ''}${isLoadingTrack ? ' is-loading' : ''}`;
             button.dataset.trackPath = entry.path;
         } else if (entry.kind === 'text-file') {
             button.className = 'library-entry text-file';
@@ -1834,6 +1838,9 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         controllerState.libraryRootName = '';
         controllerState.currentFolderPath = '';
         controllerState.sidebarAutoFolderPath = '';
+        controllerState.loadingTrackPath = '';
+        controllerState.sidebarExpanded = false;
+        controllerState.loadingTrackPath = '';
         controllerState.sidebarExpanded = false;
         controllerState.libraryIndexTruncated = false;
         pastedPathLookupCache = createEmptyPastedPathLookupCache();
@@ -1884,10 +1891,21 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         if (pane) {
             const state = paneStateByElement.get(pane);
             if (state && state.source.kind === 'folder' && state.source.folderPath === controllerState.currentFolderPath) {
-                // Keep current rows visible while refreshing to avoid loading-overlay flicker.
-                state.errorMessage = null;
+                const preservedScrollTop = pane.scrollTop;
+                paneStateByElement.set(pane, {
+                    source: state.source,
+                    version: ++paneVersionCounter,
+                    totalEntries: null,
+                    loadedPages: new Map<number, LibraryBrowserEntry[]>(),
+                    loadingPages: new Set<number>(),
+                    rowHeightEstimate: state.rowHeightEstimate,
+                    updateScheduled: false,
+                    errorMessage: null,
+                });
+                renderPaneRows(pane);
+                pane.scrollTop = preservedScrollTop;
                 schedulePaneUpdate(pane);
-                void requestPagesForPane(pane, true);
+                void requestPagesForPane(pane);
                 return;
             }
         }
@@ -1901,6 +1919,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         getLibrarySearchQuery: () => controllerState.librarySearchQuery,
         getLibrarySearchStateSnapshot,
         getLibraryRootName: () => controllerState.libraryRootName,
+        getLoadingTrackPath: () => controllerState.loadingTrackPath,
         getSidebarAutoFolderPath: () => controllerState.sidebarAutoFolderPath,
         getCurrentFolderPath: () => controllerState.currentFolderPath,
         isLibrarySearchActive,
@@ -1940,6 +1959,16 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         },
         setLibraryIndexTruncated: (truncated: boolean) => {
             controllerState.libraryIndexTruncated = truncated;
+        },
+        setLoadingTrackPath: (trackPath: string) => {
+            if (controllerState.loadingTrackPath === trackPath) {
+                return;
+            }
+
+            controllerState.loadingTrackPath = trackPath;
+            if (controllerState.sidebarOpen) {
+                renderFolder('none');
+            }
         },
         setSidebarAutoFolderPath: (folderPath: string) => {
             controllerState.sidebarAutoFolderPath = folderPath;

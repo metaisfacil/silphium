@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"math"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAudioBackendPlaybackMethods(t *testing.T) {
@@ -265,4 +267,91 @@ func TestAudioBackendPlayResetAndReinitializeBranches(t *testing.T) {
 	if resumeErrorBackend.playing {
 		t.Fatal("Reinitialize(playback resume error) should clear the playing state")
 	}
+}
+
+func TestRemoteStreamReadyLockedPredictsRequiredBuffer(t *testing.T) {
+	backend := NewAudioBackend()
+	backend.streamSegments = []audioTrackSegment{{
+		SourcePath:       "silphium-remote://friend/track.flac",
+		PCMData:          make([]byte, audioBytesPerSecond),
+		ExpectedPCMBytes: int64(4 * audioBytesPerSecond),
+	}}
+	backend.streamDecodeExpectedBytes = int64(4 * audioBytesPerSecond)
+	backend.streamDecodeStartedAt = time.Now().Add(-1500 * time.Millisecond)
+
+	if backend.remoteStreamReadyLocked() {
+		t.Fatal("remoteStreamReadyLocked() = true, want false when buffered data would still underrun")
+	}
+
+	backend.streamDecodeStartedAt = time.Now().Add(-200 * time.Millisecond)
+	if !backend.remoteStreamReadyLocked() {
+		t.Fatal("remoteStreamReadyLocked() = false, want true when current decode rate comfortably exceeds playback")
+	}
+
+	backend.streamDecodeDone = true
+	if !backend.remoteStreamReadyLocked() {
+		t.Fatal("remoteStreamReadyLocked(done) = false, want true once decode is complete")
+	}
+}
+
+func TestLoadTrackFromDecodeSourceStreamsRemoteBeforeComplete(t *testing.T) {
+	helperPath := copyCurrentTestBinary(t, t.TempDir(), "ffmpeg.exe")
+	fakeContext := &fakeAudioContext{}
+	useFakeAudioContext(t, fakeContext, nil)
+
+	backend := NewAudioBackend()
+	backend.ffmpegPath = helperPath
+	t.Cleanup(func() {
+		backend.mutex.Lock()
+		backend.unloadTrackLocked()
+		backend.mutex.Unlock()
+	})
+
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STREAM_CHUNK_BYTES", fmt.Sprintf("%d;%d;%d;%d", audioBytesPerSecond, audioBytesPerSecond, audioBytesPerSecond, audioBytesPerSecond))
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STREAM_CHUNK_DELAY_MS", "160")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STREAM_BYTE", "7")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDERR", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
+
+	startedAt := time.Now()
+	state, err := backend.loadTrackFromDecodeSource(
+		"silphium-remote://friend:41637/Library/Artist/Album/01 Remote.flac",
+		"https://example.invalid/remote.flac",
+		nil,
+		nil,
+		audioDecodeHints{ExpectedDurationSeconds: 4, Progressive: true},
+	)
+	if err != nil {
+		t.Fatalf("loadTrackFromDecodeSource(progressive remote) error = %v", err)
+	}
+	if !state.Loaded || state.Duration != 4 {
+		t.Fatalf("loadTrackFromDecodeSource(progressive remote) = %#v, want loaded 4s track", state)
+	}
+
+	backend.mutex.Lock()
+	bufferedBytes := len(backend.streamSegments[0].PCMData)
+	backend.mutex.Unlock()
+	if bufferedBytes >= 4*audioBytesPerSecond {
+		t.Fatalf("loadTrackFromDecodeSource(progressive remote) buffered bytes = %d, want partial buffer before full decode completes", bufferedBytes)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 450*time.Millisecond {
+		t.Fatalf("loadTrackFromDecodeSource(progressive remote) elapsed = %s, want to return before full decode finishes", elapsed)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		backend.mutex.Lock()
+		decodeDone := backend.streamDecodeDone
+		decodedBytes := len(backend.streamSegments[0].PCMData)
+		backend.mutex.Unlock()
+		if decodeDone {
+			if decodedBytes != 4*audioBytesPerSecond {
+				t.Fatalf("progressive decode bytes = %d, want %d", decodedBytes, 4*audioBytesPerSecond)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal("progressive remote decode did not finish before timeout")
 }

@@ -45,9 +45,18 @@ func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanRes
 }
 
 func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool) LibraryScanResult {
-	if libraryDeferredHydrationEnabled() {
+	return a.scanLibraryFoldersWithDeferredOption(folders, restartWatcher, true)
+}
+
+func (a *App) scanLibraryFoldersWithDeferredOption(folders []AppLibraryFolder, restartWatcher bool, allowDeferred bool) LibraryScanResult {
+	if allowDeferred && libraryDeferredHydrationEnabled() {
 		return a.scanLibraryFoldersDeferred(folders, restartWatcher)
 	}
+
+	return a.scanLibraryFoldersImmediate(folders, restartWatcher)
+}
+
+func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWatcher bool) LibraryScanResult {
 	contentState := a.libraryContentState()
 	scanState := a.libraryScanState()
 	generationState := a.libraryGenerationState()
@@ -389,6 +398,9 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 			discoveredFoldersChanged = true
 		}
 		for _, entry := range entries {
+			if entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
 			if !entry.IsDir() {
 				continue
 			}
@@ -419,6 +431,9 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 			if isScanCanceled() {
 				return
 			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
 
 			currentPath := filepath.Join(absolutePath, entry.Name())
 			result.TotalEntries++
@@ -447,6 +462,7 @@ func (a *App) scanLibraryFolders(folders []AppLibraryFolder, restartWatcher bool
 				FolderPath:   folderPathForEntry,
 				RootPath:     root.Path,
 				RootName:     root.Name,
+				ReleaseDepth: root.ReleaseDepth,
 				ModifiedAtMs: modifiedAtMsFromFileInfo(entryInfo),
 			}
 
@@ -667,7 +683,8 @@ func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 // ScanConfiguredLibraryFolders indexes all configured library folders from settings as one aggregated library.
 func (a *App) ScanConfiguredLibraryFolders() LibraryScanResult {
 	a.ensureSettingsLoaded()
-	return a.scanLibraryFolders(a.settingsState().settings.LibraryFolders, true)
+	localFolders, _ := partitionConfiguredLibraryFolders(a.settings.LibraryFolders)
+	return a.scanLibraryFoldersWithDeferredOption(localFolders, true, true)
 }
 
 func cloneCoverPathByFolder(input map[string]string) map[string]string {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -190,6 +191,27 @@ func TestNormalizedPathHelpers(t *testing.T) {
 	}
 	if pathWithinRoot(fixture.rootOne, filepath.Join(filepath.Dir(fixture.rootOne), filepath.Base(fixture.rootOne)+"-shadow", "track.flac")) {
 		t.Fatal("pathWithinRoot(root, sibling prefix) = true, want false")
+	}
+}
+
+func TestPathWithinRootRejectsSymlinkEscape(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	root := libraryRootConfig{Path: fixture.rootOne, Name: "Library One"}
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{root}
+	symlinkPath := filepath.Join(fixture.albumOneFolder, "outside-link.flac")
+	if err := os.Symlink(fixture.outsideTrack, symlinkPath); err != nil {
+		t.Skipf("Symlink not available in this environment: %v", err)
+	}
+
+	if !pathWithinRoot(fixture.rootOne, symlinkPath) {
+		t.Fatal("pathWithinRoot(root, symlink path) = false, want true lexical containment")
+	}
+	if pathResolvesWithinRoot(fixture.rootOne, symlinkPath) {
+		t.Fatal("pathResolvesWithinRoot(root, symlink escape) = true, want false")
+	}
+	if app.isAllowedLibraryPath(symlinkPath) {
+		t.Fatal("isAllowedLibraryPath(symlink escape) = true, want false")
 	}
 }
 

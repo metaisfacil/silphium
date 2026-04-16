@@ -1,9 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"net"
 	pathpkg "path"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -62,6 +66,18 @@ func isPreferredCoverImagePath(path string) bool {
 }
 
 func libraryRootDisplayBaseForPath(path string) string {
+	if remotePath, ok := parseRemoteLibraryPath(path); ok {
+		if strings.TrimSpace(remotePath.VirtualPath) != "" {
+			segments := strings.Split(remotePath.VirtualPath, "/")
+			base := strings.TrimSpace(segments[len(segments)-1])
+			if base != "" {
+				return base
+			}
+		}
+
+		return net.JoinHostPort(remotePath.Host, strconv.Itoa(remotePath.Port))
+	}
+
 	base := filepath.Base(filepath.Clean(strings.TrimSpace(path)))
 	base = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(base, "\\", " "), "/", " "))
 	if base == "" || base == "." {
@@ -113,7 +129,45 @@ func resolveLibraryRootConfigs(folders []AppLibraryFolder) []libraryRootConfig {
 }
 
 func folderAndRelative(rootPath string, fullPath string) (string, string, bool) {
-	relativePath, err := filepath.Rel(rootPath, fullPath)
+	if remoteRoot, ok := parseRemoteLibraryPath(rootPath); ok {
+		remotePath, pathOK := parseRemoteLibraryPath(fullPath)
+		if !pathOK || !pathWithinRoot(rootPath, fullPath) {
+			return "", "", false
+		}
+
+		relativePath := strings.TrimSpace(remotePath.VirtualPath)
+		if trimmedRootVirtualPath := strings.TrimSpace(remoteRoot.VirtualPath); trimmedRootVirtualPath != "" {
+			relativePath = strings.TrimPrefix(relativePath, trimmedRootVirtualPath)
+			relativePath = strings.TrimPrefix(relativePath, "/")
+		}
+
+		normalizedRelativePath, ok := normalizeLibraryRelativePath(relativePath)
+		if !ok {
+			return "", "", false
+		}
+
+		folderPath := pathpkg.Dir(normalizedRelativePath)
+		if folderPath == "." {
+			folderPath = ""
+		}
+
+		return folderPath, normalizedRelativePath, true
+	}
+
+	if !pathWithinRoot(rootPath, fullPath) {
+		return "", "", false
+	}
+
+	normalizedRootPath, ok := absoluteNormalizedPath(rootPath)
+	if !ok {
+		return "", "", false
+	}
+	normalizedFullPath, ok := absoluteNormalizedPath(fullPath)
+	if !ok {
+		return "", "", false
+	}
+
+	relativePath, err := filepath.Rel(normalizedRootPath, normalizedFullPath)
 	if err != nil {
 		return "", "", false
 	}
@@ -169,6 +223,10 @@ func absoluteNormalizedPath(path string) (string, bool) {
 		return "", false
 	}
 
+	if remotePath, ok := parseRemoteLibraryPath(cleanPath); ok {
+		return buildRemoteLibraryPath(buildRemoteLibraryBasePath(remotePath.Host, remotePath.Port), remotePath.VirtualPath), true
+	}
+
 	absolutePath, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return "", false
@@ -177,12 +235,86 @@ func absoluteNormalizedPath(path string) (string, bool) {
 	return filepath.Clean(absolutePath), true
 }
 
+func resolvedLocalPathForContainment(path string) (string, bool) {
+	normalizedPath, ok := absoluteNormalizedPath(path)
+	if !ok || isRemoteLibraryPath(normalizedPath) {
+		return "", false
+	}
+
+	resolvedPath, err := filepath.EvalSymlinks(normalizedPath)
+	if err == nil {
+		return filepath.Clean(resolvedPath), true
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return normalizedPath, true
+	}
+
+	return "", false
+}
+
+func pathResolvesWithinRoot(rootPath string, absolutePath string) bool {
+	if strings.TrimSpace(rootPath) == "" {
+		return false
+	}
+
+	if remoteRoot, ok := parseRemoteLibraryPath(rootPath); ok {
+		return pathWithinRoot(buildRemoteLibraryPath(buildRemoteLibraryBasePath(remoteRoot.Host, remoteRoot.Port), remoteRoot.VirtualPath), absolutePath)
+	}
+
+	resolvedRootPath, ok := resolvedLocalPathForContainment(rootPath)
+	if !ok {
+		return false
+	}
+	resolvedCandidatePath, ok := resolvedLocalPathForContainment(absolutePath)
+	if !ok {
+		return false
+	}
+
+	relativeToRoot, err := filepath.Rel(resolvedRootPath, resolvedCandidatePath)
+	if err != nil {
+		return false
+	}
+
+	if relativeToRoot == "." {
+		return true
+	}
+
+	parentPrefix := ".." + string(filepath.Separator)
+	return relativeToRoot != ".." && !strings.HasPrefix(relativeToRoot, parentPrefix)
+}
+
 func pathWithinRoot(rootPath string, absolutePath string) bool {
 	if strings.TrimSpace(rootPath) == "" {
 		return false
 	}
 
-	relativeToRoot, err := filepath.Rel(rootPath, absolutePath)
+	if remoteRoot, ok := parseRemoteLibraryPath(rootPath); ok {
+		remotePath, pathOK := parseRemoteLibraryPath(absolutePath)
+		if !pathOK {
+			return false
+		}
+
+		if !strings.EqualFold(remoteRoot.Host, remotePath.Host) || remoteRoot.Port != remotePath.Port {
+			return false
+		}
+
+		if strings.TrimSpace(remoteRoot.VirtualPath) == "" {
+			return true
+		}
+
+		return remotePath.VirtualPath == remoteRoot.VirtualPath || strings.HasPrefix(remotePath.VirtualPath, remoteRoot.VirtualPath+"/")
+	}
+
+	normalizedRootPath, ok := absoluteNormalizedPath(rootPath)
+	if !ok {
+		return false
+	}
+	normalizedCandidatePath, ok := absoluteNormalizedPath(absolutePath)
+	if !ok {
+		return false
+	}
+
+	relativeToRoot, err := filepath.Rel(normalizedRootPath, normalizedCandidatePath)
 	if err != nil {
 		return false
 	}
@@ -258,6 +390,10 @@ func normalizePath(path string) string {
 	trimmed := strings.TrimSpace(path)
 	if trimmed == "" {
 		return ""
+	}
+
+	if remotePath, ok := parseRemoteLibraryPath(trimmed); ok {
+		return buildRemoteLibraryPath(buildRemoteLibraryBasePath(remotePath.Host, remotePath.Port), remotePath.VirtualPath)
 	}
 
 	return filepath.Clean(trimmed)
@@ -429,9 +565,18 @@ func (a *App) isAllowedLibraryPath(path string) bool {
 	}
 
 	if len(contentState.activeLibraryRoots) == 0 {
+		if _, remote := parseRemoteLibraryPath(absolutePath); remote {
+			return false
+		}
+
 		return true
 	}
 
-	_, exists := a.activeLibraryRootForPath(absolutePath)
-	return exists
+	for _, root := range contentState.activeLibraryRoots {
+		if pathResolvesWithinRoot(root.Path, absolutePath) {
+			return true
+		}
+	}
+
+	return false
 }

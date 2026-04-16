@@ -160,6 +160,9 @@ func listLibraryFolderEntriesFromFilesystem(roots []libraryRootConfig, folderPat
 	imageEntries := make([]LibraryBrowserEntry, 0)
 
 	for _, entry := range entries {
+		if entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
 		currentPath := filepath.Join(absoluteFolderPath, entry.Name())
 		currentFolderPath, relativePath, relativeOK := folderAndRelativeForLibraryRoot(root, currentPath)
 		if !relativeOK {
@@ -183,6 +186,7 @@ func listLibraryFolderEntriesFromFilesystem(roots []libraryRootConfig, folderPat
 			FolderPath:   currentFolderPath,
 			RootPath:     root.Path,
 			RootName:     root.Name,
+			ReleaseDepth: root.ReleaseDepth,
 			ModifiedAtMs: modifiedAtMsFromFileInfo(entryInfo),
 		}
 
@@ -218,7 +222,13 @@ func collectLibraryFolderTrackPathsFromFilesystem(roots []libraryRootConfig, fol
 	indexedTracks := make([]LibraryIndexedFile, 0)
 	appendTracksUnderRoot := func(root libraryRootConfig, absoluteStartPath string) error {
 		return filepath.WalkDir(absoluteStartPath, func(currentPath string, entry os.DirEntry, walkErr error) error {
-			if walkErr != nil || entry.IsDir() || !isAudioPath(currentPath) {
+			if walkErr != nil {
+				return nil
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+			if entry.IsDir() || !isAudioPath(currentPath) {
 				return nil
 			}
 
@@ -314,6 +324,9 @@ func buildFilesystemQuickScan(roots []libraryRootConfig, isScanCanceled func() b
 			if isScanCanceled() {
 				return errLibraryScanCanceled
 			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
 
 			currentPath := filepath.Join(absolutePath, entry.Name())
 			build.ScanResult.TotalEntries++
@@ -403,6 +416,9 @@ func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bo
 			if isScanCanceled() {
 				return errLibraryScanCanceled
 			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
 
 			currentPath := filepath.Join(absolutePath, entry.Name())
 			result.TotalEntries++
@@ -431,6 +447,7 @@ func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bo
 				FolderPath:   folderPathForEntry,
 				RootPath:     root.Path,
 				RootName:     root.Name,
+				ReleaseDepth: root.ReleaseDepth,
 				ModifiedAtMs: modifiedAtMsFromFileInfo(entryInfo),
 			}
 
