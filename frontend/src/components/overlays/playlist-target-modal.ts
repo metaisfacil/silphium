@@ -5,6 +5,8 @@ export type PlaylistTargetModalElements = {
     playlistTargetTitle: HTMLParagraphElement;
     playlistTargetMessage: HTMLParagraphElement;
     playlistTargetSelect: HTMLSelectElement;
+    playlistTargetDuplicateWrap: HTMLLabelElement;
+    playlistTargetDuplicateCheckbox: HTMLInputElement;
     playlistTargetHint: HTMLParagraphElement;
     playlistTargetOpen: HTMLButtonElement;
     playlistTargetCreate: HTMLButtonElement;
@@ -25,6 +27,10 @@ export const renderPlaylistTargetModal = (): string => `
                 <label class="playlist-target-field" for="playlist-target-select">
                     <span class="playlist-target-field-label">Playlist</span>
                     <select id="playlist-target-select" class="playlist-target-select" aria-label="Choose playlist"></select>
+                </label>
+                <label id="playlist-target-duplicate-wrap" class="playlist-target-toggle" hidden>
+                    <input id="playlist-target-duplicate" class="playlist-target-toggle-input" type="checkbox">
+                    <span id="playlist-target-duplicate-label" class="playlist-target-toggle-label">Prevent duplicate tracks</span>
                 </label>
                 <p id="playlist-target-hint" class="playlist-target-hint" hidden></p>
                 <div class="playlist-target-tools">
@@ -47,6 +53,8 @@ export const getPlaylistTargetModalElements = (root: ParentNode): PlaylistTarget
     playlistTargetTitle: root.querySelector('#playlist-target-title') as HTMLParagraphElement,
     playlistTargetMessage: root.querySelector('#playlist-target-message') as HTMLParagraphElement,
     playlistTargetSelect: root.querySelector('#playlist-target-select') as HTMLSelectElement,
+    playlistTargetDuplicateWrap: root.querySelector('#playlist-target-duplicate-wrap') as HTMLLabelElement,
+    playlistTargetDuplicateCheckbox: root.querySelector('#playlist-target-duplicate') as HTMLInputElement,
     playlistTargetHint: root.querySelector('#playlist-target-hint') as HTMLParagraphElement,
     playlistTargetOpen: root.querySelector('#playlist-target-open') as HTMLButtonElement,
     playlistTargetCreate: root.querySelector('#playlist-target-create') as HTMLButtonElement,

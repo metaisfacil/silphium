@@ -297,12 +297,25 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
             onOpenPlaylist: () => context.playlistController.openPlaylistTarget(),
             onCreatePlaylist: () => context.playlistController.createPlaylistTarget(),
             emptyStateMessage: 'No playlists are available yet. Open one or create one below.',
+            duplicatePreventionLabel: 'Block duplicate current track in active playlist',
         });
         if (!playlistPath) {
             return;
         }
 
-        const appended = await context.playlistController.appendTracksToPlaylist(playlistPath, trackIndexes);
+        if (
+            playlistPath.duplicatePreventionEnabled
+            && trackIndexes.includes(context.currentTrackIndex)
+            && context.playlistController.isTrackAlreadyInLoadedPlaylist(playlistPath.selectedPath, context.currentTrackIndex)
+        ) {
+            context.openErrorModal(
+                'Track already in playlist',
+                'The current track is already in the active playlist. Disable duplicate prevention to add it again.',
+            );
+            return;
+        }
+
+        const appended = await context.playlistController.appendTracksToPlaylist(playlistPath.selectedPath, trackIndexes);
         if (!appended) {
             context.openErrorModal('Add to playlist failed', 'Silphium could not append the selected items to that playlist.');
         }

@@ -145,6 +145,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         },
         savePlaylistData: (playlistPath: string, trackPaths: string[]) => context.savePlaylistData(playlistPath, trackPaths),
         appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => context.appendTracksToPlaylistData(playlistPath, trackPaths),
+        openErrorModal: context.openErrorModal,
         getFavoritePlaylists: () => context.currentSettings.favoritePlaylists,
         hasListenHistoryPlaylist: () => (
             context.currentSettings.localLibraryFilesDatabaseEnabled

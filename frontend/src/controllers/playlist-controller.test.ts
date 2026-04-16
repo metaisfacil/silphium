@@ -73,6 +73,7 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState } = 
     const ensureTrackTagsResolvedBatch = vi.fn(async () => undefined);
     const savePlaylistTrackMetadataCache = vi.fn(async () => true);
     const savePlaylistData = vi.fn(async () => true);
+    const openErrorModal = vi.fn();
 
     const controller = createPlaylistController({
         trigger,
@@ -96,6 +97,7 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState } = 
         savePlaylistTrackMetadataCache,
         savePlaylistData,
         appendTracksToPlaylistData,
+        openErrorModal,
         getFavoritePlaylists: () => favoritePlaylists,
         hasListenHistoryPlaylist: () => listenHistoryEnabled,
         onTrackChosen,
@@ -110,6 +112,7 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState } = 
         loadListenHistoryData,
         loadPlaylistData,
         onTrackChosen,
+        openErrorModal,
         savePlaylistTrackMetadataCache,
         savePlaylistData,
         setListenHistoryEnabled: (enabled: boolean) => {
@@ -219,6 +222,7 @@ describe('createPlaylistController', () => {
             savePlaylistTrackMetadataCache: vi.fn(async () => true),
             savePlaylistData: vi.fn(async () => true),
             appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
             getFavoritePlaylists: () => [],
             hasListenHistoryPlaylist: () => false,
             onTrackChosen,
@@ -276,6 +280,7 @@ describe('createPlaylistController', () => {
             savePlaylistTrackMetadataCache: vi.fn(async () => true),
             savePlaylistData: vi.fn(async () => true),
             appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
             getFavoritePlaylists: () => [],
             hasListenHistoryPlaylist: () => false,
             onTrackChosen: vi.fn(async (trackIndex: number) => {
@@ -372,6 +377,72 @@ describe('createPlaylistController', () => {
         expect(favoriteOption?.classList.contains('is-empty')).toBe(true);
     });
 
+    it('constrains the source menu to the dialog and opens it upward when space below is limited', () => {
+        const { controller, elements } = mountPlaylistController();
+
+        vi.spyOn(elements.playlistDialog, 'getBoundingClientRect').mockReturnValue({
+            x: 0,
+            y: 0,
+            top: 100,
+            right: 700,
+            bottom: 260,
+            left: 100,
+            width: 600,
+            height: 160,
+            toJSON: () => ({}),
+        });
+        vi.spyOn(elements.playlistSourceWrap, 'getBoundingClientRect').mockReturnValue({
+            x: 0,
+            y: 0,
+            top: 180,
+            right: 500,
+            bottom: 212,
+            left: 180,
+            width: 320,
+            height: 32,
+            toJSON: () => ({}),
+        });
+
+        controller.openModal();
+        elements.playlistSourceButton.click();
+
+        expect(elements.playlistSourceWrap.classList.contains('opens-upward')).toBe(true);
+        expect(elements.playlistSourceMenu.style.maxHeight).toBe('72px');
+    });
+
+    it('caps the source menu height to roughly three visible items even when more space is available', () => {
+        const { controller, elements } = mountPlaylistController();
+
+        vi.spyOn(elements.playlistDialog, 'getBoundingClientRect').mockReturnValue({
+            x: 0,
+            y: 0,
+            top: 100,
+            right: 700,
+            bottom: 520,
+            left: 100,
+            width: 600,
+            height: 420,
+            toJSON: () => ({}),
+        });
+        vi.spyOn(elements.playlistSourceWrap, 'getBoundingClientRect').mockReturnValue({
+            x: 0,
+            y: 0,
+            top: 140,
+            right: 500,
+            bottom: 172,
+            left: 180,
+            width: 320,
+            height: 32,
+            toJSON: () => ({}),
+        });
+
+        controller.openModal();
+        elements.playlistSourceButton.click();
+
+        expect(elements.playlistSourceWrap.classList.contains('opens-upward')).toBe(false);
+        expect(elements.playlistSourceMenu.style.maxHeight).toBe('100px');
+    });
+
     it('lists playlist targets without the queue and appends to the loaded playlist state', async () => {
         const { controller, appendTracksToPlaylistData } = mountPlaylistController();
 
@@ -395,6 +466,9 @@ describe('createPlaylistController', () => {
             '/music/track-2.flac',
         ]);
         expect(controller.getSequenceOverride()).toBeNull();
+        expect(controller.isTrackAlreadyInLoadedPlaylist('/playlists/demo.m3u8', 0)).toBe(true);
+        expect(controller.isTrackAlreadyInLoadedPlaylist('/playlists/demo.m3u8', 2)).toBe(true);
+        expect(controller.isTrackAlreadyInLoadedPlaylist('/playlists/favorite.m3u8', 2)).toBe(false);
     });
 
     it('loads empty playlists without forcing playback and keeps them available as targets', async () => {
@@ -489,6 +563,19 @@ describe('createPlaylistController', () => {
         expect(controller.getSequenceOverride()).toBeNull();
     });
 
+    it('shows an error when prevent duplicates is checked and current track is already in the active playlist', async () => {
+        const { controller, elements, openErrorModal } = mountPlaylistController();
+
+        controller.openModal();
+        elements.playlistPreventDuplicateCheckbox.checked = true;
+        elements.playlistAddCurrent.click();
+
+        expect(openErrorModal).toHaveBeenCalledWith(
+            'Track already in playlist',
+            'The current track is already in the active playlist. Disable duplicate prevention to add it again.',
+        );
+    });
+
     it('hydrates newly visible queue rows after the queue advances', async () => {
         document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
         const trigger = document.createElement('button');
@@ -530,6 +617,7 @@ describe('createPlaylistController', () => {
             savePlaylistTrackMetadataCache: vi.fn(async () => true),
             savePlaylistData: vi.fn(async () => true),
             appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
             getFavoritePlaylists: () => [],
             hasListenHistoryPlaylist: () => false,
             onTrackChosen: vi.fn(async () => undefined),
@@ -583,6 +671,7 @@ describe('createPlaylistController', () => {
             savePlaylistTrackMetadataCache: vi.fn(async () => true),
             savePlaylistData: vi.fn(async () => true),
             appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
             getFavoritePlaylists: () => [],
             hasListenHistoryPlaylist: () => false,
             onTrackChosen: vi.fn(async () => undefined),

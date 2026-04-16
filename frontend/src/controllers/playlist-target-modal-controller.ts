@@ -10,6 +10,13 @@ type PlaylistTargetModalRequest = {
     onOpenPlaylist?: () => Promise<PlaylistTargetOption | null>;
     onCreatePlaylist?: () => Promise<PlaylistTargetOption | null>;
     emptyStateMessage?: string;
+    duplicatePreventionLabel?: string;
+    duplicatePreventionCheckedByDefault?: boolean;
+};
+
+export type PlaylistTargetModalPromptResult = {
+    selectedPath: string;
+    duplicatePreventionEnabled: boolean;
 };
 
 export type PlaylistTargetModalController = ReturnType<typeof createPlaylistTargetModalController>;
@@ -22,6 +29,8 @@ export const createPlaylistTargetModalController = (elements: PlaylistTargetModa
         playlistTargetTitle,
         playlistTargetMessage,
         playlistTargetSelect,
+        playlistTargetDuplicateWrap,
+        playlistTargetDuplicateCheckbox,
         playlistTargetHint,
         playlistTargetOpen,
         playlistTargetCreate,
@@ -31,7 +40,7 @@ export const createPlaylistTargetModalController = (elements: PlaylistTargetModa
 
     const modalTransitionMs = UI_TIMINGS_MS.modalTransition;
     let playlistTargetModalHideTimer: number | undefined;
-    let promptResolver: ((selectedPath: string | null) => void) | null = null;
+    let promptResolver: ((result: PlaylistTargetModalPromptResult | null) => void) | null = null;
     let activeRequest: PlaylistTargetModalRequest | null = null;
     let actionPending = false;
 
@@ -76,17 +85,17 @@ export const createPlaylistTargetModalController = (elements: PlaylistTargetModa
         populatePlaylistOptions(activeRequest?.getPlaylists() || [], selectedPath);
     };
 
-    const resolvePrompt = (selectedPath: string | null): void => {
+    const resolvePrompt = (result: PlaylistTargetModalPromptResult | null): void => {
         if (!promptResolver) {
             return;
         }
 
         const resolver = promptResolver;
         promptResolver = null;
-        resolver(selectedPath);
+        resolver(result);
     };
 
-    const close = (selectedPath: string | null = null): void => {
+    const close = (result: PlaylistTargetModalPromptResult | null = null): void => {
         playlistTargetModal.classList.remove('is-visible');
         activeRequest = null;
         actionPending = false;
@@ -101,10 +110,10 @@ export const createPlaylistTargetModalController = (elements: PlaylistTargetModa
             playlistTargetModalHideTimer = undefined;
         }, modalTransitionMs);
 
-        resolvePrompt(selectedPath);
+        resolvePrompt(result);
     };
 
-    const prompt = (request: PlaylistTargetModalRequest): Promise<string | null> => {
+    const prompt = (request: PlaylistTargetModalRequest): Promise<PlaylistTargetModalPromptResult | null> => {
         resolvePrompt(null);
 
         if (playlistTargetModalHideTimer !== undefined) {
@@ -117,6 +126,13 @@ export const createPlaylistTargetModalController = (elements: PlaylistTargetModa
         playlistTargetTitle.textContent = request.title.trim() || 'Add to playlist';
         playlistTargetMessage.textContent = request.message.trim() || 'Choose a playlist.';
         playlistTargetConfirm.textContent = request.confirmLabel?.trim() || 'Add';
+        const duplicatePreventionLabel = request.duplicatePreventionLabel?.trim() || '';
+        playlistTargetDuplicateWrap.hidden = duplicatePreventionLabel === '';
+        playlistTargetDuplicateCheckbox.checked = request.duplicatePreventionCheckedByDefault === true;
+        const duplicateLabel = playlistTargetDuplicateWrap.querySelector('#playlist-target-duplicate-label');
+        if (duplicateLabel instanceof HTMLSpanElement) {
+            duplicateLabel.textContent = duplicatePreventionLabel;
+        }
         syncActionButtons();
         refreshPlaylistOptions();
 
@@ -131,7 +147,7 @@ export const createPlaylistTargetModalController = (elements: PlaylistTargetModa
             playlistTargetSelect.focus();
         });
 
-        return new Promise<string | null>((resolve) => {
+        return new Promise<PlaylistTargetModalPromptResult | null>((resolve) => {
             promptResolver = resolve;
         });
     };
@@ -199,7 +215,10 @@ export const createPlaylistTargetModalController = (elements: PlaylistTargetModa
             return;
         }
 
-        close(selectedPath);
+        close({
+            selectedPath,
+            duplicatePreventionEnabled: !playlistTargetDuplicateWrap.hidden && playlistTargetDuplicateCheckbox.checked,
+        });
     });
 
     return {

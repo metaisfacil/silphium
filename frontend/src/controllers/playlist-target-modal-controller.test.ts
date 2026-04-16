@@ -51,7 +51,34 @@ describe('createPlaylistTargetModalController', () => {
         elements.playlistTargetSelect.value = '/playlists/beta.m3u8';
         elements.playlistTargetConfirm.click();
 
-        await expect(prompt).resolves.toBe('/playlists/beta.m3u8');
+        await expect(prompt).resolves.toEqual({
+            selectedPath: '/playlists/beta.m3u8',
+            duplicatePreventionEnabled: false,
+        });
+    });
+
+    it('returns duplicate-prevention selection when the option is enabled', async () => {
+        document.body.innerHTML = renderPlaylistTargetModal();
+        const elements = getPlaylistTargetModalElements(document);
+        const controller = createPlaylistTargetModalController(elements);
+
+        const prompt = controller.prompt({
+            title: 'Add to playlist',
+            message: 'Add "Track 1" to:',
+            getPlaylists: () => [
+                { path: '/playlists/alpha.m3u8', label: 'alpha.m3u8' },
+            ],
+            duplicatePreventionLabel: 'Block duplicate current track in active playlist',
+        });
+
+        expect(elements.playlistTargetDuplicateWrap.hidden).toBe(false);
+        elements.playlistTargetDuplicateCheckbox.checked = true;
+        elements.playlistTargetConfirm.click();
+
+        await expect(prompt).resolves.toEqual({
+            selectedPath: '/playlists/alpha.m3u8',
+            duplicatePreventionEnabled: true,
+        });
     });
 
     it('shows an empty-state hint and closes on escape when no playlists exist', async () => {
@@ -102,6 +129,9 @@ describe('createPlaylistTargetModalController', () => {
         expect(elements.playlistTargetSelect.value).toBe('/playlists/new-empty.m3u8');
 
         elements.playlistTargetConfirm.click();
-        await expect(prompt).resolves.toBe('/playlists/new-empty.m3u8');
+        await expect(prompt).resolves.toEqual({
+            selectedPath: '/playlists/new-empty.m3u8',
+            duplicatePreventionEnabled: false,
+        });
     });
 });

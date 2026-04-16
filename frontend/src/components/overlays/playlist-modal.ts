@@ -13,6 +13,8 @@ export type PlaylistModalElements = {
     playlistHydrationProgress: HTMLParagraphElement;
     playlistHydrationCount: HTMLSpanElement;
     playlistList: HTMLUListElement;
+    playlistPreventDuplicateWrap: HTMLLabelElement;
+    playlistPreventDuplicateCheckbox: HTMLInputElement;
     playlistOpen: HTMLButtonElement;
     playlistCreate: HTMLButtonElement;
     playlistAddCurrent: HTMLButtonElement;
@@ -46,6 +48,10 @@ export const renderPlaylistModal = (): string => `
             <footer class="playlist-actions">
                 <div class="playlist-actions-left">
                     <button id="playlist-add-current" class="playlist-action-btn" type="button" title="Add track to current playlist" aria-label="Add track to current playlist"><svg class="playlist-action-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M10.75 4.75C10.75 4.06 11.31 3.5 12 3.5C12.69 3.5 13.25 4.06 13.25 4.75V10.75H19.25C19.94 10.75 20.5 11.31 20.5 12C20.5 12.69 19.94 13.25 19.25 13.25H13.25V19.25C13.25 19.94 12.69 20.5 12 20.5C11.31 20.5 10.75 19.94 10.75 19.25V13.25H4.75C4.06 13.25 3.5 12.69 3.5 12C3.5 11.31 4.06 10.75 4.75 10.75H10.75V4.75Z"/></svg></button>
+                    <label id="playlist-prevent-duplicate-wrap" class="playlist-duplicate-toggle" title="Block adding the current track when it is already present in the active playlist">
+                        <input id="playlist-prevent-duplicate" class="playlist-duplicate-toggle-input" type="checkbox" aria-label="Prevent duplicate current track">
+                        <span class="playlist-duplicate-toggle-label">Prevent duplicates</span>
+                    </label>
                 </div>
                 <div class="playlist-actions-right">
                     <button id="playlist-create" class="playlist-action-btn" type="button" title="Create new playlist" aria-label="Create new playlist"><svg class="playlist-action-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6 3.5C4.9 3.5 4 4.4 4 5.5V18.5C4 19.6 4.9 20.5 6 20.5H18C19.1 20.5 20 19.6 20 18.5V9L14.5 3.5H6ZM14 5.6L17.9 9.5H14V5.6ZM7.5 11H16.5V12.5H7.5V11ZM7.5 14H16.5V15.5H7.5V14Z"/></svg></button>
@@ -72,6 +78,8 @@ export const getPlaylistModalElements = (root: ParentNode): PlaylistModalElement
     playlistHydrationProgress: root.querySelector('#playlist-hydration-progress') as HTMLParagraphElement,
     playlistHydrationCount: root.querySelector('#playlist-hydration-count') as HTMLSpanElement,
     playlistList: root.querySelector('#playlist-list') as HTMLUListElement,
+    playlistPreventDuplicateWrap: root.querySelector('#playlist-prevent-duplicate-wrap') as HTMLLabelElement,
+    playlistPreventDuplicateCheckbox: root.querySelector('#playlist-prevent-duplicate') as HTMLInputElement,
     playlistOpen: root.querySelector('#playlist-open') as HTMLButtonElement,
     playlistCreate: root.querySelector('#playlist-create') as HTMLButtonElement,
     playlistAddCurrent: root.querySelector('#playlist-add-current') as HTMLButtonElement,
