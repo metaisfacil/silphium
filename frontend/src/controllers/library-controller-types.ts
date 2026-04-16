@@ -48,6 +48,7 @@ export type LibraryControllerState = {
     libraryRootName: string;
     currentFolderPath: string;
     sidebarAutoFolderPath: string;
+    loadingTrackPath: string;
     libraryIndexTruncated: boolean;
     libraryLoading: boolean;
     libraryLoadingEtaSeconds: number | null;
@@ -65,6 +66,7 @@ export const createLibraryControllerState = (): LibraryControllerState => ({
     libraryRootName: '',
     currentFolderPath: '',
     sidebarAutoFolderPath: '',
+    loadingTrackPath: '',
     libraryIndexTruncated: false,
     libraryLoading: false,
     libraryLoadingEtaSeconds: null,

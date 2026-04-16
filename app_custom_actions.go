@@ -50,7 +50,7 @@ func (a *App) resolveAbsoluteLibraryPathFromVirtualPath(path string) (string, bo
 		}
 
 		candidate = filepath.Clean(candidate)
-		if !pathWithinRoot(root.Path, candidate) {
+		if !pathResolvesWithinRoot(root.Path, candidate) {
 			return "", false
 		}
 

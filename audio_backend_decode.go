@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os/exec"
 	"strconv"
@@ -176,7 +179,7 @@ func trimPCMForGapless(decodedPCM []byte, trim gaplessTrimInfo) []byte {
 	return trimmed
 }
 
-func (b *AudioBackend) decodeTrack(path string, volumeScale float64) ([]byte, error) {
+func decodeTrackCommandArgs(path string, volumeScale float64) []string {
 	if !isFiniteFloat64(volumeScale) || volumeScale <= 0 {
 		volumeScale = 1
 	}
@@ -198,7 +201,11 @@ func (b *AudioBackend) decodeTrack(path string, volumeScale float64) ([]byte, er
 		"pipe:1",
 	)
 
-	command := exec.Command(b.ffmpegPath, args...)
+	return args
+}
+
+func (b *AudioBackend) decodeTrack(path string, volumeScale float64) ([]byte, error) {
+	command := exec.Command(b.ffmpegPath, decodeTrackCommandArgs(path, volumeScale)...)
 	configureHiddenUtilityCommand(command)
 
 	output, err := command.Output()
@@ -215,6 +222,84 @@ func (b *AudioBackend) decodeTrack(path string, volumeScale float64) ([]byte, er
 	}
 
 	return output, nil
+}
+
+func (b *AudioBackend) decodeTrackStream(ctx context.Context, path string, volumeScale float64, onChunk func([]byte) error) error {
+	command := exec.CommandContext(ctx, b.ffmpegPath, decodeTrackCommandArgs(path, volumeScale)...)
+	configureHiddenUtilityCommand(command)
+
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("ffmpeg decode failed: %w", err)
+	}
+
+	stderr := &bytes.Buffer{}
+	command.Stderr = stderr
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("ffmpeg decode failed: %w", err)
+	}
+
+	buffer := make([]byte, 64*1024)
+	frameCarry := make([]byte, 0, audioBytesPerFrame)
+	wroteAny := false
+
+	emitChunk := func(chunk []byte) error {
+		if len(chunk) == 0 {
+			return nil
+		}
+		wroteAny = true
+		return onChunk(chunk)
+	}
+
+	for {
+		readCount, readErr := stdout.Read(buffer)
+		if readCount > 0 {
+			chunk := append(frameCarry, buffer[:readCount]...)
+			alignedLength := len(chunk) - (len(chunk) % audioBytesPerFrame)
+			if alignedLength > 0 {
+				streamChunk := append([]byte(nil), chunk[:alignedLength]...)
+				if err := emitChunk(streamChunk); err != nil {
+					_ = command.Process.Kill()
+					_ = command.Wait()
+					return err
+				}
+			}
+			frameCarry = append(frameCarry[:0], chunk[alignedLength:]...)
+		}
+
+		if readErr == nil {
+			continue
+		}
+
+		if !errors.Is(readErr, io.EOF) {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+			return fmt.Errorf("ffmpeg decode failed: %w", readErr)
+		}
+		break
+	}
+
+	if len(frameCarry) > 0 {
+		if err := emitChunk(append([]byte(nil), frameCarry...)); err != nil {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+			return err
+		}
+	}
+
+	if err := command.Wait(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(stderr.Bytes()) > 0 {
+			return fmt.Errorf("ffmpeg decode failed: %s", strings.TrimSpace(stderr.String()))
+		}
+		return fmt.Errorf("ffmpeg decode failed: %w", err)
+	}
+
+	if !wroteAny {
+		return errors.New("ffmpeg decode failed: empty decoded stream")
+	}
+
+	return nil
 }
 
 func normalizeVisualizationFrameCount(frameCount int) int {

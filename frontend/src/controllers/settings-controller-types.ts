@@ -25,6 +25,12 @@ export type SettingsFormValues = {
     localLibraryFilesDatabaseListenHistoryEnabled: boolean;
     localLibraryFilesDatabaseListenHistoryLimit: number;
     ffmpegPath: string;
+    remoteLibraryTranscodingEnabled: boolean;
+    remoteLibraryTranscodingBitrateKbps: number;
+    librarySharingEnabled: boolean;
+    librarySharingPort: number;
+    librarySharingPassword?: string;
+    librarySharingPasswordHash?: string;
     listenBrainzUserToken: string;
     lastFmApiKey: string;
     lastFmApiSecret: string;
@@ -76,6 +82,7 @@ export type SettingsControllerOptions = {
     elements: SettingsModalElements;
     state?: SettingsControllerState;
     getValues: () => SettingsViewValues;
+    getMusicBrainzTagWorkerProgress?: () => Promise<MusicBrainzTagWorkerProgress>;
     selectLibraryFolder: () => Promise<string>;
     selectPlaylistFile: () => Promise<string>;
     save: (values: SettingsFormValues) => Promise<void>;

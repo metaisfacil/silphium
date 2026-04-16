@@ -75,6 +75,7 @@ const createSearchPageSlice = (query: string, entries: LibraryBrowserEntry[], of
 });
 
 const mountLibraryController = (overrides?: {
+    loadFolderPage?: (folderPath: string, sortMode: LibraryControllerOptions['loadFolderPage'] extends (folderPath: string, sortMode: infer T, offset: number, limit: number) => Promise<LibraryFolderPage> ? T : never, offset: number, limit: number) => Promise<LibraryFolderPage>;
     searchLibrary?: (query: string, offset: number, limit: number) => Promise<LibrarySearchPage>;
     state?: LibraryControllerState;
     tracks?: Track[];
@@ -154,17 +155,19 @@ const mountLibraryController = (overrides?: {
         relativePath: tracks[1].relativePath,
     };
 
-    const loadFolderPage = vi.fn(async (folderPath: string) => {
-        if (folderPath === 'Library/Artist One') {
-            return createFolderPage(folderPath, [folderChildEntry, folderTrackEntry]);
-        }
+    const loadFolderPage = overrides?.loadFolderPage
+        ? vi.fn(overrides.loadFolderPage)
+        : vi.fn(async (folderPath: string) => {
+            if (folderPath === 'Library/Artist One') {
+                return createFolderPage(folderPath, [folderChildEntry, folderTrackEntry]);
+            }
 
-        if (folderPath === 'Library/Artist Two') {
+            if (folderPath === 'Library/Artist Two') {
+                return createFolderPage(folderPath, []);
+            }
+
             return createFolderPage(folderPath, []);
-        }
-
-        return createFolderPage(folderPath, []);
-    });
+        });
     const searchLibrary = overrides?.searchLibrary || vi.fn(async (query: string) => {
         const normalizedQuery = query.trim().toLowerCase();
         if (normalizedQuery === 'intro') {
@@ -975,6 +978,52 @@ describe('createLibraryController', () => {
         expect(controller.getLibraryBrowserSortMode()).toBe('date-desc');
     });
 
+    it('restarts a stuck current-folder refresh with a fresh page request', async () => {
+        let resolveSecondPageLoad!: (page: LibraryFolderPage) => void;
+        let secondPageLoadPending = false;
+        const loadFolderPage = vi.fn(() => {
+            if (loadFolderPage.mock.calls.length === 1) {
+                return new Promise<LibraryFolderPage>(() => undefined);
+            }
+
+            return new Promise<LibraryFolderPage>((resolve) => {
+                secondPageLoadPending = true;
+                resolveSecondPageLoad = resolve;
+            });
+        });
+
+        const { controller, libraryBrowser } = mountLibraryController({
+            loadFolderPage,
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        expect(loadFolderPage).toHaveBeenCalledTimes(1);
+
+        controller.refreshCurrentFolder();
+        await flushPromises();
+
+        expect(loadFolderPage).toHaveBeenCalledTimes(2);
+
+        if (!secondPageLoadPending) {
+            throw new Error('Expected second folder page load to be pending');
+        }
+
+        resolveSecondPageLoad(createFolderPage('Library/Artist One', [{
+            kind: 'folder',
+            name: 'Album One',
+            path: 'Library/Artist One/Album One',
+            folderPath: 'Library/Artist One',
+            relativePath: 'Library/Artist One/Album One',
+        }]));
+        await flushPromises();
+
+        expect(libraryBrowser.querySelector('[data-folder-path="Library/Artist One/Album One"]')).not.toBeNull();
+    });
+
     it('preserves the last folder on close and clears restored search state when navigating', async () => {
         const { controller, onSidebarClosed } = mountLibraryController();
 
@@ -1075,6 +1124,31 @@ describe('createLibraryController', () => {
             [0],
             true,
         );
+    });
+
+    it('marks the loading remote track row while buffering', async () => {
+        const { controller, libraryBrowser, trackPath } = mountLibraryController({
+            state: createLibraryControllerState(),
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setLoadingTrackPath(trackPath);
+        await flushPromises();
+
+        const loadingButton = libraryBrowser.querySelector(`[data-track-path="${trackPath}"]`) as HTMLButtonElement | null;
+        expect(loadingButton?.classList.contains('is-loading')).toBe(true);
+        expect(controller.getLoadingTrackPath()).toBe(trackPath);
+
+        controller.setLoadingTrackPath('');
+        await flushPromises();
+
+        const clearedButton = libraryBrowser.querySelector(`[data-track-path="${trackPath}"]`) as HTMLButtonElement | null;
+        expect(clearedButton?.classList.contains('is-loading')).toBe(false);
+        expect(controller.getLoadingTrackPath()).toBe('');
     });
 
     it('preserves tree scroll position while search pages stream in', async () => {

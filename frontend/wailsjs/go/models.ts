@@ -2,7 +2,12 @@ export namespace main {
 	
 	export class AppLibraryFolder {
 	    path: string;
+	    kind?: string;
+	    host?: string;
+	    port?: number;
 	    label?: string;
+	    password?: string;
+	    passwordHash?: string;
 	    releaseDepth?: number;
 	
 	    static createFrom(source: any = {}) {
@@ -12,7 +17,12 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
+	        this.kind = source["kind"];
+	        this.host = source["host"];
+	        this.port = source["port"];
 	        this.label = source["label"];
+	        this.password = source["password"];
+	        this.passwordHash = source["passwordHash"];
 	        this.releaseDepth = source["releaseDepth"];
 	    }
 	}
@@ -96,6 +106,18 @@ export namespace main {
 	    localLibraryFilesDatabaseListenHistoryEnabled?: boolean;
 	    localLibraryFilesDatabaseListenHistoryLimit?: number;
 	    ffmpegPath?: string;
+	    remoteLibraryTranscodingEnabled?: boolean;
+	    remoteLibraryTranscodingBitrateKbps?: number;
+	    openSubsonicEnabled?: boolean;
+	    openSubsonicPort?: number;
+	    openSubsonicApiKey?: string;
+	    openSubsonicApiKeyHash?: string;
+	    librarySharingEnabled?: boolean;
+	    librarySharingPort?: number;
+	    librarySharingPassword?: string;
+	    librarySharingPasswordHash?: string;
+	    remoteLibraryPassword?: string;
+	    remoteLibraryPasswordHash?: string;
 	    listenBrainzUserToken: string;
 	    lastFmApiKey: string;
 	    lastFmApiSecret: string;
@@ -140,6 +162,18 @@ export namespace main {
 	        this.localLibraryFilesDatabaseListenHistoryEnabled = source["localLibraryFilesDatabaseListenHistoryEnabled"];
 	        this.localLibraryFilesDatabaseListenHistoryLimit = source["localLibraryFilesDatabaseListenHistoryLimit"];
 	        this.ffmpegPath = source["ffmpegPath"];
+	        this.remoteLibraryTranscodingEnabled = source["remoteLibraryTranscodingEnabled"];
+	        this.remoteLibraryTranscodingBitrateKbps = source["remoteLibraryTranscodingBitrateKbps"];
+	        this.openSubsonicEnabled = source["openSubsonicEnabled"];
+	        this.openSubsonicPort = source["openSubsonicPort"];
+	        this.openSubsonicApiKey = source["openSubsonicApiKey"];
+	        this.openSubsonicApiKeyHash = source["openSubsonicApiKeyHash"];
+	        this.librarySharingEnabled = source["librarySharingEnabled"];
+	        this.librarySharingPort = source["librarySharingPort"];
+	        this.librarySharingPassword = source["librarySharingPassword"];
+	        this.librarySharingPasswordHash = source["librarySharingPasswordHash"];
+	        this.remoteLibraryPassword = source["remoteLibraryPassword"];
+	        this.remoteLibraryPasswordHash = source["remoteLibraryPasswordHash"];
 	        this.listenBrainzUserToken = source["listenBrainzUserToken"];
 	        this.lastFmApiKey = source["lastFmApiKey"];
 	        this.lastFmApiSecret = source["lastFmApiSecret"];
@@ -388,6 +422,7 @@ export namespace main {
 	    folderPath: string;
 	    rootPath: string;
 	    rootName: string;
+	    releaseDepth?: number;
 	    cachedTrackTitle?: string;
 	    cachedArtistName?: string;
 	    listenedAt?: number;
@@ -405,6 +440,7 @@ export namespace main {
 	        this.folderPath = source["folderPath"];
 	        this.rootPath = source["rootPath"];
 	        this.rootName = source["rootName"];
+	        this.releaseDepth = source["releaseDepth"];
 	        this.cachedTrackTitle = source["cachedTrackTitle"];
 	        this.cachedArtistName = source["cachedArtistName"];
 	        this.listenedAt = source["listenedAt"];

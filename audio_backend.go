@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,9 @@ const (
 	playerBufferHeadroomFactor       = 4
 	playbackHeadroomLowThreshold     = 150 * time.Millisecond
 	playbackHeadroomRecoverThreshold = 500 * time.Millisecond
+	remoteStreamReadinessMinProbe    = 150 * time.Millisecond
+	remoteStreamReadinessBaseBuffer  = 1 * time.Second
+	remoteStreamSafetyFactor         = 0.92
 	minVisualizationFrameCount       = 64
 	maxVisualizationFrameCount       = 2048
 	visualizationWindowFactor        = 6
@@ -65,9 +69,10 @@ type AudioOutputDevice struct {
 }
 
 type audioTrackSegment struct {
-	SourcePath      string
-	PCMData         []byte
-	ReplayGainScale float64
+	SourcePath       string
+	PCMData          []byte
+	ReplayGainScale  float64
+	ExpectedPCMBytes int64
 }
 
 func (s audioTrackSegment) byteLen() int64 {
@@ -75,7 +80,17 @@ func (s audioTrackSegment) byteLen() int64 {
 }
 
 func (s audioTrackSegment) durationSeconds() float64 {
-	return float64(len(s.PCMData)) / float64(audioBytesPerSecond)
+	durationBytes := int64(len(s.PCMData))
+	if s.ExpectedPCMBytes > durationBytes {
+		durationBytes = s.ExpectedPCMBytes
+	}
+
+	return float64(durationBytes) / float64(audioBytesPerSecond)
+}
+
+type audioDecodeHints struct {
+	ExpectedDurationSeconds float64
+	Progressive             bool
 }
 
 type gaplessTrimInfo struct {
@@ -249,6 +264,12 @@ type AudioBackend struct {
 	outputBuffer                time.Duration
 	gaplessPlayback             bool
 	replayGainEnabled           bool
+	streamDecodeCancel          context.CancelFunc
+	streamDecodeGeneration      uint64
+	streamDecodeStartedAt       time.Time
+	streamDecodeExpectedBytes   int64
+	streamDecodeDone            bool
+	streamDecodeErr             error
 	playbackHeadroomLow         bool
 	replayGainCacheMu           sync.Mutex
 	replayGainCacheByPath       map[string]replayGainCacheEntry
@@ -270,8 +291,17 @@ func NewAudioBackend() *AudioBackend {
 
 func (b *AudioBackend) stateSummaryLocked() string {
 	state := b.snapshotLocked()
+	streamDecodeState := "idle"
+	if b.streamDecodeCancel != nil && !b.streamDecodeDone {
+		streamDecodeState = "loading"
+	} else if b.streamDecodeDone && len(b.streamSegments) > 0 {
+		streamDecodeState = "ready"
+	}
+	if b.streamDecodeErr != nil {
+		streamDecodeState = "error"
+	}
 	return fmt.Sprintf(
-		"loaded=%t playing=%t source=%q time=%.2f/%.2f queue=%d read=%d base=%d dropped=%d gapless=%t replayGain=%t",
+		"loaded=%t playing=%t source=%q time=%.2f/%.2f queue=%d read=%d base=%d dropped=%d decode=%s gapless=%t replayGain=%t",
 		state.Loaded,
 		state.Playing,
 		state.SourcePath,
@@ -281,6 +311,7 @@ func (b *AudioBackend) stateSummaryLocked() string {
 		b.streamReadOffset,
 		b.playbackBaseBytes,
 		b.streamDroppedBytes,
+		streamDecodeState,
 		b.gaplessPlayback,
 		b.replayGainEnabled,
 	)
@@ -788,6 +819,154 @@ func (b *AudioBackend) currentPlayedGlobalBytesLocked() int64 {
 	return playedBytes
 }
 
+func expectedPCMBytesFromDurationSeconds(durationSeconds float64) int64 {
+	if !isFiniteFloat64(durationSeconds) || durationSeconds <= 0 {
+		return 0
+	}
+
+	pcmBytes := int64(durationSeconds * float64(audioBytesPerSecond))
+	if pcmBytes <= 0 {
+		return 0
+	}
+
+	remainder := pcmBytes % int64(audioBytesPerFrame)
+	if remainder != 0 {
+		pcmBytes += int64(audioBytesPerFrame) - remainder
+	}
+
+	return pcmBytes
+}
+
+func (b *AudioBackend) remoteStreamMinimumBufferBytesLocked() int64 {
+	minimum := int64(remoteStreamReadinessBaseBuffer.Seconds() * float64(audioBytesPerSecond))
+	if minimum <= 0 {
+		minimum = int64(audioBytesPerSecond)
+	}
+
+	if b.outputBuffer > 0 {
+		outputBytes := int64(b.outputBuffer.Seconds() * float64(audioBytesPerSecond))
+		if outputBytes > 0 {
+			scaledOutputBytes := outputBytes * 3
+			if scaledOutputBytes > minimum {
+				minimum = scaledOutputBytes
+			}
+		}
+	}
+
+	remainder := minimum % int64(audioBytesPerFrame)
+	if remainder != 0 {
+		minimum += int64(audioBytesPerFrame) - remainder
+	}
+
+	return minimum
+}
+
+func (b *AudioBackend) remoteStreamReadyLocked() bool {
+	if len(b.streamSegments) == 0 {
+		return false
+	}
+
+	bufferedBytes := b.streamSegments[0].byteLen()
+	if bufferedBytes <= 0 {
+		return false
+	}
+
+	if b.streamDecodeDone {
+		return true
+	}
+
+	minimumBufferBytes := b.remoteStreamMinimumBufferBytesLocked()
+	if bufferedBytes < minimumBufferBytes || b.streamDecodeStartedAt.IsZero() {
+		return false
+	}
+
+	elapsed := time.Since(b.streamDecodeStartedAt)
+	if elapsed < remoteStreamReadinessMinProbe {
+		return false
+	}
+
+	measuredRateBytesPerSecond := float64(bufferedBytes) / elapsed.Seconds()
+	conservativeRateBytesPerSecond := measuredRateBytesPerSecond * remoteStreamSafetyFactor
+	if conservativeRateBytesPerSecond <= 0 {
+		return false
+	}
+
+	playbackRateBytesPerSecond := float64(audioBytesPerSecond)
+	if conservativeRateBytesPerSecond >= playbackRateBytesPerSecond {
+		return true
+	}
+
+	expectedBytes := b.streamDecodeExpectedBytes
+	if expectedBytes <= bufferedBytes {
+		return false
+	}
+
+	remainingBytes := float64(expectedBytes - bufferedBytes)
+	requiredBufferedBytes := (playbackRateBytesPerSecond - conservativeRateBytesPerSecond) * (remainingBytes / conservativeRateBytesPerSecond)
+	if requiredBufferedBytes < 0 {
+		requiredBufferedBytes = 0
+	}
+
+	return float64(bufferedBytes) >= requiredBufferedBytes+float64(minimumBufferBytes)
+}
+
+func (b *AudioBackend) appendStreamDecodedPCM(displayPath string, generation uint64, chunk []byte) error {
+	if len(chunk) == 0 {
+		return nil
+	}
+
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if generation != b.streamDecodeGeneration || len(b.streamSegments) == 0 || b.streamSegments[0].SourcePath != displayPath {
+		return context.Canceled
+	}
+
+	b.streamSegments[0].PCMData = append(b.streamSegments[0].PCMData, chunk...)
+	b.streamCond.Broadcast()
+	return nil
+}
+
+func (b *AudioBackend) finishStreamDecodedPCM(displayPath string, generation uint64, err error) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+
+	if generation != b.streamDecodeGeneration {
+		return
+	}
+
+	b.streamDecodeDone = true
+	b.streamDecodeCancel = nil
+	if errors.Is(err, context.Canceled) {
+		b.streamDecodeErr = nil
+	} else {
+		b.streamDecodeErr = err
+	}
+	if len(b.streamSegments) > 0 && b.streamSegments[0].SourcePath == displayPath {
+		decodedBytes := b.streamSegments[0].byteLen()
+		if err == nil && decodedBytes > 0 {
+			b.streamSegments[0].ExpectedPCMBytes = decodedBytes
+			b.streamDecodeExpectedBytes = decodedBytes
+		} else if decodedBytes > b.streamDecodeExpectedBytes {
+			b.streamSegments[0].ExpectedPCMBytes = decodedBytes
+			b.streamDecodeExpectedBytes = decodedBytes
+		}
+	}
+	b.streamCond.Broadcast()
+}
+
+func (b *AudioBackend) stopStreamDecodeLocked() {
+	b.streamDecodeGeneration++
+	if b.streamDecodeCancel != nil {
+		b.streamDecodeCancel()
+	}
+	b.streamDecodeCancel = nil
+	b.streamDecodeStartedAt = time.Time{}
+	b.streamDecodeExpectedBytes = 0
+	b.streamDecodeDone = true
+	b.streamDecodeErr = nil
+}
+
 func (b *AudioBackend) trimConsumedSegmentsLocked(playedGlobalBytes int64) {
 	for len(b.streamSegments) > 1 {
 		playedLocalBytes := playedGlobalBytes - b.streamDroppedBytes
@@ -972,6 +1151,7 @@ func (b *AudioBackend) snapshotLocked() AudioPlaybackState {
 }
 
 func (b *AudioBackend) unloadTrackLocked() {
+	b.stopStreamDecodeLocked()
 	for index := range b.streamSegments {
 		b.streamSegments[index].PCMData = nil
 	}

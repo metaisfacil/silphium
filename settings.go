@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"math"
 	"net"
@@ -10,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const appSettingsFileName = "silphium.settings.json"
@@ -30,7 +33,12 @@ type FocusedKeyboardShortcuts struct {
 // AppLibraryFolder describes one configured library root and its optional metadata.
 type AppLibraryFolder struct {
 	Path         string `json:"path"`
+	Kind         string `json:"kind,omitempty"`
+	Host         string `json:"host,omitempty"`
+	Port         int    `json:"port,omitempty"`
 	Label        string `json:"label,omitempty"`
+	Password     string `json:"password,omitempty"`
+	PasswordHash string `json:"passwordHash,omitempty"`
 	ReleaseDepth int    `json:"releaseDepth,omitempty"`
 }
 
@@ -65,6 +73,18 @@ type AppSettings struct {
 	LocalLibraryFilesDatabaseListenHistoryEnabled *bool                    `json:"localLibraryFilesDatabaseListenHistoryEnabled,omitempty"`
 	LocalLibraryFilesDatabaseListenHistoryLimit   int                      `json:"localLibraryFilesDatabaseListenHistoryLimit,omitempty"`
 	FFmpegPath                                    string                   `json:"ffmpegPath,omitempty"`
+	RemoteLibraryTranscodingEnabled               bool                     `json:"remoteLibraryTranscodingEnabled,omitempty"`
+	RemoteLibraryTranscodingBitrateKbps           int                      `json:"remoteLibraryTranscodingBitrateKbps,omitempty"`
+	OpenSubsonicEnabled                           bool                     `json:"openSubsonicEnabled,omitempty"`
+	OpenSubsonicPort                              int                      `json:"openSubsonicPort,omitempty"`
+	OpenSubsonicAPIKey                            string                   `json:"openSubsonicApiKey,omitempty"`
+	OpenSubsonicAPIKeyHash                        string                   `json:"openSubsonicApiKeyHash,omitempty"`
+	LibrarySharingEnabled                         bool                     `json:"librarySharingEnabled,omitempty"`
+	LibrarySharingPort                            int                      `json:"librarySharingPort,omitempty"`
+	LibrarySharingPassword                        string                   `json:"librarySharingPassword,omitempty"`
+	LibrarySharingPasswordHash                    string                   `json:"librarySharingPasswordHash,omitempty"`
+	RemoteLibraryPassword                         string                   `json:"remoteLibraryPassword,omitempty"`
+	RemoteLibraryPasswordHash                     string                   `json:"remoteLibraryPasswordHash,omitempty"`
 	ListenBrainzUserToken                         string                   `json:"listenBrainzUserToken"`
 	LastFmAPIKey                                  string                   `json:"lastFmApiKey"`
 	LastFmAPISecret                               string                   `json:"lastFmApiSecret"`
@@ -118,6 +138,10 @@ const coverArtPriorityEmbedded = "embedded"
 const coverArtPriorityMusicBrainz = "musicbrainz"
 const defaultAudioOutputDevice = "default"
 const maxAudioOutputBufferMs = 1000
+const minimumLibrarySharingPasswordLength = 10
+const defaultRemoteLibraryTranscodingBitrateKbps = 192
+const minRemoteLibraryTranscodingBitrateKbps = 64
+const maxRemoteLibraryTranscodingBitrateKbps = 320
 
 const sendToActionScopeTrack = "track"
 const sendToActionScopeAlbum = "album"
@@ -184,8 +208,55 @@ func normalizeAudioSettings(settings AudioSettings) AudioSettings {
 	}
 }
 
+func normalizeRemoteLibraryTranscodingBitrateKbps(value int) int {
+	if value <= 0 {
+		return defaultRemoteLibraryTranscodingBitrateKbps
+	}
+
+	if value < minRemoteLibraryTranscodingBitrateKbps {
+		return minRemoteLibraryTranscodingBitrateKbps
+	}
+
+	if value > maxRemoteLibraryTranscodingBitrateKbps {
+		return maxRemoteLibraryTranscodingBitrateKbps
+	}
+
+	return value
+}
+
 func normalizeFFmpegPath(value string) string {
 	return normalizeToolExecutablePath(value)
+}
+
+func normalizeNetworkPasswordHash(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if len(normalized) != 64 {
+		return ""
+	}
+
+	if _, err := hex.DecodeString(normalized); err != nil {
+		return ""
+	}
+
+	return normalized
+}
+
+func hashNetworkPassword(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+func normalizeNetworkPasswordHashForSettings(password string, existingHash string) string {
+	trimmedPassword := strings.TrimSpace(password)
+	if trimmedPassword != "" {
+		if utf8.RuneCountInString(trimmedPassword) < minimumLibrarySharingPasswordLength {
+			return ""
+		}
+
+		return hashNetworkPassword(trimmedPassword)
+	}
+
+	return normalizeNetworkPasswordHash(existingHash)
 }
 
 func normalizePlaybackOrder(value string) string {
@@ -657,6 +728,7 @@ func normalizeLibraryFolders(folders []AppLibraryFolder, legacyPath string, lega
 	} else if strings.TrimSpace(legacyPath) != "" {
 		candidates = append(candidates, AppLibraryFolder{
 			Path:         legacyPath,
+			Kind:         librarySourceKindLocal,
 			ReleaseDepth: legacyReleaseDepth,
 		})
 	}
@@ -664,6 +736,17 @@ func normalizeLibraryFolders(folders []AppLibraryFolder, legacyPath string, lega
 	normalizedFolders := make([]AppLibraryFolder, 0, len(candidates))
 	seenPaths := make(map[string]struct{}, len(candidates))
 	for _, candidate := range candidates {
+		normalizedKind := librarySourceKindLocal
+		if strings.TrimSpace(candidate.Kind) != "" {
+			normalizedKind = normalizeLibraryFolderKind(candidate.Kind)
+		} else if isRemoteLibraryBasePath(candidate.Path) || strings.TrimSpace(candidate.Host) != "" {
+			normalizedKind = librarySourceKindRemote
+		}
+
+		if normalizedKind == librarySourceKindRemote {
+			continue
+		}
+
 		normalizedPath := normalizePath(candidate.Path)
 		if normalizedPath == "" {
 			continue
@@ -673,19 +756,29 @@ func normalizeLibraryFolders(folders []AppLibraryFolder, legacyPath string, lega
 			normalizedPath = filepath.Clean(absolutePath)
 		}
 
-		if _, exists := seenPaths[normalizedPath]; exists {
+		lookupKey := strings.ToLower(normalizedPath)
+		if _, exists := seenPaths[lookupKey]; exists {
 			continue
 		}
 
-		seenPaths[normalizedPath] = struct{}{}
+		seenPaths[lookupKey] = struct{}{}
 		normalizedFolders = append(normalizedFolders, AppLibraryFolder{
 			Path:         normalizedPath,
+			Kind:         librarySourceKindLocal,
 			Label:        normalizeLibraryFolderLabel(candidate.Label),
 			ReleaseDepth: normalizeReleaseDepth(candidate.ReleaseDepth),
 		})
 	}
 
 	return normalizedFolders
+}
+
+func normalizeLibraryFolderKind(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), librarySourceKindRemote) {
+		return librarySourceKindRemote
+	}
+
+	return librarySourceKindLocal
 }
 
 func normalizeAppSettings(settings AppSettings) AppSettings {
@@ -695,6 +788,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 	lastFmSessionKey := strings.TrimSpace(settings.LastFmSessionKey)
 	playbackOrder := normalizePlaybackOrder(settings.PlaybackOrder)
 	libraryFolders := normalizeLibraryFolders(settings.LibraryFolders, settings.LibraryPath, settings.ReleaseDepth)
+	openSubsonicAPIKeyHash := normalizeNetworkPasswordHashForSettings(settings.OpenSubsonicAPIKey, settings.OpenSubsonicAPIKeyHash)
 	localLibraryFilesDatabaseEnabled := true
 	if settings.LocalLibraryFilesDatabaseEnabled != nil {
 		localLibraryFilesDatabaseEnabled = *settings.LocalLibraryFilesDatabaseEnabled
@@ -767,6 +861,16 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		LocalLibraryFilesDatabaseListenHistoryEnabled: boolPointer(localLibraryFilesDatabaseListenHistoryEnabled),
 		LocalLibraryFilesDatabaseListenHistoryLimit:   localLibraryFilesDatabaseListenHistoryLimit,
 		FFmpegPath:                             normalizeFFmpegPath(settings.FFmpegPath),
+		RemoteLibraryTranscodingEnabled:        false,
+		RemoteLibraryTranscodingBitrateKbps:    normalizeRemoteLibraryTranscodingBitrateKbps(settings.RemoteLibraryTranscodingBitrateKbps),
+		OpenSubsonicEnabled:                    settings.OpenSubsonicEnabled && openSubsonicAPIKeyHash != "",
+		OpenSubsonicPort:                       normalizeOpenSubsonicPort(settings.OpenSubsonicPort),
+		OpenSubsonicAPIKey:                     strings.TrimSpace(settings.OpenSubsonicAPIKey),
+		OpenSubsonicAPIKeyHash:                 openSubsonicAPIKeyHash,
+		LibrarySharingEnabled:                  false,
+		LibrarySharingPort:                     normalizeLibrarySharingPort(settings.LibrarySharingPort),
+		LibrarySharingPasswordHash:             "",
+		RemoteLibraryPasswordHash:              "",
 		ListenBrainzUserToken:                  token,
 		LastFmAPIKey:                           lastFmAPIKey,
 		LastFmAPISecret:                        lastFmAPISecret,
@@ -874,6 +978,12 @@ func (a *App) GetSettings() AppSettings {
 func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	settingsState := a.settingsState()
 	a.ensureSettingsLoaded()
+	if strings.TrimSpace(settings.OpenSubsonicAPIKey) == "" {
+		settings.OpenSubsonicAPIKey = settingsState.settings.OpenSubsonicAPIKey
+	}
+	if strings.TrimSpace(settings.OpenSubsonicAPIKeyHash) == "" {
+		settings.OpenSubsonicAPIKeyHash = settingsState.settings.OpenSubsonicAPIKeyHash
+	}
 
 	normalized := normalizeAppSettings(settings)
 	if err := writeAppSettings(a.ensureSettingsPath(), normalized); err != nil {
@@ -883,6 +993,7 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	settingsState.settings = normalized
 	a.audioBackend().SetFFmpegPath(normalized.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(normalized.Audio)
+	a.syncOpenSubsonicServer()
 	if normalized.LocalLibraryFilesDatabaseEnabled != nil && !*normalized.LocalLibraryFilesDatabaseEnabled {
 		a.stopLibraryFilesDatabaseWorker()
 	}

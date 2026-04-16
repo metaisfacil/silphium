@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -11,7 +10,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const libraryFilesSQLiteDriverName = "sqlite"
 const libraryFilesDatabaseVersion = 3
 
 type libraryFilesDatabaseRecord struct {
@@ -124,36 +122,7 @@ func libraryFilesDatabaseFileExists(path string) bool {
 }
 
 func openLibraryFilesSQLite(path string) (*sql.DB, error) {
-	directory := filepath.Dir(path)
-	if directory != "" && directory != "." {
-		if err := os.MkdirAll(directory, 0o755); err != nil {
-			return nil, err
-		}
-	}
-
-	database, err := sql.Open(libraryFilesSQLiteDriverName, path)
-	if err != nil {
-		return nil, err
-	}
-	database.SetMaxOpenConns(1)
-	if err := configureLibraryFilesSQLite(database); err != nil {
-		database.Close()
-		return nil, err
-	}
-	return database, nil
-}
-
-func configureLibraryFilesSQLite(database *sql.DB) error {
-	var journalMode string
-	if err := database.QueryRow(`PRAGMA journal_mode=WAL`).Scan(&journalMode); err != nil {
-		return err
-	}
-
-	if _, err := database.Exec(`PRAGMA synchronous=NORMAL`); err != nil {
-		return err
-	}
-
-	return nil
+	return openMetadataSQLiteNoMigration(path)
 }
 
 func initializeLibraryFilesSQLite(database *sql.DB) error {
@@ -167,6 +136,10 @@ func initializeLibraryFilesSQLite(database *sql.DB) error {
 }
 
 func loadLibraryFilesDatabaseRecordsFromSQLite(databasePath string, roots []libraryRootConfig) ([]libraryFilesDatabaseRecord, int, bool) {
+	if err := ensureMetadataDatabaseMigrated(databasePath); err != nil {
+		return nil, 0, false
+	}
+
 	if !libraryFilesDatabaseFileExists(databasePath) {
 		return nil, 0, false
 	}
@@ -213,7 +186,11 @@ func loadLibraryFilesDatabaseRecordsFromSQLite(databasePath string, roots []libr
 
 	totalEntries := 0
 	var totalEntriesRaw string
-	if err := database.QueryRow(`SELECT value FROM meta WHERE key = 'total_entries'`).Scan(&totalEntriesRaw); err == nil {
+	metaErr := database.QueryRow(`SELECT value FROM meta WHERE key = ?`, libraryFilesMetaTotalEntriesKey).Scan(&totalEntriesRaw)
+	if metaErr == sql.ErrNoRows {
+		metaErr = database.QueryRow(`SELECT value FROM meta WHERE key = 'total_entries'`).Scan(&totalEntriesRaw)
+	}
+	if metaErr == nil {
 		parsed, parseErr := strconv.Atoi(strings.TrimSpace(totalEntriesRaw))
 		if parseErr == nil && parsed > 0 {
 			totalEntries = parsed
@@ -244,6 +221,10 @@ func loadLibraryFilesDatabaseRecordsFromSQLite(databasePath string, roots []libr
 }
 
 func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFilesDatabaseSnapshot) error {
+	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+		return err
+	}
+
 	database, err := openLibraryFilesSQLite(path)
 	if err != nil {
 		return err
@@ -266,7 +247,7 @@ func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFile
 		_ = transaction.Rollback()
 	}()
 
-	if _, err := transaction.Exec(`DELETE FROM meta`); err != nil {
+	if _, err := transaction.Exec(`DELETE FROM meta WHERE key IN (?, ?)`, libraryFilesMetaVersionKey, libraryFilesMetaTotalEntriesKey); err != nil {
 		return err
 	}
 	if _, err := transaction.Exec(`DELETE FROM roots`); err != nil {
@@ -276,10 +257,10 @@ func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFile
 		return err
 	}
 
-	if _, err := transaction.Exec(`INSERT INTO meta (key, value) VALUES ('version', ?)`, strconv.Itoa(libraryFilesDatabaseVersion)); err != nil {
+	if _, err := transaction.Exec(`INSERT INTO meta (key, value) VALUES (?, ?)`, libraryFilesMetaVersionKey, strconv.Itoa(libraryFilesDatabaseVersion)); err != nil {
 		return err
 	}
-	if _, err := transaction.Exec(`INSERT INTO meta (key, value) VALUES ('total_entries', ?)`, strconv.Itoa(snapshot.TotalEntries)); err != nil {
+	if _, err := transaction.Exec(`INSERT INTO meta (key, value) VALUES (?, ?)`, libraryFilesMetaTotalEntriesKey, strconv.Itoa(snapshot.TotalEntries)); err != nil {
 		return err
 	}
 
@@ -311,6 +292,9 @@ func writeLibraryFilesDatabaseIncrementalChangesToSQLite(path string, changes []
 	if len(changes) == 0 {
 		return nil
 	}
+	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+		return err
+	}
 
 	database, err := openLibraryFilesSQLite(path)
 	if err != nil {
@@ -334,11 +318,11 @@ func writeLibraryFilesDatabaseIncrementalChangesToSQLite(path string, changes []
 		_ = transaction.Rollback()
 	}()
 
-	if _, err := transaction.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('version', ?)`, strconv.Itoa(libraryFilesDatabaseVersion)); err != nil {
+	if _, err := transaction.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, libraryFilesMetaVersionKey, strconv.Itoa(libraryFilesDatabaseVersion)); err != nil {
 		return err
 	}
 	if totalEntries >= 0 {
-		if _, err := transaction.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('total_entries', ?)`, strconv.Itoa(totalEntries)); err != nil {
+		if _, err := transaction.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, libraryFilesMetaTotalEntriesKey, strconv.Itoa(totalEntries)); err != nil {
 			return err
 		}
 	}
@@ -406,6 +390,10 @@ func trimLibraryListenHistoryInSQLite(runner sqliteExecRunner, limit int) error 
 }
 
 func appendLibraryListenHistoryRecordToSQLite(path string, record libraryListenHistoryRecord, limit int) error {
+	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+		return err
+	}
+
 	database, err := openLibraryFilesSQLite(path)
 	if err != nil {
 		return err
@@ -452,6 +440,10 @@ func appendLibraryListenHistoryRecordToSQLite(path string, record libraryListenH
 }
 
 func loadLibraryListenHistoryRecordsFromSQLite(databasePath string) ([]libraryListenHistoryRecord, bool) {
+	if err := ensureMetadataDatabaseMigrated(databasePath); err != nil {
+		return nil, false
+	}
+
 	if !libraryFilesDatabaseFileExists(databasePath) {
 		return nil, false
 	}
@@ -488,6 +480,10 @@ func loadLibraryListenHistoryRecordsFromSQLite(databasePath string) ([]libraryLi
 }
 
 func trimLibraryListenHistoryToLimitInSQLite(path string, limit int) error {
+	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+		return err
+	}
+
 	database, err := openLibraryFilesSQLite(path)
 	if err != nil {
 		return err
@@ -502,6 +498,10 @@ func trimLibraryListenHistoryToLimitInSQLite(path string, limit int) error {
 }
 
 func loadPlaylistTrackCacheRecordsFromSQLite(databasePath string, trackPaths []string) map[string]playlistTrackCacheRecord {
+	if err := ensureMetadataDatabaseMigrated(databasePath); err != nil {
+		return nil
+	}
+
 	if !libraryFilesDatabaseFileExists(databasePath) {
 		return nil
 	}
@@ -595,6 +595,9 @@ func savePlaylistTrackCacheRecordsToSQLite(path string, records []playlistTrackC
 	if len(cleanRecords) == 0 {
 		return nil
 	}
+	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+		return err
+	}
 
 	database, err := openLibraryFilesSQLite(path)
 	if err != nil {
@@ -631,6 +634,184 @@ func savePlaylistTrackCacheRecordsToSQLite(path string, records []playlistTrackC
 			return err
 		}
 	}
+
+	if err := transaction.Commit(); err != nil {
+		return err
+	}
+	committed = true
+
+	return nil
+}
+
+func migrateLegacyLibraryFilesDatabaseToMetadata(metadataPath string, legacyPath string) error {
+	legacyDatabase, err := openMetadataSQLiteNoMigration(legacyPath)
+	if err != nil {
+		return err
+	}
+	defer legacyDatabase.Close()
+
+	if err := initializeLibraryFilesSQLite(legacyDatabase); err != nil {
+		return err
+	}
+
+	metadataDatabase, err := openMetadataSQLiteNoMigration(metadataPath)
+	if err != nil {
+		return err
+	}
+	defer metadataDatabase.Close()
+
+	if err := initializeLibraryFilesSQLite(metadataDatabase); err != nil {
+		return err
+	}
+
+	transaction, err := metadataDatabase.Begin()
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		_ = transaction.Rollback()
+	}()
+
+	if _, err := transaction.Exec(`DELETE FROM meta WHERE key IN (?, ?)`, libraryFilesMetaVersionKey, libraryFilesMetaTotalEntriesKey); err != nil {
+		return err
+	}
+	if _, err := transaction.Exec(`DELETE FROM roots`); err != nil {
+		return err
+	}
+	if _, err := transaction.Exec(`DELETE FROM files`); err != nil {
+		return err
+	}
+	if _, err := transaction.Exec(`DELETE FROM listen_history`); err != nil {
+		return err
+	}
+	if _, err := transaction.Exec(`DELETE FROM playlist_track_cache`); err != nil {
+		return err
+	}
+	if _, err := transaction.Exec(`INSERT INTO meta (key, value) VALUES (?, ?)`, libraryFilesMetaVersionKey, strconv.Itoa(libraryFilesDatabaseVersion)); err != nil {
+		return err
+	}
+
+	var totalEntriesRaw string
+	err = legacyDatabase.QueryRow(`SELECT value FROM meta WHERE key = ?`, libraryFilesMetaTotalEntriesKey).Scan(&totalEntriesRaw)
+	if err == sql.ErrNoRows {
+		err = legacyDatabase.QueryRow(`SELECT value FROM meta WHERE key = 'total_entries'`).Scan(&totalEntriesRaw)
+	}
+	if err == nil {
+		if _, err := transaction.Exec(`INSERT INTO meta (key, value) VALUES (?, ?)`, libraryFilesMetaTotalEntriesKey, totalEntriesRaw); err != nil {
+			return err
+		}
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+
+	rootRows, err := legacyDatabase.Query(`SELECT path, release_depth FROM roots ORDER BY path`)
+	if err != nil {
+		return err
+	}
+	for rootRows.Next() {
+		var path string
+		var releaseDepth int
+		if err := rootRows.Scan(&path, &releaseDepth); err != nil {
+			rootRows.Close()
+			return err
+		}
+		if _, err := transaction.Exec(`INSERT INTO roots (path, release_depth) VALUES (?, ?)`, path, releaseDepth); err != nil {
+			rootRows.Close()
+			return err
+		}
+	}
+	if err := rootRows.Err(); err != nil {
+		rootRows.Close()
+		return err
+	}
+	rootRows.Close()
+
+	fileRows, err := legacyDatabase.Query(`SELECT path, root_path, relative_path, kind, size, mod_unix_ns FROM files ORDER BY path`)
+	if err != nil {
+		return err
+	}
+	for fileRows.Next() {
+		var record libraryFilesDatabaseRecord
+		if err := fileRows.Scan(&record.Path, &record.RootPath, &record.RelativePath, &record.Kind, &record.Size, &record.ModUnixNs); err != nil {
+			fileRows.Close()
+			return err
+		}
+		if _, err := transaction.Exec(
+			`INSERT INTO files (path, root_path, relative_path, kind, size, mod_unix_ns) VALUES (?, ?, ?, ?, ?, ?)`,
+			record.Path,
+			record.RootPath,
+			record.RelativePath,
+			record.Kind,
+			record.Size,
+			record.ModUnixNs,
+		); err != nil {
+			fileRows.Close()
+			return err
+		}
+	}
+	if err := fileRows.Err(); err != nil {
+		fileRows.Close()
+		return err
+	}
+	fileRows.Close()
+
+	historyRows, err := legacyDatabase.Query(`SELECT track_path, track_name, artist_name, release_name, listened_at FROM listen_history ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	for historyRows.Next() {
+		var record libraryListenHistoryRecord
+		if err := historyRows.Scan(&record.TrackPath, &record.TrackName, &record.ArtistName, &record.ReleaseName, &record.ListenedAt); err != nil {
+			historyRows.Close()
+			return err
+		}
+		if _, err := transaction.Exec(
+			`INSERT INTO listen_history (track_path, track_name, artist_name, release_name, listened_at) VALUES (?, ?, ?, ?, ?)`,
+			record.TrackPath,
+			record.TrackName,
+			record.ArtistName,
+			record.ReleaseName,
+			record.ListenedAt,
+		); err != nil {
+			historyRows.Close()
+			return err
+		}
+	}
+	if err := historyRows.Err(); err != nil {
+		historyRows.Close()
+		return err
+	}
+	historyRows.Close()
+
+	cacheRows, err := legacyDatabase.Query(`SELECT track_path, track_name, artist_name FROM playlist_track_cache ORDER BY track_path`)
+	if err != nil {
+		return err
+	}
+	for cacheRows.Next() {
+		var record playlistTrackCacheRecord
+		if err := cacheRows.Scan(&record.TrackPath, &record.TrackName, &record.ArtistName); err != nil {
+			cacheRows.Close()
+			return err
+		}
+		if _, err := transaction.Exec(
+			`INSERT INTO playlist_track_cache (track_path, track_name, artist_name) VALUES (?, ?, ?)`,
+			record.TrackPath,
+			record.TrackName,
+			record.ArtistName,
+		); err != nil {
+			cacheRows.Close()
+			return err
+		}
+	}
+	if err := cacheRows.Err(); err != nil {
+		cacheRows.Close()
+		return err
+	}
+	cacheRows.Close()
 
 	if err := transaction.Commit(); err != nil {
 		return err

@@ -42,6 +42,7 @@ export type Track = {
     folderPath: string;
     rootPath: string;
     rootName: string;
+    releaseDepth?: number;
     displayTitle: string;
     displayAlbum: string;
     displayArtist: string;
@@ -144,9 +145,11 @@ export type LibraryIndexedFile = {
     folderPath: string;
     rootPath: string;
     rootName: string;
+    releaseDepth?: number;
     cachedTrackTitle?: string;
     cachedArtistName?: string;
     listenedAt?: number;
+    modifiedAtMs?: number;
 };
 
 export type LibraryScanResult = {
@@ -172,6 +175,14 @@ export type LibraryScanProgress = {
     elapsedMs: number;
     etaSeconds: number;
     phase: 'counting' | 'scanning' | 'finalizing';
+};
+
+export type RemoteLibraryErrorNotification = {
+    title: string;
+    message: string;
+    target: string;
+    category: 'auth' | 'timeout' | 'connection' | 'unknown';
+    detail?: string;
 };
 
 export type MusicBrainzTagWorkerProgress = {
@@ -328,6 +339,11 @@ export type AppLibraryFolder = {
     path: string;
     label: string;
     releaseDepth: number;
+    kind?: 'local' | 'remote';
+    host?: string;
+    port?: number;
+    password?: string;
+    passwordHash?: string;
 };
 
 export type AppSettings = {
@@ -338,6 +354,18 @@ export type AppSettings = {
     localLibraryFilesDatabaseListenHistoryEnabled: boolean;
     localLibraryFilesDatabaseListenHistoryLimit: number;
     ffmpegPath: string;
+    openSubsonicEnabled?: boolean;
+    openSubsonicPort?: number;
+    openSubsonicApiKey?: string;
+    openSubsonicApiKeyHash?: string;
+    remoteLibraryTranscodingEnabled?: boolean;
+    remoteLibraryTranscodingBitrateKbps?: number;
+    librarySharingEnabled?: boolean;
+    librarySharingPort?: number;
+    librarySharingPassword?: string;
+    librarySharingPasswordHash?: string;
+    remoteLibraryPassword?: string;
+    remoteLibraryPasswordHash?: string;
     listenBrainzUserToken: string;
     lastFmApiKey: string;
     lastFmApiSecret: string;

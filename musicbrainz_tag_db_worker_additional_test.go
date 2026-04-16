@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -109,11 +110,17 @@ func TestMusicBrainzTagWorkerTrackBatchAndProgress(t *testing.T) {
 	if !ok {
 		t.Fatalf("trackTagsFileSignatureForPath(%q) failed", indexed.Path)
 	}
-	app.putTrackTagsCache(indexed.Path, signature, TrackTags{ReleaseID: "22222222-2222-4222-8222-222222222222", ArtistIDs: []string{"11111111-1111-4111-8111-111111111111"}}, true)
+	app.putTrackTagsCache(indexed.Path, signature, TrackTags{ReleaseID: "22222222-2222-4222-8222-222222222222", ArtistIDs: []string{"11111111-1111-4111-8111-111111111111"}, RecordLabel: "Label Name", CatalogNumber: "CAT-001"}, true)
 
 	scanResult := app.scanMusicBrainzTagTrack(indexed, 2, "")
 	if len(scanResult.pendingEntityKeys) != 2 {
 		t.Fatalf("scanMusicBrainzTagTrack() = %#v, want pending release and artist entities", scanResult)
+	}
+	app.musicBrainzTagMu.Lock()
+	storedRecord := app.musicBrainzTagStore.Tracks[indexed.Path]
+	app.musicBrainzTagMu.Unlock()
+	if storedRecord.RecordLabel != "Label Name" || storedRecord.CatalogNumber != "CAT-001" {
+		t.Fatalf("scanMusicBrainzTagTrack() stored record = %#v, want persisted label and catalog number", storedRecord)
 	}
 	app.musicBrainzTagMu.Lock()
 	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("release", "22222222-2222-4222-8222-222222222222")] = musicBrainzTagEntityRecord{EntityType: "release", MBID: "22222222-2222-4222-8222-222222222222", LastFetchedAt: time.Now()}
@@ -124,9 +131,15 @@ func TestMusicBrainzTagWorkerTrackBatchAndProgress(t *testing.T) {
 		t.Fatalf("scanMusicBrainzTagTrack(existing entities) = %#v, want completed release and artist entities", scanResult)
 	}
 
-	batchResult := app.processMusicBrainzTagTrackBatch(map[string]LibraryIndexedFile{indexed.Path: indexed}, []string{indexed.Path, filepath.Join(fixture.albumOneFolder, "missing.flac")})
+	progressCalls := 0
+	batchResult := app.processMusicBrainzTagTrackBatch(map[string]LibraryIndexedFile{indexed.Path: indexed}, []string{indexed.Path, filepath.Join(fixture.albumOneFolder, "missing.flac")}, func(result musicBrainzTagTrackScanResult) {
+		progressCalls++
+	})
 	if len(batchResult.completedEntityKeys) != 2 {
 		t.Fatalf("processMusicBrainzTagTrackBatch() = %#v, want deduplicated completed entities", batchResult)
+	}
+	if progressCalls != 2 {
+		t.Fatalf("processMusicBrainzTagTrackBatch() progress calls = %d, want 2", progressCalls)
 	}
 
 	app.trackByPath = map[string]LibraryIndexedFile{indexed.Path: indexed}
@@ -179,6 +192,104 @@ func TestMusicBrainzTagWorkerTrackBatchAndProgress(t *testing.T) {
 	workerState := app.musicBrainzTagWorkerState()
 	if workerState.wakeCh != nil || workerState.doneCh != nil || workerState.stopCh != nil {
 		t.Fatal("stopMusicBrainzTagWorker() should clear worker channels")
+	}
+}
+
+func TestMusicBrainzTagTrackBatchStreamsProgressBeforeBatchFinishes(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	secondTrack := filepath.Join(fixture.albumOneFolder, "02 Second.flac")
+	writeTestFile(t, secondTrack, "second")
+
+	indexedOne := indexedTrackForTest(fixture.rootOne, fixture.trackOne)
+	indexedTwo := indexedTrackForTest(fixture.rootOne, secondTrack)
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne, indexedOne, indexedTwo)
+	app.settings.MusicBrainzTagWorkerCores = 1
+
+	originalReadTaglibTags := readTaglibTags
+	t.Cleanup(func() {
+		readTaglibTags = originalReadTaglibTags
+	})
+
+	allowSecondTrack := make(chan struct{})
+	firstProgress := make(chan struct{})
+	readTaglibTags = func(path string) (map[string][]string, error) {
+		switch normalizePath(path) {
+		case normalizePath(indexedOne.Path):
+			return map[string][]string{
+				"TITLE":  {"Track One"},
+				"ARTIST": {"Artist One"},
+				"ALBUM":  {"Album One"},
+			}, nil
+		case normalizePath(indexedTwo.Path):
+			<-allowSecondTrack
+			return map[string][]string{
+				"TITLE":  {"Track Two"},
+				"ARTIST": {"Artist One"},
+				"ALBUM":  {"Album One"},
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected path %q", path)
+		}
+	}
+
+	doneCh := make(chan musicBrainzTagTrackScanResult, 1)
+	go func() {
+		doneCh <- app.processMusicBrainzTagTrackBatch(
+			map[string]LibraryIndexedFile{
+				indexedOne.Path: indexedOne,
+				indexedTwo.Path: indexedTwo,
+			},
+			[]string{indexedOne.Path, indexedTwo.Path},
+			func(result musicBrainzTagTrackScanResult) {
+				select {
+				case <-firstProgress:
+				default:
+					close(firstProgress)
+				}
+			},
+		)
+	}()
+
+	select {
+	case <-firstProgress:
+	case <-time.After(2 * time.Second):
+		t.Fatal("processMusicBrainzTagTrackBatch() did not stream first progress result before the blocked track finished")
+	}
+
+	select {
+	case <-doneCh:
+		t.Fatal("processMusicBrainzTagTrackBatch() returned before the blocked track finished")
+	default:
+	}
+
+	close(allowSecondTrack)
+
+	select {
+	case batchResult := <-doneCh:
+		if len(batchResult.completedEntityKeys) != 0 || len(batchResult.pendingEntityKeys) != 0 {
+			t.Fatalf("processMusicBrainzTagTrackBatch() = %#v, want empty entity results for plain tag-only tracks", batchResult)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("processMusicBrainzTagTrackBatch() did not finish after releasing the blocked track")
+	}
+}
+
+func TestMusicBrainzTagWorkerProgressCountsInFlightEntitiesAsPending(t *testing.T) {
+	state := musicBrainzTagWorkerState{
+		totalEntityLookups:     2,
+		completedEntityLookups: 0,
+		inFlightEntityLookups:  2,
+	}
+
+	progress := state.progressSnapshot(true)
+	if !progress.Active {
+		t.Fatal("progressSnapshot(in-flight entities) active = false, want true")
+	}
+	if progress.PendingEntityLookups != 2 {
+		t.Fatalf("progressSnapshot(in-flight entities) pendingEntityLookups = %d, want 2", progress.PendingEntityLookups)
+	}
+	if progress.CompletedEntityLookups != 0 {
+		t.Fatalf("progressSnapshot(in-flight entities) completedEntityLookups = %d, want 0", progress.CompletedEntityLookups)
 	}
 }
 
@@ -268,7 +379,7 @@ func TestMusicBrainzTagWorkerRetryAndClampBranches(t *testing.T) {
 		t.Fatalf("musicBrainzTagTrackBatchSize(clamped max) = %d, want 256", got)
 	}
 
-	if batchResult := app.processMusicBrainzTagTrackBatch(map[string]LibraryIndexedFile{}, nil); len(batchResult.completedEntityKeys) != 0 || len(batchResult.pendingEntityKeys) != 0 {
+	if batchResult := app.processMusicBrainzTagTrackBatch(map[string]LibraryIndexedFile{}, nil, nil); len(batchResult.completedEntityKeys) != 0 || len(batchResult.pendingEntityKeys) != 0 {
 		t.Fatalf("processMusicBrainzTagTrackBatch(empty) = %#v, want empty result", batchResult)
 	}
 }

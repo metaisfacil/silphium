@@ -74,16 +74,17 @@ func removeMusicBrainzTagEntityIndexEntry(index map[string]map[string]struct{}, 
 }
 
 func (a *App) addMusicBrainzTagTrackIndexesLocked(record musicBrainzTagTrackRecord) {
+	artistIDs := musicBrainzTagBrowseArtistIDs(record)
 	if record.ReleaseID != "" && record.ReleaseFolderPath != "" {
 		addMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByID, record.ReleaseID, record.ReleaseFolderPath)
 	}
 	if record.ReleaseFolderPath != "" {
-		for _, artistID := range record.ArtistIDs {
+		for _, artistID := range artistIDs {
 			addMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByArtistID, artistID, record.ReleaseFolderPath)
 		}
 	}
 
-	for _, artistID := range record.ArtistIDs {
+	for _, artistID := range artistIDs {
 		for _, folderPath := range record.ArtistFolderPaths {
 			addMusicBrainzTagPathIndexEntry(a.musicBrainzTagArtistFoldersByID, artistID, folderPath)
 		}
@@ -91,16 +92,17 @@ func (a *App) addMusicBrainzTagTrackIndexesLocked(record musicBrainzTagTrackReco
 }
 
 func (a *App) removeMusicBrainzTagTrackIndexesLocked(record musicBrainzTagTrackRecord) {
+	artistIDs := musicBrainzTagBrowseArtistIDs(record)
 	if record.ReleaseID != "" && record.ReleaseFolderPath != "" {
 		removeMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByID, record.ReleaseID, record.ReleaseFolderPath)
 	}
 	if record.ReleaseFolderPath != "" {
-		for _, artistID := range record.ArtistIDs {
+		for _, artistID := range artistIDs {
 			removeMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByArtistID, artistID, record.ReleaseFolderPath)
 		}
 	}
 
-	for _, artistID := range record.ArtistIDs {
+	for _, artistID := range artistIDs {
 		for _, folderPath := range record.ArtistFolderPaths {
 			removeMusicBrainzTagPathIndexEntry(a.musicBrainzTagArtistFoldersByID, artistID, folderPath)
 		}
@@ -145,6 +147,7 @@ func (a *App) rebuildMusicBrainzTagIndexesLocked() {
 
 func (a *App) markMusicBrainzTagDatabaseDirtyLocked() {
 	a.musicBrainzTagStoreDirty = true
+	a.musicBrainzTagVersion.Add(1)
 }
 
 func (a *App) upsertMusicBrainzTagTrackRecordLocked(path string, record musicBrainzTagTrackRecord) {
@@ -153,10 +156,7 @@ func (a *App) upsertMusicBrainzTagTrackRecordLocked(path string, record musicBra
 		return
 	}
 
-	record.ReleaseID = sanitizeMusicBrainzID(record.ReleaseID)
-	record.ArtistIDs = sanitizeMusicBrainzIDs(record.ArtistIDs)
-	record.ReleaseFolderPath = normalizeMusicBrainzTagFolderPath(record.ReleaseFolderPath)
-	record.ArtistFolderPaths = normalizeMusicBrainzTagFolderPaths(record.ArtistFolderPaths)
+	record = normalizeMusicBrainzTagTrackRecord(record)
 
 	if existing, exists := a.musicBrainzTagStore.Tracks[cleanPath]; exists {
 		a.removeMusicBrainzTagTrackIndexesLocked(existing)

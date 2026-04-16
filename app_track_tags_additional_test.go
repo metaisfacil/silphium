@@ -16,6 +16,8 @@ func TestTrackTagParsingHelpers(t *testing.T) {
 		"TITLE":                 {" Track Title "},
 		"TRACKNUMBER":           {" 03/12 "},
 		"TRACKTOTAL":            {" 12/12 "},
+		"ORGANIZATION":          {" Label Name "},
+		"CATALOG":               {" CAT-001 "},
 		"MUSICBRAINZ_ARTISTID":  {"11111111-1111-4111-8111-111111111111; 11111111-1111-4111-8111-111111111111"},
 		"MusicBrainz Artist Id": {"22222222-2222-4222-8222-222222222222"},
 		"CODEC":                 {" flac "},
@@ -109,7 +111,7 @@ func TestTrackTagParsingHelpers(t *testing.T) {
 	if hasAnyTrackMetadata(TrackTags{}) {
 		t.Fatal("hasAnyTrackMetadata(empty) = true, want false")
 	}
-	if builtTags.TrackNumber != "03" || builtTags.TrackTotal != "12" || builtTags.Codec != "FLAC" {
+	if builtTags.TrackNumber != "03" || builtTags.TrackTotal != "12" || builtTags.Codec != "FLAC" || builtTags.RecordLabel != "Label Name" || builtTags.CatalogNumber != "CAT-001" {
 		t.Fatalf("buildTrackTags() = %#v, want normalized metadata", builtTags)
 	}
 }
@@ -217,6 +219,12 @@ func TestTrackTagCachingAndBatchReads(t *testing.T) {
 	if got := resolveTrackTagsWorkerCount(trackTagsWorkerLimit + 10); got != wantWorkers {
 		t.Fatalf("resolveTrackTagsWorkerCount(max) = %d, want %d", got, wantWorkers)
 	}
+	if got := resolveTrackTagsWorkerCountWithMax(trackTagsWorkerLimit+10, remoteTrackTagsWorkerLimit); got > remoteTrackTagsWorkerLimit {
+		t.Fatalf("resolveTrackTagsWorkerCountWithMax(remote cap) = %d, want <= %d", got, remoteTrackTagsWorkerLimit)
+	}
+	if got := resolveTrackTagsWorkerCountWithMax(5, 0); got != 0 {
+		t.Fatalf("resolveTrackTagsWorkerCountWithMax(zero max) = %d, want 0", got)
+	}
 
 	if _, ok := readTrackTagsForPath(fixture.trackOne, ""); ok {
 		t.Fatal("readTrackTagsForPath(fake flac) = true, want false")
@@ -225,6 +233,11 @@ func TestTrackTagCachingAndBatchReads(t *testing.T) {
 	results = app.ReadTrackTags([]string{fixture.trackOne, secondTrack, fixture.outsideTrack, ""})
 	if len(results) != 0 {
 		t.Fatalf("ReadTrackTags(fake tracks) len = %d, want 0", len(results))
+	}
+	remoteTrack := buildRemoteLibraryPath(buildRemoteLibraryBasePath("example.com", 5005), "Library/Artist/Album/01 Track.flac")
+	results = app.ReadTrackTags([]string{remoteTrack})
+	if len(results) != 0 {
+		t.Fatalf("ReadTrackTags(remote track) = %#v, want empty result", results)
 	}
 	if got, want := len(app.trackTagsCacheState().byPath), 2; got != want {
 		t.Fatalf("ReadTrackTags() cache size = %d, want %d", got, want)
