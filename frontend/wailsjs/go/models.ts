@@ -1077,6 +1077,86 @@ export namespace main {
 	        this.data = source["data"];
 	    }
 	}
+	export class TrackTags {
+	    artist: string;
+	    albumArtist?: string;
+	    album: string;
+	    title: string;
+	    date?: string;
+	    genre?: string;
+	    recordLabel?: string;
+	    catalogNumber?: string;
+	    genres?: string[];
+	    allTags?: Record<string, Array<string>>;
+	    lyrics?: string;
+	    unsyncedLyrics?: string;
+	    trackNumber?: string;
+	    trackTotal?: string;
+	    discNumber?: string;
+	    discTotal?: string;
+	    bitDepth?: number;
+	    sampleRate?: number;
+	    codec?: string;
+	    codecLong?: string;
+	    codecProfile?: string;
+	    sampleFormat?: string;
+	    channels?: number;
+	    channelLayout?: string;
+	    bitRate?: number;
+	    overallBitRate?: number;
+	    durationSeconds?: number;
+	    container?: string;
+	    fileSizeBytes?: number;
+	    recordingId?: string;
+	    releaseId?: string;
+	    artistId?: string;
+	    artistIds?: string[];
+	    albumArtistId?: string;
+	    albumArtistIds?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TrackTags(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.artist = source["artist"];
+	        this.albumArtist = source["albumArtist"];
+	        this.album = source["album"];
+	        this.title = source["title"];
+	        this.date = source["date"];
+	        this.genre = source["genre"];
+	        this.recordLabel = source["recordLabel"];
+	        this.catalogNumber = source["catalogNumber"];
+	        this.genres = source["genres"];
+	        this.allTags = source["allTags"];
+	        this.lyrics = source["lyrics"];
+	        this.unsyncedLyrics = source["unsyncedLyrics"];
+	        this.trackNumber = source["trackNumber"];
+	        this.trackTotal = source["trackTotal"];
+	        this.discNumber = source["discNumber"];
+	        this.discTotal = source["discTotal"];
+	        this.bitDepth = source["bitDepth"];
+	        this.sampleRate = source["sampleRate"];
+	        this.codec = source["codec"];
+	        this.codecLong = source["codecLong"];
+	        this.codecProfile = source["codecProfile"];
+	        this.sampleFormat = source["sampleFormat"];
+	        this.channels = source["channels"];
+	        this.channelLayout = source["channelLayout"];
+	        this.bitRate = source["bitRate"];
+	        this.overallBitRate = source["overallBitRate"];
+	        this.durationSeconds = source["durationSeconds"];
+	        this.container = source["container"];
+	        this.fileSizeBytes = source["fileSizeBytes"];
+	        this.recordingId = source["recordingId"];
+	        this.releaseId = source["releaseId"];
+	        this.artistId = source["artistId"];
+	        this.artistIds = source["artistIds"];
+	        this.albumArtistId = source["albumArtistId"];
+	        this.albumArtistIds = source["albumArtistIds"];
+	    }
+	}
 
 }
 

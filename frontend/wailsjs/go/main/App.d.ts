@@ -104,6 +104,8 @@ export function ReadTrackTags(arg1:Array<string>):Promise<Record<string, main.Tr
 
 export function ReadTrackTagsFromBlobs(arg1:Array<main.TrackBlob>):Promise<Record<string, main.TrackTags>>;
 
+export function RefreshTrackMetadata(arg1:string):Promise<main.TrackTags>;
+
 export function ResolveLibraryFolderForPath(arg1:string):Promise<string>;
 
 export function ResolveLibraryFolderForReleaseMBID(arg1:string):Promise<string>;

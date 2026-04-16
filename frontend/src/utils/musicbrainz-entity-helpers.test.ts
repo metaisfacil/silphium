@@ -77,7 +77,7 @@ describe('musicbrainz entity helpers', () => {
 
     it('returns empty track metadata when the release id is blank', async () => {
         setMusicBrainzRequestLogServerResolver(() => '   ');
-        expect(await lookupMusicBrainzTrackMetadata('   ')).toEqual({
+        expect(await lookupMusicBrainzTrackMetadata('   ', '   ')).toEqual({
             found: false,
             recordingId: '',
             releaseId: '',
@@ -93,7 +93,7 @@ describe('musicbrainz entity helpers', () => {
         setMusicBrainzRequestLogServerResolver(() => ' https://musicbrainz.example ');
         lookupTrackMetadataMock.mockResolvedValueOnce({ found: true, releaseId: 'release-id', title: 'Track' });
 
-        expect(await lookupMusicBrainzTrackMetadata(' release-id ')).toEqual({ found: true, releaseId: 'release-id', title: 'Track' });
+        expect(await lookupMusicBrainzTrackMetadata(' recording-id ', ' release-id ')).toEqual({ found: true, releaseId: 'release-id', title: 'Track' });
         expect(scheduleMusicBrainzRequestMock).toHaveBeenCalledWith(expect.any(Function), {
             server: 'https://musicbrainz.example',
             path: '/ws/2/release/release-id?fmt=json&inc=artists+labels',
@@ -101,7 +101,7 @@ describe('musicbrainz entity helpers', () => {
 
         scheduleMusicBrainzRequestMock.mockRejectedValueOnce(new Error('network error'));
         const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        expect(await lookupMusicBrainzTrackMetadata('broken-id')).toEqual({
+        expect(await lookupMusicBrainzTrackMetadata('', 'broken-id')).toEqual({
             found: false,
             recordingId: '',
             releaseId: 'broken-id',

@@ -819,6 +819,37 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
     };
 
+    const refreshCurrentTrackMetadata = async (): Promise<void> => {
+        if (context.currentTrackIndex < 0 || context.currentTrackIndex >= context.tracks.length) {
+            return;
+        }
+
+        const index = context.currentTrackIndex;
+        const activeTrack = context.tracks[index];
+        if (!activeTrack) {
+            return;
+        }
+
+        context.coverArtService.invalidateForTrack(activeTrack);
+        context.tagRequestVersion += 1;
+        const requestVersion = context.tagRequestVersion;
+        const result = await context.trackMetadataService.refreshTrack(index, requestVersion);
+        if (requestVersion !== context.tagRequestVersion || index !== context.currentTrackIndex) {
+            return;
+        }
+
+        refreshNowPlayingLabel();
+        context.libraryController().renderFolder('none');
+        await applyCoverArtForTrack(index);
+
+        if (result.updatedTags) {
+            context.artistInfoRequestVersion += 1;
+            void context.hydrateCurrentArtistInfo(index);
+        }
+
+        void context.refreshListenBrainzFeedbackForCurrentTrack(true);
+    };
+
     const shouldSkipLoadedTrack = async (): Promise<boolean> => {
         if (context.currentTrackIndex < 0 || context.currentTrackIndex >= context.tracks.length) {
             return false;
@@ -887,6 +918,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         ensureTextFileIndexForPath,
         ensureTrackTagsResolved,
         ensureTrackTagsResolvedBatch,
+        refreshCurrentTrackMetadata,
         handleAudioError,
         imageFileIndexForPath,
         indexOfImageByPath,

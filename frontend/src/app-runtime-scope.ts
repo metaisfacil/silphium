@@ -135,6 +135,7 @@ type ReturnedRuntimeMethods = {
     peekNextTrackIndexForDirection: (direction: -1 | 1) => number | undefined;
     queueGaplessNextTrack: (stateOverride?: AudioPlaybackState, sequenceOverrideIndexes?: number[]) => Promise<void>;
     refreshLyricsPanel: () => void;
+    refreshCurrentTrackMetadata: () => Promise<void>;
     refreshNowPlayingLabel: () => void;
     rebuildImageFilePathIndex: () => void;
     rebuildTextFilePathIndex: () => void;

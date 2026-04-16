@@ -15,7 +15,8 @@ type TrackMetadataServiceOptions = {
     getTracks: () => Track[];
     setTrack: (index: number, track: Track) => void;
     readTrackTags: (paths: string[]) => Promise<Record<string, unknown>>;
-    lookupMusicBrainzTrackMetadata: (releaseId: string) => Promise<MusicBrainzTrackMetadata>;
+    forceRefreshTrackTags?: (paths: string[]) => Promise<Record<string, unknown>>;
+    lookupMusicBrainzTrackMetadata: (recordingId: string, releaseId: string) => Promise<MusicBrainzTrackMetadata>;
     getPreferMusicBrainzMetadata: () => boolean;
     getCurrentTrackIndex: () => number;
     getTagRequestVersion: () => number;
@@ -29,6 +30,14 @@ type HydrateTrackResult = {
 export type TrackMetadataService = ReturnType<typeof createTrackMetadataService>;
 
 export const createTrackMetadataService = (options: TrackMetadataServiceOptions) => {
+    const readTrackTagsForPaths = async (paths: string[], forceRefresh: boolean): Promise<Record<string, unknown>> => {
+        if (forceRefresh && options.forceRefreshTrackTags) {
+            return await options.forceRefreshTrackTags(paths);
+        }
+
+        return await options.readTrackTags(paths);
+    };
+
     const applyResolvedTrackTags = (index: number, tags?: TrackTags): boolean => {
         const latestTrack = options.getTracks()[index];
         if (!latestTrack) {
@@ -91,7 +100,7 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
         }
 
         try {
-            const tagByPath = await options.readTrackTags(paths);
+            const tagByPath = await readTrackTagsForPaths(paths, false);
             if (requestVersion !== undefined && requestVersion !== options.getTagRequestVersion()) {
                 return;
             }
@@ -126,7 +135,7 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
         }
 
         try {
-            const tagByPath = await options.readTrackTags([track.path]);
+            const tagByPath = await readTrackTagsForPaths([track.path], false);
             if (requestVersion !== undefined && requestVersion !== options.getTagRequestVersion()) {
                 return { resolved: false, updated: false };
             }
@@ -155,7 +164,7 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
         }
 
         try {
-            const tagByPath = await options.readTrackTags(normalizedPaths);
+            const tagByPath = await readTrackTagsForPaths(normalizedPaths, true);
             const pathSet = new Set(normalizedPaths);
             options.getTracks().forEach((track, index) => {
                 if (!pathSet.has(track.path)) {
@@ -163,16 +172,7 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
                 }
 
                 const tags = tagByPath[track.path] as TrackTags | undefined;
-                options.setTrack(index, {
-                    ...track,
-                    displayLyrics: normalizeTrackLyrics(tags),
-                    displayTrackNumber: tags?.trackNumber?.trim() || '',
-                    displayTrackTotal: tags?.trackTotal?.trim() || '',
-                    displayTechnical: formatTechnicalMetadata(tags?.bitDepth, tags?.sampleRate, tags?.codec, tags?.overallBitRate ?? tags?.bitRate),
-                    technicalDetails: technicalDetailsFromTags(tags),
-                    allFileTags: allFileTagsFromTags(tags),
-                    tagsResolved: true,
-                });
+                applyResolvedTrackTags(index, tags);
             });
         } catch (error) {
             console.error(error);
@@ -194,8 +194,9 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
             return false;
         }
 
+        const recordingId = track.mbIds.recordingId || '';
         const releaseId = track.mbIds.releaseId || '';
-        if (!releaseId) {
+        if (!recordingId && !releaseId) {
             options.setTrack(index, {
                 ...track,
                 mbMetadataResolved: true,
@@ -204,8 +205,7 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
         }
 
         try {
-            // Only use release/artist metadata for hydration; avoid recording lookups.
-            const metadata = await options.lookupMusicBrainzTrackMetadata(releaseId);
+            const metadata = await options.lookupMusicBrainzTrackMetadata(recordingId, releaseId);
             if (requestVersion !== options.getTagRequestVersion() || index !== options.getCurrentTrackIndex()) {
                 return false;
             }
@@ -243,6 +243,39 @@ export const createTrackMetadataService = (options: TrackMetadataServiceOptions)
         },
         ensureTrackTagsResolvedBatch: async (indexes: number[]): Promise<void> => {
             await ensureTrackTagsBatchInternal(indexes);
+        },
+        refreshTrack: async (index: number, requestVersion: number): Promise<HydrateTrackResult> => {
+            const tracks = options.getTracks();
+            if (index < 0 || index >= tracks.length) {
+                return {
+                    updatedTags: false,
+                    updatedMusicBrainz: false,
+                };
+            }
+
+            const tagByPath = await readTrackTagsForPaths([tracks[index].path], true);
+            if (requestVersion !== options.getTagRequestVersion()) {
+                return {
+                    updatedTags: false,
+                    updatedMusicBrainz: false,
+                };
+            }
+
+            const latestTrack = options.getTracks()[index];
+            if (!latestTrack) {
+                return {
+                    updatedTags: false,
+                    updatedMusicBrainz: false,
+                };
+            }
+
+            const tags = tagByPath[latestTrack.path] as TrackTags | undefined;
+            const updatedTags = applyResolvedTrackTags(index, tags);
+            const updatedMusicBrainz = await hydrateMusicBrainzMetadata(index, requestVersion);
+            return {
+                updatedTags,
+                updatedMusicBrainz,
+            };
         },
         refreshTrackTags,
         hydrateTrack: async (index: number, requestVersion: number): Promise<HydrateTrackResult> => {
