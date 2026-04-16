@@ -7,7 +7,9 @@ import {
     GetListenBrainzFollowing,
     GetListenBrainzFollowingFeed,
     GetListenBrainzRecordingFeedback,
+    LogFrontendMessage,
     ReadFileBase64,
+    ReadImageThumbnail,
     ReadTrackEmbeddedCover,
     ReadTrackTags,
     SubmitLastFm,
@@ -28,6 +30,7 @@ import { createPlaybackStateService } from './services/playback-state-service';
 import { createScrobbleService } from './services/scrobble-service';
 import { createTrackMetadataService } from './services/track-metadata-service';
 import { openMbLink } from './musicbrainz';
+import { formatPerfLogMessage } from './utils/perf-log';
 import { lookupMusicBrainzTrackMetadata, setMusicBrainzRequestLogServerResolver } from './utils/musicbrainz-entity-helpers';
 import { scheduleLastFmRequest } from './utils/lastfm-request-scheduler';
 import { scheduleListenBrainzRequest } from './utils/musicbrainz-request-scheduler';
@@ -51,6 +54,37 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     const defaultLastFmServerUrl = 'https://ws.audioscrobbler.com/2.0';
     const playerCardLayoutKey = 'playerCardLayout';
     const localReleaseFolderByMBID = new Map<string, Promise<string>>();
+    const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
+    const lastPerfLogAtByName = new Map<string, number>();
+
+    const logSlowBridgeCall = (name: string, elapsedMs: number): void => {
+        if (!devPerfLoggingEnabled) {
+            return;
+        }
+
+        const nowMs = Date.now();
+        const lastLoggedAtMs = lastPerfLogAtByName.get(name) || 0;
+        if (nowMs - lastLoggedAtMs < 1500) {
+            return;
+        }
+
+        lastPerfLogAtByName.set(name, nowMs);
+        const message = formatPerfLogMessage(`slow bridge ${name} ${elapsedMs.toFixed(1)}ms`);
+        console.warn(message);
+        void LogFrontendMessage(message).catch(() => undefined);
+    };
+
+    const measureBridgeCall = async <T>(name: string, thresholdMs: number, callback: () => Promise<T>): Promise<T> => {
+        const startedAtMs = performance.now();
+        try {
+            return await callback();
+        } finally {
+            const elapsedMs = performance.now() - startedAtMs;
+            if (elapsedMs >= thresholdMs) {
+                logSlowBridgeCall(name, elapsedMs);
+            }
+        }
+    };
 
     const hasLastFmCredentialsConfigured = (): boolean => context.currentSettings.lastFmApiKey.trim() !== ''
         && context.currentSettings.lastFmApiSecret.trim() !== ''
@@ -115,18 +149,18 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         setTrack: (index: number, track: Track) => {
             context.tracks[index] = track;
         },
-        readTrackTags: ReadTrackTags,
+        readTrackTags: async (paths: string[]) => await measureBridgeCall('ReadTrackTags', 80, async () => await ReadTrackTags(paths)),
         forceRefreshTrackTags: async (paths: string[]) => {
             const runtimeWindow = window as WindowWithOptionalReleaseFolderResolver;
             const refreshTrackMetadata = runtimeWindow.go?.main?.App?.RefreshTrackMetadata;
             if (typeof refreshTrackMetadata !== 'function') {
-                return await ReadTrackTags(paths);
+                return await measureBridgeCall('ReadTrackTags(force)', 80, async () => await ReadTrackTags(paths));
             }
 
-            const entries = await Promise.all(paths.map(async (path) => [
+            const entries = await measureBridgeCall('RefreshTrackMetadata', 80, async () => await Promise.all(paths.map(async (path) => [
                 path,
                 await Promise.resolve(refreshTrackMetadata(path)),
-            ] as const));
+            ] as const)));
             return Object.fromEntries(entries);
         },
         lookupMusicBrainzTrackMetadata: async (recordingId: string, releaseId: string) => await lookupMusicBrainzTrackMetadata(recordingId, releaseId),
@@ -136,9 +170,10 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     });
     const coverArtService = createCoverArtService({
         getCoverArtPriority: () => context.currentSettings.coverArtPriority,
-        getLibraryFolderCoverPath: async (folderPath: string): Promise<string> => await GetLibraryFolderCoverPath(folderPath) as string,
-        readFileBase64: async (filePath: string): Promise<string> => await ReadFileBase64(filePath) as string,
-        readTrackEmbeddedCover: async (trackPath: string): Promise<{ base64?: string; mimeType?: string }> => await ReadTrackEmbeddedCover(trackPath) as { base64?: string; mimeType?: string },
+        getLibraryFolderCoverPath: async (folderPath: string): Promise<string> => await measureBridgeCall('GetLibraryFolderCoverPath', 40, async () => await GetLibraryFolderCoverPath(folderPath) as string),
+        readImageThumbnail: async (filePath: string, maxEdge: number): Promise<{ base64?: string; mimeType?: string }> => await measureBridgeCall('ReadImageThumbnail', 60, async () => await ReadImageThumbnail(filePath, maxEdge) as { base64?: string; mimeType?: string }),
+        readFileBase64: async (filePath: string): Promise<string> => await measureBridgeCall('ReadFileBase64', 80, async () => await ReadFileBase64(filePath) as string),
+        readTrackEmbeddedCover: async (trackPath: string): Promise<{ base64?: string; mimeType?: string }> => await measureBridgeCall('ReadTrackEmbeddedCover', 80, async () => await ReadTrackEmbeddedCover(trackPath) as { base64?: string; mimeType?: string }),
         registerObjectUrl: (url: string): void => {
             context.objectUrls.push(url);
         },
@@ -148,7 +183,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         canvas: context.playerVisualizerCanvas,
         getPlaybackState: () => playbackStateService.getPlaybackState(),
         fetchVisualizationFrame: async (frameCount: number): Promise<AudioVisualizationFrame> => (
-            await AudioGetVisualizationFrame(frameCount) as AudioVisualizationFrame
+            await measureBridgeCall('AudioGetVisualizationFrame', 40, async () => await AudioGetVisualizationFrame(frameCount) as AudioVisualizationFrame)
         ),
         getCoverArtImageSource: () => context.getCoverArtImageSource?.(),
     });

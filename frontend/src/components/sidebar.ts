@@ -45,6 +45,9 @@ export const renderSidebar = (): string => `
           <p id="library-path" class="library-path">No folder selected</p>
         </div>
         <div class="library-search-row">
+          <label class="library-search-button" for="library-search" aria-label="Search library" title="Search library">
+            <svg class="library-search-button-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M10.5 4.75C7.32 4.75 4.75 7.32 4.75 10.5S7.32 16.25 10.5 16.25C11.95 16.25 13.28 15.71 14.29 14.83L18.72 19.28C19.01 19.57 19.49 19.57 19.78 19.28C20.07 18.99 20.07 18.51 19.78 18.22L15.33 13.79C16.21 12.78 16.75 11.45 16.75 10.5C16.75 7.32 14.18 4.75 10.5 4.75ZM6.25 10.5C6.25 8.15 8.15 6.25 10.5 6.25S14.75 8.15 14.75 10.5S12.85 14.75 10.5 14.75S6.25 12.85 6.25 10.5Z"/></svg>
+          </label>
           <input
             id="library-search"
             class="library-search"

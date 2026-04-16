@@ -107,8 +107,24 @@ func TestAudioBackendPlaybackMethods(t *testing.T) {
 	if _, err := queueBackend.LoadTrack("track.flac"); err != nil {
 		t.Fatalf("LoadTrack(queue backend) error = %v", err)
 	}
-	if queueState, err := queueBackend.QueueNextTrack("track.flac", "next.flac"); err != nil || len(queueBackend.streamSegments) != 2 || !queueState.Loaded {
-		t.Fatalf("QueueNextTrack() = (%#v, %v), want queued next segment", queueState, err)
+	if queueState, err := queueBackend.QueueNextTrack("track.flac", "next.flac"); err != nil || !queueState.Loaded {
+		t.Fatalf("QueueNextTrack() = (%#v, %v), want loaded state while queue prepares asynchronously", queueState, err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		queueBackend.mutex.Lock()
+		queuedSegmentCount := len(queueBackend.streamSegments)
+		queueBackend.mutex.Unlock()
+		if queuedSegmentCount == 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	queueBackend.mutex.Lock()
+	queuedSegmentCount := len(queueBackend.streamSegments)
+	queueBackend.mutex.Unlock()
+	if queuedSegmentCount != 2 {
+		t.Fatalf("QueueNextTrack() queued segment count = %d, want 2 after async preparation", queuedSegmentCount)
 	}
 	if queueState, err := queueBackend.QueueNextTrack("other.flac", "next.flac"); err != nil || !queueState.Loaded {
 		t.Fatalf("QueueNextTrack(mismatched afterPath) = (%#v, %v), want unchanged snapshot", queueState, err)
@@ -128,8 +144,24 @@ func TestAudioBackendPlaybackMethods(t *testing.T) {
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", "")
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "")
 	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
-	if _, err := queueBackend.QueueNextTrack("track.flac", "broken.flac"); err == nil {
-		t.Fatal("QueueNextTrack(prepare error) error = nil, want error")
+	if queueState, err := queueBackend.QueueNextTrack("track.flac", "broken.flac"); err != nil || !queueState.Loaded {
+		t.Fatalf("QueueNextTrack(async prepare error) = (%#v, %v), want loaded state and async failure logging", queueState, err)
+	}
+	deadline = time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		queueBackend.mutex.Lock()
+		queuedSegmentCount = len(queueBackend.streamSegments)
+		queueBackend.mutex.Unlock()
+		if queuedSegmentCount == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	queueBackend.mutex.Lock()
+	queuedSegmentCount = len(queueBackend.streamSegments)
+	queueBackend.mutex.Unlock()
+	if queuedSegmentCount != 1 {
+		t.Fatalf("QueueNextTrack(async prepare error) queued segment count = %d, want 1 after failed async preparation", queuedSegmentCount)
 	}
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", base64.StdEncoding.EncodeToString(pcmBytes))
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "")

@@ -32,8 +32,129 @@ import {
     matchesSilenceTitleHeuristic,
     setTechnicalLabel,
 } from './utils/display-helpers';
+import { formatPerfLogMessage } from './utils/perf-log';
+import { createPlaybackProgressEstimator } from './utils/playback-progress-estimator';
+import { playbackReconcileDelayMs } from './utils/playback-reconcile-delay';
+import { createSerialAsyncPoller } from './utils/serial-async-poller';
 
 export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext) => {
+    const playbackProgressDomUpdateThresholdSeconds = 0.05;
+    const gaplessQueueLeadTimeMinSeconds = 6;
+    const gaplessQueueLeadTimeMaxSeconds = 18;
+    const gaplessQueueLeadTimeFraction = 0.12;
+    const playbackProgressEstimator = createPlaybackProgressEstimator();
+    const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
+    let playbackProgressAnimationFrameId = 0;
+    let playbackProgressEndSyncRequested = false;
+    let playbackStateSyncInFlight = false;
+    let lastAudioStatePerfLogAtMs = 0;
+
+    const logSlowAudioStatePoll = (elapsedMs: number): void => {
+        if (!devPerfLoggingEnabled) {
+            return;
+        }
+
+        const nowMs = Date.now();
+        if (nowMs - lastAudioStatePerfLogAtMs < 1500) {
+            return;
+        }
+
+        lastAudioStatePerfLogAtMs = nowMs;
+        const message = formatPerfLogMessage(`slow bridge AudioGetState ${elapsedMs.toFixed(1)}ms`);
+        console.warn(message);
+        void LogFrontendMessage(message).catch(() => undefined);
+    };
+
+    const stopPlaybackProgressLoop = (): void => {
+        if (playbackProgressAnimationFrameId === 0) {
+            return;
+        }
+
+        window.cancelAnimationFrame(playbackProgressAnimationFrameId);
+        playbackProgressAnimationFrameId = 0;
+    };
+
+    const requestPlaybackStateReconcile = (): void => {
+        if (playbackStateSyncInFlight) {
+            return;
+        }
+
+        void syncPlaybackState();
+    };
+
+    const gaplessQueueLeadTimeSeconds = (durationSeconds: number): number => {
+        if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+            return gaplessQueueLeadTimeMinSeconds;
+        }
+
+        return Math.min(
+            gaplessQueueLeadTimeMaxSeconds,
+            Math.max(gaplessQueueLeadTimeMinSeconds, durationSeconds * gaplessQueueLeadTimeFraction),
+        );
+    };
+
+    const shouldPrepareGaplessQueue = (playbackState: AudioPlaybackState): boolean => {
+        if (!playbackState.loaded || !playbackState.playing) {
+            return false;
+        }
+
+        const remainingSeconds = Number.isFinite(playbackState.duration)
+            ? playbackState.duration - playbackState.currentTime
+            : Number.POSITIVE_INFINITY;
+        return remainingSeconds <= gaplessQueueLeadTimeSeconds(playbackState.duration);
+    };
+
+    const tickPlaybackProgressLoop = (): void => {
+        playbackProgressAnimationFrameId = 0;
+        const estimatedState = playbackProgressEstimator.estimate();
+        const currentPlaybackState = context.playbackStateService.getPlaybackState();
+        const currentTimeDelta = Math.abs(estimatedState.currentTime - currentPlaybackState.currentTime);
+
+        if (estimatedState.loaded && estimatedState.playing && currentTimeDelta >= playbackProgressDomUpdateThresholdSeconds) {
+            if (context.playbackStateService.setCurrentTime(estimatedState.currentTime)) {
+                updateTrackLabels();
+                context.updateMediaSessionPositionState();
+            }
+        }
+
+        if (shouldPrepareGaplessQueue(estimatedState)) {
+            void queueGaplessNextTrack(estimatedState);
+        }
+
+        if (estimatedState.loaded && estimatedState.playing) {
+            const remainingSeconds = Number.isFinite(estimatedState.duration)
+                ? estimatedState.duration - estimatedState.currentTime
+                : Number.POSITIVE_INFINITY;
+            if (remainingSeconds <= playbackProgressDomUpdateThresholdSeconds && !playbackProgressEndSyncRequested) {
+                playbackProgressEndSyncRequested = true;
+                requestPlaybackStateReconcile();
+            }
+
+            playbackProgressAnimationFrameId = window.requestAnimationFrame(() => {
+                tickPlaybackProgressLoop();
+            });
+            return;
+        }
+
+        stopPlaybackProgressLoop();
+    };
+
+    const syncPlaybackProgressLoop = (): void => {
+        const playbackState = context.playbackStateService.getPlaybackState();
+        if (!playbackState.loaded || !playbackState.playing) {
+            stopPlaybackProgressLoop();
+            return;
+        }
+
+        if (playbackProgressAnimationFrameId !== 0) {
+            return;
+        }
+
+        playbackProgressAnimationFrameId = window.requestAnimationFrame(() => {
+            tickPlaybackProgressLoop();
+        });
+    };
+
     const scheduleNowPlayingCoverRefresh = (): void => {
         if (context.pendingNowPlayingCoverRefreshHandle !== null) {
             window.clearTimeout(context.pendingNowPlayingCoverRefreshHandle);
@@ -490,6 +611,10 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
+        if (sequenceOverrideIndexes === undefined && !shouldPrepareGaplessQueue(playbackState)) {
+            return;
+        }
+
         const nextIndex = peekNextTrackIndexForDirection(1);
         const nextPath = nextIndex !== undefined ? context.tracks[nextIndex]?.path || '' : '';
         const requestVersion = ++context.gaplessQueueRequestVersion;
@@ -602,6 +727,9 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     };
 
     const applyPlaybackState = (nextState: AudioPlaybackState): void => {
+        playbackProgressEstimator.sync(nextState);
+        playbackProgressEndSyncRequested = false;
+
         const clearNowPlayingCard = (): void => {
             context.currentTrackIndex = -1;
             context.trackTitle.textContent = 'Unknown Title';
@@ -645,7 +773,11 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         context.updateMediaSessionPlaybackState();
         context.updateMediaSessionPositionState();
         context.visualizerController.setPlaybackState(nextState);
-        void queueGaplessNextTrack(nextState);
+        syncPlaybackProgressLoop();
+        playbackPoller.poke();
+        if (shouldPrepareGaplessQueue(nextState)) {
+            void queueGaplessNextTrack(nextState);
+        }
         void refreshReplayGainReleaseDynamicRangeIndicator();
 
         if (transition.trackEnded) {
@@ -654,13 +786,19 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     };
 
     const syncPlaybackState = async (): Promise<void> => {
-        if (!context.playbackStateService.isBackendReady()) {
+        if (!context.playbackStateService.isBackendReady() || playbackStateSyncInFlight) {
             return;
         }
 
+        playbackStateSyncInFlight = true;
         const requestVersion = context.playbackMutationVersion;
+        const startedAtMs = performance.now();
         try {
             const nextState = await AudioGetState() as AudioPlaybackState;
+            const elapsedMs = performance.now() - startedAtMs;
+            if (elapsedMs >= 120) {
+                logSlowAudioStatePoll(elapsedMs);
+            }
             if (requestVersion !== context.playbackMutationVersion) {
                 return;
             }
@@ -668,17 +806,21 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             applyPlaybackState(nextState);
         } catch (error) {
             handleAudioError(error);
+        } finally {
+            playbackStateSyncInFlight = false;
         }
     };
 
-    const startPlaybackPolling = (): void => {
-        if (context.playbackPollHandle !== undefined) {
-            window.clearInterval(context.playbackPollHandle);
-        }
+    const playbackPoller = createSerialAsyncPoller({
+        run: async () => {
+            await syncPlaybackState();
+        },
+        getDelayMs: () => playbackReconcileDelayMs(context.playbackStateService.getPlaybackState()),
+    });
 
-        context.playbackPollHandle = window.setInterval(() => {
-            void syncPlaybackState();
-        }, 250);
+    const startPlaybackPolling = (): void => {
+        playbackPoller.stop();
+        playbackPoller.start();
     };
 
     const initializeBackendPlayback = async (): Promise<void> => {

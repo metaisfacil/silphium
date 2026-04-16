@@ -152,8 +152,8 @@ func (a *App) ResolveLibraryFolderForPath(path string) string {
 	}
 	contentState := a.libraryContentState()
 
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
+	contentState.indexMu.RLock()
+	defer contentState.indexMu.RUnlock()
 
 	if indexed, exists := contentState.trackByPath[absolutePath]; exists {
 		return indexed.FolderPath
@@ -218,8 +218,8 @@ func (a *App) GetLibraryIndexedFilePage(kind string, offset int, limit int) Libr
 	normalizedKind := strings.ToLower(strings.TrimSpace(kind))
 	contentState := a.libraryContentState()
 
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
+	contentState.indexMu.RLock()
+	defer contentState.indexMu.RUnlock()
 
 	emptyDeferredPage := func(kind string, totalEntries int) LibraryIndexedFilePage {
 		return LibraryIndexedFilePage{
@@ -287,7 +287,7 @@ func (a *App) GetLibraryFolderPageSorted(folderPath string, sortMode string, off
 
 	lockWaitStart := time.Now()
 	a.logRescanEvent("GetLibraryFolderPage waiting for indexMu lock: folder=%s", folderPathForLog(normalizedFolderPath))
-	contentState.indexMu.Lock()
+	contentState.indexMu.RLock()
 	a.logRescanEvent(
 		"GetLibraryFolderPage acquired lock (waited %.2fms): folder=%s",
 		time.Since(lockWaitStart).Seconds()*1000,
@@ -316,7 +316,7 @@ func (a *App) GetLibraryFolderPageSorted(folderPath string, sortMode string, off
 	} else {
 		entries = a.buildFolderEntriesFromMapsLocked(normalizedFolderPath)
 	}
-	contentState.indexMu.Unlock()
+	contentState.indexMu.RUnlock()
 
 	if useFilesystemFallback {
 		filesystemEntries, err := listLibraryFolderEntriesFromFilesystem(rootsSnapshot, normalizedFolderPath)
@@ -486,8 +486,8 @@ func (a *App) IsLibraryFolderImmediateDescendantsEnumerated(folderPath string) b
 	contentState := a.libraryContentState()
 	scanState := a.libraryScanState()
 
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
+	contentState.indexMu.RLock()
+	defer contentState.indexMu.RUnlock()
 
 	if !scanState.scanInProgress {
 		return true
@@ -509,15 +509,15 @@ func (a *App) GetLibraryFolderCoverPath(folderPath string) string {
 	}
 	contentState := a.libraryContentState()
 
-	contentState.indexMu.Lock()
+	contentState.indexMu.RLock()
 	folderKey := strings.ToLower(normalizedFolderPath)
 	if contentState.libraryScan.CoverPathByFolder != nil {
 		if coverPath, exists := contentState.libraryScan.CoverPathByFolder[folderKey]; exists {
-			contentState.indexMu.Unlock()
+			contentState.indexMu.RUnlock()
 			return coverPath
 		}
 	}
-	contentState.indexMu.Unlock()
+	contentState.indexMu.RUnlock()
 	return ""
 }
 
@@ -530,7 +530,7 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	}
 	contentState := a.libraryContentState()
 
-	contentState.indexMu.Lock()
+	contentState.indexMu.RLock()
 
 	mode := "fallback-map"
 	useFilesystemFallback := false
@@ -538,7 +538,7 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	if a.isLibraryFolderIndexReadyLocked() {
 		mode = "derived-index"
 		paths := a.getFolderTrackPathsFromDerivedIndexLocked(normalizedFolderPath)
-		contentState.indexMu.Unlock()
+		contentState.indexMu.RUnlock()
 		a.logRescanEvent(
 			"GetLibraryFolderTrackPaths END: folder=%s mode=%s tracks=%d took %.2fms",
 			folderPathForLog(normalizedFolderPath),
@@ -554,7 +554,7 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	}
 
 	if useFilesystemFallback {
-		contentState.indexMu.Unlock()
+		contentState.indexMu.RUnlock()
 		paths, err := collectLibraryFolderTrackPathsFromFilesystem(rootsSnapshot, normalizedFolderPath)
 		if err != nil {
 			paths = []string{}
@@ -570,7 +570,7 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	}
 
 	paths := a.getFolderTrackPathsFromMapsLocked(normalizedFolderPath)
-	contentState.indexMu.Unlock()
+	contentState.indexMu.RUnlock()
 	a.logRescanEvent(
 		"GetLibraryFolderTrackPaths END: folder=%s mode=%s tracks=%d took %.2fms",
 		folderPathForLog(normalizedFolderPath),
@@ -590,7 +590,7 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 	}
 	contentState := a.libraryContentState()
 
-	contentState.indexMu.Lock()
+	contentState.indexMu.RLock()
 
 	mode := "fallback-map"
 	useFilesystemFallback := false
@@ -598,7 +598,7 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 	if a.isLibraryFolderIndexReadyLocked() {
 		mode = "derived-index"
 		count := a.getFolderTrackCountFromDerivedIndexLocked(normalizedFolderPath)
-		contentState.indexMu.Unlock()
+		contentState.indexMu.RUnlock()
 		a.logRescanEvent(
 			"GetLibraryFolderTrackCount END: folder=%s mode=%s tracks=%d took %.2fms",
 			folderPathForLog(normalizedFolderPath),
@@ -614,7 +614,7 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 	}
 
 	if useFilesystemFallback {
-		contentState.indexMu.Unlock()
+		contentState.indexMu.RUnlock()
 		count, err := countLibraryFolderTracksFromFilesystem(rootsSnapshot, normalizedFolderPath)
 		if err != nil {
 			count = 0
@@ -630,7 +630,7 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 	}
 
 	count := a.getFolderTrackCountFromMapsLocked(normalizedFolderPath)
-	contentState.indexMu.Unlock()
+	contentState.indexMu.RUnlock()
 	a.logRescanEvent(
 		"GetLibraryFolderTrackCount END: folder=%s mode=%s tracks=%d took %.2fms",
 		folderPathForLog(normalizedFolderPath),

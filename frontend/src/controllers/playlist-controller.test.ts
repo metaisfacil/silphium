@@ -772,4 +772,207 @@ describe('createPlaylistController', () => {
 
         expect(modal.playlistList.querySelector('[data-playlist-track-index="101"]')).not.toBeNull();
     });
+
+    it('hydrates only the visible loaded playlist window and requests more as the user scrolls', async () => {
+        document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+
+        const menu = getPlaylistMenuElements(document);
+        const modal = getPlaylistModalElements(document);
+        Object.defineProperty(modal.playlistList, 'clientHeight', {
+            configurable: true,
+            value: 44 * 3,
+        });
+        const trackViews = Array.from({ length: 260 }, (_, index) => ({
+            displayTitle: `Track ${index}`,
+            name: `Track ${index}`,
+            displayArtist: `Artist ${index}`,
+            tagsResolved: false,
+        }));
+        const ensureTrackTagsResolvedBatch = vi.fn(async (indexes: number[]) => {
+            indexes.forEach((index) => {
+                trackViews[index].tagsResolved = true;
+            });
+        });
+
+        const controller = createPlaylistController({
+            trigger,
+            menu,
+            modal,
+            getTrack: (index: number) => trackViews[index],
+            getTrackPath: (index: number) => `/music/track-${index}.flac`,
+            getTrackCount: () => trackViews.length,
+            getCurrentTrackIndex: () => 0,
+            getPlaybackOrderLabel: () => 'Ordered',
+            getBaseSequence: () => ({
+                indexes: trackViews.map((_, index) => index),
+                currentPosition: 0,
+            }),
+            ensureTrackTagsResolvedBatch,
+            selectPlaylistFile: vi.fn(async () => ''),
+            selectPlaylistSaveFile: vi.fn(async () => ''),
+            loadPlaylistData: vi.fn(async () => ({
+                name: 'large.m3u8',
+                trackIndexes: trackViews.map((_, index) => index),
+            })),
+            loadListenHistoryData: vi.fn(async () => null),
+            savePlaylistTrackMetadataCache: vi.fn(async () => true),
+            savePlaylistData: vi.fn(async () => true),
+            appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
+            getFavoritePlaylists: () => [],
+            hasListenHistoryPlaylist: () => false,
+            onTrackChosen: vi.fn(async () => undefined),
+            onExternalPlaylistLoaded: vi.fn(() => undefined),
+        });
+
+        await expect(controller.loadPlaylistByPath('/playlists/large.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        const initiallyHydratedIndexes = ensureTrackTagsResolvedBatch.mock.calls.flatMap(([indexes]) => indexes as number[]);
+        expect(initiallyHydratedIndexes.length).toBeGreaterThan(0);
+        expect(initiallyHydratedIndexes.some((index) => index >= 120)).toBe(false);
+        expect(modal.playlistList.querySelectorAll('.playlist-row')).toHaveLength(72);
+        expect(modal.playlistList.querySelector('[data-playlist-track-index="71"]')).not.toBeNull();
+        expect(modal.playlistList.querySelector('[data-playlist-track-index="72"]')).toBeNull();
+
+        modal.playlistList.scrollTop = 44 * 170;
+        modal.playlistList.dispatchEvent(new Event('scroll'));
+        await flushPromises();
+
+        const hydratedAfterScroll = ensureTrackTagsResolvedBatch.mock.calls.flatMap(([indexes]) => indexes as number[]);
+        expect(hydratedAfterScroll.some((index) => index >= 140)).toBe(true);
+        expect(modal.playlistList.querySelectorAll('.playlist-row')).toHaveLength(72);
+        expect(modal.playlistList.querySelector('[data-playlist-track-index="0"]')).toBeNull();
+        expect(modal.playlistList.querySelector('[data-playlist-track-index="146"]')).not.toBeNull();
+    });
+
+    it('updates visible loaded playlist labels in place as hydration completes', async () => {
+        document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+
+        const menu = getPlaylistMenuElements(document);
+        const modal = getPlaylistModalElements(document);
+        const trackViews = [
+            { displayTitle: 'Placeholder 0', name: 'Track 0', displayArtist: 'Unknown Artist', tagsResolved: false },
+            { displayTitle: 'Placeholder 1', name: 'Track 1', displayArtist: 'Unknown Artist', tagsResolved: false },
+        ];
+        const ensureTrackTagsResolvedBatch = vi.fn(async (indexes: number[]) => {
+            indexes.forEach((index) => {
+                trackViews[index].displayTitle = `Hydrated ${index}`;
+                trackViews[index].displayArtist = `Artist ${index}`;
+                trackViews[index].tagsResolved = true;
+            });
+        });
+
+        const controller = createPlaylistController({
+            trigger,
+            menu,
+            modal,
+            getTrack: (index: number) => trackViews[index],
+            getTrackPath: (index: number) => `/music/track-${index}.flac`,
+            getTrackCount: () => trackViews.length,
+            getCurrentTrackIndex: () => 0,
+            getPlaybackOrderLabel: () => 'Ordered',
+            getBaseSequence: () => ({
+                indexes: [0, 1],
+                currentPosition: 0,
+            }),
+            ensureTrackTagsResolvedBatch,
+            selectPlaylistFile: vi.fn(async () => ''),
+            selectPlaylistSaveFile: vi.fn(async () => ''),
+            loadPlaylistData: vi.fn(async () => ({
+                name: 'visible.m3u8',
+                trackIndexes: [0, 1],
+            })),
+            loadListenHistoryData: vi.fn(async () => null),
+            savePlaylistTrackMetadataCache: vi.fn(async () => true),
+            savePlaylistData: vi.fn(async () => true),
+            appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
+            getFavoritePlaylists: () => [],
+            hasListenHistoryPlaylist: () => false,
+            onTrackChosen: vi.fn(async () => undefined),
+            onExternalPlaylistLoaded: vi.fn(() => undefined),
+        });
+
+        await expect(controller.loadPlaylistByPath('/playlists/visible.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        expect(ensureTrackTagsResolvedBatch).toHaveBeenCalled();
+        expect(modal.playlistList.textContent).toContain('Hydrated 0');
+        expect(modal.playlistList.textContent).toContain('Artist 0');
+        expect(modal.playlistList.textContent).toContain('Hydrated 1');
+        expect(modal.playlistList.textContent).toContain('Artist 1');
+    });
+
+    it('cancels loaded playlist hydration work after the modal closes', async () => {
+        document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+
+        const menu = getPlaylistMenuElements(document);
+        const modal = getPlaylistModalElements(document);
+        const trackViews = Array.from({ length: 120 }, (_, index) => ({
+            displayTitle: `Track ${index}`,
+            name: `Track ${index}`,
+            displayArtist: `Artist ${index}`,
+            tagsResolved: false,
+        }));
+        let resolveBatch: (() => void) | undefined;
+        const ensureTrackTagsResolvedBatch = vi.fn(() => new Promise<void>((resolve) => {
+            resolveBatch = () => {
+                trackViews.forEach((track) => {
+                    track.tagsResolved = true;
+                });
+                resolve();
+            };
+        }));
+        const savePlaylistTrackMetadataCache = vi.fn(async () => true);
+
+        const controller = createPlaylistController({
+            trigger,
+            menu,
+            modal,
+            getTrack: (index: number) => trackViews[index],
+            getTrackPath: (index: number) => `/music/track-${index}.flac`,
+            getTrackCount: () => trackViews.length,
+            getCurrentTrackIndex: () => 0,
+            getPlaybackOrderLabel: () => 'Ordered',
+            getBaseSequence: () => ({
+                indexes: trackViews.map((_, index) => index),
+                currentPosition: 0,
+            }),
+            ensureTrackTagsResolvedBatch,
+            selectPlaylistFile: vi.fn(async () => ''),
+            selectPlaylistSaveFile: vi.fn(async () => ''),
+            loadPlaylistData: vi.fn(async () => ({
+                name: 'cancel.m3u8',
+                trackIndexes: trackViews.map((_, index) => index),
+            })),
+            loadListenHistoryData: vi.fn(async () => null),
+            savePlaylistTrackMetadataCache,
+            savePlaylistData: vi.fn(async () => true),
+            appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
+            getFavoritePlaylists: () => [],
+            hasListenHistoryPlaylist: () => false,
+            onTrackChosen: vi.fn(async () => undefined),
+            onExternalPlaylistLoaded: vi.fn(() => undefined),
+        });
+
+        await expect(controller.loadPlaylistByPath('/playlists/cancel.m3u8')).resolves.toBe(true);
+        expect(ensureTrackTagsResolvedBatch).toHaveBeenCalledTimes(1);
+
+        controller.closeModal();
+        if (resolveBatch) {
+            resolveBatch();
+        }
+        await flushPromises();
+
+        expect(ensureTrackTagsResolvedBatch).toHaveBeenCalledTimes(1);
+        expect(savePlaylistTrackMetadataCache).not.toHaveBeenCalled();
+    });
 });

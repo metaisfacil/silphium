@@ -73,6 +73,9 @@ export const createMediaSessionController = (options: MediaSessionControllerOpti
     const mediaSessionAnchorAudio = supportsMediaSession
         ? new Audio(mediaSessionAnchorUrl)
         : null;
+    let lastMetadataSignature = '';
+    let lastPlaybackStateValue: MediaSessionPlaybackState | '' = '';
+    let lastPositionStateKey = '';
     let mediaSessionAnchorPlayPending = false;
     let mediaSessionAnchorUnlockPending = false;
     let mediaSessionAnchorUnlocked = false;
@@ -186,7 +189,12 @@ export const createMediaSessionController = (options: MediaSessionControllerOpti
         const playbackState = options.getPlaybackState();
         const activeTrack = options.getCurrentTrack();
         if (!playbackState.loaded || !activeTrack) {
+            if (lastMetadataSignature === 'none') {
+                return;
+            }
+
             navigator.mediaSession.metadata = null;
+            lastMetadataSignature = 'none';
             return;
         }
 
@@ -209,7 +217,21 @@ export const createMediaSessionController = (options: MediaSessionControllerOpti
             metadataInit.artwork = [{ src: preview.src }];
         }
 
+        const artworkSignature = metadataInit.artwork
+            ? metadataInit.artwork.map((artwork) => `${artwork.src || ''}|${artwork.type || ''}`).join('\n')
+            : '';
+        const nextMetadataSignature = [
+            metadataInit.title || '',
+            metadataInit.artist || '',
+            metadataInit.album || '',
+            artworkSignature,
+        ].join('\n');
+        if (nextMetadataSignature === lastMetadataSignature) {
+            return;
+        }
+
         navigator.mediaSession.metadata = new MediaMetadata(metadataInit);
+        lastMetadataSignature = nextMetadataSignature;
     };
 
     const updatePlaybackState = (): void => {
@@ -218,9 +240,13 @@ export const createMediaSessionController = (options: MediaSessionControllerOpti
         }
 
         const playbackState = options.getPlaybackState();
-        navigator.mediaSession.playbackState = playbackState.loaded
+        const nextPlaybackState = playbackState.loaded
             ? (playbackState.playing ? 'playing' : 'paused')
             : 'none';
+        if (nextPlaybackState !== lastPlaybackStateValue) {
+            navigator.mediaSession.playbackState = nextPlaybackState;
+            lastPlaybackStateValue = nextPlaybackState;
+        }
 
         if (!mediaSessionAnchorAudio) {
             return;
@@ -254,8 +280,13 @@ export const createMediaSessionController = (options: MediaSessionControllerOpti
 
         const playbackState = options.getPlaybackState();
         if (!playbackState.loaded || !Number.isFinite(playbackState.duration) || playbackState.duration <= 0 || !Number.isFinite(playbackState.currentTime)) {
+            if (lastPositionStateKey === 'unloaded') {
+                return;
+            }
+
             try {
                 navigator.mediaSession.setPositionState(undefined);
+                lastPositionStateKey = 'unloaded';
             } catch (error) {
                 console.debug(error);
             }
@@ -263,12 +294,19 @@ export const createMediaSessionController = (options: MediaSessionControllerOpti
         }
 
         const boundedPosition = Math.min(Math.max(0, playbackState.currentTime), playbackState.duration);
+        const quantizedPositionSeconds = Math.floor(boundedPosition);
+        const nextPositionStateKey = `${playbackState.duration.toFixed(3)}|${quantizedPositionSeconds}`;
+        if (nextPositionStateKey === lastPositionStateKey) {
+            return;
+        }
+
         try {
             navigator.mediaSession.setPositionState({
                 duration: playbackState.duration,
                 position: boundedPosition,
                 playbackRate: 1,
             });
+            lastPositionStateKey = nextPositionStateKey;
         } catch (error) {
             console.debug(error);
         }

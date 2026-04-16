@@ -127,8 +127,8 @@ func (a *App) snapshotLibraryFilesDatabaseState() (libraryFilesDatabaseSnapshot,
 	scanState := a.libraryScanState()
 	indexState := a.libraryIndexState()
 
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
+	contentState.indexMu.RLock()
+	defer contentState.indexMu.RUnlock()
 
 	if scanState.scanInProgress || indexState.libraryFileHydrationPending {
 		return libraryFilesDatabaseSnapshot{}, false

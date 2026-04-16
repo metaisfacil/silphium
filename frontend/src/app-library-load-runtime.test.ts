@@ -371,4 +371,40 @@ describe('app-library-load-runtime', () => {
         expect(context.scheduleLibraryIncrementalFolderRefresh).toHaveBeenCalledTimes(1);
         expect(context.scheduleNowPlayingCoverRefresh).toHaveBeenCalledTimes(1);
     });
+
+    it('skips incremental folder and now-playing refreshes while playback is active', async () => {
+        const quickScanResult = createScanResult();
+        const incrementalScanResult = createScanResult({
+            trackCount: 2,
+            imageFileCount: 1,
+            totalEntries: 3,
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        context.getLibraryRootName = vi.fn(() => 'Library');
+        context.getPlaybackState.mockImplementation(() => ({
+            loaded: true,
+            playing: true,
+            sourcePath: 'C:/Library/Artist/Album/01 Track.flac',
+            volume: 0.8,
+            currentTimeSeconds: 12,
+            durationSeconds: 300,
+            endedEventId: 0,
+        }));
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+
+        await runtime.handleLibraryScanUpdatedEvent(incrementalScanResult);
+
+        expect(context.clearCoverArtCache).toHaveBeenCalledTimes(1);
+        expect(context.scheduleLibraryIncrementalFolderRefresh).not.toHaveBeenCalled();
+        expect(context.scheduleNowPlayingCoverRefresh).not.toHaveBeenCalled();
+    });
 });

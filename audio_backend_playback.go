@@ -256,25 +256,16 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 	trimmedNextDisplayPath := strings.TrimSpace(nextDisplayPath)
 	trimmedNextDecodePath := strings.TrimSpace(nextDecodePath)
 
-	var nextSegment audioTrackSegment
-	var err error
-	if trimmedNextDisplayPath != "" && trimmedNextDecodePath != "" {
-		nextSegment, err = b.prepareTrackSegmentForSource(trimmedNextDisplayPath, trimmedNextDecodePath, preloadedTags, replayGainReleasePaths, decodeHints)
-		if err != nil {
-			return AudioPlaybackState{}, err
-		}
-	}
-
 	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
 	b.syncPlaybackLocked()
 	if len(b.streamSegments) == 0 {
+		state := b.snapshotLocked()
+		b.mutex.Unlock()
 		if trimmedNextDisplayPath == "" {
 			logAudioEvent("QueueNextTrack cleared with no active track")
-			return b.snapshotLocked(), nil
+			return state, nil
 		}
-		return b.snapshotLocked(), errors.New("no track loaded")
+		return state, errors.New("no track loaded")
 	}
 
 	if trimmedAfterPath != "" {
@@ -284,23 +275,69 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 			if ok {
 				activePath = activeSegment.SourcePath
 			}
+			state := b.snapshotLocked()
+			b.mutex.Unlock()
 			logAudioEvent("QueueNextTrack skipped afterPath=%q activePath=%q nextPath=%q", trimmedAfterPath, activePath, trimmedNextDisplayPath)
-			return b.snapshotLocked(), nil
+			return state, nil
 		}
 	}
 
 	b.trimConsumedSegmentsLocked(b.currentPlayedGlobalBytesLocked())
+	b.invalidatePendingQueuedTrackLocked()
 	b.clearFutureQueueLocked()
 	if !b.gaplessPlayback || trimmedNextDisplayPath == "" {
+		state := b.snapshotLocked()
 		b.streamCond.Broadcast()
-		logAudioEvent("QueueNextTrack cleared gapless=%t state=%s", b.gaplessPlayback, b.stateSummaryLocked())
-		return b.snapshotLocked(), nil
+		summary := b.stateSummaryLocked()
+		gaplessPlayback := b.gaplessPlayback
+		b.mutex.Unlock()
+		logAudioEvent("QueueNextTrack cleared gapless=%t state=%s", gaplessPlayback, summary)
+		return state, nil
 	}
 
-	b.streamSegments = append(b.streamSegments, nextSegment)
-	b.streamCond.Broadcast()
-	logAudioEvent("QueueNextTrack queued nextPath=%q state=%s", trimmedNextDisplayPath, b.stateSummaryLocked())
-	return b.snapshotLocked(), nil
+	requestGeneration := b.nextQueueRequestGeneration
+	state := b.snapshotLocked()
+	summary := b.stateSummaryLocked()
+	b.mutex.Unlock()
+
+	logAudioEvent("QueueNextTrack preparing nextPath=%q state=%s", trimmedNextDisplayPath, summary)
+
+	go func(generation uint64, expectedAfterPath string, expectedNextDisplayPath string, expectedNextDecodePath string, expectedReplayGainReleasePaths []string, expectedDecodeHints audioDecodeHints, expectedTags map[string][]string) {
+		nextSegment, err := b.prepareTrackSegmentForSource(expectedNextDisplayPath, expectedNextDecodePath, expectedTags, expectedReplayGainReleasePaths, expectedDecodeHints)
+
+		b.mutex.Lock()
+		defer b.mutex.Unlock()
+
+		if generation != b.nextQueueRequestGeneration {
+			return
+		}
+
+		b.syncPlaybackLocked()
+		if len(b.streamSegments) == 0 || !b.gaplessPlayback {
+			return
+		}
+
+		if expectedAfterPath != "" {
+			activeSegment, _, ok := b.activeSegmentLocked()
+			if !ok || !strings.EqualFold(strings.TrimSpace(activeSegment.SourcePath), expectedAfterPath) {
+				return
+			}
+		}
+
+		b.trimConsumedSegmentsLocked(b.currentPlayedGlobalBytesLocked())
+		b.clearFutureQueueLocked()
+
+		if err != nil {
+			logAudioEvent("QueueNextTrack failed nextPath=%q error=%v state=%s", expectedNextDisplayPath, err, b.stateSummaryLocked())
+			return
+		}
+
+		b.streamSegments = append(b.streamSegments, nextSegment)
+		b.streamCond.Broadcast()
+		logAudioEvent("QueueNextTrack queued nextPath=%q state=%s", expectedNextDisplayPath, b.stateSummaryLocked())
+	}(requestGeneration, trimmedAfterPath, trimmedNextDisplayPath, trimmedNextDecodePath, replayGainReleasePaths, decodeHints, preloadedTags)
+
+	return state, nil
 }
 
 // LoadTrack decodes and loads a track into the playback backend.

@@ -673,8 +673,13 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         context.setLibraryRootName(nextRootName);
         context.setLibraryIndexTruncated(!!scanResult.truncated);
         context.clearCoverArtCache();
-        context.scheduleLibraryIncrementalFolderRefresh();
-        context.scheduleNowPlayingCoverRefresh();
+        const playbackState = context.getPlaybackState();
+        if (!(playbackState.loaded && playbackState.playing)) {
+            context.scheduleLibraryIncrementalFolderRefresh();
+            context.scheduleNowPlayingCoverRefresh();
+        } else {
+            context.logRescan('Skipped incremental UI refresh during active playback');
+        }
         context.logRescan('handleLibraryScanUpdatedEvent END: took %.2fms', performance.now() - startTime);
     };
 

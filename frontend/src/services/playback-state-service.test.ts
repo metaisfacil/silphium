@@ -96,4 +96,23 @@ describe('createPlaybackStateService', () => {
         };
         expect(service.applyPlaybackState(actualEndState, true)).toEqual({ trackEnded: true });
     });
+
+    it('allows local playback progress updates without re-triggering end events', () => {
+        const state = createPlaybackSessionState();
+        const service = createPlaybackStateService(state);
+        const nextState = {
+            ...createInitialPlaybackState(),
+            loaded: true,
+            playing: true,
+            currentTime: 12,
+            duration: 300,
+            sourcePath: '/music/current.flac',
+            endEventId: 5,
+        };
+
+        expect(service.applyPlaybackState(nextState, true)).toEqual({ trackEnded: true });
+        expect(service.setCurrentTime(12.75)).toBe(true);
+        expect(service.getPlaybackState().currentTime).toBe(12.75);
+        expect(service.applyPlaybackState({ ...nextState, currentTime: 13.2 }, true)).toEqual({ trackEnded: false });
+    });
 });

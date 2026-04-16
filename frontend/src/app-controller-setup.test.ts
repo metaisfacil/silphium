@@ -299,6 +299,7 @@ describe('app-controller-setup', () => {
         expect(settingsConfig.state).toBe(context.settingsControllerState);
         expect(libraryConfig.state).toBe(context.libraryControllerState);
         expect(playlistConfig.state).toBe(context.playlistControllerState);
+        expect(playlistConfig.backgroundHydrationEnabled).toBe(false);
 
         const saveValues = {
             libraryFolders: [{ path: '/music/library', label: 'Library', releaseDepth: 1 }],

@@ -1819,13 +1819,13 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
     const rebuildLibraryTree = (
         rootName: string,
         truncated: boolean,
-        tracks: Track[],
-        textFiles: TextLibraryFile[],
-        imageFiles: ImageLibraryFile[],
+        _tracks: Track[],
+        _textFiles: TextLibraryFile[],
+        _imageFiles: ImageLibraryFile[],
     ): Promise<void> => {
         controllerState.libraryRootName = rootName || defaultLibraryRootLabel;
         controllerState.libraryIndexTruncated = truncated;
-        doRebuildPastedPathLookupCache(tracks, textFiles, imageFiles);
+        pastedPathLookupCache = createEmptyPastedPathLookupCache();
         invalidateAlbumGridCache();
         cancelLibrarySearch();
         if (controllerState.sidebarOpen) {

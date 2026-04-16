@@ -22,4 +22,16 @@ describe('sidebar share connections indicator', () => {
         setLibraryShareConnectionsIndicator(libraryShareConnectionsIndicator, 1);
         expect(libraryShareConnectionsIndicator.getAttribute('aria-label')).toBe('1 remote listener connected');
     });
+
+    it('renders an explicit search control linked to the library search input', () => {
+        document.body.innerHTML = renderSidebar();
+
+        const searchButton = document.querySelector('.library-search-button') as HTMLLabelElement | null;
+        const { librarySearch } = getSidebarElements(document);
+
+        expect(searchButton).not.toBeNull();
+        expect(searchButton?.getAttribute('for')).toBe('library-search');
+        expect(searchButton?.querySelector('svg')).not.toBeNull();
+        expect(librarySearch.id).toBe('library-search');
+    });
 });

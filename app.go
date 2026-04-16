@@ -92,7 +92,7 @@ type appLibraryState struct {
 
 type appLibraryContentState struct {
 	activeLibraryRoots []libraryRootConfig
-	indexMu            sync.Mutex
+	indexMu            sync.RWMutex
 	trackByPath        map[string]LibraryIndexedFile
 	textByPath         map[string]LibraryIndexedFile
 	imageByPath        map[string]LibraryIndexedFile

@@ -270,6 +270,7 @@ type AudioBackend struct {
 	streamDecodeExpectedBytes   int64
 	streamDecodeDone            bool
 	streamDecodeErr             error
+	nextQueueRequestGeneration  uint64
 	playbackHeadroomLow         bool
 	replayGainCacheMu           sync.Mutex
 	replayGainCacheByPath       map[string]replayGainCacheEntry
@@ -1067,6 +1068,10 @@ func (b *AudioBackend) resetTimelineLocked() {
 	b.streamCond.Broadcast()
 }
 
+func (b *AudioBackend) invalidatePendingQueuedTrackLocked() {
+	b.nextQueueRequestGeneration++
+}
+
 func (b *AudioBackend) clearFutureQueueLocked() {
 	if len(b.streamSegments) <= 1 {
 		return
@@ -1152,6 +1157,7 @@ func (b *AudioBackend) snapshotLocked() AudioPlaybackState {
 
 func (b *AudioBackend) unloadTrackLocked() {
 	b.stopStreamDecodeLocked()
+	b.invalidatePendingQueuedTrackLocked()
 	for index := range b.streamSegments {
 		b.streamSegments[index].PCMData = nil
 	}

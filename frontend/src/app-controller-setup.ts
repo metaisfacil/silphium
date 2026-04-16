@@ -123,6 +123,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         menu: context.playlistMenuElements,
         modal: context.playlistModalElements,
         state: context.playlistControllerState,
+        backgroundHydrationEnabled: false,
         getTrack: (index: number) => context.tracks[index],
         getTrackPath: (index: number) => context.tracks[index]?.path || '',
         getTrackCount: () => context.tracks.length,

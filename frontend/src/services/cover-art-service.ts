@@ -9,6 +9,7 @@ type MediaArtwork = {
 type CoverArtServiceOptions = {
     getCoverArtPriority: () => CoverArtPrioritySource[] | string[] | undefined;
     getLibraryFolderCoverPath: (folderPath: string) => Promise<string>;
+    readImageThumbnail: (filePath: string, maxEdge: number) => Promise<{ base64?: string; mimeType?: string }>;
     readFileBase64: (filePath: string) => Promise<string>;
     readTrackEmbeddedCover: (trackPath: string) => Promise<{ base64?: string; mimeType?: string }>;
     registerObjectUrl: (url: string) => void;
@@ -29,6 +30,7 @@ type CoverArtArchiveResponse = {
 };
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
+const nowPlayingCoverThumbnailMaxEdgePx = 960;
 
 const loadImageSource = async (src: string): Promise<string | undefined> => {
     return await new Promise((resolve) => {
@@ -157,12 +159,15 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
             return undefined;
         }
 
-        const base64 = await options.readFileBase64(coverPath);
+        const thumbnail = await options.readImageThumbnail(coverPath, nowPlayingCoverThumbnailMaxEdgePx);
+        const base64 = thumbnail.base64 || await options.readFileBase64(coverPath);
         if (!base64) {
             return undefined;
         }
 
-        const coverMimeType = mimeTypeForFileName(coverPath);
+        const coverMimeType = thumbnail.mimeType && thumbnail.mimeType.startsWith('image/')
+            ? thumbnail.mimeType
+            : mimeTypeForFileName(coverPath);
         const coverUrl = base64ToObjectUrl(base64, coverMimeType);
         coverUrlByFolder.set(folderKey, coverUrl);
         coverMediaArtworkByFolder.set(folderKey, {

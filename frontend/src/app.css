@@ -467,9 +467,34 @@
 
 .library-search-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 0.5rem;
     margin: 0 0 0.8rem;
+}
+
+.library-search-button {
+    width: 2.1rem;
+    min-width: 2.1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.26);
+    color: rgba(255, 255, 255, 0.78);
+    cursor: text;
+    transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.library-search-button:hover,
+.library-search-row:focus-within .library-search-button {
+    border-color: rgba(255, 255, 255, 0.34);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.94);
+}
+
+.library-search-button-icon {
+    display: block;
 }
 
 .library-search {

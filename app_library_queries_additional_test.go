@@ -485,10 +485,30 @@ func TestLibraryQueryFallbackIncludesDiscoveredFoldersDuringScan(t *testing.T) {
 	if app.IsLibraryFolderImmediateDescendantsEnumerated("Library One/Artist Pending") {
 		t.Fatal("IsLibraryFolderImmediateDescendantsEnumerated(discovered pending) = true, want false")
 	}
-
 	delete(app.scanRemainingImmediateChildrenByFolder, "Library One/Artist Pending")
 	if !app.IsLibraryFolderImmediateDescendantsEnumerated("Library One/Artist Pending") {
 		t.Fatal("IsLibraryFolderImmediateDescendantsEnumerated(discovered ready) = false, want true")
+	}
+}
+
+func TestLibraryFolderPageReadLockDoesNotBlockConcurrentReads(t *testing.T) {
+	app, _ := newIndexedLibraryAppForTests(t)
+
+	app.indexMu.RLock()
+	defer app.indexMu.RUnlock()
+
+	resultCh := make(chan LibraryFolderPage, 1)
+	go func() {
+		resultCh <- app.GetLibraryFolderPageSorted("Library One/Artist One", "name", 0, 10)
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.TotalEntries != 1 || len(result.Entries) != 1 || result.Entries[0].Path != "Library One/Artist One/Album One" {
+			t.Fatalf("GetLibraryFolderPageSorted(concurrent read) = %#v, want album child entry", result)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("GetLibraryFolderPageSorted() blocked behind a concurrent read lock")
 	}
 }
 
