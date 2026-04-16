@@ -266,23 +266,17 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-network" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-network" hidden>
                     <div class="settings-field settings-toggle-field">
-                        <label class="settings-checkbox-row" for="settings-library-sharing-enabled">
-                            <input id="settings-library-sharing-enabled" class="settings-checkbox" type="checkbox">
-                            <span class="settings-label">Enable OpenSubsonic server</span>
-                        </label>
-                        <p class="settings-hint">When enabled, OpenSubsonic clients can connect to your local library using the port and API key below.</p>
+                        ${renderSettingsCheckboxLabel('settings-library-sharing-enabled', 'Enable OpenSubsonic server', 'When enabled, OpenSubsonic clients can connect to your local library using the port and API key below.')}
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-library-sharing-port">OpenSubsonic port</label>
-                        <p class="settings-hint">Default is 4040. Point your OpenSubsonic client at this port.</p>
+                        ${renderSettingsLabel('settings-library-sharing-port', 'OpenSubsonic port', 'Default is 4040. Point your OpenSubsonic client at this port.')}
                         <div class="settings-server-rate-group">
                             <input id="settings-library-sharing-port" class="settings-input settings-server-rate-input" type="number" min="1" max="65535" step="1" inputmode="numeric" placeholder="4040">
                             <span class="settings-server-rate-unit">TCP</span>
                         </div>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="settings-library-sharing-password">OpenSubsonic API key</label>
-                        <p class="settings-hint">Required. Minimum 10 characters. Silphium stores only the hashed API key.</p>
+                        ${renderSettingsLabel('settings-library-sharing-password', 'OpenSubsonic API key', 'Required. Minimum 10 characters. Silphium stores both the API key and its hashed version in settings.')}
                         <input id="settings-library-sharing-password" class="settings-input" type="password" spellcheck="false" placeholder="Required">
                     </div>
                     <div class="settings-field">
