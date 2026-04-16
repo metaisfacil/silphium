@@ -116,6 +116,24 @@ func TestTrackTagParsingHelpers(t *testing.T) {
 	}
 }
 
+func TestBuildTrackTagsPrefersTrackArtistOverAlbumArtistFallback(t *testing.T) {
+	tags := map[string][]string{
+		"TRACKARTIST": {" Guest Performer "},
+		"ARTIST":      {" Release Artist "},
+		"ALBUMARTIST": {" Compilation Artist "},
+		"TITLE":       {" Track Title "},
+	}
+
+	builtTags := buildTrackTags(tags, TrackTechnicalMetadata{})
+
+	if builtTags.Artist != "Guest Performer" {
+		t.Fatalf("buildTrackTags() artist = %q, want %q", builtTags.Artist, "Guest Performer")
+	}
+	if builtTags.AlbumArtist != "Compilation Artist" {
+		t.Fatalf("buildTrackTags() album artist = %q, want %q", builtTags.AlbumArtist, "Compilation Artist")
+	}
+}
+
 func TestTrackTechnicalMetadataWithFFProbeAndFallbacks(t *testing.T) {
 	helperDir := t.TempDir()
 	ffprobePath := copyCurrentTestBinary(t, helperDir, "ffprobe.exe")

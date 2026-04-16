@@ -673,7 +673,7 @@ func buildTrackTags(tags map[string][]string, technical TrackTechnicalMetadata) 
 	}
 
 	return TrackTags{
-		Artist:         firstTagValue(tags, "ARTIST", "ALBUMARTIST"),
+		Artist:         firstTagValue(tags, "TRACKARTIST", "TRACK_ARTIST", "Track Artist", "ARTIST", "ALBUMARTIST"),
 		AlbumArtist:    firstTagValue(tags, "ALBUMARTIST", "ALBUM_ARTIST", "Album Artist", "ARTIST"),
 		Album:          firstTagValue(tags, "ALBUM"),
 		Title:          firstTagValue(tags, "TITLE"),
