@@ -323,6 +323,69 @@ func TestTrackTagWorkerAndBlobNoMetadataBranches(t *testing.T) {
 	}
 }
 
+func TestRefreshTrackMetadataForcesFreshReadAndIncrementalRescan(t *testing.T) {
+	originalReadTaglibTags := readTaglibTags
+	originalIncrementalHook := beforeIncrementalLibraryPathScanHook
+	t.Cleanup(func() {
+		readTaglibTags = originalReadTaglibTags
+		beforeIncrementalLibraryPathScanHook = originalIncrementalHook
+	})
+
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithLoadedSettings(AppSettings{LibraryPath: fixture.rootOne})
+	app.activeLibraryRoots = []libraryRootConfig{{
+		Path: fixture.rootOne,
+		Name: "Library",
+	}}
+	app.scanLibraryFolder(fixture.rootOne, false)
+
+	readTitle := "Cached Title"
+	readTaglibTags = func(_ string) (map[string][]string, error) {
+		return map[string][]string{"TITLE": {readTitle}}, nil
+	}
+
+	if tags := app.ReadTrackTags([]string{fixture.trackOne}); tags[fixture.trackOne].Title != "Cached Title" {
+		t.Fatalf("ReadTrackTags() title = %q, want cached title", tags[fixture.trackOne].Title)
+	}
+
+	readTitle = "Fresh Title"
+	rescannedPath := ""
+	beforeIncrementalLibraryPathScanHook = func(path string) {
+		rescannedPath = path
+	}
+
+	tags, err := app.RefreshTrackMetadata(fixture.trackOne)
+	if err != nil {
+		t.Fatalf("RefreshTrackMetadata() error = %v", err)
+	}
+	if tags.Title != "Fresh Title" {
+		t.Fatalf("RefreshTrackMetadata() title = %q, want %q", tags.Title, "Fresh Title")
+	}
+	if rescannedPath != fixture.albumOneFolder {
+		t.Fatalf("incremental refresh path = %q, want %q", rescannedPath, fixture.albumOneFolder)
+	}
+}
+
+func TestRefreshTrackMetadataRejectsUnsupportedPaths(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithLoadedSettings(AppSettings{LibraryPath: fixture.rootOne})
+	app.activeLibraryRoots = []libraryRootConfig{{
+		Path: fixture.rootOne,
+		Name: "Library",
+	}}
+
+	if _, err := app.RefreshTrackMetadata(""); err == nil {
+		t.Fatal("RefreshTrackMetadata(empty) error = nil, want error")
+	}
+	if _, err := app.RefreshTrackMetadata(fixture.outsideTrack); err == nil {
+		t.Fatal("RefreshTrackMetadata(outside) error = nil, want error")
+	}
+	remoteTrack := buildRemoteLibraryPath(buildRemoteLibraryBasePath("example.com", 5005), "Library/Artist/Album/01 Track.flac")
+	if _, err := app.RefreshTrackMetadata(remoteTrack); err == nil {
+		t.Fatal("RefreshTrackMetadata(remote) error = nil, want error")
+	}
+}
+
 func TestReadTrackTagsFromBlobsAdditionalTempAndDiscardBranches(t *testing.T) {
 	originalReadTaglibTags := readTaglibTags
 	t.Cleanup(func() {

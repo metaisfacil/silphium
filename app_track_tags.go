@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -902,6 +903,33 @@ func readTrackTagsForPath(path string, ffprobePath string) (TrackTags, bool) {
 // ReadTrackTags reads tag and technical metadata for track files by path.
 func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 	return a.readTrackTagsWithWorkerLimit(paths, trackTagsWorkerLimit)
+}
+
+// RefreshTrackMetadata forces a fresh metadata read for a library track without interrupting playback.
+func (a *App) RefreshTrackMetadata(path string) (TrackTags, error) {
+	cleanPath := normalizePath(path)
+	if cleanPath == "" {
+		return TrackTags{}, errors.New("track path is required")
+	}
+	if _, ok := parseRemoteLibraryPath(cleanPath); ok {
+		return TrackTags{}, errors.New("remote track metadata refresh is not supported")
+	}
+	if !a.isAllowedLibraryPath(cleanPath) {
+		return TrackTags{}, errors.New("track path is outside the selected library")
+	}
+	if !isAudioPath(cleanPath) {
+		return TrackTags{}, errors.New("track path is not an audio file")
+	}
+
+	a.invalidateTrackTagsCachePaths([]string{cleanPath})
+	refreshTargets := []string{cleanPath}
+	if folderPath := strings.TrimSpace(filepath.Dir(cleanPath)); folderPath != "" {
+		refreshTargets = append(refreshTargets, folderPath)
+	}
+	a.applyIncrementalLibraryChanges(refreshTargets)
+
+	tagByPath := a.readTrackTagsWithWorkerLimit([]string{cleanPath}, 1)
+	return tagByPath[cleanPath], nil
 }
 
 func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int) map[string]TrackTags {

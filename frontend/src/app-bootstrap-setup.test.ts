@@ -296,6 +296,7 @@ const createScope = () => {
         updateTrackLabels: vi.fn(),
         updatePlayOrderMenuState: vi.fn(),
         refreshLyricsPanel: vi.fn(),
+        refreshCurrentTrackMetadata: vi.fn(async () => undefined),
         resetListenBrainzFeedbackState: vi.fn(),
         initializeMediaSessionIntegration: vi.fn(),
         initializeSettings: vi.fn(),
@@ -416,6 +417,7 @@ describe('app-bootstrap-setup wrappers', () => {
         context.handleDocumentClickWithinSettings(document.body);
         await context.audioSeek(15);
         await context.audioSetVolume(0.4);
+        await context.refreshCurrentTrackMetadata();
 
         expect(scope.settingsControllerRef.setMusicBrainzTagWorkerProgress).toHaveBeenCalledWith({ progress: 1 });
         expect(scope.currentMusicBrainzTagWorkerProgress).toEqual({ progress: 0.5 });
@@ -423,5 +425,6 @@ describe('app-bootstrap-setup wrappers', () => {
         expect(scope.settingsControllerRef.handleDocumentClick).toHaveBeenCalledWith(document.body);
         expect(scope.audioSeek).toHaveBeenCalledWith(15);
         expect(scope.audioSetVolume).toHaveBeenCalledWith(0.4);
+        expect(scope.refreshCurrentTrackMetadata).toHaveBeenCalledTimes(1);
     });
 });

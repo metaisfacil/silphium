@@ -39,6 +39,7 @@ type WindowWithOptionalReleaseFolderResolver = Window & {
         main?: {
             App?: {
                 ResolveLibraryFolderForReleaseMBID?: (releaseMBID: string) => Promise<string> | string;
+                RefreshTrackMetadata?: (trackPath: string) => Promise<unknown> | unknown;
             };
         };
     };
@@ -115,7 +116,20 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             context.tracks[index] = track;
         },
         readTrackTags: ReadTrackTags,
-        lookupMusicBrainzTrackMetadata: async (releaseId: string) => await lookupMusicBrainzTrackMetadata(releaseId),
+        forceRefreshTrackTags: async (paths: string[]) => {
+            const runtimeWindow = window as WindowWithOptionalReleaseFolderResolver;
+            const refreshTrackMetadata = runtimeWindow.go?.main?.App?.RefreshTrackMetadata;
+            if (typeof refreshTrackMetadata !== 'function') {
+                return await ReadTrackTags(paths);
+            }
+
+            const entries = await Promise.all(paths.map(async (path) => [
+                path,
+                await Promise.resolve(refreshTrackMetadata(path)),
+            ] as const));
+            return Object.fromEntries(entries);
+        },
+        lookupMusicBrainzTrackMetadata: async (recordingId: string, releaseId: string) => await lookupMusicBrainzTrackMetadata(recordingId, releaseId),
         getPreferMusicBrainzMetadata: () => context.currentSettings.preferMusicBrainzMetadata,
         getCurrentTrackIndex: () => context.currentTrackIndex,
         getTagRequestVersion: () => context.tagRequestVersion,

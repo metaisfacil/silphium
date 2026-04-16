@@ -171,6 +171,9 @@ describe('createSettingsController', () => {
         expect(document.querySelector('#settings-lastfm-session-key-fetch')?.textContent).toBe('Fetch');
         expect(document.querySelector('label[for="settings-musicbrainz-server-url"]')?.textContent).toBe('MusicBrainz server URL');
         expect(document.querySelector('label[for="settings-listenbrainz-server-url"]')?.textContent).toBe('ListenBrainz server URL');
+        expect(document.querySelector('[aria-label="Show help for Enable OpenSubsonic server"]')).not.toBeNull();
+        expect(document.querySelector('[aria-label="Show help for OpenSubsonic port"]')).not.toBeNull();
+        expect(document.querySelector('[aria-label="Show help for OpenSubsonic API key"]')).not.toBeNull();
         expect(document.querySelector('label[for="settings-musicbrainz-tag-worker-cores"]')?.textContent).toBe('MusicBrainz tag worker cores');
         expect(document.querySelector('label[for="settings-favourite-playlist-list"]')?.textContent).toBe('Favourite playlists');
         expect(document.querySelector('label[for="settings-scrobble-filter-mode"]')?.textContent).toBe('Scrobble mode');
@@ -193,6 +196,18 @@ describe('createSettingsController', () => {
         expect(document.querySelector('#settings-library-depth-title')?.textContent).toBe('Library folder settings');
         expect(document.querySelector('label[for="settings-library-depth-label-input"]')?.textContent).toBe('Custom label');
         expect(document.querySelector('label[for="settings-library-depth-input"]')?.textContent).toBe('Release folder depth');
+    });
+
+    it('renders OpenSubsonic network help as tooltips', () => {
+        document.body.innerHTML = renderSettingsModal();
+
+        const networkPanel = document.querySelector('#settings-panel-network');
+        const apiKeyField = document.querySelector('#settings-library-sharing-password')?.closest('.settings-field');
+        const apiKeyHint = apiKeyField?.querySelector('.settings-tooltip-bubble')?.textContent;
+
+        expect(networkPanel?.querySelector('.settings-hint')).toBeNull();
+        expect(apiKeyHint).toContain('Required. Minimum 10 characters.');
+        expect(apiKeyHint).toContain('Silphium stores both the API key and its hashed version in settings.');
     });
 
     it('renders metadata settings beneath the database settings with a shared compact row', () => {

@@ -252,6 +252,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'updateTrackLabels'
     | 'updatePlayOrderMenuState'
     | 'refreshLyricsPanel'
+    | 'refreshCurrentTrackMetadata'
     | 'resetListenBrainzFeedbackState'
     | 'initializeMediaSessionIntegration'
     | 'initializeSettings'
@@ -620,6 +621,9 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         updateTrackLabels: scope.updateTrackLabels,
         updatePlayOrderMenuState: scope.updatePlayOrderMenuState,
         refreshLyricsPanel: scope.refreshLyricsPanel,
+        refreshCurrentTrackMetadata: async () => {
+            await scope.refreshCurrentTrackMetadata();
+        },
         resetListenBrainzFeedbackState: scope.resetListenBrainzFeedbackState,
         initializeMediaSessionIntegration: scope.initializeMediaSessionIntegration,
         initializeSettings: scope.initializeSettings,

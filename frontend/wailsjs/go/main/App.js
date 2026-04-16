@@ -206,6 +206,10 @@ export function ReadTrackTagsFromBlobs(arg1) {
   return window['go']['main']['App']['ReadTrackTagsFromBlobs'](arg1);
 }
 
+export function RefreshTrackMetadata(arg1) {
+  return window['go']['main']['App']['RefreshTrackMetadata'](arg1);
+}
+
 export function ResolveLibraryFolderForPath(arg1) {
   return window['go']['main']['App']['ResolveLibraryFolderForPath'](arg1);
 }

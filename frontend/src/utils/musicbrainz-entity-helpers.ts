@@ -57,16 +57,19 @@ const emptyMusicBrainzExplorationGraph = (): MusicBrainzExplorationGraph => ({
     warnings: [],
 });
 
-export const lookupMusicBrainzTrackMetadata = async (releaseId: string): Promise<MusicBrainzTrackMetadata> => {
+export const lookupMusicBrainzTrackMetadata = async (recordingId: string, releaseId: string): Promise<MusicBrainzTrackMetadata> => {
+    const cleanRecordingId = recordingId.trim();
     const cleanReleaseId = releaseId.trim();
-    if (!cleanReleaseId) {
+    if (!cleanRecordingId && !cleanReleaseId) {
         return emptyMusicBrainzTrackMetadata(cleanReleaseId);
     }
 
     try {
-        const releasePath = `/ws/2/release/${cleanReleaseId}?fmt=json&inc=artists+labels`;
+        const releasePath = cleanReleaseId
+            ? `/ws/2/release/${cleanReleaseId}?fmt=json&inc=artists+labels`
+            : `/ws/2/recording/${cleanRecordingId}?fmt=json&inc=artists+releases`;
         return await scheduleMusicBrainzRequest(async () => (
-            await LookupTrackMusicBrainzMetadata('', cleanReleaseId) as MusicBrainzTrackMetadata
+            await LookupTrackMusicBrainzMetadata(cleanRecordingId, cleanReleaseId) as MusicBrainzTrackMetadata
         ), {
             server: musicBrainzServerUrlForLogs(),
             path: releasePath,

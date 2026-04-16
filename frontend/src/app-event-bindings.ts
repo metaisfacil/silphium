@@ -761,6 +761,21 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     document.addEventListener('pointerdown', () => { unlockMediaSessionAnchorFromUserGesture(); }, { capture: true, passive: true });
     document.addEventListener('keydown', () => { unlockMediaSessionAnchorFromUserGesture(); }, { capture: true });
     document.addEventListener('keydown', (event: KeyboardEvent) => {
+        if (event.key !== 'F5' || event.repeat) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        void context.refreshCurrentTrackMetadata().catch((error: unknown) => {
+            console.error(error);
+            const message = error instanceof Error && error.message.trim() !== ''
+                ? error.message.trim()
+                : 'Unable to refresh metadata for the current track.';
+            context.openErrorModal('Metadata Refresh Failed', message);
+        });
+    });
+    document.addEventListener('keydown', (event: KeyboardEvent) => {
         const suppressCapsLockToggle = event.code === 'CapsLock' && focusedShortcutBindingsUseCode('CapsLock');
         if (handleFocusedHardwareMediaKey(event) || handleFocusedKeyboardShortcut(event) || suppressCapsLockToggle) {
             event.preventDefault();
