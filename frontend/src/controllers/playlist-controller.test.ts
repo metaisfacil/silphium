@@ -769,7 +769,7 @@ describe('createPlaylistController', () => {
         expect(ensureTrackTagsResolvedBatch).toHaveBeenCalledWith([151]);
     });
 
-    it('keeps unresolved future queue rows out of the rendered queue until tags are loaded', async () => {
+    it('hydrates future queue rows even when non-queue background hydration is disabled', async () => {
         document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
         const trigger = document.createElement('button');
         document.body.append(trigger);
@@ -782,12 +782,19 @@ describe('createPlaylistController', () => {
             displayArtist: `Artist ${index}`,
             tagsResolved: index !== 101,
         }));
-        const ensureTrackTagsResolvedBatch = vi.fn(async () => undefined);
+        const ensureTrackTagsResolvedBatch = vi.fn(async (indexes: number[]) => {
+            indexes.forEach((index) => {
+                trackViews[index].displayTitle = `Hydrated ${index}`;
+                trackViews[index].displayArtist = `Hydrated Artist ${index}`;
+                trackViews[index].tagsResolved = true;
+            });
+        });
 
         const controller = createPlaylistController({
             trigger,
             menu,
             modal,
+            backgroundHydrationEnabled: false,
             getTrack: (index: number) => trackViews[index],
             getTrackPath: (index: number) => `/music/track-${index}.flac`,
             getTrackCount: () => trackViews.length,
@@ -815,13 +822,10 @@ describe('createPlaylistController', () => {
         controller.openModal();
         await flushPromises();
 
-        expect(modal.playlistList.querySelector('[data-playlist-track-index="101"]')).toBeNull();
-
-        trackViews[101].tagsResolved = true;
-        controller.scheduleRender();
-        await flushPromises();
-
+        expect(ensureTrackTagsResolvedBatch).toHaveBeenCalledWith([101]);
         expect(modal.playlistList.querySelector('[data-playlist-track-index="101"]')).not.toBeNull();
+        expect(modal.playlistList.textContent).toContain('Hydrated 101');
+        expect(modal.playlistList.textContent).toContain('Hydrated Artist 101');
     });
 
     it('hydrates only the visible loaded playlist window and requests more as the user scrolls', async () => {

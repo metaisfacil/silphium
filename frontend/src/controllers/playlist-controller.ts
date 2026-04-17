@@ -382,15 +382,6 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const isViewingReadOnlyPlaylist = (): boolean => controllerState.selectedSource === 'history' && controllerState.loadedPlaylistReadOnly;
 
-    const hasAuthoritativeTrackLabels = (trackIndex: number, cachedItemsByTrackIndex: Map<number, LoadedPlaylistCachedItem>): boolean => {
-        const track = options.getTrack(trackIndex);
-        if (!track) {
-            return false;
-        }
-
-        return track.tagsResolved || hasCachedPlaylistLabels(cachedItemsByTrackIndex.get(trackIndex));
-    };
-
     const getPlaylistRowLabels = (
         trackIndex: number,
         cachedItemsByTrackIndex: Map<number, LoadedPlaylistCachedItem>,
@@ -466,7 +457,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const requestTrackMetadataHydration = (trackIndexes: number[]): void => {
-        if (!backgroundHydrationEnabled) {
+        if (!backgroundHydrationEnabled && controllerState.selectedSource !== 'queue') {
             resetHydrationRequestState();
             return;
         }
@@ -1128,10 +1119,6 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             const nextVisibleRows: RenderablePlaylistRow[] = [];
             for (let position = 0; position < indexes.length; position += 1) {
                 const trackIndex = indexes[position];
-                if (!viewingPlaylist && trackIndex !== currentTrackIndex && !hasAuthoritativeTrackLabels(trackIndex, cachedItemsByTrackIndex)) {
-                    continue;
-                }
-
                 if (!matchesPlaylistFilter(trackIndex, cachedItemsByTrackIndex, filterTerms)) {
                     continue;
                 }
@@ -1150,10 +1137,6 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             const nextVisibleRows: RenderablePlaylistRow[] = [];
             for (let position = start; position < indexes.length && nextVisibleRows.length < end - start; position += 1) {
                 const trackIndex = indexes[position];
-                if (trackIndex !== currentTrackIndex && !hasAuthoritativeTrackLabels(trackIndex, cachedItemsByTrackIndex)) {
-                    continue;
-                }
-
                 nextVisibleRows.push({
                     actualPosition: position,
                     trackIndex,
@@ -1239,7 +1222,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     })();
 
     const hydrateTrackMetadataInBackground = (trackIndexes: number[]): void => {
-        if (!backgroundHydrationEnabled) {
+        if (!backgroundHydrationEnabled && controllerState.selectedSource !== 'queue') {
             resetHydrationRequestState();
             return;
         }
