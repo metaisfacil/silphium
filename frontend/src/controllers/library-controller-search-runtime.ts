@@ -5,6 +5,7 @@ import {
     createSearchMessageRow,
     getSearchTreeChildList,
     prefersReducedSearchTreeMotion,
+    scheduleSearchTreeListFrame,
     scheduleSearchTreeListCleanup,
     searchEntryLabel,
     setLibraryEntryButtonContent,
@@ -136,19 +137,21 @@ export const createLibraryControllerSearchRuntime = (context: LibraryControllerS
         }
 
         const currentHeight = childList.getBoundingClientRect().height;
+        const targetHeight = Math.max(childList.scrollHeight, currentHeight, 0);
         clearSearchTreeListAnimation(childList);
         childList.classList.add('is-collapsible', 'is-animating');
         childList.style.height = `${Math.max(currentHeight, 0)}px`;
         childList.style.opacity = currentHeight > 0 ? '1' : '0';
-        void childList.offsetHeight;
 
-        childList.style.height = `${childList.scrollHeight}px`;
-        childList.style.opacity = '1';
+        scheduleSearchTreeListFrame(childList, () => {
+            childList.style.height = `${targetHeight}px`;
+            childList.style.opacity = '1';
 
-        scheduleSearchTreeListCleanup(childList, () => {
-            childList.classList.remove('is-collapsible', 'is-animating');
-            childList.style.height = '';
-            childList.style.opacity = '';
+            scheduleSearchTreeListCleanup(childList, () => {
+                childList.classList.remove('is-collapsible', 'is-animating');
+                childList.style.height = '';
+                childList.style.opacity = '';
+            });
         });
     };
 
@@ -169,13 +172,14 @@ export const createLibraryControllerSearchRuntime = (context: LibraryControllerS
         childList.classList.add('is-collapsible', 'is-animating');
         childList.style.height = `${currentHeight}px`;
         childList.style.opacity = '1';
-        void childList.offsetHeight;
 
-        childList.style.height = '0px';
-        childList.style.opacity = '0';
+        scheduleSearchTreeListFrame(childList, () => {
+            childList.style.height = '0px';
+            childList.style.opacity = '0';
 
-        scheduleSearchTreeListCleanup(childList, () => {
-            childList.remove();
+            scheduleSearchTreeListCleanup(childList, () => {
+                childList.remove();
+            });
         });
     };
 

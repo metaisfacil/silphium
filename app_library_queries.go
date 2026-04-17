@@ -80,31 +80,12 @@ func (a *App) annotateMusicBrainzTaggedAlbumFolders(entries []LibraryBrowserEntr
 		return
 	}
 
-	taggedAlbumFolders := make(map[string]struct{})
-	for _, folderPathsByID := range a.musicBrainzTagReleaseFoldersByID {
-		for folderPath := range folderPathsByID {
-			normalizedFolderPath := normalizeMusicBrainzTagFolderPath(folderPath)
-			if normalizedFolderPath == "" {
-				continue
-			}
-
-			taggedAlbumFolders[strings.ToLower(normalizedFolderPath)] = struct{}{}
-		}
-	}
-
 	for index := range entries {
 		entry := &entries[index]
 		if entry.Kind != "folder" {
 			continue
 		}
-
-		normalizedEntryPath := normalizeMusicBrainzTagFolderPath(entry.Path)
-		if normalizedEntryPath == "" {
-			continue
-		}
-
-		_, tagged := taggedAlbumFolders[strings.ToLower(normalizedEntryPath)]
-		entry.MusicBrainzTaggedAlbumDir = tagged
+		entry.MusicBrainzTaggedAlbumDir = a.isMusicBrainzTaggedAlbumFolderLocked(entry.Path)
 	}
 }
 

@@ -512,6 +512,44 @@ func TestLibraryFolderPageReadLockDoesNotBlockConcurrentReads(t *testing.T) {
 	}
 }
 
+func TestGetLibraryFolderPageSortedUsesMusicBrainzTaggedAlbumLookupCache(t *testing.T) {
+	app, _ := newIndexedLibraryAppForTests(t)
+	app.settingsLoaded = true
+	app.settings.MusicBrainzTagDatabaseEnabled = true
+	app.musicBrainzTagStoreLoaded = true
+	app.musicBrainzTagReleaseFoldersByID = map[string]map[string]struct{}{
+		"11111111-1111-4111-8111-111111111111": {
+			"Library One/Artist One/Album One": {},
+		},
+	}
+	app.musicBrainzTagReleaseFolderRefCounts = nil
+
+	page := app.GetLibraryFolderPageSorted("Library One/Artist One", "name", 0, 10)
+	if len(app.musicBrainzTagReleaseFolderRefCounts) != 1 {
+		t.Fatalf("musicBrainzTagReleaseFolderRefCounts = %#v, want one cached album folder", app.musicBrainzTagReleaseFolderRefCounts)
+	}
+
+	albumOneTagged := false
+	albumTwoTagged := false
+	for _, entry := range page.Entries {
+		if entry.Kind != "folder" {
+			continue
+		}
+		if entry.Path == "Library One/Artist One/Album One" {
+			albumOneTagged = entry.MusicBrainzTaggedAlbumDir
+		}
+		if entry.Path == "Library One/Artist One/Album Two" {
+			albumTwoTagged = entry.MusicBrainzTaggedAlbumDir
+		}
+	}
+	if !albumOneTagged {
+		t.Fatalf("GetLibraryFolderPageSorted() = %#v, want Album One tagged", page)
+	}
+	if albumTwoTagged {
+		t.Fatalf("GetLibraryFolderPageSorted() = %#v, want Album Two untagged", page)
+	}
+}
+
 func TestSearchLibraryCancellationAfterLock(t *testing.T) {
 	app, _ := newIndexedLibraryAppForTests(t)
 

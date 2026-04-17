@@ -112,9 +112,10 @@ type appLibraryContentState struct {
 }
 
 type appTrackTagsCacheState struct {
-	mu     sync.Mutex
-	byPath map[string]trackTagsCacheEntry
-	order  []string
+	mu         sync.Mutex
+	byPath     map[string]trackTagsCacheEntry
+	order      []string
+	inflightBy map[string]*trackTagsInflightEntry
 }
 
 type appLibraryScanState struct {
@@ -199,6 +200,7 @@ type appMusicBrainzTagDatabaseState struct {
 	musicBrainzTagLastPersistAt            time.Time
 	musicBrainzTagEntityKeysByTag          map[string]map[string]struct{}
 	musicBrainzTagReleaseFoldersByID       map[string]map[string]struct{}
+	musicBrainzTagReleaseFolderRefCounts   map[string]int
 	musicBrainzTagReleaseFoldersByArtistID map[string]map[string]struct{}
 	musicBrainzTagArtistFoldersByID        map[string]map[string]struct{}
 }

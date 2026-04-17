@@ -436,7 +436,30 @@ func (a *App) scanMusicBrainzTagTrack(indexed LibraryIndexedFile, releaseDepth i
 		trackTags = TrackTags{}
 	}
 
-	record := musicBrainzTagTrackRecord{
+	record := musicBrainzTagTrackRecordFromIndexedTrack(indexed, releaseDepth, signature, trackTags)
+
+	a.musicBrainzTagMu.Lock()
+	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+	a.upsertMusicBrainzTagTrackRecordLocked(indexed.Path, record)
+	result := musicBrainzTagTrackScanResult{
+		completedEntityKeys: make([]string, 0, len(record.ArtistIDs)+1),
+		pendingEntityKeys:   make([]string, 0, len(record.ArtistIDs)+1),
+	}
+	for _, entityKey := range musicBrainzTagEntityKeysForTrackRecord(record) {
+		if a.musicBrainzTagEntityNeedsFetchLocked(entityKey, time.Now()) {
+			result.pendingEntityKeys = append(result.pendingEntityKeys, entityKey)
+			continue
+		}
+
+		result.completedEntityKeys = append(result.completedEntityKeys, entityKey)
+	}
+	a.musicBrainzTagMu.Unlock()
+
+	return result
+}
+
+func musicBrainzTagTrackRecordFromIndexedTrack(indexed LibraryIndexedFile, releaseDepth int, signature trackTagsFileSignature, trackTags TrackTags) musicBrainzTagTrackRecord {
+	return musicBrainzTagTrackRecord{
 		Signature:         signature,
 		Title:             strings.TrimSpace(trackTags.Title),
 		TrackArtist:       strings.TrimSpace(trackTags.Artist),
@@ -464,25 +487,6 @@ func (a *App) scanMusicBrainzTagTrack(indexed LibraryIndexedFile, releaseDepth i
 		ArtistFolderPaths: artistFolderPathsForIndexedTrack(indexed, releaseDepth),
 		LastScannedAt:     time.Now(),
 	}
-
-	a.musicBrainzTagMu.Lock()
-	a.ensureMusicBrainzTagDatabaseLoadedLocked()
-	a.upsertMusicBrainzTagTrackRecordLocked(indexed.Path, record)
-	result := musicBrainzTagTrackScanResult{
-		completedEntityKeys: make([]string, 0, len(record.ArtistIDs)+1),
-		pendingEntityKeys:   make([]string, 0, len(record.ArtistIDs)+1),
-	}
-	for _, entityKey := range musicBrainzTagEntityKeysForTrackRecord(record) {
-		if a.musicBrainzTagEntityNeedsFetchLocked(entityKey, time.Now()) {
-			result.pendingEntityKeys = append(result.pendingEntityKeys, entityKey)
-			continue
-		}
-
-		result.completedEntityKeys = append(result.completedEntityKeys, entityKey)
-	}
-	a.musicBrainzTagMu.Unlock()
-
-	return result
 }
 
 func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIndexedFile, paths []string, onProgress func(musicBrainzTagTrackScanResult)) musicBrainzTagTrackScanResult {
