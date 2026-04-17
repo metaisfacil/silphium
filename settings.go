@@ -976,35 +976,39 @@ func (a *App) ensureSettingsLoaded() {
 
 // GetSettings returns the currently persisted application settings.
 func (a *App) GetSettings() AppSettings {
-	a.ensureSettingsLoaded()
-	return a.settingsState().settings
+	return profiledValue(a, "GetSettings", func() AppSettings {
+		a.ensureSettingsLoaded()
+		return a.settingsState().settings
+	})
 }
 
 // SaveSettings validates, persists, and returns normalized application settings.
 func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
-	settingsState := a.settingsState()
-	a.ensureSettingsLoaded()
-	if strings.TrimSpace(settings.OpenSubsonicAPIKey) == "" {
-		settings.OpenSubsonicAPIKey = settingsState.settings.OpenSubsonicAPIKey
-	}
-	if strings.TrimSpace(settings.OpenSubsonicAPIKeyHash) == "" {
-		settings.OpenSubsonicAPIKeyHash = settingsState.settings.OpenSubsonicAPIKeyHash
-	}
+	return profiledResult(a, "SaveSettings", func() (AppSettings, error) {
+		settingsState := a.settingsState()
+		a.ensureSettingsLoaded()
+		if strings.TrimSpace(settings.OpenSubsonicAPIKey) == "" {
+			settings.OpenSubsonicAPIKey = settingsState.settings.OpenSubsonicAPIKey
+		}
+		if strings.TrimSpace(settings.OpenSubsonicAPIKeyHash) == "" {
+			settings.OpenSubsonicAPIKeyHash = settingsState.settings.OpenSubsonicAPIKeyHash
+		}
 
-	normalized := normalizeAppSettings(settings)
-	if err := writeAppSettings(a.ensureSettingsPath(), normalized); err != nil {
-		return AppSettings{}, err
-	}
+		normalized := normalizeAppSettings(settings)
+		if err := writeAppSettings(a.ensureSettingsPath(), normalized); err != nil {
+			return AppSettings{}, err
+		}
 
-	settingsState.settings = normalized
-	a.audioBackend().SetFFmpegPath(normalized.FFmpegPath)
-	a.audioBackend().ApplyAudioSettings(normalized.Audio)
-	a.syncOpenSubsonicServer()
-	if normalized.LocalLibraryFilesDatabaseEnabled != nil && !*normalized.LocalLibraryFilesDatabaseEnabled {
-		a.stopLibraryFilesDatabaseWorker()
-	}
-	a.trimLocalLibraryListenHistory()
-	a.notifyMusicBrainzTagWorker()
-	a.refreshSystemTrayForSettings()
-	return normalized, nil
+		settingsState.settings = normalized
+		a.audioBackend().SetFFmpegPath(normalized.FFmpegPath)
+		a.audioBackend().ApplyAudioSettings(normalized.Audio)
+		a.syncOpenSubsonicServer()
+		if normalized.LocalLibraryFilesDatabaseEnabled != nil && !*normalized.LocalLibraryFilesDatabaseEnabled {
+			a.stopLibraryFilesDatabaseWorker()
+		}
+		a.trimLocalLibraryListenHistory()
+		a.notifyMusicBrainzTagWorker()
+		a.refreshSystemTrayForSettings()
+		return normalized, nil
+	})
 }

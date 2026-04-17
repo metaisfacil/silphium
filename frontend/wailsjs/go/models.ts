@@ -1162,3 +1162,205 @@ export namespace main {
 
 }
 
+export namespace profiling {
+	
+	export class BindingSummary {
+	    name: string;
+	    calls: number;
+	    errors: number;
+	    currentConcurrent: number;
+	    maxConcurrent: number;
+	    lastDurationMs: number;
+	    totalDurationMs: number;
+	    // Go type: time
+	    lastStartedAt?: any;
+	    // Go type: time
+	    lastCompletedAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new BindingSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.calls = source["calls"];
+	        this.errors = source["errors"];
+	        this.currentConcurrent = source["currentConcurrent"];
+	        this.maxConcurrent = source["maxConcurrent"];
+	        this.lastDurationMs = source["lastDurationMs"];
+	        this.totalDurationMs = source["totalDurationMs"];
+	        this.lastStartedAt = this.convertValues(source["lastStartedAt"], null);
+	        this.lastCompletedAt = this.convertValues(source["lastCompletedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MetricEvent {
+	    // Go type: time
+	    timestamp: any;
+	    source: string;
+	    type: string;
+	    name: string;
+	    value: number;
+	    meta?: Record<string, any>;
+	
+	    static createFrom(source: any = {}) {
+	        return new MetricEvent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.source = source["source"];
+	        this.type = source["type"];
+	        this.name = source["name"];
+	        this.value = source["value"];
+	        this.meta = source["meta"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SessionState {
+	    active: boolean;
+	    // Go type: time
+	    startedAt?: any;
+	    // Go type: time
+	    stoppedAt?: any;
+	    httpAddr: string;
+	    exportPath: string;
+	    frontendBatchCount: number;
+	    // Go type: time
+	    frontendLastIngestAt?: any;
+	    metricCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.active = source["active"];
+	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.stoppedAt = this.convertValues(source["stoppedAt"], null);
+	        this.httpAddr = source["httpAddr"];
+	        this.exportPath = source["exportPath"];
+	        this.frontendBatchCount = source["frontendBatchCount"];
+	        this.frontendLastIngestAt = this.convertValues(source["frontendLastIngestAt"], null);
+	        this.metricCount = source["metricCount"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SnapshotConfig {
+	    enabled: boolean;
+	    sampleIntervalMs: number;
+	    maxBufferSize: number;
+	    httpAddr: string;
+	    exportPath: string;
+	    cpuProfileEnabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SnapshotConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.sampleIntervalMs = source["sampleIntervalMs"];
+	        this.maxBufferSize = source["maxBufferSize"];
+	        this.httpAddr = source["httpAddr"];
+	        this.exportPath = source["exportPath"];
+	        this.cpuProfileEnabled = source["cpuProfileEnabled"];
+	    }
+	}
+	export class Snapshot {
+	    // Go type: time
+	    generatedAt: any;
+	    config: SnapshotConfig;
+	    session: SessionState;
+	    metrics: MetricEvent[];
+	    bindingSummaries: BindingSummary[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Snapshot(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.generatedAt = this.convertValues(source["generatedAt"], null);
+	        this.config = this.convertValues(source["config"], SnapshotConfig);
+	        this.session = this.convertValues(source["session"], SessionState);
+	        this.metrics = this.convertValues(source["metrics"], MetricEvent);
+	        this.bindingSummaries = this.convertValues(source["bindingSummaries"], BindingSummary);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+

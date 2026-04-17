@@ -337,23 +337,25 @@ func (a *App) markMusicBrainzTagWorkerActive() {
 
 // GetMusicBrainzTagWorkerProgress returns the current MusicBrainz tag worker snapshot.
 func (a *App) GetMusicBrainzTagWorkerProgress() MusicBrainzTagWorkerProgress {
-	workerState := a.musicBrainzTagWorkerState()
-	workerState.progressMu.Lock()
-	progress := workerState.progress
-	workerState.progressMu.Unlock()
+	return profiledValue(a, "GetMusicBrainzTagWorkerProgress", func() MusicBrainzTagWorkerProgress {
+		workerState := a.musicBrainzTagWorkerState()
+		workerState.progressMu.Lock()
+		progress := workerState.progress
+		workerState.progressMu.Unlock()
 
-	enabled := a.musicBrainzTagDatabaseEnabled()
-	if progress != (MusicBrainzTagWorkerProgress{}) || !enabled {
-		if progress == (MusicBrainzTagWorkerProgress{}) {
-			progress.Enabled = enabled
+		enabled := a.musicBrainzTagDatabaseEnabled()
+		if progress != (MusicBrainzTagWorkerProgress{}) || !enabled {
+			if progress == (MusicBrainzTagWorkerProgress{}) {
+				progress.Enabled = enabled
+			}
+			return progress
 		}
-		return progress
-	}
 
-	state := a.buildMusicBrainzTagWorkerState(workerState.generation.Load())
-	progress = state.progressSnapshot(true)
-	a.setMusicBrainzTagWorkerProgress(progress)
-	return progress
+		state := a.buildMusicBrainzTagWorkerState(workerState.generation.Load())
+		progress = state.progressSnapshot(true)
+		a.setMusicBrainzTagWorkerProgress(progress)
+		return progress
+	})
 }
 
 func (a *App) musicBrainzTagEntityNeedsFetchLocked(entityKey string, now time.Time) bool {

@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"Silphium/internal/profiling"
+
 	"github.com/fsnotify/fsnotify"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -27,6 +29,7 @@ const mediaKeyEvent = "silphium:media:key"
 // AppVersion is set at build time via -ldflags "-X main.AppVersion=...".
 var AppVersion = "dev"
 var runtimeEventsEmit = runtime.EventsEmit
+var runtimeEventsOn = runtime.EventsOn
 var runtimeWindowHide = runtime.WindowHide
 
 // App contains runtime state and service dependencies for the Wails backend.
@@ -35,6 +38,7 @@ type App struct {
 	appRuntimeState
 	appSettingsState
 	watchers appWatcherState
+	appProfilerState
 	appLibraryState
 	appMusicBrainzTagState
 	scrobble appScrobbleState
@@ -56,6 +60,14 @@ type appSettingsState struct {
 	appSettingsStorageState
 	settings       AppSettings
 	settingsLoaded bool
+}
+
+type appProfilerState struct {
+	mu                sync.Mutex
+	service           *profiling.Service
+	server            *http.Server
+	httpAddr          string
+	frontendEventsOff func()
 }
 
 type appSettingsStorageState struct {
@@ -203,7 +215,8 @@ type appMusicBrainzTagWorkerRuntimeState struct {
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		appAudioState: appAudioState{audio: NewAudioBackend()},
+		appAudioState:    appAudioState{audio: NewAudioBackend()},
+		appProfilerState: appProfilerState{service: profiling.NewService(profiling.LoadConfigFromEnv())},
 	}
 }
 
@@ -225,6 +238,7 @@ func (a *App) startup(ctx context.Context) {
 	runtimeState := a.runtimeState()
 	settingsState := a.settingsState()
 	runtimeState.ctx = ctx
+	a.startProfiler()
 	a.loadStoredSettings()
 	a.audioBackend().SetFFmpegPath(settingsState.settings.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(settingsState.settings.Audio)
@@ -237,6 +251,7 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(context.Context) {
 	a.runtimeState().quitRequested.Store(true)
+	a.stopProfiler()
 	a.stopOpenSubsonicServer()
 	a.stopSystemTray()
 	a.stopMediaKeyWatcher()
@@ -271,6 +286,11 @@ func (a *App) settingsState() *appSettingsState {
 
 func (a *App) settingsStorageState() *appSettingsStorageState {
 	return &a.settingsState().appSettingsStorageState
+}
+
+func (a *App) profilerState() *appProfilerState {
+	return &a.appProfilerState
+
 }
 
 func (a *App) libraryState() *appLibraryState {
@@ -323,7 +343,9 @@ func (a *App) musicBrainzTagWorkerState() *appMusicBrainzTagWorkerRuntimeState {
 
 // GetAppVersion returns the backend application version string.
 func (a *App) GetAppVersion() string {
-	return AppVersion
+	return profiledValue(a, "GetAppVersion", func() string {
+		return AppVersion
+	})
 }
 
 func (a *App) beforeClose(context.Context) bool {
@@ -342,21 +364,25 @@ func (a *App) beforeClose(context.Context) bool {
 
 // LogFrontendMessage logs a message from the frontend to the backend console
 func (a *App) LogFrontendMessage(message string) {
-	log.Println("[FRONTEND] " + message)
+	profiledVoid(a, "LogFrontendMessage", func() {
+		log.Println("[FRONTEND] " + message)
+	})
 }
 
 // DisposeFrontendSessionState clears backend runtime state bound to the current frontend session.
 func (a *App) DisposeFrontendSessionState() {
-	libraryGenerationState := a.libraryGenerationState()
-	libraryGenerationState.libraryScanGeneration.Add(1)
-	libraryGenerationState.searchGeneration.Add(1)
-	a.stopLibraryWatcher()
+	profiledVoid(a, "DisposeFrontendSessionState", func() {
+		libraryGenerationState := a.libraryGenerationState()
+		libraryGenerationState.libraryScanGeneration.Add(1)
+		libraryGenerationState.searchGeneration.Add(1)
+		a.stopLibraryWatcher()
 
-	state := a.audioBackend().State()
-	if state.Loaded || state.Playing {
-		if _, err := a.audioBackend().Stop(); err != nil {
-			log.Printf("failed to stop audio backend while disposing frontend session: %v", err)
-			a.audioBackend().stopWithoutInitialize()
+		state := a.audioBackend().State()
+		if state.Loaded || state.Playing {
+			if _, err := a.audioBackend().Stop(); err != nil {
+				log.Printf("failed to stop audio backend while disposing frontend session: %v", err)
+				a.audioBackend().stopWithoutInitialize()
+			}
 		}
-	}
+	})
 }

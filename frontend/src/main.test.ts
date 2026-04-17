@@ -302,6 +302,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
 
 vi.mock('../wailsjs/runtime/runtime', () => ({
     BrowserOpenURL: vi.fn(async () => undefined),
+    EventsEmit: vi.fn(),
     EventsOn: vi.fn(() => vi.fn()),
 }));
 

@@ -61,63 +61,67 @@ func writePlaylistContents(trackPaths []string) string {
 
 // SavePlaylistFile writes the provided track paths to an M3U/M3U8 playlist file.
 func (a *App) SavePlaylistFile(path string, trackPaths []string) bool {
-	cleanPath, ok := playlistFilePathForWrite(path)
-	if !ok {
-		return false
-	}
+	return profiledValue(a, "SavePlaylistFile", func() bool {
+		cleanPath, ok := playlistFilePathForWrite(path)
+		if !ok {
+			return false
+		}
 
-	if writeErr := os.WriteFile(cleanPath, []byte(writePlaylistContents(trackPaths)), 0o644); writeErr != nil {
-		return false
-	}
+		if writeErr := os.WriteFile(cleanPath, []byte(writePlaylistContents(trackPaths)), 0o644); writeErr != nil {
+			return false
+		}
 
-	return true
+		return true
+	})
 }
 
 // AppendTracksToPlaylistFile appends the provided track paths to an existing M3U/M3U8 playlist file.
 func (a *App) AppendTracksToPlaylistFile(path string, trackPaths []string) bool {
-	cleanPath, ok := playlistFilePathForWrite(path)
-	if !ok {
-		return false
-	}
-
-	trimmedTrackPaths := make([]string, 0, len(trackPaths))
-	for _, trackPath := range trackPaths {
-		trimmed := strings.TrimSpace(trackPath)
-		if trimmed == "" {
-			continue
+	return profiledValue(a, "AppendTracksToPlaylistFile", func() bool {
+		cleanPath, ok := playlistFilePathForWrite(path)
+		if !ok {
+			return false
 		}
 
-		trimmedTrackPaths = append(trimmedTrackPaths, trimmed)
-	}
-	if len(trimmedTrackPaths) == 0 {
-		return false
-	}
+		trimmedTrackPaths := make([]string, 0, len(trackPaths))
+		for _, trackPath := range trackPaths {
+			trimmed := strings.TrimSpace(trackPath)
+			if trimmed == "" {
+				continue
+			}
 
-	existingContents, err := os.ReadFile(cleanPath)
-	if err != nil && !os.IsNotExist(err) {
-		return false
-	}
+			trimmedTrackPaths = append(trimmedTrackPaths, trimmed)
+		}
+		if len(trimmedTrackPaths) == 0 {
+			return false
+		}
 
-	var builder strings.Builder
-	if len(existingContents) == 0 {
-		builder.WriteString("#EXTM3U\n")
-	} else {
-		builder.Write(existingContents)
-		if existingContents[len(existingContents)-1] != '\n' {
+		existingContents, err := os.ReadFile(cleanPath)
+		if err != nil && !os.IsNotExist(err) {
+			return false
+		}
+
+		var builder strings.Builder
+		if len(existingContents) == 0 {
+			builder.WriteString("#EXTM3U\n")
+		} else {
+			builder.Write(existingContents)
+			if existingContents[len(existingContents)-1] != '\n' {
+				builder.WriteByte('\n')
+			}
+		}
+
+		for _, trackPath := range trimmedTrackPaths {
+			builder.WriteString(trackPath)
 			builder.WriteByte('\n')
 		}
-	}
 
-	for _, trackPath := range trimmedTrackPaths {
-		builder.WriteString(trackPath)
-		builder.WriteByte('\n')
-	}
+		if writeErr := os.WriteFile(cleanPath, []byte(builder.String()), 0o644); writeErr != nil {
+			return false
+		}
 
-	if writeErr := os.WriteFile(cleanPath, []byte(builder.String()), 0o644); writeErr != nil {
-		return false
-	}
-
-	return true
+		return true
+	})
 }
 
 func resolvePlaylistEntryPath(playlistPath string, entry string) (string, bool) {
@@ -145,101 +149,105 @@ func resolvePlaylistEntryPath(playlistPath string, entry string) (string, bool) 
 
 // LoadPlaylistFile parses a playlist and returns valid audio entries within the allowed library scope.
 func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
-	cleanPath := normalizePath(path)
-	result := PlaylistLoadResult{
-		Name:       filepath.Base(cleanPath),
-		TrackFiles: []LibraryIndexedFile{},
-	}
-
-	if cleanPath == "" {
-		return result
-	}
-
-	absolutePath, err := filepath.Abs(cleanPath)
-	if err != nil {
-		return result
-	}
-	cleanPath = filepath.Clean(absolutePath)
-	result.Name = filepath.Base(cleanPath)
-
-	fileHandle, err := os.Open(cleanPath)
-	if err != nil {
-		return result
-	}
-	defer fileHandle.Close()
-
-	trackPaths := make([]string, 0)
-	scanner := bufio.NewScanner(fileHandle)
-	for scanner.Scan() {
-		resolved, ok := resolvePlaylistEntryPath(cleanPath, scanner.Text())
-		if !ok || !isAudioPath(resolved) {
-			continue
+	return profiledValue(a, "LoadPlaylistFile", func() PlaylistLoadResult {
+		cleanPath := normalizePath(path)
+		result := PlaylistLoadResult{
+			Name:       filepath.Base(cleanPath),
+			TrackFiles: []LibraryIndexedFile{},
 		}
 
-		if !a.isAllowedLibraryPath(resolved) {
-			continue
+		if cleanPath == "" {
+			return result
 		}
 
-		fileInfo, statErr := os.Stat(resolved)
-		if statErr != nil || fileInfo.IsDir() {
-			continue
+		absolutePath, err := filepath.Abs(cleanPath)
+		if err != nil {
+			return result
 		}
+		cleanPath = filepath.Clean(absolutePath)
+		result.Name = filepath.Base(cleanPath)
 
-		folderPath := filepath.ToSlash(filepath.Dir(resolved))
-		relativePath := filepath.Base(resolved)
-		rootPath := ""
-		rootName := ""
-		if root, ok := a.activeLibraryRootForPath(resolved); ok {
-			if indexed, indexedOk := indexFileForRoot(root, resolved, filepath.Base(resolved)); indexedOk {
-				result.TrackFiles = append(result.TrackFiles, indexed)
+		fileHandle, err := os.Open(cleanPath)
+		if err != nil {
+			return result
+		}
+		defer fileHandle.Close()
+
+		trackPaths := make([]string, 0)
+		scanner := bufio.NewScanner(fileHandle)
+		for scanner.Scan() {
+			resolved, ok := resolvePlaylistEntryPath(cleanPath, scanner.Text())
+			if !ok || !isAudioPath(resolved) {
 				continue
 			}
 
-			rootPath = root.Path
-			rootName = root.Name
+			if !a.isAllowedLibraryPath(resolved) {
+				continue
+			}
+
+			fileInfo, statErr := os.Stat(resolved)
+			if statErr != nil || fileInfo.IsDir() {
+				continue
+			}
+
+			folderPath := filepath.ToSlash(filepath.Dir(resolved))
+			relativePath := filepath.Base(resolved)
+			rootPath := ""
+			rootName := ""
+			if root, ok := a.activeLibraryRootForPath(resolved); ok {
+				if indexed, indexedOk := indexFileForRoot(root, resolved, filepath.Base(resolved)); indexedOk {
+					result.TrackFiles = append(result.TrackFiles, indexed)
+					continue
+				}
+
+				rootPath = root.Path
+				rootName = root.Name
+			}
+
+			result.TrackFiles = append(result.TrackFiles, LibraryIndexedFile{
+				Name:         filepath.Base(resolved),
+				Path:         resolved,
+				RelativePath: relativePath,
+				FolderPath:   folderPath,
+				RootPath:     rootPath,
+				RootName:     rootName,
+				ReleaseDepth: 0,
+			})
 		}
 
-		result.TrackFiles = append(result.TrackFiles, LibraryIndexedFile{
-			Name:         filepath.Base(resolved),
-			Path:         resolved,
-			RelativePath: relativePath,
-			FolderPath:   folderPath,
-			RootPath:     rootPath,
-			RootName:     rootName,
-			ReleaseDepth: 0,
-		})
-	}
-
-	for _, trackFile := range result.TrackFiles {
-		trackPaths = append(trackPaths, trackFile.Path)
-	}
-	cacheByPath := loadPlaylistTrackCacheRecordsFromSQLite(a.libraryFilesDatabasePath(), trackPaths)
-	for index := range result.TrackFiles {
-		cacheRecord, ok := cacheByPath[result.TrackFiles[index].Path]
-		if !ok {
-			continue
+		for _, trackFile := range result.TrackFiles {
+			trackPaths = append(trackPaths, trackFile.Path)
 		}
-		result.TrackFiles[index].CachedTrackTitle = cacheRecord.TrackName
-		result.TrackFiles[index].CachedArtistName = cacheRecord.ArtistName
-	}
+		cacheByPath := loadPlaylistTrackCacheRecordsFromSQLite(a.libraryFilesDatabasePath(), trackPaths)
+		for index := range result.TrackFiles {
+			cacheRecord, ok := cacheByPath[result.TrackFiles[index].Path]
+			if !ok {
+				continue
+			}
+			result.TrackFiles[index].CachedTrackTitle = cacheRecord.TrackName
+			result.TrackFiles[index].CachedArtistName = cacheRecord.ArtistName
+		}
 
-	return result
+		return result
+	})
 }
 
 // SavePlaylistTrackMetadataCache stores resolved title/artist labels for later playlist loads.
 func (a *App) SavePlaylistTrackMetadataCache(entries []PlaylistTrackMetadataCacheEntry) bool {
-	if len(entries) == 0 || !a.localLibraryFilesDatabaseEnabled() {
-		return false
-	}
+	return profiledValue(a, "SavePlaylistTrackMetadataCache", func() bool {
+		if len(entries) == 0 || !a.localLibraryFilesDatabaseEnabled() {
+			return false
+		}
 
-	records := make([]playlistTrackCacheRecord, 0, len(entries))
-	for _, entry := range entries {
-		records = append(records, playlistTrackCacheRecord(entry))
-	}
+		records := make([]playlistTrackCacheRecord, 0, len(entries))
+		for _, entry := range entries {
+			records = append(records, playlistTrackCacheRecord(entry))
+		}
 
-	if err := savePlaylistTrackCacheRecordsToSQLite(a.libraryFilesDatabasePath(), records); err != nil {
-		return false
-	}
+		if err := savePlaylistTrackCacheRecordsToSQLite(a.libraryFilesDatabasePath(), records); err != nil {
+			return false
+		}
 
-	return true
+		return true
+	})
 }

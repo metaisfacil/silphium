@@ -250,84 +250,88 @@ func callLastFmReadAPI(params map[string]string) ([]byte, error) {
 
 // GetLastFmRequestToken requests a desktop-auth request token from Last.fm.
 func (a *App) GetLastFmRequestToken(apiKey string, apiSecret string) (string, error) {
-	cleanAPIKey, cleanAPISecret, err := lastFmAuthCredentials(apiKey, apiSecret)
-	if err != nil {
-		return "", err
-	}
-
-	params := map[string]string{
-		"api_key": cleanAPIKey,
-		"method":  "auth.getToken",
-	}
-	params["api_sig"] = signLastFmParams(params, cleanAPISecret)
-
-	responseBody, err := callLastFmAPI(params)
-	if err != nil {
-		return "", err
-	}
-
-	parsedResponse := lastFmGetTokenResponse{}
-	if err := xml.Unmarshal(responseBody, &parsedResponse); err != nil {
-		return "", errors.New("invalid last.fm auth token response")
-	}
-	if !strings.EqualFold(strings.TrimSpace(parsedResponse.Status), "ok") {
-		if parsedResponse.Error != nil && strings.TrimSpace(parsedResponse.Error.Message) != "" {
-			return "", errors.New(strings.TrimSpace(parsedResponse.Error.Message))
+	return profiledResult(a, "GetLastFmRequestToken", func() (string, error) {
+		cleanAPIKey, cleanAPISecret, err := lastFmAuthCredentials(apiKey, apiSecret)
+		if err != nil {
+			return "", err
 		}
 
-		return "", errors.New("last.fm auth token request failed")
-	}
+		params := map[string]string{
+			"api_key": cleanAPIKey,
+			"method":  "auth.getToken",
+		}
+		params["api_sig"] = signLastFmParams(params, cleanAPISecret)
 
-	token := strings.TrimSpace(parsedResponse.Token)
-	if token == "" {
-		return "", errors.New("last.fm auth token response did not include a token")
-	}
+		responseBody, err := callLastFmAPI(params)
+		if err != nil {
+			return "", err
+		}
 
-	return token, nil
+		parsedResponse := lastFmGetTokenResponse{}
+		if err := xml.Unmarshal(responseBody, &parsedResponse); err != nil {
+			return "", errors.New("invalid last.fm auth token response")
+		}
+		if !strings.EqualFold(strings.TrimSpace(parsedResponse.Status), "ok") {
+			if parsedResponse.Error != nil && strings.TrimSpace(parsedResponse.Error.Message) != "" {
+				return "", errors.New(strings.TrimSpace(parsedResponse.Error.Message))
+			}
+
+			return "", errors.New("last.fm auth token request failed")
+		}
+
+		token := strings.TrimSpace(parsedResponse.Token)
+		if token == "" {
+			return "", errors.New("last.fm auth token response did not include a token")
+		}
+
+		return token, nil
+	})
 }
 
 // GetLastFmSessionKey exchanges an authorized request token for a Last.fm session key.
 func (a *App) GetLastFmSessionKey(apiKey string, apiSecret string, requestToken string) (string, error) {
-	cleanAPIKey, cleanAPISecret, err := lastFmAuthCredentials(apiKey, apiSecret)
-	if err != nil {
-		return "", err
-	}
-
-	cleanRequestToken := strings.TrimSpace(requestToken)
-	if cleanRequestToken == "" {
-		return "", errors.New("last.fm session exchange requires a request token")
-	}
-
-	params := map[string]string{
-		"api_key": cleanAPIKey,
-		"method":  "auth.getSession",
-		"token":   cleanRequestToken,
-	}
-	params["api_sig"] = signLastFmParams(params, cleanAPISecret)
-
-	responseBody, err := callLastFmAPI(params)
-	if err != nil {
-		return "", err
-	}
-
-	parsedResponse := lastFmGetSessionResponse{}
-	if err := xml.Unmarshal(responseBody, &parsedResponse); err != nil {
-		return "", errors.New("invalid last.fm session response")
-	}
-	if !strings.EqualFold(strings.TrimSpace(parsedResponse.Status), "ok") {
-		if parsedResponse.Error != nil && strings.TrimSpace(parsedResponse.Error.Message) != "" {
-			return "", errors.New(strings.TrimSpace(parsedResponse.Error.Message))
+	return profiledResult(a, "GetLastFmSessionKey", func() (string, error) {
+		cleanAPIKey, cleanAPISecret, err := lastFmAuthCredentials(apiKey, apiSecret)
+		if err != nil {
+			return "", err
 		}
 
-		return "", errors.New("last.fm session request failed")
-	}
+		cleanRequestToken := strings.TrimSpace(requestToken)
+		if cleanRequestToken == "" {
+			return "", errors.New("last.fm session exchange requires a request token")
+		}
 
-	sessionKey := strings.TrimSpace(parsedResponse.Session.Key)
-	if sessionKey == "" {
-		return "", errors.New("last.fm session response did not include a session key")
-	}
+		params := map[string]string{
+			"api_key": cleanAPIKey,
+			"method":  "auth.getSession",
+			"token":   cleanRequestToken,
+		}
+		params["api_sig"] = signLastFmParams(params, cleanAPISecret)
 
-	return sessionKey, nil
+		responseBody, err := callLastFmAPI(params)
+		if err != nil {
+			return "", err
+		}
+
+		parsedResponse := lastFmGetSessionResponse{}
+		if err := xml.Unmarshal(responseBody, &parsedResponse); err != nil {
+			return "", errors.New("invalid last.fm session response")
+		}
+		if !strings.EqualFold(strings.TrimSpace(parsedResponse.Status), "ok") {
+			if parsedResponse.Error != nil && strings.TrimSpace(parsedResponse.Error.Message) != "" {
+				return "", errors.New(strings.TrimSpace(parsedResponse.Error.Message))
+			}
+
+			return "", errors.New("last.fm session request failed")
+		}
+
+		sessionKey := strings.TrimSpace(parsedResponse.Session.Key)
+		if sessionKey == "" {
+			return "", errors.New("last.fm session response did not include a session key")
+		}
+
+		return sessionKey, nil
+	})
 }
 
 func (a *App) lastFmCredentials() (string, string, string, error) {
@@ -444,184 +448,190 @@ func (a *App) shouldSkipLastFmDuplicateScrobble(metadata LastFmTrackMetadata, li
 
 // SubmitLastFm sends a now-playing or scrobble event to the Last.fm API.
 func (a *App) SubmitLastFm(listenType string, metadata LastFmTrackMetadata, listenedAt int64) error {
-	apiKey, apiSecret, sessionKey, err := a.lastFmCredentials()
-	if err != nil {
-		return err
-	}
-
-	cleanArtistName := strings.TrimSpace(metadata.ArtistName)
-	cleanTrackName := strings.TrimSpace(metadata.TrackName)
-	if cleanArtistName == "" || cleanTrackName == "" {
-		return errors.New("artist name and track name are required for Last.fm submissions")
-	}
-
-	normalizedType := strings.TrimSpace(strings.ToLower(listenType))
-	methodName := ""
-	submitTimestamp := int64(0)
-	switch normalizedType {
-	case "playing_now":
-		methodName = "track.updateNowPlaying"
-	case "single":
-		methodName = "track.scrobble"
-		if listenedAt <= 0 {
-			listenedAt = time.Now().Unix()
+	return profiledError(a, "SubmitLastFm", func() error {
+		apiKey, apiSecret, sessionKey, err := a.lastFmCredentials()
+		if err != nil {
+			return err
 		}
-		if a.shouldSkipLastFmDuplicateScrobble(metadata, listenedAt) {
-			return nil
+
+		cleanArtistName := strings.TrimSpace(metadata.ArtistName)
+		cleanTrackName := strings.TrimSpace(metadata.TrackName)
+		if cleanArtistName == "" || cleanTrackName == "" {
+			return errors.New("artist name and track name are required for Last.fm submissions")
 		}
-		submitTimestamp = listenedAt
-	default:
-		return errors.New("listen type must be either playing_now or single")
-	}
 
-	params := map[string]string{
-		"api_key": apiKey,
-		"artist":  cleanArtistName,
-		"method":  methodName,
-		"sk":      sessionKey,
-		"track":   cleanTrackName,
-	}
+		normalizedType := strings.TrimSpace(strings.ToLower(listenType))
+		methodName := ""
+		submitTimestamp := int64(0)
+		switch normalizedType {
+		case "playing_now":
+			methodName = "track.updateNowPlaying"
+		case "single":
+			methodName = "track.scrobble"
+			if listenedAt <= 0 {
+				listenedAt = time.Now().Unix()
+			}
+			if a.shouldSkipLastFmDuplicateScrobble(metadata, listenedAt) {
+				return nil
+			}
+			submitTimestamp = listenedAt
+		default:
+			return errors.New("listen type must be either playing_now or single")
+		}
 
-	if releaseName := strings.TrimSpace(metadata.ReleaseName); releaseName != "" {
-		params["album"] = releaseName
-	}
-	if albumArtist := strings.TrimSpace(metadata.AlbumArtist); albumArtist != "" {
-		params["albumArtist"] = albumArtist
-	}
-	if trackNumber := lastFmTrackNumber(metadata.TrackNumber); trackNumber != "" {
-		params["trackNumber"] = trackNumber
-	}
-	if recordingMBID := strings.TrimSpace(metadata.RecordingMBID); recordingMBID != "" {
-		params["mbid"] = recordingMBID
-	}
-	if durationSeconds := lastFmDurationSeconds(metadata.DurationSeconds); durationSeconds != "" {
-		params["duration"] = durationSeconds
-	}
-	if submitTimestamp > 0 {
-		params["timestamp"] = strconv.FormatInt(submitTimestamp, 10)
-	}
+		params := map[string]string{
+			"api_key": apiKey,
+			"artist":  cleanArtistName,
+			"method":  methodName,
+			"sk":      sessionKey,
+			"track":   cleanTrackName,
+		}
 
-	params["api_sig"] = signLastFmParams(params, apiSecret)
+		if releaseName := strings.TrimSpace(metadata.ReleaseName); releaseName != "" {
+			params["album"] = releaseName
+		}
+		if albumArtist := strings.TrimSpace(metadata.AlbumArtist); albumArtist != "" {
+			params["albumArtist"] = albumArtist
+		}
+		if trackNumber := lastFmTrackNumber(metadata.TrackNumber); trackNumber != "" {
+			params["trackNumber"] = trackNumber
+		}
+		if recordingMBID := strings.TrimSpace(metadata.RecordingMBID); recordingMBID != "" {
+			params["mbid"] = recordingMBID
+		}
+		if durationSeconds := lastFmDurationSeconds(metadata.DurationSeconds); durationSeconds != "" {
+			params["duration"] = durationSeconds
+		}
+		if submitTimestamp > 0 {
+			params["timestamp"] = strconv.FormatInt(submitTimestamp, 10)
+		}
 
-	requestBody := url.Values{}
-	for key, value := range params {
-		requestBody.Set(key, value)
-	}
+		params["api_sig"] = signLastFmParams(params, apiSecret)
 
-	httpRequest, err := http.NewRequest(http.MethodPost, lastFmAPIBaseURL, strings.NewReader(requestBody.Encode()))
-	if err != nil {
-		return err
-	}
+		requestBody := url.Values{}
+		for key, value := range params {
+			requestBody.Set(key, value)
+		}
 
-	httpRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		httpRequest, err := http.NewRequest(http.MethodPost, lastFmAPIBaseURL, strings.NewReader(requestBody.Encode()))
+		if err != nil {
+			return err
+		}
 
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	response, err := httpClient.Do(httpRequest)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
+		httpRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	responseBody, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return fmt.Errorf("unable to read last.fm response")
-	}
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		response, err := httpClient.Do(httpRequest)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = response.Body.Close()
+		}()
 
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		fallback := fmt.Sprintf("last.fm request failed with status %d", response.StatusCode)
+		responseBody, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			return fmt.Errorf("unable to read last.fm response")
+		}
+
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			fallback := fmt.Sprintf("last.fm request failed with status %d", response.StatusCode)
+			if parseErr := parseLastFmResponse(responseBody, fallback); parseErr != nil {
+				return parseErr
+			}
+
+			return errors.New(fallback)
+		}
+
+		fallback := "invalid last.fm response"
 		if parseErr := parseLastFmResponse(responseBody, fallback); parseErr != nil {
 			return parseErr
 		}
 
-		return errors.New(fallback)
-	}
-
-	fallback := "invalid last.fm response"
-	if parseErr := parseLastFmResponse(responseBody, fallback); parseErr != nil {
-		return parseErr
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // SubmitLastFmLove submits a Last.fm track.love event for a track.
 func (a *App) SubmitLastFmLove(metadata LastFmTrackMetadata) error {
-	apiKey, apiSecret, sessionKey, err := a.lastFmCredentials()
-	if err != nil {
-		return err
-	}
+	return profiledError(a, "SubmitLastFmLove", func() error {
+		apiKey, apiSecret, sessionKey, err := a.lastFmCredentials()
+		if err != nil {
+			return err
+		}
 
-	cleanArtistName := strings.TrimSpace(metadata.ArtistName)
-	cleanTrackName := strings.TrimSpace(metadata.TrackName)
-	if cleanArtistName == "" || cleanTrackName == "" {
-		return errors.New("artist name and track name are required for Last.fm love submissions")
-	}
+		cleanArtistName := strings.TrimSpace(metadata.ArtistName)
+		cleanTrackName := strings.TrimSpace(metadata.TrackName)
+		if cleanArtistName == "" || cleanTrackName == "" {
+			return errors.New("artist name and track name are required for Last.fm love submissions")
+		}
 
-	params := map[string]string{
-		"api_key": apiKey,
-		"artist":  cleanArtistName,
-		"method":  "track.love",
-		"sk":      sessionKey,
-		"track":   cleanTrackName,
-	}
-	if recordingMBID := strings.TrimSpace(metadata.RecordingMBID); recordingMBID != "" {
-		params["mbid"] = recordingMBID
-	}
+		params := map[string]string{
+			"api_key": apiKey,
+			"artist":  cleanArtistName,
+			"method":  "track.love",
+			"sk":      sessionKey,
+			"track":   cleanTrackName,
+		}
+		if recordingMBID := strings.TrimSpace(metadata.RecordingMBID); recordingMBID != "" {
+			params["mbid"] = recordingMBID
+		}
 
-	params["api_sig"] = signLastFmParams(params, apiSecret)
+		params["api_sig"] = signLastFmParams(params, apiSecret)
 
-	responseBody, err := callLastFmAPI(params)
-	if err != nil {
-		return err
-	}
+		responseBody, err := callLastFmAPI(params)
+		if err != nil {
+			return err
+		}
 
-	fallback := "invalid last.fm love response"
-	if parseErr := parseLastFmResponse(responseBody, fallback); parseErr != nil {
-		return parseErr
-	}
+		fallback := "invalid last.fm love response"
+		if parseErr := parseLastFmResponse(responseBody, fallback); parseErr != nil {
+			return parseErr
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // SubmitLastFmUnlove submits a Last.fm track.unlove event for a track.
 func (a *App) SubmitLastFmUnlove(metadata LastFmTrackMetadata) error {
-	apiKey, apiSecret, sessionKey, err := a.lastFmCredentials()
-	if err != nil {
-		return err
-	}
+	return profiledError(a, "SubmitLastFmUnlove", func() error {
+		apiKey, apiSecret, sessionKey, err := a.lastFmCredentials()
+		if err != nil {
+			return err
+		}
 
-	cleanArtistName := strings.TrimSpace(metadata.ArtistName)
-	cleanTrackName := strings.TrimSpace(metadata.TrackName)
-	if cleanArtistName == "" || cleanTrackName == "" {
-		return errors.New("artist name and track name are required for Last.fm unlove submissions")
-	}
+		cleanArtistName := strings.TrimSpace(metadata.ArtistName)
+		cleanTrackName := strings.TrimSpace(metadata.TrackName)
+		if cleanArtistName == "" || cleanTrackName == "" {
+			return errors.New("artist name and track name are required for Last.fm unlove submissions")
+		}
 
-	params := map[string]string{
-		"api_key": apiKey,
-		"artist":  cleanArtistName,
-		"method":  "track.unlove",
-		"sk":      sessionKey,
-		"track":   cleanTrackName,
-	}
-	if recordingMBID := strings.TrimSpace(metadata.RecordingMBID); recordingMBID != "" {
-		params["mbid"] = recordingMBID
-	}
+		params := map[string]string{
+			"api_key": apiKey,
+			"artist":  cleanArtistName,
+			"method":  "track.unlove",
+			"sk":      sessionKey,
+			"track":   cleanTrackName,
+		}
+		if recordingMBID := strings.TrimSpace(metadata.RecordingMBID); recordingMBID != "" {
+			params["mbid"] = recordingMBID
+		}
 
-	params["api_sig"] = signLastFmParams(params, apiSecret)
+		params["api_sig"] = signLastFmParams(params, apiSecret)
 
-	responseBody, err := callLastFmAPI(params)
-	if err != nil {
-		return err
-	}
+		responseBody, err := callLastFmAPI(params)
+		if err != nil {
+			return err
+		}
 
-	fallback := "invalid last.fm unlove response"
-	if parseErr := parseLastFmResponse(responseBody, fallback); parseErr != nil {
-		return parseErr
-	}
+		fallback := "invalid last.fm unlove response"
+		if parseErr := parseLastFmResponse(responseBody, fallback); parseErr != nil {
+			return parseErr
+		}
 
-	return nil
+		return nil
+	})
 }
 
 func (a *App) lastFmSessionCredentials() (string, string, error) {
@@ -639,62 +649,64 @@ func (a *App) lastFmSessionCredentials() (string, string, error) {
 
 // GetLastFmFollowing returns the Last.fm friends list for the authenticated user.
 func (a *App) GetLastFmFollowing() ([]string, error) {
-	apiKey, sessionKey, err := a.lastFmSessionCredentials()
-	if err != nil {
-		return nil, err
-	}
-
-	infoBody, err := callLastFmReadAPI(map[string]string{
-		"method":  "user.getinfo",
-		"api_key": apiKey,
-		"sk":      sessionKey,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	infoResponse := lastFmUserGetInfoResponse{}
-	if err := json.Unmarshal(infoBody, &infoResponse); err != nil {
-		return nil, errors.New("invalid last.fm user info response")
-	}
-
-	userName := strings.TrimSpace(infoResponse.User.Name)
-	if userName == "" {
-		return nil, errors.New("last.fm user info response did not include a username")
-	}
-
-	friendsBody, err := callLastFmReadAPI(map[string]string{
-		"method":  "user.getfriends",
-		"api_key": apiKey,
-		"user":    userName,
-		"limit":   "200",
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	friendsResponse := lastFmUserGetFriendsResponse{}
-	if err := json.Unmarshal(friendsBody, &friendsResponse); err != nil {
-		return nil, errors.New("invalid last.fm friends response")
-	}
-
-	seen := make(map[string]struct{})
-	following := make([]string, 0, len(friendsResponse.Friends.Users))
-	for _, friend := range friendsResponse.Friends.Users {
-		name := strings.TrimSpace(friend.Name)
-		if name == "" {
-			continue
+	return profiledResult(a, "GetLastFmFollowing", func() ([]string, error) {
+		apiKey, sessionKey, err := a.lastFmSessionCredentials()
+		if err != nil {
+			return nil, err
 		}
-		normalized := strings.ToLower(name)
-		if _, exists := seen[normalized]; exists {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		following = append(following, name)
-	}
 
-	sort.Strings(following)
-	return following, nil
+		infoBody, err := callLastFmReadAPI(map[string]string{
+			"method":  "user.getinfo",
+			"api_key": apiKey,
+			"sk":      sessionKey,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		infoResponse := lastFmUserGetInfoResponse{}
+		if err := json.Unmarshal(infoBody, &infoResponse); err != nil {
+			return nil, errors.New("invalid last.fm user info response")
+		}
+
+		userName := strings.TrimSpace(infoResponse.User.Name)
+		if userName == "" {
+			return nil, errors.New("last.fm user info response did not include a username")
+		}
+
+		friendsBody, err := callLastFmReadAPI(map[string]string{
+			"method":  "user.getfriends",
+			"api_key": apiKey,
+			"user":    userName,
+			"limit":   "200",
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		friendsResponse := lastFmUserGetFriendsResponse{}
+		if err := json.Unmarshal(friendsBody, &friendsResponse); err != nil {
+			return nil, errors.New("invalid last.fm friends response")
+		}
+
+		seen := make(map[string]struct{})
+		following := make([]string, 0, len(friendsResponse.Friends.Users))
+		for _, friend := range friendsResponse.Friends.Users {
+			name := strings.TrimSpace(friend.Name)
+			if name == "" {
+				continue
+			}
+			normalized := strings.ToLower(name)
+			if _, exists := seen[normalized]; exists {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			following = append(following, name)
+		}
+
+		sort.Strings(following)
+		return following, nil
+	})
 }
 
 func normalizeLastFmSocialCount(count int) int {
@@ -731,91 +743,93 @@ func parseLastFmUnixTimestamp(value string) int64 {
 
 // GetLastFmFollowingFeed returns recent listens for followed Last.fm users.
 func (a *App) GetLastFmFollowingFeed(count int) ([]ListenBrainzSocialEvent, error) {
-	apiKey, _, err := a.lastFmSessionCredentials()
-	if err != nil {
-		return nil, err
-	}
-
-	followingUsers, err := a.GetLastFmFollowing()
-	if err != nil {
-		return nil, err
-	}
-
-	maxUsers := normalizeLastFmSocialCount(count)
-	if len(followingUsers) > maxUsers {
-		followingUsers = followingUsers[:maxUsers]
-	}
-
-	events := make([]ListenBrainzSocialEvent, 0, len(followingUsers))
-	for _, friend := range followingUsers {
-		recentTracksBody, requestErr := callLastFmReadAPI(map[string]string{
-			"method":  "user.getrecenttracks",
-			"api_key": apiKey,
-			"user":    friend,
-			"limit":   "1",
-		})
-		if requestErr != nil {
-			continue
+	return profiledResult(a, "GetLastFmFollowingFeed", func() ([]ListenBrainzSocialEvent, error) {
+		apiKey, _, err := a.lastFmSessionCredentials()
+		if err != nil {
+			return nil, err
 		}
 
-		recentTracksResponse := lastFmUserGetRecentTracksResponse{}
-		if unmarshalErr := json.Unmarshal(recentTracksBody, &recentTracksResponse); unmarshalErr != nil {
-			continue
+		followingUsers, err := a.GetLastFmFollowing()
+		if err != nil {
+			return nil, err
 		}
 
-		if len(recentTracksResponse.RecentTracks.Tracks) == 0 {
-			continue
+		maxUsers := normalizeLastFmSocialCount(count)
+		if len(followingUsers) > maxUsers {
+			followingUsers = followingUsers[:maxUsers]
 		}
 
-		track := recentTracksResponse.RecentTracks.Tracks[0]
-		trackName := strings.TrimSpace(track.Name)
-		if trackName == "" {
-			continue
-		}
+		events := make([]ListenBrainzSocialEvent, 0, len(followingUsers))
+		for _, friend := range followingUsers {
+			recentTracksBody, requestErr := callLastFmReadAPI(map[string]string{
+				"method":  "user.getrecenttracks",
+				"api_key": apiKey,
+				"user":    friend,
+				"limit":   "1",
+			})
+			if requestErr != nil {
+				continue
+			}
 
-		artistName := strings.TrimSpace(track.Artist.Name)
-		if artistName == "" {
-			artistName = "Unknown artist"
-		}
+			recentTracksResponse := lastFmUserGetRecentTracksResponse{}
+			if unmarshalErr := json.Unmarshal(recentTracksBody, &recentTracksResponse); unmarshalErr != nil {
+				continue
+			}
 
-		listenedAt := parseLastFmUnixTimestamp(track.Date.UnixTime)
-		playingNow := strings.EqualFold(strings.TrimSpace(track.Attr.NowPlaying), "true")
-		if playingNow && listenedAt <= 0 {
-			listenedAt = time.Now().Unix()
-		}
+			if len(recentTracksResponse.RecentTracks.Tracks) == 0 {
+				continue
+			}
 
-		eventID := stableLastFmSocialID(friend, trackName, listenedAt)
-		events = append(events, ListenBrainzSocialEvent{
-			ID:         eventID,
-			Created:    listenedAt,
-			EventType:  "listen",
-			Hidden:     false,
-			UserName:   friend,
-			ListenedAt: listenedAt,
-			PlayingNow: playingNow,
-			TrackMetadata: ListenBrainzSocialTrackMetadata{
-				ArtistName:  artistName,
-				TrackName:   trackName,
-				ReleaseName: strings.TrimSpace(track.Album.Name),
-				AdditionalInfo: ListenBrainzSocialAdditionalInfo{
-					MusicService:     "last.fm",
-					MusicServiceName: "Last.fm",
-					RecordingMBID:    strings.TrimSpace(track.MBID),
+			track := recentTracksResponse.RecentTracks.Tracks[0]
+			trackName := strings.TrimSpace(track.Name)
+			if trackName == "" {
+				continue
+			}
+
+			artistName := strings.TrimSpace(track.Artist.Name)
+			if artistName == "" {
+				artistName = "Unknown artist"
+			}
+
+			listenedAt := parseLastFmUnixTimestamp(track.Date.UnixTime)
+			playingNow := strings.EqualFold(strings.TrimSpace(track.Attr.NowPlaying), "true")
+			if playingNow && listenedAt <= 0 {
+				listenedAt = time.Now().Unix()
+			}
+
+			eventID := stableLastFmSocialID(friend, trackName, listenedAt)
+			events = append(events, ListenBrainzSocialEvent{
+				ID:         eventID,
+				Created:    listenedAt,
+				EventType:  "listen",
+				Hidden:     false,
+				UserName:   friend,
+				ListenedAt: listenedAt,
+				PlayingNow: playingNow,
+				TrackMetadata: ListenBrainzSocialTrackMetadata{
+					ArtistName:  artistName,
+					TrackName:   trackName,
+					ReleaseName: strings.TrimSpace(track.Album.Name),
+					AdditionalInfo: ListenBrainzSocialAdditionalInfo{
+						MusicService:     "last.fm",
+						MusicServiceName: "Last.fm",
+						RecordingMBID:    strings.TrimSpace(track.MBID),
+					},
 				},
-			},
-		})
-	}
-
-	sort.Slice(events, func(i, j int) bool {
-		if events[i].ListenedAt == events[j].ListenedAt {
-			return events[i].ID > events[j].ID
+			})
 		}
-		return events[i].ListenedAt > events[j].ListenedAt
+
+		sort.Slice(events, func(i, j int) bool {
+			if events[i].ListenedAt == events[j].ListenedAt {
+				return events[i].ID > events[j].ID
+			}
+			return events[i].ListenedAt > events[j].ListenedAt
+		})
+
+		if len(events) > count && count > 0 {
+			return events[:count], nil
+		}
+
+		return events, nil
 	})
-
-	if len(events) > count && count > 0 {
-		return events[:count], nil
-	}
-
-	return events, nil
 }

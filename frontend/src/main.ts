@@ -60,9 +60,9 @@ import {
     findLibraryFolderForTrack,
     formatTime,
 } from './utils/main-helpers'; 
-import { formatPerfLogMessage } from './utils/perf-log';
 import { installHmrFullReset } from './utils/hmr-full-reset';
 import { scheduleMusicBrainzRequest } from './utils/musicbrainz-request-scheduler';
+import { installProfilingAgent } from './services/profiling-agent';
 import {
     normalizeMusicBrainzTagWorkerProgress,
     normalizeAppSettings,
@@ -89,54 +89,8 @@ if (!app) {
     throw new Error('App container not found');
 }
 
-const installFrontendPerfMonitor = (): void => {
-    const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
-    if (!devPerfLoggingEnabled) {
-        return;
-    }
-
-    let lastFrameLogAtMs = 0;
-    let previousFrameAtMs = performance.now();
-    const monitorFrames = (): void => {
-        const nowMs = performance.now();
-        const deltaMs = nowMs - previousFrameAtMs;
-        previousFrameAtMs = nowMs;
-        if (deltaMs >= 120 && (nowMs - lastFrameLogAtMs) >= 1500) {
-            lastFrameLogAtMs = nowMs;
-            const message = formatPerfLogMessage(`frame gap ${deltaMs.toFixed(1)}ms`);
-            console.warn(message);
-            void LogFrontendMessage(message).catch(() => undefined);
-        }
-
-        window.requestAnimationFrame(monitorFrames);
-    };
-
-    window.requestAnimationFrame(monitorFrames);
-
-    if (typeof PerformanceObserver === 'undefined') {
-        return;
-    }
-
-    try {
-        const observer = new PerformanceObserver((list) => {
-            for (const entry of list.getEntries()) {
-                if (entry.duration < 80) {
-                    continue;
-                }
-
-                const message = formatPerfLogMessage(`long task ${entry.duration.toFixed(1)}ms`);
-                console.warn(message);
-                void LogFrontendMessage(message).catch(() => undefined);
-            }
-        });
-        observer.observe({ entryTypes: ['longtask'] });
-    } catch {
-        // Ignore unsupported observer configurations in embedded runtimes.
-    }
-};
-
 installHmrFullReset(import.meta);
-installFrontendPerfMonitor();
+installProfilingAgent();
 
 renderAppShell(app);
 
