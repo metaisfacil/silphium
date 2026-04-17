@@ -641,8 +641,9 @@ const {
 } = coverFlipRuntime;
 
 const volumeBtn = document.querySelector('#volume-btn') as HTMLButtonElement;
-const cardResizeObserver = new ResizeObserver(() => {
-    updateLyricsPanelVisibility();
+const cardResizeObserver = new ResizeObserver((entries) => {
+    const measuredCardHeightPx = entries[0]?.contentRect.height;
+    updateLyricsPanelVisibility(measuredCardHeightPx);
 });
 
 const lateRuntimeRefs = {

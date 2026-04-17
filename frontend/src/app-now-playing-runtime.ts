@@ -42,12 +42,16 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     const gaplessQueueLeadTimeMinSeconds = 6;
     const gaplessQueueLeadTimeMaxSeconds = 18;
     const gaplessQueueLeadTimeFraction = 0.12;
+    const lyricsPanelWidthPx = 400;
+    const lyricsVisibilityBufferPx = 120;
     const playbackProgressEstimator = createPlaybackProgressEstimator();
     const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
     let playbackProgressAnimationFrameId = 0;
     let playbackProgressEndSyncRequested = false;
     let playbackStateSyncInFlight = false;
     let lastAudioStatePerfLogAtMs = 0;
+    let lastPlayerCardHeightPx = 0;
+    let lastLyricsVisibilityState: boolean | null = null;
 
     const logSlowAudioStatePoll = (elapsedMs: number): void => {
         if (!devPerfLoggingEnabled) {
@@ -848,35 +852,46 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         return context.tracks[context.currentTrackIndex].displayLyrics.trim() !== '';
     };
 
-    const updateLyricsPanelVisibility = (): void => {
-        const lyricsPanelWidth = 400;
-        const visibilityBuffer = 120;
+    const resolvedPlayerLaneGapPx = (): number => {
+        const rootFontSizePx = parseFloat(getComputedStyle(document.documentElement).fontSize || '16') || 16;
+        return Math.min(Math.max(window.innerWidth * 0.03, rootFontSizePx), rootFontSizePx * 1.6);
+    };
+
+    const updateLyricsPanelVisibility = (measuredCardHeightPx?: number): void => {
         const shellStyles = getComputedStyle(context.playerShell);
         const horizontalPadding = (parseFloat(shellStyles.paddingLeft) || 0) + (parseFloat(shellStyles.paddingRight) || 0);
         const verticalPadding = (parseFloat(shellStyles.paddingTop) || 0) + (parseFloat(shellStyles.paddingBottom) || 0);
-        const wasLyricsVisible = context.playerLane.classList.contains('lyrics-visible');
-        if (!wasLyricsVisible) {
-            context.playerLane.classList.add('lyrics-visible');
-        }
-        const laneStyles = getComputedStyle(context.playerLane);
-        const laneGap = parseFloat(laneStyles.gap || laneStyles.columnGap || '0') || 0;
-        if (!wasLyricsVisible) {
-            context.playerLane.classList.remove('lyrics-visible');
-        }
-
+        const laneGapPx = resolvedPlayerLaneGapPx();
         const availableWidth = Math.max(0, window.innerWidth - horizontalPadding);
         const targetCardWidth = Math.max(0, (window.innerHeight - verticalPadding) * 0.75);
         const singleCardWidth = Math.min(availableWidth, targetCardWidth);
-        const measuredCardHeight = context.playerCard.getBoundingClientRect().height;
-        const requiredWidth = singleCardWidth + lyricsPanelWidth + laneGap + visibilityBuffer;
+        const nextMeasuredCardHeightPx = Number.isFinite(measuredCardHeightPx) && (measuredCardHeightPx || 0) > 0
+            ? measuredCardHeightPx || 0
+            : (lastPlayerCardHeightPx > 0 ? lastPlayerCardHeightPx : context.playerCard.getBoundingClientRect().height);
+        const requiredWidth = singleCardWidth + lyricsPanelWidthPx + laneGapPx + lyricsVisibilityBufferPx;
         const canShow = hasActiveTrackLyrics() && singleCardWidth > 0 && availableWidth >= requiredWidth;
 
-        context.playerLane.style.setProperty('--lyrics-panel-width', `${lyricsPanelWidth}px`);
-        if (measuredCardHeight > 0) {
-            context.playerLane.style.setProperty('--player-card-height', `${Math.round(measuredCardHeight)}px`);
+        if (context.playerLane.style.getPropertyValue('--lyrics-panel-width') !== `${lyricsPanelWidthPx}px`) {
+            context.playerLane.style.setProperty('--lyrics-panel-width', `${lyricsPanelWidthPx}px`);
         }
-        context.playerLane.classList.toggle('lyrics-visible', canShow);
-        context.lyricsPanel.setAttribute('aria-hidden', canShow ? 'false' : 'true');
+
+        if (nextMeasuredCardHeightPx > 0) {
+            lastPlayerCardHeightPx = nextMeasuredCardHeightPx;
+            const roundedCardHeightPx = Math.round(nextMeasuredCardHeightPx);
+            if (context.playerLane.style.getPropertyValue('--player-card-height') !== `${roundedCardHeightPx}px`) {
+                context.playerLane.style.setProperty('--player-card-height', `${roundedCardHeightPx}px`);
+            }
+        }
+
+        if (lastLyricsVisibilityState !== canShow) {
+            context.playerLane.classList.toggle('lyrics-visible', canShow);
+            lastLyricsVisibilityState = canShow;
+        }
+
+        const nextAriaHidden = canShow ? 'false' : 'true';
+        if (context.lyricsPanel.getAttribute('aria-hidden') !== nextAriaHidden) {
+            context.lyricsPanel.setAttribute('aria-hidden', nextAriaHidden);
+        }
     };
 
     const refreshLyricsPanel = (): void => {
