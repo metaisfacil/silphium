@@ -140,6 +140,7 @@ describe('createPlaylistController', () => {
     });
 
     afterEach(() => {
+        vi.useRealTimers();
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
         document.body.innerHTML = '';
@@ -826,6 +827,77 @@ describe('createPlaylistController', () => {
         expect(modal.playlistList.querySelector('[data-playlist-track-index="101"]')).not.toBeNull();
         expect(modal.playlistList.textContent).toContain('Hydrated 101');
         expect(modal.playlistList.textContent).toContain('Hydrated Artist 101');
+    });
+
+    it('fades hydration progress out after queue hydration completes', async () => {
+        vi.useFakeTimers();
+
+        document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+
+        const menu = getPlaylistMenuElements(document);
+        const modal = getPlaylistModalElements(document);
+        const trackViews = Array.from({ length: 60 }, (_, index) => ({
+            displayTitle: `Track ${index}`,
+            name: `Track ${index}`,
+            displayArtist: `Artist ${index}`,
+            tagsResolved: index !== 10,
+        }));
+
+        let resolveHydrationBatch: (() => void) | undefined;
+        const ensureTrackTagsResolvedBatch = vi.fn(() => new Promise<void>((resolve) => {
+            resolveHydrationBatch = () => {
+                trackViews[10].tagsResolved = true;
+                resolve();
+            };
+        }));
+
+        const controller = createPlaylistController({
+            trigger,
+            menu,
+            modal,
+            getTrack: (index: number) => trackViews[index],
+            getTrackPath: (index: number) => `/music/track-${index}.flac`,
+            getTrackCount: () => trackViews.length,
+            getCurrentTrackIndex: () => 0,
+            getPlaybackOrderLabel: () => 'Ordered',
+            getBaseSequence: () => ({
+                indexes: trackViews.map((_, index) => index),
+                currentPosition: 0,
+            }),
+            ensureTrackTagsResolvedBatch,
+            selectPlaylistFile: vi.fn(async () => ''),
+            selectPlaylistSaveFile: vi.fn(async () => ''),
+            loadPlaylistData: vi.fn(async () => null),
+            loadListenHistoryData: vi.fn(async () => null),
+            savePlaylistTrackMetadataCache: vi.fn(async () => true),
+            savePlaylistData: vi.fn(async () => true),
+            appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
+            getFavoritePlaylists: () => [],
+            hasListenHistoryPlaylist: () => false,
+            onTrackChosen: vi.fn(async () => undefined),
+            onExternalPlaylistLoaded: vi.fn(() => undefined),
+        });
+
+        controller.openModal();
+        await flushPromises();
+
+        expect(ensureTrackTagsResolvedBatch).toHaveBeenCalledWith([10]);
+        expect(modal.playlistHydrationProgress.hidden).toBe(false);
+        expect(modal.playlistDialog.classList.contains('is-hydration-progress-visible')).toBe(true);
+
+        expect(resolveHydrationBatch).toBeDefined();
+        resolveHydrationBatch?.();
+        await flushPromises();
+
+        expect(modal.playlistDialog.classList.contains('is-hydration-progress-visible')).toBe(false);
+        expect(modal.playlistHydrationProgress.hidden).toBe(false);
+
+        vi.advanceTimersByTime(220);
+
+        expect(modal.playlistHydrationProgress.hidden).toBe(true);
     });
 
     it('hydrates only the visible loaded playlist window and requests more as the user scrolls', async () => {

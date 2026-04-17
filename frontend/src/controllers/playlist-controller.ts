@@ -124,6 +124,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistAddCurrent,
         playlistSaveAs,
     } = modal;
+    const playlistHeader = playlistHydrationProgress.closest('.playlist-header') as HTMLElement | null;
 
     let hydrationRunId = 0;
     let dragFromPosition: number | null = null;
@@ -144,11 +145,13 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const playlistEstimatedRowHeightPx = 44;
     const playlistHydrationBatchSize = 24;
     const playlistHydrationWorkerCount = 1;
+    const playlistHydrationTransitionMs = 220;
     let playlistModalHideTimer: number | undefined;
     let playlistFilterTransitionTimer: number | undefined;
     let playlistViewTransitionTimer: number | undefined;
     let playlistDialogResizeTimer: number | undefined;
     let playlistFilterDebounceTimer: number | undefined;
+    let playlistHydrationHideTimer: number | undefined;
     let playlistFilterExpanded = false;
     let playlistFilterQuery = '';
     const playlistPrefixIcon = (state: 'active' | 'before' | 'after'): string => {
@@ -305,23 +308,92 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const setHydrationProgress = (completed: number, total: number): void => {
+        const setHydrationProgressSlotWidth = (widthPx: number): void => {
+            if (!playlistHeader) {
+                return;
+            }
+
+            playlistHeader.style.setProperty('--playlist-hydration-slot-width', `${Math.max(0, Math.ceil(widthPx))}px`);
+        };
+
+        const measureHydrationProgressWidth = (): number => {
+            const measuredWidth = playlistHydrationProgress.scrollWidth;
+            if (measuredWidth > 0) {
+                return measuredWidth;
+            }
+
+            const previousVisibility = playlistHydrationProgress.style.visibility;
+            const previousPosition = playlistHydrationProgress.style.position;
+            playlistHydrationProgress.style.visibility = 'hidden';
+            playlistHydrationProgress.style.position = 'absolute';
+            playlistHydrationProgress.hidden = false;
+            const fallbackWidth = playlistHydrationProgress.scrollWidth;
+            playlistHydrationProgress.style.visibility = previousVisibility;
+            playlistHydrationProgress.style.position = previousPosition;
+            return fallbackWidth;
+        };
+
+        const clearHydrationHideTimer = (): void => {
+            if (playlistHydrationHideTimer === undefined) {
+                return;
+            }
+
+            window.clearTimeout(playlistHydrationHideTimer);
+            playlistHydrationHideTimer = undefined;
+        };
+
+        const showHydrationProgress = (expectedHideToken: number): void => {
+            clearHydrationHideTimer();
+            playlistHydrationProgress.hidden = false;
+            setHydrationProgressSlotWidth(measureHydrationProgressWidth());
+            window.requestAnimationFrame(() => {
+                if (expectedHideToken !== hydrationHideToken || hydrationTotal <= 0) {
+                    return;
+                }
+
+                playlistDialog.classList.add('is-hydration-progress-visible');
+            });
+        };
+
+        const hideHydrationProgress = (): void => {
+            if (playlistHydrationProgress.hidden) {
+                return;
+            }
+
+            if (!playlistDialog.classList.contains('is-hydration-progress-visible') && playlistHydrationHideTimer !== undefined) {
+                return;
+            }
+
+            playlistDialog.classList.remove('is-hydration-progress-visible');
+            clearHydrationHideTimer();
+            playlistHydrationHideTimer = window.setTimeout(() => {
+                if (playlistDialog.classList.contains('is-hydration-progress-visible')) {
+                    return;
+                }
+
+                playlistHydrationProgress.hidden = true;
+                setHydrationProgressSlotWidth(0);
+                playlistHydrationHideTimer = undefined;
+            }, playlistHydrationTransitionMs);
+        };
+
         hydrationHideToken += 1;
+        const activeHideToken = hydrationHideToken;
 
         hydrationCompleted = Math.max(0, completed);
         hydrationTotal = Math.max(0, total);
 
         if (hydrationTotal <= 0) {
-            playlistHydrationProgress.hidden = true;
+            hideHydrationProgress();
             return;
         }
 
         const boundedCompleted = Math.min(hydrationCompleted, hydrationTotal);
         playlistHydrationCount.textContent = `${boundedCompleted} of ${hydrationTotal}`;
-        playlistHydrationProgress.hidden = false;
+        showHydrationProgress(activeHideToken);
 
         if (boundedCompleted >= hydrationTotal) {
             // Keep the completed state visible for at least one paint, then hide.
-            const activeHideToken = hydrationHideToken;
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     if (activeHideToken !== hydrationHideToken) {
@@ -329,7 +401,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                     }
 
                     if (hydrationTotal > 0 && hydrationCompleted >= hydrationTotal) {
-                        playlistHydrationProgress.hidden = true;
+                        hideHydrationProgress();
                     }
                 });
             });
