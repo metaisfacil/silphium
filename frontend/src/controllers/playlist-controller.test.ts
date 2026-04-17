@@ -11,6 +11,21 @@ const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
 };
 
+const dispatchPointerEvent = (
+    target: EventTarget,
+    type: string,
+    init: Partial<{ button: number; clientX: number; clientY: number; pointerId: number }> = {},
+): void => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(event, {
+        button: { value: init.button ?? 0 },
+        clientX: { value: init.clientX ?? 0 },
+        clientY: { value: init.clientY ?? 0 },
+        pointerId: { value: init.pointerId ?? 1 },
+    });
+    target.dispatchEvent(event);
+};
+
 const selectCustomPlaylistSource = async (
     elements: ReturnType<typeof getPlaylistModalElements>,
     value: string,
@@ -660,7 +675,114 @@ describe('createPlaylistController', () => {
         );
     });
 
-    it('renders the playback queue from the current track through the next 50 tracks', async () => {
+    it('starts queue dragging from the handle instead of the full row', () => {
+        const { controller, elements } = mountPlaylistController();
+
+        controller.openModal();
+
+        const rows = Array.from(elements.playlistList.querySelectorAll<HTMLLIElement>('.playlist-row'));
+        const row = rows[0] || null;
+        const handle = row?.querySelector('.playlist-drag-handle') as HTMLButtonElement | null;
+        const nextHandle = rows[1]?.querySelector('.playlist-drag-handle') as HTMLButtonElement | null;
+
+        expect(row).not.toBeNull();
+        expect(handle).not.toBeNull();
+        expect(row?.draggable).toBe(false);
+        expect(handle?.draggable).toBe(false);
+        expect(handle?.disabled).toBe(true);
+        expect(nextHandle?.disabled).toBe(false);
+    });
+
+    it('does not allow dragging the currently playing track in the playback queue', () => {
+        const { controller, elements } = mountPlaylistController();
+
+        controller.openModal();
+
+        const sourceRow = elements.playlistList.querySelector('[data-playlist-position="0"]') as HTMLLIElement | null;
+        const targetRow = elements.playlistList.querySelector('[data-playlist-position="1"]') as HTMLLIElement | null;
+        const handle = sourceRow?.querySelector('.playlist-drag-handle') as HTMLButtonElement | null;
+
+        expect(sourceRow).not.toBeNull();
+        expect(targetRow).not.toBeNull();
+        expect(handle).not.toBeNull();
+        expect(handle?.disabled).toBe(true);
+
+        Object.defineProperty(document, 'elementFromPoint', {
+            value: vi.fn(() => targetRow),
+            configurable: true,
+        });
+
+        dispatchPointerEvent(handle as HTMLButtonElement, 'pointerdown', { pointerId: 5, clientX: 10, clientY: 10 });
+        dispatchPointerEvent(window, 'pointermove', { pointerId: 5, clientX: 20, clientY: 20 });
+        dispatchPointerEvent(window, 'pointerup', { pointerId: 5, clientX: 20, clientY: 20 });
+
+        expect(controller.getSequenceOverride()).toBeNull();
+        expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => Number(button.dataset.playlistTrackIndex))).toEqual([0, 1, 2]);
+    });
+
+    it('preserves the active queue cursor when pointer-dragging a shuffled queue with duplicate track indexes', () => {
+        document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+
+        const menu = getPlaylistMenuElements(document);
+        const modal = getPlaylistModalElements(document);
+        const trackViews = [createTrackView(0), createTrackView(1), createTrackView(2), createTrackView(3), createTrackView(4)];
+
+        const controller = createPlaylistController({
+            trigger,
+            menu,
+            modal,
+            getTrack: (index: number) => trackViews[index],
+            getTrackPath: (index: number) => `/music/track-${index}.flac`,
+            getTrackCount: () => trackViews.length,
+            getCurrentTrackIndex: () => 1,
+            getPlaybackOrderLabel: () => 'Shuffle',
+            getBaseSequence: () => ({
+                indexes: [2, 1, 3, 1, 4],
+                currentPosition: 3,
+            }),
+            ensureTrackTagsResolvedBatch: vi.fn(async () => undefined),
+            selectPlaylistFile: vi.fn(async () => ''),
+            selectPlaylistSaveFile: vi.fn(async () => ''),
+            loadPlaylistData: vi.fn(async () => null),
+            loadListenHistoryData: vi.fn(async () => null),
+            savePlaylistTrackMetadataCache: vi.fn(async () => true),
+            savePlaylistData: vi.fn(async () => true),
+            appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
+            getFavoritePlaylists: () => [],
+            hasListenHistoryPlaylist: () => false,
+            onTrackChosen: vi.fn(async () => undefined),
+            onExternalPlaylistLoaded: vi.fn(() => undefined),
+        });
+
+        controller.openModal();
+
+    const sourceRow = modal.playlistList.querySelector('[data-playlist-position="4"]') as HTMLLIElement | null;
+    const targetRow = modal.playlistList.querySelector('[data-playlist-position="3"]') as HTMLLIElement | null;
+        const handle = sourceRow?.querySelector('.playlist-drag-handle') as HTMLButtonElement | null;
+
+        expect(sourceRow).not.toBeNull();
+        expect(targetRow).not.toBeNull();
+        expect(handle).not.toBeNull();
+        Object.defineProperty(document, 'elementFromPoint', {
+            value: vi.fn(() => targetRow),
+            configurable: true,
+        });
+
+        dispatchPointerEvent(handle as HTMLButtonElement, 'pointerdown', { pointerId: 7, clientX: 10, clientY: 10 });
+        dispatchPointerEvent(window, 'pointermove', { pointerId: 7, clientX: 20, clientY: 20 });
+        dispatchPointerEvent(window, 'pointerup', { pointerId: 7, clientX: 20, clientY: 20 });
+
+        expect(controller.getSequenceOverride()).toEqual({
+            indexes: [2, 1, 3, 4, 1],
+            currentPosition: 4,
+        });
+        expect(Array.from(modal.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => Number(button.dataset.playlistTrackIndex))).toEqual([2, 1, 3, 4, 1]);
+    });
+
+    it('renders the playback queue with up to 50 previous and 50 next tracks around the current cursor', async () => {
         document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
         const trigger = document.createElement('button');
         document.body.append(trigger);
@@ -708,7 +830,7 @@ describe('createPlaylistController', () => {
         const renderedIndexes = Array.from(modal.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]'))
             .map((button) => Number(button.dataset.playlistTrackIndex));
 
-        expect(renderedIndexes).toEqual(Array.from({ length: 51 }, (_, offset) => 50 + offset));
+        expect(renderedIndexes).toEqual(Array.from({ length: 101 }, (_, index) => index));
     });
 
     it('hydrates newly visible queue rows after the queue advances', async () => {

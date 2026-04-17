@@ -345,7 +345,6 @@ func TestLoadTrackFromDecodeSourceStreamsRemoteBeforeComplete(t *testing.T) {
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDERR", "")
 	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
 
-	startedAt := time.Now()
 	state, err := backend.loadTrackFromDecodeSource(
 		"silphium-remote://friend:41637/Library/Artist/Album/01 Remote.flac",
 		"https://example.invalid/remote.flac",
@@ -362,12 +361,13 @@ func TestLoadTrackFromDecodeSourceStreamsRemoteBeforeComplete(t *testing.T) {
 
 	backend.mutex.Lock()
 	bufferedBytes := len(backend.streamSegments[0].PCMData)
+	decodeDoneAtReturn := backend.streamDecodeDone
 	backend.mutex.Unlock()
 	if bufferedBytes >= 4*audioBytesPerSecond {
 		t.Fatalf("loadTrackFromDecodeSource(progressive remote) buffered bytes = %d, want partial buffer before full decode completes", bufferedBytes)
 	}
-	if elapsed := time.Since(startedAt); elapsed >= 450*time.Millisecond {
-		t.Fatalf("loadTrackFromDecodeSource(progressive remote) elapsed = %s, want to return before full decode finishes", elapsed)
+	if decodeDoneAtReturn {
+		t.Fatalf("loadTrackFromDecodeSource(progressive remote) returned after decode completed; buffered bytes = %d", bufferedBytes)
 	}
 
 	deadline := time.Now().Add(2 * time.Second)

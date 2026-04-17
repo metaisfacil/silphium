@@ -47,6 +47,12 @@ type RenderablePlaylistRow = {
     trackIndex: number;
 };
 
+type QueueDragState = {
+    fromPosition: number;
+    targetPosition: number;
+    pointerId: number;
+};
+
 type PlaylistVisibleWindow = {
     start: number;
     end: number;
@@ -127,7 +133,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const playlistHeader = playlistHydrationProgress.closest('.playlist-header') as HTMLElement | null;
 
     let hydrationRunId = 0;
-    let dragFromPosition: number | null = null;
+    let queueDragState: QueueDragState | null = null;
+    let deferredRenderDuringQueueDrag = false;
     let hydrationTotal = 0;
     let hydrationCompleted = 0;
     let hydrationHideToken = 0;
@@ -138,7 +145,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const playlistViewTransitionMs = 220;
     const playlistFilterDebounceMs = 300;
     const playlistSourceMenuMaxHeightPx = 100;
+    const queueVisiblePreviousCount = 50;
     const queueVisibleAheadCount = 50;
+    const queueHydrationLookbehind = 50;
     const queueHydrationLookahead = 50;
     const playlistHydrationVisibleRows = 72;
     const playlistHydrationOverscan = 24;
@@ -454,6 +463,184 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const isViewingReadOnlyPlaylist = (): boolean => controllerState.selectedSource === 'history' && controllerState.loadedPlaylistReadOnly;
 
+    const clearEditableQueueState = (): void => {
+        controllerState.editableQueueTrackIndexes = null;
+        controllerState.editableQueueCurrentPosition = null;
+    };
+
+    const clampEditableQueuePosition = (queueIndexes: number[], position: number | null): number => {
+        if (queueIndexes.length === 0) {
+            return 0;
+        }
+
+        if (!Number.isInteger(position)) {
+            return 0;
+        }
+
+        return Math.min(Math.max(position as number, 0), queueIndexes.length - 1);
+    };
+
+    const setEditableQueueState = (queueIndexes: number[], currentPosition: number): number[] => {
+        if (queueIndexes.length === 0) {
+            clearEditableQueueState();
+            return [];
+        }
+
+        controllerState.editableQueueTrackIndexes = queueIndexes;
+        controllerState.editableQueueCurrentPosition = clampEditableQueuePosition(queueIndexes, currentPosition);
+        return queueIndexes;
+    };
+
+    const resolveEditableQueueCurrentPosition = (queueIndexes: number[]): number => {
+        if (queueIndexes.length === 0) {
+            controllerState.editableQueueCurrentPosition = null;
+            return 0;
+        }
+
+        const storedPosition = controllerState.editableQueueCurrentPosition;
+        const currentTrackIndex = options.getCurrentTrackIndex();
+        const matchingPositions: number[] = [];
+        for (let position = 0; position < queueIndexes.length; position += 1) {
+            if (queueIndexes[position] === currentTrackIndex) {
+                matchingPositions.push(position);
+            }
+        }
+
+        if (matchingPositions.length > 0) {
+            let resolvedPosition = matchingPositions[0];
+            if (Number.isInteger(storedPosition)) {
+                const targetPosition = storedPosition as number;
+                for (const position of matchingPositions) {
+                    const currentDistance = Math.abs(position - targetPosition);
+                    const bestDistance = Math.abs(resolvedPosition - targetPosition);
+                    if (currentDistance < bestDistance) {
+                        resolvedPosition = position;
+                    }
+                }
+            }
+
+            controllerState.editableQueueCurrentPosition = resolvedPosition;
+            return resolvedPosition;
+        }
+
+        const resolvedPosition = clampEditableQueuePosition(queueIndexes, storedPosition);
+        controllerState.editableQueueCurrentPosition = resolvedPosition;
+        return resolvedPosition;
+    };
+
+    const updateEditableQueueCurrentPositionAfterRemoval = (removePosition: number, queueLength: number): void => {
+        if (!controllerState.editableQueueTrackIndexes) {
+            return;
+        }
+
+        if (queueLength <= 0) {
+            controllerState.editableQueueCurrentPosition = null;
+            return;
+        }
+
+        let nextPosition = clampEditableQueuePosition(controllerState.editableQueueTrackIndexes, controllerState.editableQueueCurrentPosition);
+        if (removePosition < nextPosition) {
+            nextPosition -= 1;
+        }
+
+        controllerState.editableQueueCurrentPosition = Math.max(0, Math.min(nextPosition, queueLength - 1));
+    };
+
+    const updateEditableQueueCurrentPositionAfterMove = (fromPosition: number, toPosition: number, queueLength: number): void => {
+        if (!controllerState.editableQueueTrackIndexes || queueLength <= 0) {
+            return;
+        }
+
+        let nextPosition = clampEditableQueuePosition(controllerState.editableQueueTrackIndexes, controllerState.editableQueueCurrentPosition);
+        if (fromPosition === nextPosition) {
+            nextPosition = toPosition;
+        } else if (fromPosition < nextPosition && toPosition >= nextPosition) {
+            nextPosition -= 1;
+        } else if (fromPosition > nextPosition && toPosition <= nextPosition) {
+            nextPosition += 1;
+        }
+
+        controllerState.editableQueueCurrentPosition = Math.max(0, Math.min(nextPosition, queueLength - 1));
+    };
+
+    const clearQueueDragClasses = (): void => {
+        playlistList.querySelectorAll('.playlist-row.is-dragging, .playlist-row.is-drop-target').forEach((row) => {
+            row.classList.remove('is-dragging', 'is-drop-target');
+        });
+    };
+
+    const updateQueueDragTargetClasses = (): void => {
+        clearQueueDragClasses();
+        if (!queueDragState) {
+            return;
+        }
+
+        const dragRow = playlistList.querySelector<HTMLElement>(`.playlist-row[data-playlist-position="${queueDragState.fromPosition}"]`);
+        dragRow?.classList.add('is-dragging');
+
+        const dropRow = playlistList.querySelector<HTMLElement>(`.playlist-row[data-playlist-position="${queueDragState.targetPosition}"]`);
+        dropRow?.classList.add('is-drop-target');
+    };
+
+    const updateQueueDragTargetFromPoint = (clientX: number, clientY: number): void => {
+        if (!queueDragState) {
+            return;
+        }
+
+        const hovered = document.elementFromPoint(clientX, clientY);
+        if (!(hovered instanceof Element)) {
+            return;
+        }
+
+        const row = hovered.closest('.playlist-row');
+        if (!(row instanceof HTMLElement) || !playlistList.contains(row)) {
+            return;
+        }
+
+        const targetPosition = Number(row.dataset.playlistPosition);
+        if (!Number.isInteger(targetPosition) || targetPosition === queueDragState.targetPosition) {
+            return;
+        }
+
+        queueDragState.targetPosition = targetPosition;
+        updateQueueDragTargetClasses();
+    };
+
+    const finalizeQueueDrag = (applyReorder: boolean): void => {
+        const dragState = queueDragState;
+        queueDragState = null;
+
+        if (!dragState) {
+            return;
+        }
+
+        clearQueueDragClasses();
+
+        if (applyReorder) {
+            const activeQueue = mutableCurrentSequence();
+            const { fromPosition, targetPosition } = dragState;
+            if (
+                Number.isInteger(fromPosition)
+                && Number.isInteger(targetPosition)
+                && fromPosition >= 0
+                && targetPosition >= 0
+                && fromPosition < activeQueue.length
+                && targetPosition < activeQueue.length
+                && fromPosition !== targetPosition
+            ) {
+                const [moved] = activeQueue.splice(fromPosition, 1);
+                activeQueue.splice(targetPosition, 0, moved);
+                updateEditableQueueCurrentPositionAfterMove(fromPosition, targetPosition, activeQueue.length);
+            }
+        }
+
+        const shouldRender = deferredRenderDuringQueueDrag || applyReorder;
+        deferredRenderDuringQueueDrag = false;
+        if (shouldRender && !playlistModal.hidden) {
+            renderPlaylist();
+        }
+    };
+
     const getPlaylistRowLabels = (
         trackIndex: number,
         cachedItemsByTrackIndex: Map<number, LoadedPlaylistCachedItem>,
@@ -617,11 +804,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistReadOnly = false;
         controllerState.loadedPlaylistHistoryItems = null;
         controllerState.loadedPlaylistCachedItems = sanitizedPlaylist.cachedItems || null;
-        controllerState.editableQueueTrackIndexes = null;
+        clearEditableQueueState();
         controllerState.selectedSource = 'playlist';
         controllerState.playbackSource = 'queue';
         controllerState.selectedFavoriteIndex = null;
-        dragFromPosition = null;
+        finalizeQueueDrag(false);
         clearPlaylistFilter();
         playlistList.scrollTop = 0;
         resetHydrationRequestState();
@@ -644,11 +831,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistReadOnly = true;
         controllerState.loadedPlaylistHistoryItems = sanitizedPlaylist.historyItems || [];
         controllerState.loadedPlaylistCachedItems = sanitizedPlaylist.cachedItems || null;
-        controllerState.editableQueueTrackIndexes = null;
+        clearEditableQueueState();
         controllerState.selectedSource = 'history';
         controllerState.playbackSource = 'queue';
         controllerState.selectedFavoriteIndex = null;
-        dragFromPosition = null;
+        finalizeQueueDrag(false);
         clearPlaylistFilter();
         playlistList.scrollTop = 0;
         resetHydrationRequestState();
@@ -679,11 +866,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const queueSequence = (): PlaylistSequence => {
         if (controllerState.editableQueueTrackIndexes && controllerState.editableQueueTrackIndexes.length > 0) {
-            const currentTrackIndex = options.getCurrentTrackIndex();
-            const currentPosition = controllerState.editableQueueTrackIndexes.indexOf(currentTrackIndex);
+            const currentPosition = resolveEditableQueueCurrentPosition(controllerState.editableQueueTrackIndexes);
             return {
                 indexes: controllerState.editableQueueTrackIndexes,
-                currentPosition: currentPosition >= 0 ? currentPosition : 0,
+                currentPosition,
             };
         }
 
@@ -1050,6 +1236,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         clearPlaylistFilter();
         playlistModal.classList.remove('is-visible');
         cancelHydration();
+        finalizeQueueDrag(false);
 
         if (playlistModalHideTimer !== undefined) {
             window.clearTimeout(playlistModalHideTimer);
@@ -1060,7 +1247,6 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             playlistModalHideTimer = undefined;
         }, playlistModalTransitionMs);
 
-        dragFromPosition = null;
     };
 
     const prefersReducedMotion = (): boolean => {
@@ -1143,6 +1329,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const renderPlaylist = (animateViewSwitch = false, animateFilterResults = false): void => {
+        if (queueDragState && controllerState.selectedSource === 'queue') {
+            deferredRenderDuringQueueDrag = true;
+            return;
+        }
+
         const shouldAnimateDialog = animateViewSwitch;
         const previousDialogHeight = shouldAnimateDialog ? playlistDialog.getBoundingClientRect().height : 0;
         if (shouldAnimateDialog) {
@@ -1158,13 +1349,17 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         const { indexes, currentPosition } = currentSequence();
         const currentTrackIndex = options.getCurrentTrackIndex();
-        const activePosition = indexes.indexOf(currentTrackIndex);
+        const activePosition = currentPosition >= 0
+            && currentPosition < indexes.length
+            && indexes[currentPosition] === currentTrackIndex
+            ? currentPosition
+            : indexes.indexOf(currentTrackIndex);
         const anchorPosition = activePosition >= 0 ? activePosition : currentPosition;
         const viewingPlaylist = controllerState.selectedSource !== 'queue' && hasLoadedPlaylist();
         const playlistVisibleWindow = viewingPlaylist ? getPlaylistVisibleWindow(indexes) : null;
         const start = viewingPlaylist
             ? (playlistVisibleWindow?.start || 0)
-            : Math.max(0, anchorPosition);
+            : Math.max(0, anchorPosition - queueVisiblePreviousCount);
         const end = viewingPlaylist
             ? (playlistVisibleWindow?.end || 0)
             : Math.min(indexes.length, anchorPosition + queueVisibleAheadCount + 1);
@@ -1203,8 +1398,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
             visibleRows = nextVisibleRows;
         } else {
+            const hydrationStart = Math.max(0, start - queueHydrationLookbehind);
             const hydrationEnd = Math.min(indexes.length, end + queueHydrationLookahead);
-            requestTrackMetadataHydration(indexes.slice(start, hydrationEnd));
+            requestTrackMetadataHydration(indexes.slice(hydrationStart, hydrationEnd));
 
             const nextVisibleRows: RenderablePlaylistRow[] = [];
             for (let position = start; position < indexes.length && nextVisibleRows.length < end - start; position += 1) {
@@ -1237,6 +1433,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         const rows = visibleRows.map(({ trackIndex, actualPosition }) => {
             const activeClass = trackIndex === currentTrackIndex ? ' is-active' : '';
             const isActiveTrack = trackIndex === currentTrackIndex;
+            const disableQueueDragHandle = controllerState.selectedSource === 'queue' && isActiveTrack;
             const prefix = isActiveTrack
                 ? playlistPrefixIcon('active')
                 : (activePosition >= 0 && actualPosition < activePosition ? playlistPrefixIcon('before') : playlistPrefixIcon('after'));
@@ -1251,8 +1448,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         </li>`;
             }
 
-            return `<li class="playlist-row" draggable="true" data-playlist-position="${actualPosition}">
-            <button class="playlist-drag-handle" type="button" aria-label="Drag track" title="Drag to reorder">${playlistDragIcon}</button>
+            return `<li class="playlist-row" data-playlist-position="${actualPosition}">
+            <button class="playlist-drag-handle" type="button" ${disableQueueDragHandle ? 'disabled aria-disabled="true" title="Cannot move the currently playing track"' : 'title="Drag to reorder"'} aria-label="${disableQueueDragHandle ? 'Currently playing track cannot be reordered' : 'Drag track'}">${playlistDragIcon}</button>
             <span class="playlist-position-indicator">#${actualPosition + 1}</span>
             <button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}" data-playlist-position="${actualPosition}"><span class="playlist-item-main"><span class="playlist-item-prefix">${prefix}</span><span class="playlist-item-label">${label}</span></span><span class="playlist-item-sub">${secondary}</span></button>
             <button class="playlist-remove" type="button" data-playlist-remove-position="${actualPosition}" aria-label="Remove track" title="Remove track">${playlistRemoveIcon}</button>
@@ -1279,6 +1476,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         let scheduled = false;
 
         return (): void => {
+            if (queueDragState && controllerState.selectedSource === 'queue') {
+                deferredRenderDuringQueueDrag = true;
+                return;
+            }
+
             if (scheduled) {
                 return;
             }
@@ -1401,7 +1603,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return;
         }
 
-        const start = Math.max(0, currentPosition);
+        const start = Math.max(0, currentPosition - queueVisiblePreviousCount - queueHydrationLookbehind);
         const end = Math.min(indexes.length, currentPosition + queueVisibleAheadCount + 1 + queueHydrationLookahead);
         requestTrackMetadataHydration(indexes.slice(start, end));
     };
@@ -1452,8 +1654,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return controllerState.editableQueueTrackIndexes;
         }
 
-        controllerState.editableQueueTrackIndexes = queueSequence().indexes.slice();
-        return controllerState.editableQueueTrackIndexes;
+        const sequence = queueSequence();
+        return setEditableQueueState(sequence.indexes.slice(), sequence.currentPosition);
     };
 
     const insertTrackIndexes = (queue: number[], insertAt: number, trackIndexes: number[]): void => {
@@ -1580,10 +1782,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             }
         }
 
-        const queueIndexes = queueSequence().indexes;
+        const queue = queueSequence();
+        const queueIndexes = queue.indexes;
         if ((controllerState.editableQueueTrackIndexes && controllerState.editableQueueTrackIndexes.length > 0) || hasLoadedPlaylist()) {
-            const currentPosition = queueIndexes.indexOf(currentTrackIndex);
-            if (currentPosition < 0) {
+            const currentPosition = queue.currentPosition;
+            if (currentPosition < 0 || currentPosition >= queueIndexes.length) {
                 return queueIndexes[0];
             }
 
@@ -1592,12 +1795,15 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 	                return undefined;
 	            }
 
-                controllerState.editableQueueTrackIndexes = null;
+                clearEditableQueueState();
                 scheduleRender();
                 return undefined;
             }
 
             const nextPosition = (currentPosition + direction + queueIndexes.length) % queueIndexes.length;
+            if (mutateState && controllerState.editableQueueTrackIndexes) {
+                controllerState.editableQueueCurrentPosition = nextPosition;
+            }
             return queueIndexes[nextPosition];
         }
 
@@ -1613,13 +1819,13 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const clearEditableQueue = (): void => {
-        controllerState.editableQueueTrackIndexes = null;
+        clearEditableQueueState();
         scheduleRender();
     };
 
     const activatePlaybackQueueSource = (): void => {
         controllerState.playbackSource = 'queue';
-        controllerState.editableQueueTrackIndexes = null;
+        clearEditableQueueState();
         scheduleRender();
     };
 
@@ -1630,12 +1836,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistReadOnly = false;
         controllerState.loadedPlaylistHistoryItems = null;
         controllerState.loadedPlaylistCachedItems = null;
-        controllerState.editableQueueTrackIndexes = null;
+        clearEditableQueueState();
         controllerState.selectedSource = 'queue';
         controllerState.selectedFavoriteIndex = null;
         controllerState.playbackSource = 'queue';
         cancelHydration();
-        dragFromPosition = null;
+        finalizeQueueDrag(false);
         clearPlaylistFilter();
         scheduleRender();
     };
@@ -1722,7 +1928,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistCachedItems = null;
         controllerState.selectedSource = 'playlist';
         controllerState.playbackSource = 'queue';
-        controllerState.editableQueueTrackIndexes = null;
+        clearEditableQueueState();
         controllerState.selectedFavoriteIndex = null;
         clearPlaylistFilter();
         playlistList.scrollTop = 0;
@@ -1750,7 +1956,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistCachedItems = sanitizedPlaylist.cachedItems || null;
         controllerState.selectedSource = 'playlist';
         controllerState.playbackSource = 'queue';
-        dragFromPosition = null;
+        finalizeQueueDrag(false);
         clearPlaylistFilter();
         playlistList.scrollTop = 0;
         resetHydrationRequestState();
@@ -1811,7 +2017,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         if (controllerState.selectedSource !== 'queue' && hasLoadedPlaylist()) {
             const playlistSequence = loadedPlaylistSequence();
             if (playlistSequence) {
-                controllerState.editableQueueTrackIndexes = playlistSequence.indexes.slice();
+                setEditableQueueState(playlistSequence.indexes.slice(), playlistSequence.currentPosition);
             }
             controllerState.playbackSource = 'queue';
             return;
@@ -2071,7 +2277,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             }
 
             if (controllerState.editableQueueTrackIndexes && controllerState.editableQueueTrackIndexes.length === 0) {
-                controllerState.editableQueueTrackIndexes = null;
+                clearEditableQueueState();
+            } else {
+                updateEditableQueueCurrentPositionAfterRemoval(removePosition, activeQueue.length);
             }
 
             renderPlaylist();
@@ -2088,6 +2296,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return;
         }
 
+        const chosenPosition = Number(button.dataset.playlistPosition);
+        if (controllerState.editableQueueTrackIndexes && Number.isInteger(chosenPosition)) {
+            controllerState.editableQueueCurrentPosition = clampEditableQueuePosition(controllerState.editableQueueTrackIndexes, chosenPosition);
+        }
+
         commitPlaybackSourceFromCurrentView();
         void options.onTrackChosen(trackIndex, {
             source: controllerState.selectedSource,
@@ -2097,8 +2310,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         });
     });
 
-    playlistList.addEventListener('dragstart', (event) => {
+    playlistList.addEventListener('pointerdown', (event) => {
         if (isViewingReadOnlyPlaylist()) {
+            return;
+        }
+
+        if (event.button !== 0) {
             return;
         }
 
@@ -2112,6 +2329,15 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return;
         }
 
+        const dragHandle = target.closest('.playlist-drag-handle');
+        if (!(dragHandle instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        if (dragHandle.disabled) {
+            return;
+        }
+
         const row = target.closest('.playlist-row');
         if (!(row instanceof HTMLElement)) {
             return;
@@ -2122,82 +2348,43 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return;
         }
 
-        dragFromPosition = fromPosition;
-        row.classList.add('is-dragging');
-
-        if (event.dataTransfer) {
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', String(fromPosition));
+        event.preventDefault();
+        deferredRenderDuringQueueDrag = false;
+        queueDragState = {
+            fromPosition,
+            targetPosition: fromPosition,
+            pointerId: event.pointerId,
+        };
+        if (typeof dragHandle.setPointerCapture === 'function') {
+            dragHandle.setPointerCapture(event.pointerId);
         }
+        updateQueueDragTargetClasses();
     });
 
-    playlistList.addEventListener('dragend', () => {
-        dragFromPosition = null;
-        const rows = playlistList.querySelectorAll('.playlist-row.is-dragging');
-        rows.forEach((row) => row.classList.remove('is-dragging'));
-    });
-
-    playlistList.addEventListener('dragover', (event) => {
-        if (isViewingReadOnlyPlaylist()) {
-            return;
-        }
-
-        const activeQueue = currentSequence().indexes;
-        if (activeQueue.length === 0) {
-            return;
-        }
-
-        const target = event.target;
-        if (!(target instanceof Element)) {
-            return;
-        }
-
-        const row = target.closest('.playlist-row');
-        if (!(row instanceof HTMLElement)) {
+    window.addEventListener('pointermove', (event) => {
+        if (!queueDragState || event.pointerId !== queueDragState.pointerId) {
             return;
         }
 
         event.preventDefault();
-        if (event.dataTransfer) {
-            event.dataTransfer.dropEffect = 'move';
-        }
+        updateQueueDragTargetFromPoint(event.clientX, event.clientY);
     });
 
-    playlistList.addEventListener('drop', (event) => {
-        if (isViewingReadOnlyPlaylist()) {
-            return;
-        }
-
-        const activeQueue = mutableCurrentSequence();
-        if (activeQueue.length === 0) {
-            return;
-        }
-
-        const target = event.target;
-        if (!(target instanceof Element)) {
-            return;
-        }
-
-        const row = target.closest('.playlist-row');
-        if (!(row instanceof HTMLElement)) {
+    window.addEventListener('pointerup', (event) => {
+        if (!queueDragState || event.pointerId !== queueDragState.pointerId) {
             return;
         }
 
         event.preventDefault();
+        finalizeQueueDrag(true);
+    });
 
-        const toPosition = Number(row.dataset.playlistPosition);
-        const fromPosition = dragFromPosition ?? Number(event.dataTransfer?.getData('text/plain'));
-        if (!Number.isInteger(fromPosition) || !Number.isInteger(toPosition) || fromPosition === toPosition) {
+    window.addEventListener('pointercancel', (event) => {
+        if (!queueDragState || event.pointerId !== queueDragState.pointerId) {
             return;
         }
 
-        if (fromPosition < 0 || toPosition < 0 || fromPosition >= activeQueue.length || toPosition >= activeQueue.length) {
-            return;
-        }
-
-        const [moved] = activeQueue.splice(fromPosition, 1);
-        activeQueue.splice(toPosition, 0, moved);
-        renderPlaylist();
+        finalizeQueueDrag(false);
     });
 
     return {

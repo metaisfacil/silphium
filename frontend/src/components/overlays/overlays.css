@@ -3381,6 +3381,10 @@
     opacity: 0.55;
 }
 
+.playlist-row.is-drop-target .playlist-item {
+    background: rgba(255, 255, 255, 0.16);
+}
+
 .playlist-drag-handle,
 .playlist-remove {
     border: none;
@@ -3405,6 +3409,8 @@
 
 .playlist-drag-handle {
     cursor: grab;
+    touch-action: none;
+    user-select: none;
 }
 
 .playlist-drag-handle:active {
