@@ -30,6 +30,7 @@ build/darwin/iconfile.icns
 /docs/
 /scripts/
 *.instructions.md
+Silphium-res.syso
 
 # ---- Logs ----
 *.log
