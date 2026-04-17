@@ -18,6 +18,7 @@ import {
     libraryFolderPathKey,
     normalizeLibraryFolders,
     normalizeScrobbleRules,
+    renderTechnicalInfoContent,
     validateScrobbleRules,
 } from './main-helpers';
 
@@ -264,5 +265,40 @@ describe('main helpers', () => {
             'whitelist',
             [],
         )).toBe(false);
+    });
+
+    it('measures one shared first-column width for technical rows and file tags', () => {
+        const originalScrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
+        Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+            configurable: true,
+            get() {
+                return (this.textContent?.length || 0) * 10;
+            },
+        });
+
+        try {
+            const container = document.createElement('div');
+            renderTechnicalInfoContent(container, createTrack({
+                technicalDetails: {
+                    codec: 'FLAC',
+                },
+                allFileTags: {
+                    MUCH_LONGER_TAG_NAME: ['Value'],
+                },
+            }));
+
+            expect(container.style.getPropertyValue('--technical-info-first-column-width')).toBe(`${'MUCH_LONGER_TAG_NAME'.length * 10}px`);
+        } finally {
+            if (originalScrollWidth) {
+                Object.defineProperty(HTMLElement.prototype, 'scrollWidth', originalScrollWidth);
+            } else {
+                Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+                    configurable: true,
+                    get() {
+                        return 0;
+                    },
+                });
+            }
+        }
     });
 });

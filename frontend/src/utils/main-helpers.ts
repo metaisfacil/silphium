@@ -1170,8 +1170,11 @@ export const renderTechnicalInfoContent = (container: HTMLElement, track: Track)
     let firstColumnWidth = 0;
     for (let index = 0; index < firstColumnCells.length; index += 1) {
         const cell = firstColumnCells[index];
-        firstColumnWidth = Math.max(firstColumnWidth, cell.scrollWidth);
+        const rectWidth = Math.ceil(cell.getBoundingClientRect().width);
+        const scrollWidth = Math.ceil(cell.scrollWidth);
+        firstColumnWidth = Math.max(firstColumnWidth, rectWidth, scrollWidth);
     }
+
     if (firstColumnWidth > 0) {
         container.style.setProperty('--technical-info-first-column-width', `${firstColumnWidth}px`);
     }

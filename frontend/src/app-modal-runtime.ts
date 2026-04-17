@@ -9,6 +9,8 @@ import {
 } from './utils/musicbrainz-entity-helpers';
 import type { MusicBrainzEntityType, TextLibraryFile } from './types/app-types';
 
+const isRemoteTrackPath = (path: string): boolean => /^silphium-remote:\/\//i.test(path.trim());
+
 export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- retained for possible future manual ReplayGain tag writing UI.
     const replayGainTargetPathsForIndex = (trackIndex: number): string[] => {
@@ -401,6 +403,15 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
         await context.ensureTrackTagsResolved(selectedTrackIndex);
         if (selectedTrackIndex >= context.tracks.length) {
             return;
+        }
+
+        const selectedTrack = context.tracks[selectedTrackIndex];
+        if (selectedTrack && !isRemoteTrackPath(selectedTrack.path)) {
+            await context.trackMetadataService.refreshTrackTags([selectedTrack.path]);
+            if (selectedTrackIndex === context.currentTrackIndex) {
+                context.refreshNowPlayingLabel();
+                context.libraryController.renderFolder('none');
+            }
         }
 
         renderTechnicalInfoModalContent(selectedTrackIndex);

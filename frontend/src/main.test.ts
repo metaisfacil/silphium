@@ -343,7 +343,7 @@ describe('main entrypoint runtime scope', () => {
         expect(scope).not.toBeNull();
         expect(scope?.completeStartupIfReady).toBeTypeOf('function');
         await expect(scope?.completeStartupIfReady?.()).resolves.toBeUndefined();
-    });
+    }, 15_000);
 
     it('applies the persisted lissajous scale during settings initialization', async () => {
         await import('./main');

@@ -99,7 +99,7 @@
 .image-file-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.66);
+    background: rgba(18, 18, 20, 0.96);
     backdrop-filter: blur(2px);
     opacity: 0;
     transition: opacity 220ms ease;
@@ -1869,7 +1869,7 @@
     overflow: auto;
     padding: 0.85rem 0.95rem 0.95rem;
     text-align: left;
-    --technical-info-first-column-width: 0;
+    --technical-info-first-column-width: max-content;
 }
 
 /*
@@ -1931,7 +1931,7 @@
 
 .technical-info-grid {
     display: grid;
-    grid-template-columns: var(--technical-info-first-column-width) minmax(0, 1fr);
+    grid-template-columns: var(--technical-info-first-column-width, max-content) minmax(0, 1fr);
     column-gap: 0.75rem;
     row-gap: 0.45rem;
     align-items: baseline;
@@ -2196,7 +2196,7 @@
 
 .technical-info-tag-list {
     display: grid;
-    grid-template-columns: var(--technical-info-first-column-width) minmax(0, 1fr);
+    grid-template-columns: var(--technical-info-first-column-width, max-content) minmax(0, 1fr);
     column-gap: 0.7rem;
     row-gap: 0.45rem;
     align-items: start;

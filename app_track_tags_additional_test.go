@@ -291,6 +291,128 @@ func TestTrackTagCachingAndBatchReads(t *testing.T) {
 	}
 }
 
+func TestReadTrackTagsUsesMetadataDatabaseBeforeReadingFiles(t *testing.T) {
+	originalReadTaglibTags := readTaglibTags
+	t.Cleanup(func() {
+		readTaglibTags = originalReadTaglibTags
+	})
+
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithSettingsLoaded()
+	app.activeLibraryRoots = []libraryRootConfig{{
+		Path: fixture.rootOne,
+		Name: "Library",
+	}}
+
+	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
+	}
+
+	readCalls := 0
+	readTaglibTags = func(_ string) (map[string][]string, error) {
+		readCalls++
+		return map[string][]string{"TITLE": {"File Title"}}, nil
+	}
+
+	app.musicBrainzTagMu.Lock()
+	app.ensureMusicBrainzTagDatabaseLoadedLocked()
+	app.upsertMusicBrainzTagTrackRecordLocked(fixture.trackOne, musicBrainzTagTrackRecord{
+		Signature:       signature,
+		Title:           "Database Title",
+		TrackArtist:     "Database Artist",
+		AlbumTitle:      "Database Album",
+		AlbumArtist:     "Database Album Artist",
+		Genres:          []string{"Electronic", "Ambient"},
+		TrackNumber:     2,
+		TrackTotal:      10,
+		DiscNumber:      1,
+		DiscTotal:       1,
+		DurationSeconds: 123.5,
+		BitRate:         900000,
+		BitDepth:        24,
+		SampleRate:      96000,
+		Channels:        2,
+		FileSizeBytes:   signature.Size,
+		RecordingID:     "11111111-1111-4111-8111-111111111111",
+		ReleaseID:       "22222222-2222-4222-8222-222222222222",
+		ArtistIDs:       []string{"33333333-3333-4333-8333-333333333333"},
+		AlbumArtistIDs:  []string{"44444444-4444-4444-8444-444444444444"},
+	})
+	app.musicBrainzTagMu.Unlock()
+
+	results := app.ReadTrackTags([]string{fixture.trackOne})
+	tags, exists := results[fixture.trackOne]
+	if !exists {
+		t.Fatalf("ReadTrackTags(database hit) = %#v, want result for %q", results, fixture.trackOne)
+	}
+	if readCalls != 0 {
+		t.Fatalf("readTaglibTags() calls = %d, want 0 when metadata database has the tags", readCalls)
+	}
+	if tags.Title != "Database Title" || tags.Artist != "Database Artist" || tags.Album != "Database Album" {
+		t.Fatalf("ReadTrackTags(database title/artist/album) = %#v, want stored metadata", tags)
+	}
+	if tags.TrackNumber != "2" || tags.TrackTotal != "10" || tags.DiscNumber != "1" || tags.DiscTotal != "1" {
+		t.Fatalf("ReadTrackTags(database positions) = %#v, want numeric fields converted to strings", tags)
+	}
+	if tags.Genre != "Electronic" || len(tags.Genres) != 2 {
+		t.Fatalf("ReadTrackTags(database genres) = %#v, want stored genres", tags)
+	}
+	if tags.Codec != "FLAC" || tags.Container != "flac" || tags.ChannelLayout != "stereo" {
+		t.Fatalf("ReadTrackTags(database technical metadata) = %#v, want derived codec/container/layout", tags)
+	}
+	if tags.FileSizeBytes != signature.Size || tags.ArtistID != "33333333-3333-4333-8333-333333333333" || tags.AlbumArtistID != "44444444-4444-4444-8444-444444444444" {
+		t.Fatalf("ReadTrackTags(database IDs/file size) = %#v, want stored IDs and signature size", tags)
+	}
+}
+
+func TestReadTrackTagsFallsBackToFileReadWhenDatabaseMetadataIsEmpty(t *testing.T) {
+	originalReadTaglibTags := readTaglibTags
+	t.Cleanup(func() {
+		readTaglibTags = originalReadTaglibTags
+	})
+
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithSettingsLoaded()
+	app.activeLibraryRoots = []libraryRootConfig{{
+		Path: fixture.rootOne,
+		Name: "Library",
+	}}
+
+	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
+	}
+
+	readCalls := 0
+	readTaglibTags = func(_ string) (map[string][]string, error) {
+		readCalls++
+		return map[string][]string{
+			"TITLE":  {"File Title"},
+			"ARTIST": {"File Artist"},
+		}, nil
+	}
+
+	app.musicBrainzTagMu.Lock()
+	app.ensureMusicBrainzTagDatabaseLoadedLocked()
+	app.upsertMusicBrainzTagTrackRecordLocked(fixture.trackOne, musicBrainzTagTrackRecord{
+		Signature: signature,
+	})
+	app.musicBrainzTagMu.Unlock()
+
+	results := app.ReadTrackTags([]string{fixture.trackOne})
+	tags, exists := results[fixture.trackOne]
+	if !exists {
+		t.Fatalf("ReadTrackTags(file fallback) = %#v, want result for %q", results, fixture.trackOne)
+	}
+	if readCalls != 1 {
+		t.Fatalf("readTaglibTags() calls = %d, want 1 when database metadata is empty", readCalls)
+	}
+	if tags.Title != "File Title" || tags.Artist != "File Artist" {
+		t.Fatalf("ReadTrackTags(file fallback) = %#v, want file metadata", tags)
+	}
+}
+
 func TestTrackTagWorkerAndBlobNoMetadataBranches(t *testing.T) {
 	originalReadTaglibTags := readTaglibTags
 	t.Cleanup(func() {
@@ -366,7 +488,27 @@ func TestRefreshTrackMetadataForcesFreshReadAndIncrementalRescan(t *testing.T) {
 		t.Fatalf("ReadTrackTags() title = %q, want cached title", tags[fixture.trackOne].Title)
 	}
 
+	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
+	}
+	app.musicBrainzTagMu.Lock()
+	app.ensureMusicBrainzTagDatabaseLoadedLocked()
+	app.upsertMusicBrainzTagTrackRecordLocked(fixture.trackOne, musicBrainzTagTrackRecord{
+		Signature:   signature,
+		Title:       "Database Title",
+		TrackArtist: "Database Artist",
+	})
+	app.musicBrainzTagMu.Unlock()
+
 	readTitle = "Fresh Title"
+	readTaglibTags = func(_ string) (map[string][]string, error) {
+		return map[string][]string{
+			"TITLE":  {readTitle},
+			"ARTIST": {"Fresh Artist"},
+			"CUSTOM": {"Fresh Value"},
+		}, nil
+	}
 	rescannedPath := ""
 	beforeIncrementalLibraryPathScanHook = func(path string) {
 		rescannedPath = path
@@ -378,6 +520,12 @@ func TestRefreshTrackMetadataForcesFreshReadAndIncrementalRescan(t *testing.T) {
 	}
 	if tags.Title != "Fresh Title" {
 		t.Fatalf("RefreshTrackMetadata() title = %q, want %q", tags.Title, "Fresh Title")
+	}
+	if tags.Artist != "Fresh Artist" {
+		t.Fatalf("RefreshTrackMetadata() artist = %q, want %q", tags.Artist, "Fresh Artist")
+	}
+	if got := tags.AllTags["CUSTOM"]; len(got) != 1 || got[0] != "Fresh Value" {
+		t.Fatalf("RefreshTrackMetadata() allTags = %#v, want file-backed custom tag", tags.AllTags)
 	}
 	if rescannedPath != fixture.albumOneFolder {
 		t.Fatalf("incremental refresh path = %q, want %q", rescannedPath, fixture.albumOneFolder)

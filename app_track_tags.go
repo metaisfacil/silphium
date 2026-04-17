@@ -900,9 +900,135 @@ func readTrackTagsForPath(path string, ffprobePath string) (TrackTags, bool) {
 	return trackTags, true
 }
 
+func storedTrackRecordHasReadTrackTagsMetadata(record musicBrainzTagTrackRecord) bool {
+	if strings.TrimSpace(record.Title) != "" || strings.TrimSpace(record.TrackArtist) != "" || strings.TrimSpace(record.AlbumTitle) != "" || strings.TrimSpace(record.AlbumArtist) != "" {
+		return true
+	}
+	if strings.TrimSpace(record.Date) != "" || strings.TrimSpace(record.RecordLabel) != "" || strings.TrimSpace(record.CatalogNumber) != "" {
+		return true
+	}
+	if len(record.Genres) > 0 || record.TrackNumber > 0 || record.TrackTotal > 0 || record.DiscNumber > 0 || record.DiscTotal > 0 {
+		return true
+	}
+	if record.DurationSeconds > 0 || record.BitRate > 0 || record.BitDepth > 0 || record.SampleRate > 0 || record.Channels > 0 {
+		return true
+	}
+	if strings.TrimSpace(record.RecordingID) != "" || strings.TrimSpace(record.ReleaseID) != "" || len(record.ArtistIDs) > 0 || len(record.AlbumArtistIDs) > 0 {
+		return true
+	}
+
+	return false
+}
+
+func trackTagsFromStoredTrackRecord(path string, signature trackTagsFileSignature, record musicBrainzTagTrackRecord) (TrackTags, bool) {
+	if record.Signature != signature {
+		return TrackTags{}, false
+	}
+	if !storedTrackRecordHasReadTrackTagsMetadata(record) {
+		return TrackTags{}, false
+	}
+
+	container := inferContainerFromPath(path)
+	codec := inferCodecFromContainerAndTags(container, nil)
+	genre := ""
+	if len(record.Genres) > 0 {
+		genre = record.Genres[0]
+	}
+	artistID := ""
+	if len(record.ArtistIDs) > 0 {
+		artistID = record.ArtistIDs[0]
+	}
+	albumArtistID := ""
+	if len(record.AlbumArtistIDs) > 0 {
+		albumArtistID = record.AlbumArtistIDs[0]
+	}
+	fileSizeBytes := record.FileSizeBytes
+	if fileSizeBytes <= 0 {
+		fileSizeBytes = signature.Size
+	}
+
+	tags := TrackTags{
+		Artist:         record.TrackArtist,
+		AlbumArtist:    record.AlbumArtist,
+		Album:          record.AlbumTitle,
+		Title:          record.Title,
+		Date:           record.Date,
+		Genre:          genre,
+		RecordLabel:    record.RecordLabel,
+		CatalogNumber:  record.CatalogNumber,
+		Genres:         append([]string(nil), record.Genres...),
+		TrackNumber:    strconv.Itoa(record.TrackNumber),
+		TrackTotal:     strconv.Itoa(record.TrackTotal),
+		DiscNumber:     strconv.Itoa(record.DiscNumber),
+		DiscTotal:      strconv.Itoa(record.DiscTotal),
+		BitDepth:       record.BitDepth,
+		SampleRate:     record.SampleRate,
+		Codec:          codec,
+		Channels:       record.Channels,
+		ChannelLayout:  inferChannelLayout(record.Channels),
+		BitRate:        record.BitRate,
+		OverallBitRate: record.BitRate,
+		DurationSecs:   record.DurationSeconds,
+		Container:      container,
+		FileSizeBytes:  fileSizeBytes,
+		RecordingID:    record.RecordingID,
+		ReleaseID:      record.ReleaseID,
+		ArtistID:       artistID,
+		ArtistIDs:      append([]string(nil), record.ArtistIDs...),
+		AlbumArtistID:  albumArtistID,
+		AlbumArtistIDs: append([]string(nil), record.AlbumArtistIDs...),
+	}
+
+	if tags.TrackNumber == "0" {
+		tags.TrackNumber = ""
+	}
+	if tags.TrackTotal == "0" {
+		tags.TrackTotal = ""
+	}
+	if tags.DiscNumber == "0" {
+		tags.DiscNumber = ""
+	}
+	if tags.DiscTotal == "0" {
+		tags.DiscTotal = ""
+	}
+
+	return tags, true
+}
+
+func (a *App) readTrackTagsFromMetadataDatabase(jobs []readTrackTagsJob) map[string]TrackTags {
+	if len(jobs) == 0 {
+		return nil
+	}
+
+	a.musicBrainzTagMu.Lock()
+	defer a.musicBrainzTagMu.Unlock()
+
+	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+
+	var tagByPath map[string]TrackTags
+	for _, job := range jobs {
+		record, exists := a.musicBrainzTagStore.Tracks[job.path]
+		if !exists {
+			continue
+		}
+
+		tags, ok := trackTagsFromStoredTrackRecord(job.path, job.signature, record)
+		if !ok {
+			continue
+		}
+
+		if tagByPath == nil {
+			tagByPath = make(map[string]TrackTags, len(jobs))
+		}
+		tagByPath[job.path] = tags
+	}
+
+	return tagByPath
+}
+
 // ReadTrackTags reads tag and technical metadata for track files by path.
 func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
-	return a.readTrackTagsWithWorkerLimit(paths, trackTagsWorkerLimit)
+	return a.readTrackTagsWithWorkerLimit(paths, trackTagsWorkerLimit, true)
 }
 
 // RefreshTrackMetadata forces a fresh metadata read for a library track without interrupting playback.
@@ -928,11 +1054,11 @@ func (a *App) RefreshTrackMetadata(path string) (TrackTags, error) {
 	}
 	a.applyIncrementalLibraryChanges(refreshTargets)
 
-	tagByPath := a.readTrackTagsWithWorkerLimit([]string{cleanPath}, 1)
+	tagByPath := a.readTrackTagsWithWorkerLimit([]string{cleanPath}, 1, false)
 	return tagByPath[cleanPath], nil
 }
 
-func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int) map[string]TrackTags {
+func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int, allowMetadataDatabase bool) map[string]TrackTags {
 	startedAt := time.Now()
 	normalizedPaths := a.normalizeTrackTagPaths(paths)
 	tagByPath := make(map[string]TrackTags, len(normalizedPaths))
@@ -952,8 +1078,11 @@ func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int) m
 	results := make(chan readTrackTagsResult, len(localPaths))
 	queuedJobs := 0
 	cacheHits := 0
+	databaseHits := 0
 	a.ensureSettingsLoaded()
 	ffprobePath := resolveFFProbePath(a.settingsState().settings.FFmpegPath)
+	useMetadataDatabase := allowMetadataDatabase && a.localLibraryFilesDatabaseEnabled()
+	pendingJobs := make([]readTrackTagsJob, 0, len(localPaths))
 
 	for _, path := range localPaths {
 		signature, ok := trackTagsFileSignatureForPath(path)
@@ -969,10 +1098,33 @@ func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int) m
 			continue
 		}
 
-		jobs <- readTrackTagsJob{
+		pendingJobs = append(pendingJobs, readTrackTagsJob{
 			path:      path,
 			signature: signature,
+		})
+	}
+
+	if useMetadataDatabase {
+		databaseTagByPath := a.readTrackTagsFromMetadataDatabase(pendingJobs)
+		if len(databaseTagByPath) > 0 {
+			filteredJobs := pendingJobs[:0]
+			for _, job := range pendingJobs {
+				databaseTags, ok := databaseTagByPath[job.path]
+				if !ok {
+					filteredJobs = append(filteredJobs, job)
+					continue
+				}
+
+				databaseHits++
+				tagByPath[job.path] = databaseTags
+				a.putTrackTagsCache(job.path, job.signature, databaseTags, true)
+			}
+			pendingJobs = filteredJobs
 		}
+	}
+
+	for _, job := range pendingJobs {
+		jobs <- job
 		queuedJobs++
 	}
 	close(jobs)
@@ -1013,9 +1165,10 @@ func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int) m
 
 	if len(normalizedPaths) > 1 {
 		a.logRescanEvent(
-			"ReadTrackTags END: requested=%d cacheHits=%d parsed=%d returned=%d workers=%d took %.2fms",
+			"ReadTrackTags END: requested=%d cacheHits=%d databaseHits=%d parsed=%d returned=%d workers=%d took %.2fms",
 			len(normalizedPaths),
 			cacheHits,
+			databaseHits,
 			queuedJobs,
 			len(tagByPath),
 			workerCount,

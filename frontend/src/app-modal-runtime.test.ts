@@ -189,9 +189,60 @@ describe('createAppModalRuntime', () => {
 
         await runtime.openTechnicalInfoModal();
 
+        expect(context.ensureTrackTagsResolved).toHaveBeenCalledWith(0);
+        expect(context.trackMetadataService.refreshTrackTags).toHaveBeenCalledWith(['/music/Artist/Album/track.flac']);
+        expect(context.refreshNowPlayingLabel).toHaveBeenCalledTimes(1);
+        expect(context.libraryController.renderFolder).toHaveBeenCalledWith('none');
         const actionButton = context.technicalInfoContent.querySelector('.technical-info-action-btn');
         expect(actionButton).toBeNull();
         expect(audioWriteReplayGainTagsMock).not.toHaveBeenCalled();
+    });
+
+    it('skips force-refreshing file tags when opening technical info for a remote track', async () => {
+        const context = createContext();
+        context.tracks[0] = {
+            ...context.tracks[0],
+            path: 'silphium-remote://friend:41637/Library/Artist/Album/track.flac',
+        };
+        const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
+
+        await runtime.openTechnicalInfoModal();
+
+        expect(context.ensureTrackTagsResolved).toHaveBeenCalledWith(0);
         expect(context.trackMetadataService.refreshTrackTags).not.toHaveBeenCalled();
+        expect(context.refreshNowPlayingLabel).not.toHaveBeenCalled();
+        expect(context.libraryController.renderFolder).not.toHaveBeenCalled();
+    });
+
+    it('renders refreshed file technical details and all file tags when the modal opens', async () => {
+        const context = createContext();
+        context.trackMetadataService.refreshTrackTags.mockImplementation(async () => {
+            context.tracks[0] = {
+                ...context.tracks[0],
+                displayTechnical: '24/96 • FLAC',
+                technicalDetails: {
+                    codec: 'FLAC',
+                    bitDepth: 24,
+                    sampleRate: 96000,
+                    fileSizeBytes: 123456789,
+                },
+                allFileTags: {
+                    ARTIST: ['File Artist'],
+                    CUSTOM: ['Value One', 'Value Two'],
+                },
+            };
+        });
+        const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
+
+        await runtime.openTechnicalInfoModal();
+
+        expect(context.technicalInfoContent.textContent).toContain('Codec');
+        expect(context.technicalInfoContent.textContent).toContain('FLAC');
+        expect(context.technicalInfoContent.textContent).toContain('All file tags');
+        expect(context.technicalInfoContent.textContent).toContain('ARTIST');
+        expect(context.technicalInfoContent.textContent).toContain('File Artist');
+        expect(context.technicalInfoContent.textContent).toContain('CUSTOM');
+        expect(context.technicalInfoContent.textContent).toContain('Value One');
+        expect(context.technicalInfoContent.textContent).toContain('Value Two');
     });
 });
