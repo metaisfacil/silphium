@@ -17,6 +17,7 @@ export type PlaylistControllerState = {
     loadedPlaylistHistoryItems: LoadedListenHistoryItem[] | null;
     loadedPlaylistCachedItems: LoadedPlaylistCachedItem[] | null;
     editableQueueTrackIndexes: number[] | null;
+    editableQueueCurrentPosition: number | null;
     selectedSource: PlaylistSource;
     selectedFavoriteIndex: number | null;
     playbackSource: PlaylistSource;
@@ -30,6 +31,7 @@ export const createPlaylistControllerState = (): PlaylistControllerState => ({
     loadedPlaylistHistoryItems: null,
     loadedPlaylistCachedItems: null,
     editableQueueTrackIndexes: null,
+    editableQueueCurrentPosition: null,
     selectedSource: 'queue',
     selectedFavoriteIndex: null,
     playbackSource: 'queue',
