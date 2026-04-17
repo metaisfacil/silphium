@@ -677,14 +677,18 @@ func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWat
 
 // ScanLibraryFolder indexes audio, text, and image files under the selected root folder.
 func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
-	return a.scanLibraryFolder(path, true)
+	return profiledValue(a, "ScanLibraryFolder", func() LibraryScanResult {
+		return a.scanLibraryFolder(path, true)
+	})
 }
 
 // ScanConfiguredLibraryFolders indexes all configured library folders from settings as one aggregated library.
 func (a *App) ScanConfiguredLibraryFolders() LibraryScanResult {
-	a.ensureSettingsLoaded()
-	localFolders, _ := partitionConfiguredLibraryFolders(a.settings.LibraryFolders)
-	return a.scanLibraryFoldersWithDeferredOption(localFolders, true, true)
+	return profiledValue(a, "ScanConfiguredLibraryFolders", func() LibraryScanResult {
+		a.ensureSettingsLoaded()
+		localFolders, _ := partitionConfiguredLibraryFolders(a.settings.LibraryFolders)
+		return a.scanLibraryFoldersWithDeferredOption(localFolders, true, true)
+	})
 }
 
 func cloneCoverPathByFolder(input map[string]string) map[string]string {

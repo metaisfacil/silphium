@@ -95,6 +95,12 @@ type readTrackTagsResult struct {
 	hasMetadata bool
 }
 
+type trackTagsInflightEntry struct {
+	waitCh      chan struct{}
+	tags        TrackTags
+	hasMetadata bool
+}
+
 type ffprobeAudioStream struct {
 	CodecName        string `json:"codec_name"`
 	CodecLongName    string `json:"codec_long_name"`
@@ -465,45 +471,6 @@ func readTrackTechnicalMetadata(path string, tags map[string][]string, ffprobePa
 		metadata.FileSizeBytes = fileInfo.Size()
 	}
 
-	if ffprobeMetadata, ok := readTrackTechnicalMetadataFromFFProbe(path, ffprobePath); ok {
-		if ffprobeMetadata.BitDepth != 0 {
-			metadata.BitDepth = ffprobeMetadata.BitDepth
-		}
-		if ffprobeMetadata.SampleRate != 0 {
-			metadata.SampleRate = ffprobeMetadata.SampleRate
-		}
-		if ffprobeMetadata.Codec != "" {
-			metadata.Codec = ffprobeMetadata.Codec
-		}
-		if ffprobeMetadata.CodecLong != "" {
-			metadata.CodecLong = ffprobeMetadata.CodecLong
-		}
-		if ffprobeMetadata.CodecProfile != "" {
-			metadata.CodecProfile = ffprobeMetadata.CodecProfile
-		}
-		if ffprobeMetadata.SampleFormat != "" {
-			metadata.SampleFormat = ffprobeMetadata.SampleFormat
-		}
-		if ffprobeMetadata.Channels != 0 {
-			metadata.Channels = ffprobeMetadata.Channels
-		}
-		if ffprobeMetadata.ChannelLayout != "" {
-			metadata.ChannelLayout = ffprobeMetadata.ChannelLayout
-		}
-		if ffprobeMetadata.BitRate != 0 {
-			metadata.BitRate = ffprobeMetadata.BitRate
-		}
-		if ffprobeMetadata.OverallBitRate != 0 {
-			metadata.OverallBitRate = ffprobeMetadata.OverallBitRate
-		}
-		if ffprobeMetadata.DurationSeconds != 0 {
-			metadata.DurationSeconds = ffprobeMetadata.DurationSeconds
-		}
-		if ffprobeMetadata.Container != "" {
-			metadata.Container = ffprobeMetadata.Container
-		}
-	}
-
 	if properties, err := readTaglibProperties(path); err == nil {
 		if metadata.SampleRate == 0 {
 			metadata.SampleRate = int(properties.SampleRate)
@@ -580,6 +547,47 @@ func readTrackTechnicalMetadata(path string, tags map[string][]string, ffprobePa
 		durationSeconds := parseFloatValue(firstTagValue(tags, "DURATION", "LENGTH"))
 		if durationSeconds > 0 {
 			metadata.DurationSeconds = durationSeconds
+		}
+	}
+
+	if metadata.BitDepth == 0 || metadata.SampleRate == 0 || metadata.Codec == "" || metadata.Channels == 0 || metadata.BitRate == 0 || metadata.OverallBitRate == 0 || metadata.DurationSeconds == 0 || metadata.Container == "" {
+		if ffprobeMetadata, ok := readTrackTechnicalMetadataFromFFProbe(path, ffprobePath); ok {
+			if ffprobeMetadata.BitDepth != 0 {
+				metadata.BitDepth = ffprobeMetadata.BitDepth
+			}
+			if ffprobeMetadata.SampleRate != 0 {
+				metadata.SampleRate = ffprobeMetadata.SampleRate
+			}
+			if ffprobeMetadata.Codec != "" {
+				metadata.Codec = ffprobeMetadata.Codec
+			}
+			if ffprobeMetadata.CodecLong != "" {
+				metadata.CodecLong = ffprobeMetadata.CodecLong
+			}
+			if ffprobeMetadata.CodecProfile != "" {
+				metadata.CodecProfile = ffprobeMetadata.CodecProfile
+			}
+			if ffprobeMetadata.SampleFormat != "" {
+				metadata.SampleFormat = ffprobeMetadata.SampleFormat
+			}
+			if ffprobeMetadata.Channels != 0 {
+				metadata.Channels = ffprobeMetadata.Channels
+			}
+			if ffprobeMetadata.ChannelLayout != "" {
+				metadata.ChannelLayout = ffprobeMetadata.ChannelLayout
+			}
+			if ffprobeMetadata.BitRate != 0 {
+				metadata.BitRate = ffprobeMetadata.BitRate
+			}
+			if ffprobeMetadata.OverallBitRate != 0 {
+				metadata.OverallBitRate = ffprobeMetadata.OverallBitRate
+			}
+			if ffprobeMetadata.DurationSeconds != 0 {
+				metadata.DurationSeconds = ffprobeMetadata.DurationSeconds
+			}
+			if ffprobeMetadata.Container != "" {
+				metadata.Container = ffprobeMetadata.Container
+			}
 		}
 	}
 
@@ -814,6 +822,46 @@ func resolveTrackTagsWorkerCount(jobCount int) int {
 	return resolveTrackTagsWorkerCountWithMax(jobCount, trackTagsWorkerLimit)
 }
 
+func trackTagsInflightKey(path string, signature trackTagsFileSignature) string {
+	return path + "|" + strconv.FormatInt(signature.Size, 10) + "|" + strconv.FormatInt(signature.ModUnixNs, 10)
+}
+
+func (a *App) beginTrackTagsInflight(path string, signature trackTagsFileSignature) (*trackTagsInflightEntry, bool) {
+	cacheState := a.trackTagsCacheState()
+	cacheState.mu.Lock()
+	defer cacheState.mu.Unlock()
+
+	if cacheState.inflightBy == nil {
+		cacheState.inflightBy = make(map[string]*trackTagsInflightEntry)
+	}
+
+	key := trackTagsInflightKey(path, signature)
+	if existing, exists := cacheState.inflightBy[key]; exists {
+		return existing, false
+	}
+
+	entry := &trackTagsInflightEntry{waitCh: make(chan struct{})}
+	cacheState.inflightBy[key] = entry
+	return entry, true
+}
+
+func (a *App) finishTrackTagsInflight(path string, signature trackTagsFileSignature, tags TrackTags, hasMetadata bool) {
+	cacheState := a.trackTagsCacheState()
+	cacheState.mu.Lock()
+	defer cacheState.mu.Unlock()
+
+	key := trackTagsInflightKey(path, signature)
+	entry, exists := cacheState.inflightBy[key]
+	if !exists {
+		return
+	}
+
+	entry.tags = tags
+	entry.hasMetadata = hasMetadata
+	delete(cacheState.inflightBy, key)
+	close(entry.waitCh)
+}
+
 func (a *App) removeTrackTagsCacheOrderEntryLocked(path string) {
 	cacheState := a.trackTagsCacheState()
 	for idx, cachedPath := range cacheState.order {
@@ -1028,34 +1076,60 @@ func (a *App) readTrackTagsFromMetadataDatabase(jobs []readTrackTagsJob) map[str
 
 // ReadTrackTags reads tag and technical metadata for track files by path.
 func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
-	return a.readTrackTagsWithWorkerLimit(paths, trackTagsWorkerLimit, true)
+	return profiledValue(a, "ReadTrackTags", func() map[string]TrackTags {
+		return a.readTrackTagsWithWorkerLimit(paths, trackTagsWorkerLimit, true)
+	})
+}
+
+func (a *App) refreshTrackMetadataDatabaseRecord(path string, signature trackTagsFileSignature, tags TrackTags) {
+	if !a.localLibraryFilesDatabaseEnabled() {
+		return
+	}
+
+	contentState := a.libraryContentState()
+	contentState.indexMu.RLock()
+	indexed, exists := contentState.trackByPath[path]
+	contentState.indexMu.RUnlock()
+	if !exists {
+		return
+	}
+
+	releaseDepthByRootPath := a.musicBrainzTagReleaseDepthByRootPath()
+	releaseDepth := releaseDepthByRootPath[strings.ToLower(normalizePath(indexed.RootPath))]
+	record := musicBrainzTagTrackRecordFromIndexedTrack(indexed, releaseDepth, signature, tags)
+
+	a.musicBrainzTagMu.Lock()
+	defer a.musicBrainzTagMu.Unlock()
+
+	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+	a.upsertMusicBrainzTagTrackRecordLocked(indexed.Path, record)
 }
 
 // RefreshTrackMetadata forces a fresh metadata read for a library track without interrupting playback.
 func (a *App) RefreshTrackMetadata(path string) (TrackTags, error) {
-	cleanPath := normalizePath(path)
-	if cleanPath == "" {
-		return TrackTags{}, errors.New("track path is required")
-	}
-	if _, ok := parseRemoteLibraryPath(cleanPath); ok {
-		return TrackTags{}, errors.New("remote track metadata refresh is not supported")
-	}
-	if !a.isAllowedLibraryPath(cleanPath) {
-		return TrackTags{}, errors.New("track path is outside the selected library")
-	}
-	if !isAudioPath(cleanPath) {
-		return TrackTags{}, errors.New("track path is not an audio file")
-	}
+	return profiledResult(a, "RefreshTrackMetadata", func() (TrackTags, error) {
+		cleanPath := normalizePath(path)
+		if cleanPath == "" {
+			return TrackTags{}, errors.New("track path is required")
+		}
+		if _, ok := parseRemoteLibraryPath(cleanPath); ok {
+			return TrackTags{}, errors.New("remote track metadata refresh is not supported")
+		}
+		if !a.isAllowedLibraryPath(cleanPath) {
+			return TrackTags{}, errors.New("track path is outside the selected library")
+		}
+		if !isAudioPath(cleanPath) {
+			return TrackTags{}, errors.New("track path is not an audio file")
+		}
 
-	a.invalidateTrackTagsCachePaths([]string{cleanPath})
-	refreshTargets := []string{cleanPath}
-	if folderPath := strings.TrimSpace(filepath.Dir(cleanPath)); folderPath != "" {
-		refreshTargets = append(refreshTargets, folderPath)
-	}
-	a.applyIncrementalLibraryChanges(refreshTargets)
-
-	tagByPath := a.readTrackTagsWithWorkerLimit([]string{cleanPath}, 1, false)
-	return tagByPath[cleanPath], nil
+		a.invalidateTrackTagsCachePaths([]string{cleanPath})
+		tagByPath := a.readTrackTagsWithWorkerLimit([]string{cleanPath}, 1, false)
+		tags := tagByPath[cleanPath]
+		if signature, ok := trackTagsFileSignatureForPath(cleanPath); ok {
+			a.refreshTrackMetadataDatabaseRecord(cleanPath, signature, tags)
+		}
+		return tags, nil
+	})
 }
 
 func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int, allowMetadataDatabase bool) map[string]TrackTags {
@@ -1123,6 +1197,23 @@ func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int, a
 		}
 	}
 
+	ownedJobs := make([]readTrackTagsJob, 0, len(pendingJobs))
+	type trackTagsWaiter struct {
+		path  string
+		entry *trackTagsInflightEntry
+	}
+	waiters := make([]trackTagsWaiter, 0, len(pendingJobs))
+	for _, job := range pendingJobs {
+		entry, shouldRead := a.beginTrackTagsInflight(job.path, job.signature)
+		if shouldRead {
+			ownedJobs = append(ownedJobs, job)
+			continue
+		}
+
+		waiters = append(waiters, trackTagsWaiter{path: job.path, entry: entry})
+	}
+	pendingJobs = ownedJobs
+
 	for _, job := range pendingJobs {
 		jobs <- job
 		queuedJobs++
@@ -1155,12 +1246,22 @@ func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int, a
 
 		for result := range results {
 			a.putTrackTagsCache(result.path, result.signature, result.tags, result.hasMetadata)
+			a.finishTrackTagsInflight(result.path, result.signature, result.tags, result.hasMetadata)
 			if !result.hasMetadata {
 				continue
 			}
 
 			tagByPath[result.path] = result.tags
 		}
+	}
+
+	for _, waiter := range waiters {
+		<-waiter.entry.waitCh
+		if !waiter.entry.hasMetadata {
+			continue
+		}
+
+		tagByPath[waiter.path] = waiter.entry.tags
 	}
 
 	if len(normalizedPaths) > 1 {
@@ -1181,49 +1282,51 @@ func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int, a
 
 // ReadTrackTagsFromBlobs reads tag and technical metadata from in-memory track blobs.
 func (a *App) ReadTrackTagsFromBlobs(blobs []TrackBlob) map[string]TrackTags {
-	tagByKey := make(map[string]TrackTags, len(blobs))
-	a.ensureSettingsLoaded()
-	ffprobePath := resolveFFProbePath(a.settingsState().settings.FFmpegPath)
+	return profiledValue(a, "ReadTrackTagsFromBlobs", func() map[string]TrackTags {
+		tagByKey := make(map[string]TrackTags, len(blobs))
+		a.ensureSettingsLoaded()
+		ffprobePath := resolveFFProbePath(a.settingsState().settings.FFmpegPath)
 
-	for _, blob := range blobs {
-		if strings.TrimSpace(blob.Key) == "" || strings.TrimSpace(blob.Data) == "" {
-			continue
-		}
+		for _, blob := range blobs {
+			if strings.TrimSpace(blob.Key) == "" || strings.TrimSpace(blob.Data) == "" {
+				continue
+			}
 
-		rawBytes, err := base64.StdEncoding.DecodeString(blob.Data)
-		if err != nil {
-			continue
-		}
+			rawBytes, err := base64.StdEncoding.DecodeString(blob.Data)
+			if err != nil {
+				continue
+			}
 
-		extension := filepath.Ext(blob.Name)
-		tempFile, err := os.CreateTemp("", "silphium-tag-*"+extension)
-		if err != nil {
-			continue
-		}
+			extension := filepath.Ext(blob.Name)
+			tempFile, err := os.CreateTemp("", "silphium-tag-*"+extension)
+			if err != nil {
+				continue
+			}
 
-		tempPath := tempFile.Name()
-		_, writeErr := tempFile.Write(rawBytes)
-		closeErr := tempFile.Close()
-		if writeErr != nil || closeErr != nil {
+			tempPath := tempFile.Name()
+			_, writeErr := tempFile.Write(rawBytes)
+			closeErr := tempFile.Close()
+			if writeErr != nil || closeErr != nil {
+				_ = os.Remove(tempPath)
+				continue
+			}
+
+			tags, err := readTaglibTags(tempPath)
+			if err != nil {
+				_ = os.Remove(tempPath)
+				continue
+			}
+
+			technical := readTrackTechnicalMetadata(tempPath, tags, ffprobePath)
 			_ = os.Remove(tempPath)
-			continue
+			trackTags := buildTrackTags(tags, technical)
+			if !hasAnyTrackMetadata(trackTags) {
+				continue
+			}
+
+			tagByKey[blob.Key] = trackTags
 		}
 
-		tags, err := readTaglibTags(tempPath)
-		if err != nil {
-			_ = os.Remove(tempPath)
-			continue
-		}
-
-		technical := readTrackTechnicalMetadata(tempPath, tags, ffprobePath)
-		_ = os.Remove(tempPath)
-		trackTags := buildTrackTags(tags, technical)
-		if !hasAnyTrackMetadata(trackTags) {
-			continue
-		}
-
-		tagByKey[blob.Key] = trackTags
-	}
-
-	return tagByKey
+		return tagByKey
+	})
 }

@@ -397,378 +397,388 @@ func (a *App) listenBrainzUserName(token string) (string, error) {
 
 // SubmitListenBrainz sends a playing_now or single listen event to the ListenBrainz API.
 func (a *App) SubmitListenBrainz(listenType string, metadata ListenBrainzTrackMetadata, listenedAt int64) error {
-	token, err := a.listenBrainzToken()
-	if err != nil {
-		return err
-	}
+	return profiledError(a, "SubmitListenBrainz", func() error {
+		token, err := a.listenBrainzToken()
+		if err != nil {
+			return err
+		}
 
-	normalizedType := strings.TrimSpace(strings.ToLower(listenType))
-	if normalizedType != "playing_now" && normalizedType != "single" {
-		return errors.New("listen type must be either playing_now or single")
-	}
+		normalizedType := strings.TrimSpace(strings.ToLower(listenType))
+		if normalizedType != "playing_now" && normalizedType != "single" {
+			return errors.New("listen type must be either playing_now or single")
+		}
 
-	artistName := strings.TrimSpace(metadata.ArtistName)
-	trackName := strings.TrimSpace(metadata.TrackName)
-	if artistName == "" || trackName == "" {
-		return errors.New("artist name and track name are required for ListenBrainz submissions")
-	}
+		artistName := strings.TrimSpace(metadata.ArtistName)
+		trackName := strings.TrimSpace(metadata.TrackName)
+		if artistName == "" || trackName == "" {
+			return errors.New("artist name and track name are required for ListenBrainz submissions")
+		}
 
-	if normalizedType == "single" && listenedAt <= 0 {
-		listenedAt = time.Now().Unix()
-	}
-	if normalizedType == "single" && a.shouldSkipListenBrainzDuplicateScrobble(metadata, listenedAt) {
-		return nil
-	}
+		if normalizedType == "single" && listenedAt <= 0 {
+			listenedAt = time.Now().Unix()
+		}
+		if normalizedType == "single" && a.shouldSkipListenBrainzDuplicateScrobble(metadata, listenedAt) {
+			return nil
+		}
 
-	requestBody := listenBrainzSubmitRequest{
-		ListenType: normalizedType,
-		Payload: []listenBrainzPayloadItem{{
-			TrackMetadata: listenBrainzTrackMetadataRequest{
-				ArtistName:  artistName,
-				TrackName:   trackName,
-				ReleaseName: strings.TrimSpace(metadata.ReleaseName),
-				AdditionalInfo: listenBrainzAdditionalInfo{
-					RecordingMBID: strings.TrimSpace(metadata.RecordingMBID),
-					ReleaseMBID:   strings.TrimSpace(metadata.ReleaseMBID),
-					ArtistMBIDs:   metadata.ArtistMBIDs,
-					MediaPlayer:   "Silphium",
+		requestBody := listenBrainzSubmitRequest{
+			ListenType: normalizedType,
+			Payload: []listenBrainzPayloadItem{{
+				TrackMetadata: listenBrainzTrackMetadataRequest{
+					ArtistName:  artistName,
+					TrackName:   trackName,
+					ReleaseName: strings.TrimSpace(metadata.ReleaseName),
+					AdditionalInfo: listenBrainzAdditionalInfo{
+						RecordingMBID: strings.TrimSpace(metadata.RecordingMBID),
+						ReleaseMBID:   strings.TrimSpace(metadata.ReleaseMBID),
+						ArtistMBIDs:   metadata.ArtistMBIDs,
+						MediaPlayer:   "Silphium",
+					},
 				},
-			},
-			ListenedAt: listenedAt,
-		}},
-	}
+				ListenedAt: listenedAt,
+			}},
+		}
 
-	rawRequest, err := json.Marshal(requestBody)
-	if err != nil {
-		return err
-	}
+		rawRequest, err := json.Marshal(requestBody)
+		if err != nil {
+			return err
+		}
 
-	a.waitForListenBrainzRequestSlotIfNeeded()
+		a.waitForListenBrainzRequestSlotIfNeeded()
 
-	httpRequest, err := http.NewRequest(http.MethodPost, a.listenBrainzServerURL()+listenBrainzSubmitPath, bytes.NewReader(rawRequest))
-	if err != nil {
-		return err
-	}
+		httpRequest, err := http.NewRequest(http.MethodPost, a.listenBrainzServerURL()+listenBrainzSubmitPath, bytes.NewReader(rawRequest))
+		if err != nil {
+			return err
+		}
 
-	httpRequest.Header.Set("Content-Type", "application/json")
-	httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+		httpRequest.Header.Set("Content-Type", "application/json")
+		httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
 
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	response, err := httpClient.Do(httpRequest)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		response, err := httpClient.Do(httpRequest)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = response.Body.Close()
+		}()
 
-	if response.StatusCode >= 200 && response.StatusCode < 300 {
-		return nil
-	}
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			return nil
+		}
 
-	responseBody, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return fmt.Errorf("listenbrainz submit failed with status %d", response.StatusCode)
-	}
+		responseBody, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			return fmt.Errorf("listenbrainz submit failed with status %d", response.StatusCode)
+		}
 
-	return parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz submit failed")
+		return parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz submit failed")
+	})
 }
 
 // SubmitListenBrainzRecordingFeedback submits love/hate feedback (-1, 0, or 1) for a recording MBID.
 func (a *App) SubmitListenBrainzRecordingFeedback(recordingMBID string, score int) error {
-	token, err := a.listenBrainzToken()
-	if err != nil {
-		return err
-	}
+	return profiledError(a, "SubmitListenBrainzRecordingFeedback", func() error {
+		token, err := a.listenBrainzToken()
+		if err != nil {
+			return err
+		}
 
-	cleanRecordingMBID := strings.TrimSpace(recordingMBID)
-	if cleanRecordingMBID == "" {
-		return errors.New("recording mbid is required")
-	}
+		cleanRecordingMBID := strings.TrimSpace(recordingMBID)
+		if cleanRecordingMBID == "" {
+			return errors.New("recording mbid is required")
+		}
 
-	normalizedScore := normalizedListenBrainzFeedbackScore(score)
-	if normalizedScore != score {
-		return errors.New("listenbrainz feedback score must be -1, 0, or 1")
-	}
+		normalizedScore := normalizedListenBrainzFeedbackScore(score)
+		if normalizedScore != score {
+			return errors.New("listenbrainz feedback score must be -1, 0, or 1")
+		}
 
-	requestBody := listenBrainzRecordingFeedbackRequest{
-		RecordingMBID: cleanRecordingMBID,
-		Score:         normalizedScore,
-	}
+		requestBody := listenBrainzRecordingFeedbackRequest{
+			RecordingMBID: cleanRecordingMBID,
+			Score:         normalizedScore,
+		}
 
-	rawRequest, err := json.Marshal(requestBody)
-	if err != nil {
-		return err
-	}
+		rawRequest, err := json.Marshal(requestBody)
+		if err != nil {
+			return err
+		}
 
-	a.waitForListenBrainzRequestSlotIfNeeded()
+		a.waitForListenBrainzRequestSlotIfNeeded()
 
-	httpRequest, err := http.NewRequest(http.MethodPost, a.listenBrainzServerURL()+listenBrainzRecordingFeedbackPath, bytes.NewReader(rawRequest))
-	if err != nil {
-		return err
-	}
+		httpRequest, err := http.NewRequest(http.MethodPost, a.listenBrainzServerURL()+listenBrainzRecordingFeedbackPath, bytes.NewReader(rawRequest))
+		if err != nil {
+			return err
+		}
 
-	httpRequest.Header.Set("Accept", "application/json")
-	httpRequest.Header.Set("Content-Type", "application/json")
-	httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+		httpRequest.Header.Set("Accept", "application/json")
+		httpRequest.Header.Set("Content-Type", "application/json")
+		httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
 
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	response, err := httpClient.Do(httpRequest)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		response, err := httpClient.Do(httpRequest)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = response.Body.Close()
+		}()
 
-	if response.StatusCode >= 200 && response.StatusCode < 300 {
-		return nil
-	}
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			return nil
+		}
 
-	responseBody, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return fmt.Errorf("listenbrainz feedback submit failed with status %d", response.StatusCode)
-	}
+		responseBody, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			return fmt.Errorf("listenbrainz feedback submit failed with status %d", response.StatusCode)
+		}
 
-	return parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz feedback submit failed")
+		return parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz feedback submit failed")
+	})
 }
 
 // GetListenBrainzRecordingFeedback fetches this user's current feedback score for a recording MBID.
 func (a *App) GetListenBrainzRecordingFeedback(recordingMBID string) (int, error) {
-	token, err := a.listenBrainzToken()
-	if err != nil {
-		return 0, err
-	}
-
-	cleanRecordingMBID := strings.TrimSpace(recordingMBID)
-	if cleanRecordingMBID == "" {
-		return 0, errors.New("recording mbid is required")
-	}
-
-	userName, err := a.listenBrainzUserName(token)
-	if err != nil {
-		return 0, err
-	}
-
-	requestBody := listenBrainzRecordingFeedbackLookupRequest{
-		RecordingMBIDs: []string{cleanRecordingMBID},
-	}
-
-	rawRequest, err := json.Marshal(requestBody)
-	if err != nil {
-		return 0, err
-	}
-
-	requestURL := fmt.Sprintf(
-		a.listenBrainzServerURL()+listenBrainzGetFeedbackForRecordingsPath,
-		url.PathEscape(userName),
-	)
-
-	a.waitForListenBrainzRequestSlotIfNeeded()
-
-	httpRequest, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(rawRequest))
-	if err != nil {
-		return 0, err
-	}
-
-	httpRequest.Header.Set("Accept", "application/json")
-	httpRequest.Header.Set("Content-Type", "application/json")
-	httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
-
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	response, err := httpClient.Do(httpRequest)
-	if err != nil {
-		return 0, err
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
-
-	responseBody, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return 0, fmt.Errorf("unable to read listenbrainz feedback response")
-	}
-
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return 0, parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz feedback lookup failed")
-	}
-
-	parsedResponse := listenBrainzRecordingFeedbackLookupResponse{}
-	if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
-		return 0, errors.New("invalid listenbrainz feedback response")
-	}
-
-	for _, feedback := range parsedResponse.Feedback {
-		if strings.EqualFold(strings.TrimSpace(feedback.RecordingMBID), cleanRecordingMBID) {
-			return normalizedListenBrainzFeedbackScore(feedback.Score), nil
+	return profiledResult(a, "GetListenBrainzRecordingFeedback", func() (int, error) {
+		token, err := a.listenBrainzToken()
+		if err != nil {
+			return 0, err
 		}
-	}
 
-	return 0, nil
+		cleanRecordingMBID := strings.TrimSpace(recordingMBID)
+		if cleanRecordingMBID == "" {
+			return 0, errors.New("recording mbid is required")
+		}
+
+		userName, err := a.listenBrainzUserName(token)
+		if err != nil {
+			return 0, err
+		}
+
+		requestBody := listenBrainzRecordingFeedbackLookupRequest{
+			RecordingMBIDs: []string{cleanRecordingMBID},
+		}
+
+		rawRequest, err := json.Marshal(requestBody)
+		if err != nil {
+			return 0, err
+		}
+
+		requestURL := fmt.Sprintf(
+			a.listenBrainzServerURL()+listenBrainzGetFeedbackForRecordingsPath,
+			url.PathEscape(userName),
+		)
+
+		a.waitForListenBrainzRequestSlotIfNeeded()
+
+		httpRequest, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(rawRequest))
+		if err != nil {
+			return 0, err
+		}
+
+		httpRequest.Header.Set("Accept", "application/json")
+		httpRequest.Header.Set("Content-Type", "application/json")
+		httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		response, err := httpClient.Do(httpRequest)
+		if err != nil {
+			return 0, err
+		}
+		defer func() {
+			_ = response.Body.Close()
+		}()
+
+		responseBody, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			return 0, fmt.Errorf("unable to read listenbrainz feedback response")
+		}
+
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return 0, parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz feedback lookup failed")
+		}
+
+		parsedResponse := listenBrainzRecordingFeedbackLookupResponse{}
+		if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
+			return 0, errors.New("invalid listenbrainz feedback response")
+		}
+
+		for _, feedback := range parsedResponse.Feedback {
+			if strings.EqualFold(strings.TrimSpace(feedback.RecordingMBID), cleanRecordingMBID) {
+				return normalizedListenBrainzFeedbackScore(feedback.Score), nil
+			}
+		}
+
+		return 0, nil
+	})
 }
 
 // GetListenBrainzFollowing fetches the usernames followed by the configured ListenBrainz account.
 func (a *App) GetListenBrainzFollowing() ([]string, error) {
-	token, err := a.listenBrainzToken()
-	if err != nil {
-		return nil, err
-	}
-
-	userName, err := a.listenBrainzUserName(token)
-	if err != nil {
-		return nil, err
-	}
-
-	requestURL := fmt.Sprintf(
-		a.listenBrainzServerURL()+listenBrainzFollowingPath,
-		url.PathEscape(userName),
-	)
-
-	a.waitForListenBrainzRequestSlotIfNeeded()
-
-	httpRequest, err := http.NewRequest(http.MethodGet, requestURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	httpRequest.Header.Set("Accept", "application/json")
-	httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
-
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	response, err := httpClient.Do(httpRequest)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
-
-	responseBody, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return nil, fmt.Errorf("unable to read listenbrainz following response")
-	}
-
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz following lookup failed")
-	}
-
-	parsedResponse := listenBrainzFollowingResponse{}
-	if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
-		return nil, errors.New("invalid listenbrainz following response")
-	}
-
-	following := make([]string, 0, len(parsedResponse.Following))
-	for _, rawUserName := range parsedResponse.Following {
-		trimmedUserName := strings.TrimSpace(rawUserName)
-		if trimmedUserName == "" {
-			continue
+	return profiledResult(a, "GetListenBrainzFollowing", func() ([]string, error) {
+		token, err := a.listenBrainzToken()
+		if err != nil {
+			return nil, err
 		}
 
-		following = append(following, trimmedUserName)
-	}
+		userName, err := a.listenBrainzUserName(token)
+		if err != nil {
+			return nil, err
+		}
 
-	return following, nil
+		requestURL := fmt.Sprintf(
+			a.listenBrainzServerURL()+listenBrainzFollowingPath,
+			url.PathEscape(userName),
+		)
+
+		a.waitForListenBrainzRequestSlotIfNeeded()
+
+		httpRequest, err := http.NewRequest(http.MethodGet, requestURL, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		httpRequest.Header.Set("Accept", "application/json")
+		httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		response, err := httpClient.Do(httpRequest)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			_ = response.Body.Close()
+		}()
+
+		responseBody, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("unable to read listenbrainz following response")
+		}
+
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return nil, parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz following lookup failed")
+		}
+
+		parsedResponse := listenBrainzFollowingResponse{}
+		if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
+			return nil, errors.New("invalid listenbrainz following response")
+		}
+
+		following := make([]string, 0, len(parsedResponse.Following))
+		for _, rawUserName := range parsedResponse.Following {
+			trimmedUserName := strings.TrimSpace(rawUserName)
+			if trimmedUserName == "" {
+				continue
+			}
+
+			following = append(following, trimmedUserName)
+		}
+
+		return following, nil
+	})
 }
 
 // GetListenBrainzFollowingFeed fetches recent listen events for the configured account's followed users.
 func (a *App) GetListenBrainzFollowingFeed(count int) ([]ListenBrainzSocialEvent, error) {
-	token, err := a.listenBrainzToken()
-	if err != nil {
-		return nil, err
-	}
+	return profiledResult(a, "GetListenBrainzFollowingFeed", func() ([]ListenBrainzSocialEvent, error) {
+		token, err := a.listenBrainzToken()
+		if err != nil {
+			return nil, err
+		}
 
-	userName, err := a.listenBrainzUserName(token)
-	if err != nil {
-		return nil, err
-	}
+		userName, err := a.listenBrainzUserName(token)
+		if err != nil {
+			return nil, err
+		}
 
-	requestURL := fmt.Sprintf(
-		a.listenBrainzServerURL()+listenBrainzFeedEventsFollowingPath,
-		url.PathEscape(userName),
-	)
+		requestURL := fmt.Sprintf(
+			a.listenBrainzServerURL()+listenBrainzFeedEventsFollowingPath,
+			url.PathEscape(userName),
+		)
 
-	query := url.Values{}
-	query.Set("count", fmt.Sprintf("%d", normalizeListenBrainzSocialCount(count)))
-	requestURL = requestURL + "?" + query.Encode()
+		query := url.Values{}
+		query.Set("count", fmt.Sprintf("%d", normalizeListenBrainzSocialCount(count)))
+		requestURL = requestURL + "?" + query.Encode()
 
-	a.waitForListenBrainzRequestSlotIfNeeded()
+		a.waitForListenBrainzRequestSlotIfNeeded()
 
-	httpRequest, err := http.NewRequest(http.MethodGet, requestURL, nil)
-	if err != nil {
-		return nil, err
-	}
+		httpRequest, err := http.NewRequest(http.MethodGet, requestURL, nil)
+		if err != nil {
+			return nil, err
+		}
 
-	httpRequest.Header.Set("Accept", "application/json")
-	httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
+		httpRequest.Header.Set("Accept", "application/json")
+		httpRequest.Header.Set("Authorization", fmt.Sprintf("Token %s", token))
 
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	response, err := httpClient.Do(httpRequest)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		response, err := httpClient.Do(httpRequest)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			_ = response.Body.Close()
+		}()
 
-	responseBody, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		return nil, fmt.Errorf("unable to read listenbrainz following feed response")
-	}
+		responseBody, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("unable to read listenbrainz following feed response")
+		}
 
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz following feed lookup failed")
-	}
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return nil, parseListenBrainzError(response.StatusCode, responseBody, "listenbrainz following feed lookup failed")
+		}
 
-	parsedResponse := listenBrainzSocialFeedResponse{}
-	if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
-		return nil, errors.New("invalid listenbrainz following feed response")
-	}
+		parsedResponse := listenBrainzSocialFeedResponse{}
+		if err := json.Unmarshal(responseBody, &parsedResponse); err != nil {
+			return nil, errors.New("invalid listenbrainz following feed response")
+		}
 
-	events := make([]ListenBrainzSocialEvent, 0, len(parsedResponse.Payload.Events))
-	for _, event := range parsedResponse.Payload.Events {
-		mappedEvent := ListenBrainzSocialEvent{
-			ID:            event.ID,
-			Created:       event.Created,
-			EventType:     strings.TrimSpace(event.EventType),
-			Hidden:        event.Hidden,
-			Message:       strings.TrimSpace(event.Message),
-			UserName:      strings.TrimSpace(event.UserName),
-			ListenedAt:    event.Metadata.ListenedAt,
-			ListenedAtISO: strings.TrimSpace(event.Metadata.ListenedAtISO),
-			PlayingNow:    event.Metadata.PlayingNow,
-			TrackMetadata: ListenBrainzSocialTrackMetadata{
-				ArtistName:  strings.TrimSpace(event.Metadata.TrackMetadata.ArtistName),
-				TrackName:   strings.TrimSpace(event.Metadata.TrackMetadata.TrackName),
-				ReleaseName: strings.TrimSpace(event.Metadata.TrackMetadata.ReleaseName),
-				AdditionalInfo: ListenBrainzSocialAdditionalInfo{
-					RecordingMBID:    strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.RecordingMBID),
-					RecordingMSID:    strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.RecordingMSID),
-					ReleaseMBID:      strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.ReleaseMBID),
-					ReleaseGroupMBID: strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.ReleaseGroupMBID),
-					ArtistMBIDs:      event.Metadata.TrackMetadata.AdditionalInfo.ArtistMBIDs,
-					OriginURL:        strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.OriginURL),
-					MusicService:     strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.MusicService),
-					MusicServiceName: strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.MusicServiceName),
-					DurationMs:       event.Metadata.TrackMetadata.AdditionalInfo.DurationMs,
+		events := make([]ListenBrainzSocialEvent, 0, len(parsedResponse.Payload.Events))
+		for _, event := range parsedResponse.Payload.Events {
+			mappedEvent := ListenBrainzSocialEvent{
+				ID:            event.ID,
+				Created:       event.Created,
+				EventType:     strings.TrimSpace(event.EventType),
+				Hidden:        event.Hidden,
+				Message:       strings.TrimSpace(event.Message),
+				UserName:      strings.TrimSpace(event.UserName),
+				ListenedAt:    event.Metadata.ListenedAt,
+				ListenedAtISO: strings.TrimSpace(event.Metadata.ListenedAtISO),
+				PlayingNow:    event.Metadata.PlayingNow,
+				TrackMetadata: ListenBrainzSocialTrackMetadata{
+					ArtistName:  strings.TrimSpace(event.Metadata.TrackMetadata.ArtistName),
+					TrackName:   strings.TrimSpace(event.Metadata.TrackMetadata.TrackName),
+					ReleaseName: strings.TrimSpace(event.Metadata.TrackMetadata.ReleaseName),
+					AdditionalInfo: ListenBrainzSocialAdditionalInfo{
+						RecordingMBID:    strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.RecordingMBID),
+						RecordingMSID:    strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.RecordingMSID),
+						ReleaseMBID:      strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.ReleaseMBID),
+						ReleaseGroupMBID: strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.ReleaseGroupMBID),
+						ArtistMBIDs:      event.Metadata.TrackMetadata.AdditionalInfo.ArtistMBIDs,
+						OriginURL:        strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.OriginURL),
+						MusicService:     strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.MusicService),
+						MusicServiceName: strings.TrimSpace(event.Metadata.TrackMetadata.AdditionalInfo.MusicServiceName),
+						DurationMs:       event.Metadata.TrackMetadata.AdditionalInfo.DurationMs,
+					},
 				},
-			},
+			}
+
+			if mappedEvent.UserName == "" {
+				mappedEvent.UserName = strings.TrimSpace(event.Metadata.UserName)
+			}
+			if mappedEvent.Created <= 0 {
+				mappedEvent.Created = event.Metadata.Created
+			}
+			if mappedEvent.Created <= 0 {
+				mappedEvent.Created = event.Metadata.InsertedAt
+			}
+			if mappedEvent.Created <= 0 {
+				mappedEvent.Created = mappedEvent.ListenedAt
+			}
+
+			events = append(events, mappedEvent)
 		}
 
-		if mappedEvent.UserName == "" {
-			mappedEvent.UserName = strings.TrimSpace(event.Metadata.UserName)
-		}
-		if mappedEvent.Created <= 0 {
-			mappedEvent.Created = event.Metadata.Created
-		}
-		if mappedEvent.Created <= 0 {
-			mappedEvent.Created = event.Metadata.InsertedAt
-		}
-		if mappedEvent.Created <= 0 {
-			mappedEvent.Created = mappedEvent.ListenedAt
-		}
-
-		events = append(events, mappedEvent)
-	}
-
-	return events, nil
+		return events, nil
+	})
 }

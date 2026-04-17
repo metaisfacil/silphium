@@ -337,23 +337,25 @@ func (a *App) markMusicBrainzTagWorkerActive() {
 
 // GetMusicBrainzTagWorkerProgress returns the current MusicBrainz tag worker snapshot.
 func (a *App) GetMusicBrainzTagWorkerProgress() MusicBrainzTagWorkerProgress {
-	workerState := a.musicBrainzTagWorkerState()
-	workerState.progressMu.Lock()
-	progress := workerState.progress
-	workerState.progressMu.Unlock()
+	return profiledValue(a, "GetMusicBrainzTagWorkerProgress", func() MusicBrainzTagWorkerProgress {
+		workerState := a.musicBrainzTagWorkerState()
+		workerState.progressMu.Lock()
+		progress := workerState.progress
+		workerState.progressMu.Unlock()
 
-	enabled := a.musicBrainzTagDatabaseEnabled()
-	if progress != (MusicBrainzTagWorkerProgress{}) || !enabled {
-		if progress == (MusicBrainzTagWorkerProgress{}) {
-			progress.Enabled = enabled
+		enabled := a.musicBrainzTagDatabaseEnabled()
+		if progress != (MusicBrainzTagWorkerProgress{}) || !enabled {
+			if progress == (MusicBrainzTagWorkerProgress{}) {
+				progress.Enabled = enabled
+			}
+			return progress
 		}
-		return progress
-	}
 
-	state := a.buildMusicBrainzTagWorkerState(workerState.generation.Load())
-	progress = state.progressSnapshot(true)
-	a.setMusicBrainzTagWorkerProgress(progress)
-	return progress
+		state := a.buildMusicBrainzTagWorkerState(workerState.generation.Load())
+		progress = state.progressSnapshot(true)
+		a.setMusicBrainzTagWorkerProgress(progress)
+		return progress
+	})
 }
 
 func (a *App) musicBrainzTagEntityNeedsFetchLocked(entityKey string, now time.Time) bool {
@@ -434,7 +436,30 @@ func (a *App) scanMusicBrainzTagTrack(indexed LibraryIndexedFile, releaseDepth i
 		trackTags = TrackTags{}
 	}
 
-	record := musicBrainzTagTrackRecord{
+	record := musicBrainzTagTrackRecordFromIndexedTrack(indexed, releaseDepth, signature, trackTags)
+
+	a.musicBrainzTagMu.Lock()
+	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+	a.upsertMusicBrainzTagTrackRecordLocked(indexed.Path, record)
+	result := musicBrainzTagTrackScanResult{
+		completedEntityKeys: make([]string, 0, len(record.ArtistIDs)+1),
+		pendingEntityKeys:   make([]string, 0, len(record.ArtistIDs)+1),
+	}
+	for _, entityKey := range musicBrainzTagEntityKeysForTrackRecord(record) {
+		if a.musicBrainzTagEntityNeedsFetchLocked(entityKey, time.Now()) {
+			result.pendingEntityKeys = append(result.pendingEntityKeys, entityKey)
+			continue
+		}
+
+		result.completedEntityKeys = append(result.completedEntityKeys, entityKey)
+	}
+	a.musicBrainzTagMu.Unlock()
+
+	return result
+}
+
+func musicBrainzTagTrackRecordFromIndexedTrack(indexed LibraryIndexedFile, releaseDepth int, signature trackTagsFileSignature, trackTags TrackTags) musicBrainzTagTrackRecord {
+	return musicBrainzTagTrackRecord{
 		Signature:         signature,
 		Title:             strings.TrimSpace(trackTags.Title),
 		TrackArtist:       strings.TrimSpace(trackTags.Artist),
@@ -462,25 +487,6 @@ func (a *App) scanMusicBrainzTagTrack(indexed LibraryIndexedFile, releaseDepth i
 		ArtistFolderPaths: artistFolderPathsForIndexedTrack(indexed, releaseDepth),
 		LastScannedAt:     time.Now(),
 	}
-
-	a.musicBrainzTagMu.Lock()
-	a.ensureMusicBrainzTagDatabaseLoadedLocked()
-	a.upsertMusicBrainzTagTrackRecordLocked(indexed.Path, record)
-	result := musicBrainzTagTrackScanResult{
-		completedEntityKeys: make([]string, 0, len(record.ArtistIDs)+1),
-		pendingEntityKeys:   make([]string, 0, len(record.ArtistIDs)+1),
-	}
-	for _, entityKey := range musicBrainzTagEntityKeysForTrackRecord(record) {
-		if a.musicBrainzTagEntityNeedsFetchLocked(entityKey, time.Now()) {
-			result.pendingEntityKeys = append(result.pendingEntityKeys, entityKey)
-			continue
-		}
-
-		result.completedEntityKeys = append(result.completedEntityKeys, entityKey)
-	}
-	a.musicBrainzTagMu.Unlock()
-
-	return result
 }
 
 func (a *App) processMusicBrainzTagTrackBatch(indexedByPath map[string]LibraryIndexedFile, paths []string, onProgress func(musicBrainzTagTrackScanResult)) musicBrainzTagTrackScanResult {

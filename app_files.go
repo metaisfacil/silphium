@@ -38,16 +38,18 @@ func (a *App) readLibraryFileBytes(path string) ([]byte, bool) {
 
 // ReadFileBase64 reads a file from the allowed library scope and returns its base64 content.
 func (a *App) ReadFileBase64(path string) string {
-	if !a.isAllowedLibraryPath(path) {
-		return ""
-	}
+	return profiledValue(a, "ReadFileBase64", func() string {
+		if !a.isAllowedLibraryPath(path) {
+			return ""
+		}
 
-	rawBytes, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
+		rawBytes, err := os.ReadFile(path)
+		if err != nil {
+			return ""
+		}
 
-	return base64.StdEncoding.EncodeToString(rawBytes)
+		return base64.StdEncoding.EncodeToString(rawBytes)
+	})
 }
 
 func decodeShareImagePayload(imageBase64 string) ([]byte, bool) {
@@ -70,71 +72,77 @@ func decodeShareImagePayload(imageBase64 string) ([]byte, bool) {
 
 // SaveShareImageFile decodes a base64 PNG payload and writes it to the requested path.
 func (a *App) SaveShareImageFile(path string, imageBase64 string) bool {
-	cleanPath := strings.TrimSpace(path)
-	if cleanPath == "" {
-		return false
-	}
+	return profiledValue(a, "SaveShareImageFile", func() bool {
+		cleanPath := strings.TrimSpace(path)
+		if cleanPath == "" {
+			return false
+		}
 
-	decoded, ok := decodeShareImagePayload(imageBase64)
-	if !ok {
-		return false
-	}
+		decoded, ok := decodeShareImagePayload(imageBase64)
+		if !ok {
+			return false
+		}
 
-	return os.WriteFile(cleanPath, decoded, 0o644) == nil
+		return os.WriteFile(cleanPath, decoded, 0o644) == nil
+	})
 }
 
 // CopyShareImageToClipboard decodes a base64 PNG payload and writes it to the operating system clipboard.
 func (a *App) CopyShareImageToClipboard(imageBase64 string) bool {
-	decoded, ok := decodeShareImagePayload(imageBase64)
-	if !ok {
-		return false
-	}
+	return profiledValue(a, "CopyShareImageToClipboard", func() bool {
+		decoded, ok := decodeShareImagePayload(imageBase64)
+		if !ok {
+			return false
+		}
 
-	return copyShareImageToClipboardPNG(decoded) == nil
+		return copyShareImageToClipboardPNG(decoded) == nil
+	})
 }
 
 // ReadImageThumbnail reads an image from the allowed library scope and returns a cheap thumbnail.
 func (a *App) ReadImageThumbnail(path string, maxEdge int) EmbeddedCoverArt {
-	rawBytes, ok := a.readLibraryFileBytes(path)
-	if !ok {
-		return EmbeddedCoverArt{}
-	}
-
-	if maxEdge <= 0 {
-		maxEdge = defaultImageThumbnailMaxEdge
-	}
-	if maxEdge > maxImageThumbnailMaxEdge {
-		maxEdge = maxImageThumbnailMaxEdge
-	}
-
-	decoded, _, err := image.Decode(bytes.NewReader(rawBytes))
-	if err != nil {
-		return EmbeddedCoverArt{}
-	}
-
-	bounds := decoded.Bounds()
-	if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
-		return EmbeddedCoverArt{}
-	}
-
-	mimeType := strings.TrimSpace(http.DetectContentType(rawBytes))
-	if bounds.Dx() <= maxEdge && bounds.Dy() <= maxEdge && strings.HasPrefix(mimeType, "image/") {
-		return EmbeddedCoverArt{
-			Base64:   base64.StdEncoding.EncodeToString(rawBytes),
-			MimeType: mimeType,
+	return profiledValue(a, "ReadImageThumbnail", func() EmbeddedCoverArt {
+		rawBytes, ok := a.readLibraryFileBytes(path)
+		if !ok {
+			return EmbeddedCoverArt{}
 		}
-	}
 
-	thumbnail := resizeImageNearest(decoded, maxEdge)
-	var encoded bytes.Buffer
-	if err := png.Encode(&encoded, thumbnail); err != nil {
-		return EmbeddedCoverArt{}
-	}
+		if maxEdge <= 0 {
+			maxEdge = defaultImageThumbnailMaxEdge
+		}
+		if maxEdge > maxImageThumbnailMaxEdge {
+			maxEdge = maxImageThumbnailMaxEdge
+		}
 
-	return EmbeddedCoverArt{
-		Base64:   base64.StdEncoding.EncodeToString(encoded.Bytes()),
-		MimeType: "image/png",
-	}
+		decoded, _, err := image.Decode(bytes.NewReader(rawBytes))
+		if err != nil {
+			return EmbeddedCoverArt{}
+		}
+
+		bounds := decoded.Bounds()
+		if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
+			return EmbeddedCoverArt{}
+		}
+
+		mimeType := strings.TrimSpace(http.DetectContentType(rawBytes))
+		if bounds.Dx() <= maxEdge && bounds.Dy() <= maxEdge && strings.HasPrefix(mimeType, "image/") {
+			return EmbeddedCoverArt{
+				Base64:   base64.StdEncoding.EncodeToString(rawBytes),
+				MimeType: mimeType,
+			}
+		}
+
+		thumbnail := resizeImageNearest(decoded, maxEdge)
+		var encoded bytes.Buffer
+		if err := png.Encode(&encoded, thumbnail); err != nil {
+			return EmbeddedCoverArt{}
+		}
+
+		return EmbeddedCoverArt{
+			Base64:   base64.StdEncoding.EncodeToString(encoded.Bytes()),
+			MimeType: "image/png",
+		}
+	})
 }
 
 func resizeImageNearest(source image.Image, maxEdge int) *image.RGBA {
@@ -179,16 +187,18 @@ func resizeImageNearest(source image.Image, maxEdge int) *image.RGBA {
 
 // ReadTextFile reads and decodes a text file from the allowed library scope.
 func (a *App) ReadTextFile(path string) string {
-	if !a.isAllowedLibraryPath(path) {
-		return ""
-	}
+	return profiledValue(a, "ReadTextFile", func() string {
+		if !a.isAllowedLibraryPath(path) {
+			return ""
+		}
 
-	rawBytes, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
+		rawBytes, err := os.ReadFile(path)
+		if err != nil {
+			return ""
+		}
 
-	return decodeTextFileBytes(rawBytes)
+		return decodeTextFileBytes(rawBytes)
+	})
 }
 
 func decodeTextFileBytes(rawBytes []byte) string {

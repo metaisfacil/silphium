@@ -138,6 +138,10 @@ export function GetMusicBrainzTagWorkerProgress() {
   return window['go']['main']['App']['GetMusicBrainzTagWorkerProgress']();
 }
 
+export function GetProfilerHTTPAddress() {
+  return window['go']['main']['App']['GetProfilerHTTPAddress']();
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
@@ -180,6 +184,10 @@ export function LookupTrackMusicBrainzMetadata(arg1, arg2) {
 
 export function OpenFolderInFileBrowser(arg1) {
   return window['go']['main']['App']['OpenFolderInFileBrowser'](arg1);
+}
+
+export function ProfilerSnapshot() {
+  return window['go']['main']['App']['ProfilerSnapshot']();
 }
 
 export function ReadFileBase64(arg1) {
@@ -268,6 +276,14 @@ export function SelectShareImageSaveFile(arg1) {
 
 export function ShowErrorDialog(arg1, arg2) {
   return window['go']['main']['App']['ShowErrorDialog'](arg1, arg2);
+}
+
+export function StartProfilerSession() {
+  return window['go']['main']['App']['StartProfilerSession']();
+}
+
+export function StopProfilerSession() {
+  return window['go']['main']['App']['StopProfilerSession']();
 }
 
 export function SubmitLastFm(arg1, arg2, arg3) {

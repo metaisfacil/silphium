@@ -7,7 +7,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+
+	taglib "go.senan.xyz/taglib"
 )
 
 func TestTrackTagParsingHelpers(t *testing.T) {
@@ -291,6 +295,65 @@ func TestTrackTagCachingAndBatchReads(t *testing.T) {
 	}
 }
 
+func TestReadTrackTagsDeduplicatesConcurrentInflightReads(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithSettingsLoaded()
+	app.activeLibraryRoots = []libraryRootConfig{{
+		Path: fixture.rootOne,
+		Name: "Library",
+	}}
+
+	originalReadTaglibTags := readTaglibTags
+	originalReadTaglibProperties := readTaglibProperties
+	t.Cleanup(func() {
+		readTaglibTags = originalReadTaglibTags
+		readTaglibProperties = originalReadTaglibProperties
+	})
+
+	var readCount atomic.Int32
+	startCh := make(chan struct{})
+	readTaglibTags = func(path string) (map[string][]string, error) {
+		readCount.Add(1)
+		<-startCh
+		return map[string][]string{
+			"TITLE":  {filepath.Base(path)},
+			"ARTIST": {"Artist"},
+		}, nil
+	}
+	readTaglibProperties = func(string) (taglib.Properties, error) {
+		return taglib.Properties{}, nil
+	}
+
+	results := make([]map[string]TrackTags, 2)
+	var waitGroup sync.WaitGroup
+	for index := range results {
+		waitGroup.Add(1)
+		go func(resultIndex int) {
+			defer waitGroup.Done()
+			results[resultIndex] = app.ReadTrackTags([]string{fixture.trackOne})
+		}(index)
+	}
+
+	for readCount.Load() == 0 {
+		runtime.Gosched()
+	}
+	close(startCh)
+	waitGroup.Wait()
+
+	if got := readCount.Load(); got != 1 {
+		t.Fatalf("readTaglibTags concurrent call count = %d, want 1", got)
+	}
+	for index, result := range results {
+		tags, exists := result[fixture.trackOne]
+		if !exists || tags.Title == "" || tags.Artist == "" {
+			t.Fatalf("ReadTrackTags concurrent result[%d] = %#v, want resolved tags for %q", index, result, fixture.trackOne)
+		}
+	}
+	if got := len(app.trackTagsCacheState().inflightBy); got != 0 {
+		t.Fatalf("len(trackTags inflight map) = %d, want 0", got)
+	}
+}
+
 func TestReadTrackTagsUsesMetadataDatabaseBeforeReadingFiles(t *testing.T) {
 	originalReadTaglibTags := readTaglibTags
 	t.Cleanup(func() {
@@ -527,8 +590,15 @@ func TestRefreshTrackMetadataForcesFreshReadAndIncrementalRescan(t *testing.T) {
 	if got := tags.AllTags["CUSTOM"]; len(got) != 1 || got[0] != "Fresh Value" {
 		t.Fatalf("RefreshTrackMetadata() allTags = %#v, want file-backed custom tag", tags.AllTags)
 	}
-	if rescannedPath != fixture.albumOneFolder {
-		t.Fatalf("incremental refresh path = %q, want %q", rescannedPath, fixture.albumOneFolder)
+	if rescannedPath != "" {
+		t.Fatalf("incremental refresh path = %q, want empty", rescannedPath)
+	}
+
+	app.musicBrainzTagMu.Lock()
+	refreshedRecord := app.musicBrainzTagStore.Tracks[fixture.trackOne]
+	app.musicBrainzTagMu.Unlock()
+	if refreshedRecord.Title != "Fresh Title" || refreshedRecord.TrackArtist != "Fresh Artist" {
+		t.Fatalf("RefreshTrackMetadata() record = %#v, want refreshed database metadata", refreshedRecord)
 	}
 }
 

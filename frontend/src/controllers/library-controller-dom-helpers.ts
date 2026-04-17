@@ -142,10 +142,33 @@ export const clearSearchTreeListAnimation = (list: HTMLUListElement): void => {
         window.clearTimeout(cleanupHandle);
     }
 
+    const frameHandle = Number(list.dataset.searchTreeAnimationFrameHandle || '');
+    if (!Number.isNaN(frameHandle) && frameHandle > 0) {
+        window.cancelAnimationFrame(frameHandle);
+    }
+
     delete list.dataset.searchTreeAnimationHandle;
+    delete list.dataset.searchTreeAnimationFrameHandle;
     list.classList.remove('is-collapsible', 'is-animating');
     list.style.height = '';
     list.style.opacity = '';
+};
+
+export const scheduleSearchTreeListFrame = (
+    list: HTMLUListElement,
+    work: () => void,
+): void => {
+    const frameHandle = Number(list.dataset.searchTreeAnimationFrameHandle || '');
+    if (!Number.isNaN(frameHandle) && frameHandle > 0) {
+        window.cancelAnimationFrame(frameHandle);
+    }
+
+    const nextFrameHandle = window.requestAnimationFrame(() => {
+        delete list.dataset.searchTreeAnimationFrameHandle;
+        work();
+    });
+
+    list.dataset.searchTreeAnimationFrameHandle = String(nextFrameHandle);
 };
 
 export const scheduleSearchTreeListCleanup = (

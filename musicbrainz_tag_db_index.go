@@ -73,10 +73,60 @@ func removeMusicBrainzTagEntityIndexEntry(index map[string]map[string]struct{}, 
 	}
 }
 
+func normalizeMusicBrainzTagReleaseFolderLookupKey(path string) string {
+	return strings.ToLower(normalizeMusicBrainzTagFolderPath(path))
+}
+
+func addMusicBrainzTagReleaseFolderLookupEntry(index map[string]int, path string) {
+	cleanPath := normalizeMusicBrainzTagReleaseFolderLookupKey(path)
+	if cleanPath == "" {
+		return
+	}
+
+	index[cleanPath]++
+}
+
+func removeMusicBrainzTagReleaseFolderLookupEntry(index map[string]int, path string) {
+	cleanPath := normalizeMusicBrainzTagReleaseFolderLookupKey(path)
+	if cleanPath == "" {
+		return
+	}
+
+	remaining := index[cleanPath] - 1
+	if remaining <= 0 {
+		delete(index, cleanPath)
+		return
+	}
+
+	index[cleanPath] = remaining
+}
+
+func (a *App) rebuildMusicBrainzTagReleaseFolderLookupLocked() {
+	a.musicBrainzTagReleaseFolderRefCounts = make(map[string]int)
+	for _, folderPathsByID := range a.musicBrainzTagReleaseFoldersByID {
+		for folderPath := range folderPathsByID {
+			addMusicBrainzTagReleaseFolderLookupEntry(a.musicBrainzTagReleaseFolderRefCounts, folderPath)
+		}
+	}
+}
+
+func (a *App) isMusicBrainzTaggedAlbumFolderLocked(folderPath string) bool {
+	if len(a.musicBrainzTagReleaseFolderRefCounts) == 0 && len(a.musicBrainzTagReleaseFoldersByID) > 0 {
+		a.rebuildMusicBrainzTagReleaseFolderLookupLocked()
+	}
+
+	_, tagged := a.musicBrainzTagReleaseFolderRefCounts[normalizeMusicBrainzTagReleaseFolderLookupKey(folderPath)]
+	return tagged
+}
+
 func (a *App) addMusicBrainzTagTrackIndexesLocked(record musicBrainzTagTrackRecord) {
 	artistIDs := musicBrainzTagBrowseArtistIDs(record)
 	if record.ReleaseID != "" && record.ReleaseFolderPath != "" {
 		addMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByID, record.ReleaseID, record.ReleaseFolderPath)
+		if a.musicBrainzTagReleaseFolderRefCounts == nil {
+			a.musicBrainzTagReleaseFolderRefCounts = make(map[string]int)
+		}
+		addMusicBrainzTagReleaseFolderLookupEntry(a.musicBrainzTagReleaseFolderRefCounts, record.ReleaseFolderPath)
 	}
 	if record.ReleaseFolderPath != "" {
 		for _, artistID := range artistIDs {
@@ -95,6 +145,7 @@ func (a *App) removeMusicBrainzTagTrackIndexesLocked(record musicBrainzTagTrackR
 	artistIDs := musicBrainzTagBrowseArtistIDs(record)
 	if record.ReleaseID != "" && record.ReleaseFolderPath != "" {
 		removeMusicBrainzTagPathIndexEntry(a.musicBrainzTagReleaseFoldersByID, record.ReleaseID, record.ReleaseFolderPath)
+		removeMusicBrainzTagReleaseFolderLookupEntry(a.musicBrainzTagReleaseFolderRefCounts, record.ReleaseFolderPath)
 	}
 	if record.ReleaseFolderPath != "" {
 		for _, artistID := range artistIDs {
@@ -134,6 +185,7 @@ func (a *App) removeMusicBrainzTagEntityIndexesLocked(record musicBrainzTagEntit
 func (a *App) rebuildMusicBrainzTagIndexesLocked() {
 	a.musicBrainzTagEntityKeysByTag = make(map[string]map[string]struct{})
 	a.musicBrainzTagReleaseFoldersByID = make(map[string]map[string]struct{})
+	a.musicBrainzTagReleaseFolderRefCounts = make(map[string]int)
 	a.musicBrainzTagReleaseFoldersByArtistID = make(map[string]map[string]struct{})
 	a.musicBrainzTagArtistFoldersByID = make(map[string]map[string]struct{})
 

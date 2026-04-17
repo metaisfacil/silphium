@@ -198,7 +198,7 @@ describe('createAppModalRuntime', () => {
         expect(audioWriteReplayGainTagsMock).not.toHaveBeenCalled();
     });
 
-    it('skips force-refreshing file tags when opening technical info for a remote track', async () => {
+    it('does not force-refresh file tags when opening technical info for a remote track', async () => {
         const context = createContext();
         context.tracks[0] = {
             ...context.tracks[0],

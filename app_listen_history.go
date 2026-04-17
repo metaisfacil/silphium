@@ -47,58 +47,62 @@ func (a *App) trimLocalLibraryListenHistory() {
 
 // AddListenHistoryEntry stores one completed listen in the local library database.
 func (a *App) AddListenHistoryEntry(trackPath string, trackName string, artistName string, releaseName string, listenedAt int64) bool {
-	cleanPath := normalizePath(trackPath)
-	if cleanPath == "" || !a.localLibraryFilesDatabaseListenHistoryEnabled() {
-		return false
-	}
+	return profiledValue(a, "AddListenHistoryEntry", func() bool {
+		cleanPath := normalizePath(trackPath)
+		if cleanPath == "" || !a.localLibraryFilesDatabaseListenHistoryEnabled() {
+			return false
+		}
 
-	if listenedAt <= 0 {
-		listenedAt = time.Now().Unix()
-	}
+		if listenedAt <= 0 {
+			listenedAt = time.Now().Unix()
+		}
 
-	name := strings.TrimSpace(trackName)
-	if name == "" {
-		name = filepath.Base(cleanPath)
-	}
+		name := strings.TrimSpace(trackName)
+		if name == "" {
+			name = filepath.Base(cleanPath)
+		}
 
-	record := libraryListenHistoryRecord{
-		TrackPath:   cleanPath,
-		TrackName:   name,
-		ArtistName:  strings.TrimSpace(artistName),
-		ReleaseName: strings.TrimSpace(releaseName),
-		ListenedAt:  listenedAt,
-	}
-	if err := appendLibraryListenHistoryRecordToSQLite(a.libraryFilesDatabasePath(), record, a.localLibraryFilesDatabaseListenHistoryLimit()); err != nil {
-		logpkg.Printf("failed to append local library listen history: %v", err)
-		return false
-	}
+		record := libraryListenHistoryRecord{
+			TrackPath:   cleanPath,
+			TrackName:   name,
+			ArtistName:  strings.TrimSpace(artistName),
+			ReleaseName: strings.TrimSpace(releaseName),
+			ListenedAt:  listenedAt,
+		}
+		if err := appendLibraryListenHistoryRecordToSQLite(a.libraryFilesDatabasePath(), record, a.localLibraryFilesDatabaseListenHistoryLimit()); err != nil {
+			logpkg.Printf("failed to append local library listen history: %v", err)
+			return false
+		}
 
-	return true
+		return true
+	})
 }
 
 // LoadListenHistoryPlaylist returns the stored listen history as a read-only playlist view.
 func (a *App) LoadListenHistoryPlaylist() PlaylistLoadResult {
-	result := PlaylistLoadResult{
-		Name:       "Listen History",
-		TrackFiles: []LibraryIndexedFile{},
-	}
-	if !a.localLibraryFilesDatabaseListenHistoryEnabled() {
-		return result
-	}
-
-	records, ok := loadLibraryListenHistoryRecordsFromSQLite(a.libraryFilesDatabasePath())
-	if !ok {
-		return result
-	}
-
-	result.TrackFiles = make([]LibraryIndexedFile, 0, len(records))
-	for _, record := range records {
-		if strings.TrimSpace(record.TrackPath) == "" {
-			continue
+	return profiledValue(a, "LoadListenHistoryPlaylist", func() PlaylistLoadResult {
+		result := PlaylistLoadResult{
+			Name:       "Listen History",
+			TrackFiles: []LibraryIndexedFile{},
+		}
+		if !a.localLibraryFilesDatabaseListenHistoryEnabled() {
+			return result
 		}
 
-		result.TrackFiles = append(result.TrackFiles, a.indexedFileForHistoryRecord(record))
-	}
+		records, ok := loadLibraryListenHistoryRecordsFromSQLite(a.libraryFilesDatabasePath())
+		if !ok {
+			return result
+		}
 
-	return result
+		result.TrackFiles = make([]LibraryIndexedFile, 0, len(records))
+		for _, record := range records {
+			if strings.TrimSpace(record.TrackPath) == "" {
+				continue
+			}
+
+			result.TrackFiles = append(result.TrackFiles, a.indexedFileForHistoryRecord(record))
+		}
+
+		return result
+	})
 }
