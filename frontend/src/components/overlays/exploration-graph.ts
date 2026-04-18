@@ -9,6 +9,10 @@ type ExplorationGraphHandle = {
   destroy: () => void;
 };
 
+type ExplorationGraphOptions = {
+  onNodeActivated?: (node: MusicBrainzExplorationNode) => void;
+};
+
 type RenderNode = MusicBrainzExplorationNode & {
   x: number;
   y: number;
@@ -24,11 +28,14 @@ const WORLD_WIDTH = 1360;
 const WORLD_HEIGHT = 860;
 const CENTER_PADDING_X = 88;
 const CENTER_PADDING_Y = 82;
+const ZOOM_EASING_DURATION_MS = 180;
 
 const createSvgElement = <K extends keyof SVGElementTagNameMap>(tagName: K): SVGElementTagNameMap[K] =>
   document.createElementNS(SVG_NS, tagName);
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+const lerp = (from: number, to: number, progress: number): number => from + (to - from) * progress;
+const easeOutCubic = (progress: number): number => 1 - ((1 - progress) ** 3);
 
 const compactText = (value: string, maxLength: number): string => {
   const cleanValue = value.trim();
@@ -209,7 +216,11 @@ const relaxLayout = (nodes: RenderNode[], edges: MusicBrainzExplorationEdge[]): 
   }
 }
 
-export function renderExplorationGraph(container: HTMLElement, graph: MusicBrainzExplorationGraph): ExplorationGraphHandle {
+export function renderExplorationGraph(
+  container: HTMLElement,
+  graph: MusicBrainzExplorationGraph,
+  options: ExplorationGraphOptions = {},
+): ExplorationGraphHandle {
   const renderNodes: RenderNode[] = graph.nodes.map((node) => ({
     ...node,
     x: WORLD_WIDTH / 2,
@@ -286,19 +297,102 @@ export function renderExplorationGraph(container: HTMLElement, graph: MusicBrain
   let panOriginX = 0;
   let panOriginY = 0;
   let activeNode: RenderNode | null = null;
+  let dragMoved = false;
+  let suppressClickNodeID: string | null = null;
+  let zoomAnimationFrameId: number | null = null;
+  let zoomAnimationStartTime: number | null = null;
+  let zoomAnimationFromScale = scale;
+  let zoomAnimationFromTranslateX = translateX;
+  let zoomAnimationFromTranslateY = translateY;
+  let zoomAnimationTargetScale = scale;
+  let zoomAnimationTargetTranslateX = translateX;
+  let zoomAnimationTargetTranslateY = translateY;
 
   const updateViewport = () => {
     viewport.setAttribute('transform', `translate(${translateX} ${translateY}) scale(${scale})`);
   };
 
-  const toWorldPoint = (clientX: number, clientY: number) => {
+  const activeZoomTransform = () => {
+    if (zoomAnimationFrameId !== null) {
+      return {
+        scale: zoomAnimationTargetScale,
+        translateX: zoomAnimationTargetTranslateX,
+        translateY: zoomAnimationTargetTranslateY,
+      };
+    }
+
+    return {
+      scale,
+      translateX,
+      translateY,
+    };
+  };
+
+  const cancelZoomAnimation = () => {
+    if (zoomAnimationFrameId !== null && typeof window.cancelAnimationFrame === 'function') {
+      window.cancelAnimationFrame(zoomAnimationFrameId);
+    }
+
+    zoomAnimationFrameId = null;
+  zoomAnimationStartTime = null;
+    zoomAnimationFromScale = scale;
+    zoomAnimationFromTranslateX = translateX;
+    zoomAnimationFromTranslateY = translateY;
+    zoomAnimationTargetScale = scale;
+    zoomAnimationTargetTranslateX = translateX;
+    zoomAnimationTargetTranslateY = translateY;
+  };
+
+  const animateZoomTo = (nextScale: number, nextTranslateX: number, nextTranslateY: number) => {
+    cancelZoomAnimation();
+
+    if (nextScale === scale && nextTranslateX === translateX && nextTranslateY === translateY) {
+      return;
+    }
+
+    zoomAnimationFromScale = scale;
+    zoomAnimationFromTranslateX = translateX;
+    zoomAnimationFromTranslateY = translateY;
+    zoomAnimationTargetScale = nextScale;
+    zoomAnimationTargetTranslateX = nextTranslateX;
+    zoomAnimationTargetTranslateY = nextTranslateY;
+
+    const step = (timestamp: number) => {
+      if (zoomAnimationStartTime === null) {
+        zoomAnimationStartTime = timestamp;
+      }
+
+      const progress = clamp((timestamp - zoomAnimationStartTime) / ZOOM_EASING_DURATION_MS, 0, 1);
+      const easedProgress = easeOutCubic(progress);
+      scale = lerp(zoomAnimationFromScale, zoomAnimationTargetScale, easedProgress);
+      translateX = lerp(zoomAnimationFromTranslateX, zoomAnimationTargetTranslateX, easedProgress);
+      translateY = lerp(zoomAnimationFromTranslateY, zoomAnimationTargetTranslateY, easedProgress);
+      updateViewport();
+
+      if (progress < 1) {
+        zoomAnimationFrameId = window.requestAnimationFrame(step);
+        return;
+      }
+
+      zoomAnimationFrameId = null;
+      zoomAnimationStartTime = null;
+    };
+
+    zoomAnimationFrameId = window.requestAnimationFrame(step);
+  };
+
+  const toWorldPoint = (
+    clientX: number,
+    clientY: number,
+    transform: { scale: number; translateX: number; translateY: number } = { scale, translateX, translateY },
+  ) => {
     const rect = svg.getBoundingClientRect();
     const localX = ((clientX - rect.left) / rect.width) * WORLD_WIDTH;
     const localY = ((clientY - rect.top) / rect.height) * WORLD_HEIGHT;
 
     return {
-      x: (localX - translateX) / scale,
-      y: (localY - translateY) / scale,
+      x: (localX - transform.translateX) / transform.scale,
+      y: (localY - transform.translateY) / transform.scale,
     };
   };
 
@@ -317,6 +411,7 @@ export function renderExplorationGraph(container: HTMLElement, graph: MusicBrain
 
     const graphWidth = Math.max(1, bounds.maxX - bounds.minX);
     const graphHeight = Math.max(1, bounds.maxY - bounds.minY);
+    cancelZoomAnimation();
     scale = clampScale(Math.min(WORLD_WIDTH / (graphWidth + CENTER_PADDING_X), WORLD_HEIGHT / (graphHeight + CENTER_PADDING_Y), 1));
     translateX = (WORLD_WIDTH - graphWidth * scale) / 2 - bounds.minX * scale;
     translateY = (WORLD_HEIGHT - graphHeight * scale) / 2 - bounds.minY * scale;
@@ -373,6 +468,9 @@ export function renderExplorationGraph(container: HTMLElement, graph: MusicBrain
   const handlePointerMove = (event: PointerEvent) => {
     if (dragPointerId === event.pointerId && activeNode) {
       const point = toWorldPoint(event.clientX, event.clientY);
+      if (!dragMoved && (Math.abs(point.x - panStartX) > 1 || Math.abs(point.y - panStartY) > 1)) {
+        dragMoved = true;
+      }
       activeNode.x = clamp(dragStartX + (point.x - panStartX), activeNode.radius + 24, WORLD_WIDTH - activeNode.radius - 24);
       activeNode.y = clamp(dragStartY + (point.y - panStartY), activeNode.radius + 24, WORLD_HEIGHT - activeNode.radius - 24);
       activeNode.anchorX = activeNode.x;
@@ -394,8 +492,19 @@ export function renderExplorationGraph(container: HTMLElement, graph: MusicBrain
 
   const handlePointerUp = (event: PointerEvent) => {
     if (dragPointerId === event.pointerId) {
+      const completedNodeID = activeNode?.id || null;
+      const movedDuringDrag = dragMoved;
       dragPointerId = null;
       activeNode = null;
+      dragMoved = false;
+      if (movedDuringDrag && completedNodeID) {
+        suppressClickNodeID = completedNodeID;
+        window.setTimeout(() => {
+          if (suppressClickNodeID === completedNodeID) {
+            suppressClickNodeID = null;
+          }
+        }, 0);
+      }
     }
 
     if (panPointerId === event.pointerId) {
@@ -406,6 +515,7 @@ export function renderExplorationGraph(container: HTMLElement, graph: MusicBrain
 
   background.addEventListener('pointerdown', (event) => {
     event.preventDefault();
+    cancelZoomAnimation();
     panPointerId = event.pointerId;
     const rect = svg.getBoundingClientRect();
     panStartX = ((event.clientX - rect.left) / rect.width) * WORLD_WIDTH;
@@ -491,7 +601,21 @@ export function renderExplorationGraph(container: HTMLElement, graph: MusicBrain
     nodeElements.set(node.id, nodeGroup);
 
     nodeGroup.addEventListener('click', (event) => {
-      if (!(event.ctrlKey || event.metaKey) || !node.url) {
+      if (suppressClickNodeID === node.id) {
+        suppressClickNodeID = null;
+        return;
+      }
+
+      if (!(event.ctrlKey || event.metaKey)) {
+        if (options.onNodeActivated) {
+          event.preventDefault();
+          event.stopPropagation();
+          options.onNodeActivated(node);
+        }
+        return;
+      }
+
+      if (!node.url) {
         return;
       }
 
@@ -507,8 +631,10 @@ export function renderExplorationGraph(container: HTMLElement, graph: MusicBrain
 
       event.preventDefault();
       event.stopPropagation();
+      cancelZoomAnimation();
       activeNode = node;
       dragPointerId = event.pointerId;
+      dragMoved = false;
       dragStartX = node.x;
       dragStartY = node.y;
       const point = toWorldPoint(event.clientX, event.clientY);
@@ -524,19 +650,21 @@ export function renderExplorationGraph(container: HTMLElement, graph: MusicBrain
   const wheelHandler = (event: WheelEvent) => {
     event.preventDefault();
 
-    const beforeZoom = toWorldPoint(event.clientX, event.clientY);
-    const nextScale = clampScale(scale * (event.deltaY < 0 ? 1.08 : 0.92));
-    if (nextScale === scale) {
+    const zoomBase = activeZoomTransform();
+    const beforeZoom = toWorldPoint(event.clientX, event.clientY, zoomBase);
+    const nextScale = clampScale(zoomBase.scale * (event.deltaY < 0 ? 1.08 : 0.92));
+    if (nextScale === zoomBase.scale) {
       return;
     }
 
     const rect = svg.getBoundingClientRect();
     const localX = ((event.clientX - rect.left) / rect.width) * WORLD_WIDTH;
     const localY = ((event.clientY - rect.top) / rect.height) * WORLD_HEIGHT;
-    scale = nextScale;
-    translateX = localX - beforeZoom.x * scale;
-    translateY = localY - beforeZoom.y * scale;
-    updateViewport();
+    animateZoomTo(
+      nextScale,
+      localX - beforeZoom.x * nextScale,
+      localY - beforeZoom.y * nextScale,
+    );
   };
   svg.addEventListener('wheel', wheelHandler, { passive: false });
 
@@ -547,6 +675,7 @@ export function renderExplorationGraph(container: HTMLElement, graph: MusicBrain
 
   return {
     destroy: () => {
+      cancelZoomAnimation();
       svg.removeEventListener('pointermove', handlePointerMove);
       svg.removeEventListener('pointerup', handlePointerUp);
       svg.removeEventListener('pointercancel', handlePointerUp);
