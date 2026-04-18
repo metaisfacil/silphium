@@ -124,6 +124,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistHydrationProgress,
         playlistHydrationCount,
         playlistList,
+        playlistPreventDuplicateWrap,
         playlistPreventDuplicateCheckbox,
         playlistOpen,
         playlistCreate,
@@ -1215,6 +1216,18 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         setPlaylistSourceSelection('queue');
     };
 
+    const shouldDisablePlaylistMutationControls = (): boolean => {
+        return controllerState.selectedSource === 'queue' || controllerState.selectedSource === 'history';
+    };
+
+    const updatePlaylistMutationControlsState = (): void => {
+        const controlsDisabled = shouldDisablePlaylistMutationControls();
+        playlistAddCurrent.disabled = controlsDisabled;
+        playlistAddCurrent.setAttribute('aria-disabled', controlsDisabled ? 'true' : 'false');
+        playlistPreventDuplicateCheckbox.disabled = controlsDisabled;
+        playlistPreventDuplicateWrap.setAttribute('aria-disabled', controlsDisabled ? 'true' : 'false');
+    };
+
     const closeMenu = (): void => {
         playlistMenu.hidden = true;
     };
@@ -1346,6 +1359,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         updateHeaderSourceControl();
+        updatePlaylistMutationControlsState();
 
         const { indexes, currentPosition } = currentSequence();
         const currentTrackIndex = options.getCurrentTrackIndex();
@@ -1862,6 +1876,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const addCurrentTrackToEnd = (): void => {
+        if (shouldDisablePlaylistMutationControls()) {
+            return;
+        }
+
         const currentTrackIndex = options.getCurrentTrackIndex();
         if (!isQueueEligibleTrackIndex(currentTrackIndex)) {
             return;

@@ -436,6 +436,8 @@ describe('createPlaylistController', () => {
         expect(elements.playlistSource.value).toBe('history');
         expect(elements.playlistSourceLabel.textContent).toBe('Listen History');
         expect(elements.playlistSourceIcon.innerHTML).toContain('<svg');
+        expect(elements.playlistAddCurrent.disabled).toBe(true);
+        expect(elements.playlistPreventDuplicateCheckbox.disabled).toBe(true);
         expect(Array.from(elements.playlistSource.options).map((option) => option.text)).toEqual([
             'Playback Queue',
             'Listen History',
@@ -459,6 +461,34 @@ describe('createPlaylistController', () => {
         });
         expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 0], currentPosition: 0 });
         vi.useRealTimers();
+    });
+
+    it('disables add-current and duplicate prevention while viewing the playback queue', () => {
+        const { controller, elements } = mountPlaylistController();
+
+        controller.openModal();
+
+        expect(elements.playlistSource.value).toBe('queue');
+        expect(elements.playlistAddCurrent.disabled).toBe(true);
+        expect(elements.playlistPreventDuplicateCheckbox.disabled).toBe(true);
+    });
+
+    it('keeps add-current and duplicate prevention enabled for editable playlist views', async () => {
+        const { controller, elements } = mountPlaylistController();
+
+        controller.openModal();
+        await selectCustomPlaylistSource(elements, 'favorite:0');
+
+        expect(elements.playlistSource.value).toBe('favorite:0');
+        expect(elements.playlistAddCurrent.disabled).toBe(false);
+        expect(elements.playlistPreventDuplicateCheckbox.disabled).toBe(false);
+
+        await expect(controller.loadPlaylistByPath('/playlists/demo.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        expect(elements.playlistSource.value).toBe('playlist');
+        expect(elements.playlistAddCurrent.disabled).toBe(false);
+        expect(elements.playlistPreventDuplicateCheckbox.disabled).toBe(false);
     });
 
     it('renders svg icons for queue and history inside the custom source menu', () => {
@@ -662,10 +692,11 @@ describe('createPlaylistController', () => {
         expect(controller.getSequenceOverride()).toBeNull();
     });
 
-    it('shows an error when prevent duplicates is checked and current track is already in the active playlist', async () => {
+    it('shows an error when prevent duplicates is checked and current track is already in an editable playlist', async () => {
         const { controller, elements, openErrorModal } = mountPlaylistController();
 
         controller.openModal();
+        await selectCustomPlaylistSource(elements, 'favorite:0');
         elements.playlistPreventDuplicateCheckbox.checked = true;
         elements.playlistAddCurrent.click();
 
