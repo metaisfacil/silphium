@@ -39,14 +39,14 @@ func newIndexedLibraryAppForTests(t *testing.T) (*App, libraryTestFixture) {
 	app.libraryScan.ImageFiles = []LibraryIndexedFile{app.imageByPath[fixture.coverOne], app.imageByPath[fixture.folderCoverOne], app.imageByPath[fixture.imageTwo]}
 	app.libraryScan.CoverPathByFolder[strings.ToLower(app.imageByPath[fixture.coverOne].FolderPath)] = fixture.coverOne
 
-	indexData := buildLibraryDerivedIndexData(app.libraryScan.TrackFiles, app.libraryScan.TextFiles, app.libraryScan.ImageFiles)
-	app.folderEntriesByFolder = indexData.folderEntriesByFolder
-	app.folderChildPathsByFolder = indexData.folderChildPathsByFolder
-	app.trackFilesByFolder = indexData.trackFilesByFolder
-	app.searchFolderEntries = indexData.searchFolderEntries
-	app.searchTrackEntries = indexData.searchTrackEntries
-	app.searchTextEntries = indexData.searchTextEntries
-	app.searchImageEntries = indexData.searchImageEntries
+	updatedIndexData := buildLibraryDerivedIndexData(app.libraryScan.TrackFiles, app.libraryScan.TextFiles, app.libraryScan.ImageFiles)
+	app.folderEntriesByFolder = updatedIndexData.folderEntriesByFolder
+	app.folderChildPathsByFolder = updatedIndexData.folderChildPathsByFolder
+	app.trackFilesByFolder = updatedIndexData.trackFilesByFolder
+	app.searchFolderEntries = updatedIndexData.searchFolderEntries
+	app.searchTrackEntries = updatedIndexData.searchTrackEntries
+	app.searchTextEntries = updatedIndexData.searchTextEntries
+	app.searchImageEntries = updatedIndexData.searchImageEntries
 	app.libraryDerivedIndexDirty = false
 	app.libraryDerivedIndexBuilding = false
 
@@ -322,10 +322,40 @@ func TestLibraryQueryFallbackPagingAndMusicBrainzTagSearch(t *testing.T) {
 	app.musicBrainzTagStoreLoaded = true
 	app.musicBrainzTagStore = newMusicBrainzTagDatabaseStore()
 
+	otherAlbumTrack := filepath.Join(fixture.rootOne, "Artist One", "Album Two", "02 Bonus.flac")
+	writeTestFile(t, otherAlbumTrack, "bonus track")
+	for _, root := range app.activeLibraryRoots {
+		if !pathWithinRoot(root.Path, otherAlbumTrack) {
+			continue
+		}
+
+		app.addOrUpdateIndexedFile(root, otherAlbumTrack, filepath.Base(otherAlbumTrack))
+		break
+	}
+	app.libraryScan.TrackFiles = append(app.libraryScan.TrackFiles, app.trackByPath[otherAlbumTrack])
+	updatedIndexData := buildLibraryDerivedIndexData(app.libraryScan.TrackFiles, app.libraryScan.TextFiles, app.libraryScan.ImageFiles)
+	app.folderEntriesByFolder = updatedIndexData.folderEntriesByFolder
+	app.folderChildPathsByFolder = updatedIndexData.folderChildPathsByFolder
+	app.trackFilesByFolder = updatedIndexData.trackFilesByFolder
+	app.searchFolderEntries = updatedIndexData.searchFolderEntries
+	app.searchTrackEntries = updatedIndexData.searchTrackEntries
+	app.searchTextEntries = updatedIndexData.searchTextEntries
+	app.searchImageEntries = updatedIndexData.searchImageEntries
+
+	const recordingID = "33333333-3333-4333-8333-333333333333"
 	const releaseID = "11111111-1111-4111-8111-111111111111"
 	const artistID = "22222222-2222-4222-8222-222222222222"
+	const albumArtistID = "44444444-4444-4444-8444-444444444444"
 	releaseKey := musicBrainzTagEntityKey("release", releaseID)
 	artistKey := musicBrainzTagEntityKey("artist", artistID)
+	app.musicBrainzTagStore.Tracks[fixture.trackOne] = musicBrainzTagTrackRecord{
+		RecordingID:       recordingID,
+		ReleaseID:         releaseID,
+		ArtistIDs:         []string{artistID},
+		AlbumArtistIDs:    []string{albumArtistID},
+		ReleaseFolderPath: "Library One/Artist One/Album One",
+		ArtistFolderPaths: []string{"Library One/Artist One"},
+	}
 	app.musicBrainzTagStore.Entities[releaseKey] = musicBrainzTagEntityRecord{EntityType: "release", MBID: releaseID}
 	app.musicBrainzTagStore.Entities[artistKey] = musicBrainzTagEntityRecord{EntityType: "artist", MBID: artistID}
 	app.musicBrainzTagEntityKeysByTag = map[string]map[string]struct{}{
@@ -382,6 +412,44 @@ func TestLibraryQueryFallbackPagingAndMusicBrainzTagSearch(t *testing.T) {
 		t.Fatalf("SearchLibrary(mbtag) artist folder tag highlight = true, want false: %#v", tagSearch.Entries)
 	}
 
+	artistMBIDSearch := app.SearchLibrary("mbid-artist:"+artistID, 0, 20)
+	if !hasBrowserEntry(artistMBIDSearch.Entries, "folder", "Library One/Artist One") {
+		t.Fatalf("SearchLibrary(mbid-artist) missing artist folder: %#v", artistMBIDSearch.Entries)
+	}
+	if !hasBrowserEntry(artistMBIDSearch.Entries, "folder", "Library One/Artist One/Album One") {
+		t.Fatalf("SearchLibrary(mbid-artist) missing album folder: %#v", artistMBIDSearch.Entries)
+	}
+	if !hasBrowserEntry(artistMBIDSearch.Entries, "track", fixture.trackOne) {
+		t.Fatalf("SearchLibrary(mbid-artist) missing track %q: %#v", fixture.trackOne, artistMBIDSearch.Entries)
+	}
+	if hasBrowserEntry(artistMBIDSearch.Entries, "folder", "Library One/Artist One/Album Two") {
+		t.Fatalf("SearchLibrary(mbid-artist) unexpectedly included unmatched album folder: %#v", artistMBIDSearch.Entries)
+	}
+
+	albumArtistMBIDSearch := app.SearchLibrary("mbid-artist:"+albumArtistID, 0, 20)
+	if albumArtistMBIDSearch.TotalEntries != 0 || len(albumArtistMBIDSearch.Entries) != 0 {
+		t.Fatalf("SearchLibrary(mbid-artist album artist) = %#v, want empty search results", albumArtistMBIDSearch)
+	}
+
+	releaseMBIDSearch := app.SearchLibrary("mbid-release:"+releaseID, 0, 20)
+	if !hasBrowserEntry(releaseMBIDSearch.Entries, "folder", "Library One/Artist One/Album One") {
+		t.Fatalf("SearchLibrary(mbid-release) missing album folder: %#v", releaseMBIDSearch.Entries)
+	}
+	if !hasBrowserEntry(releaseMBIDSearch.Entries, "track", fixture.trackOne) {
+		t.Fatalf("SearchLibrary(mbid-release) missing track %q: %#v", fixture.trackOne, releaseMBIDSearch.Entries)
+	}
+	if hasBrowserEntry(releaseMBIDSearch.Entries, "folder", "Library One/Artist One") {
+		t.Fatalf("SearchLibrary(mbid-release) unexpectedly included artist folder: %#v", releaseMBIDSearch.Entries)
+	}
+
+	recordingMBIDSearch := app.SearchLibrary("mbid-recording:"+recordingID, 0, 20)
+	if !hasBrowserEntry(recordingMBIDSearch.Entries, "track", fixture.trackOne) {
+		t.Fatalf("SearchLibrary(mbid-recording) missing track %q: %#v", fixture.trackOne, recordingMBIDSearch.Entries)
+	}
+	if hasBrowserEntry(recordingMBIDSearch.Entries, "track", fixture.trackTwo) {
+		t.Fatalf("SearchLibrary(mbid-recording) unexpectedly included track %q: %#v", fixture.trackTwo, recordingMBIDSearch.Entries)
+	}
+
 	app.musicBrainzTagReleaseFoldersByID[releaseID] = map[string]struct{}{
 		"Library One/Artist One/01 Missing Album": {},
 		"Library One/Artist One/Album One":        {},
@@ -401,6 +469,11 @@ func TestLibraryQueryFallbackPagingAndMusicBrainzTagSearch(t *testing.T) {
 	emptyTagSearch := app.SearchLibrary("mbtag:", 0, 20)
 	if emptyTagSearch.TotalEntries != 0 || len(emptyTagSearch.Entries) != 0 {
 		t.Fatalf("SearchLibrary(empty mbtag) = %#v, want empty search results", emptyTagSearch)
+	}
+
+	emptyArtistMBIDSearch := app.SearchLibrary("mbid-artist:", 0, 20)
+	if emptyArtistMBIDSearch.TotalEntries != 0 || len(emptyArtistMBIDSearch.Entries) != 0 {
+		t.Fatalf("SearchLibrary(empty mbid-artist) = %#v, want empty search results", emptyArtistMBIDSearch)
 	}
 }
 

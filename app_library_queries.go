@@ -381,6 +381,7 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 		}
 
 		musicBrainzTagQuery, hasMusicBrainzTagQuery := parseMusicBrainzTagSearchQuery(query)
+		musicBrainzEntityIDQuery, hasMusicBrainzEntityIDQuery := parseMusicBrainzEntityIDSearchQuery(query)
 
 		if searchCanceled() {
 			a.logRescanEvent("SearchLibrary CANCELED before lock: query=%q offset=%d", logQuery, offset)
@@ -415,6 +416,9 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 		if hasMusicBrainzTagQuery {
 			entries = a.buildMusicBrainzTagSearchResultsLocked(musicBrainzTagQuery)
 			mode = "musicbrainz-tags"
+		} else if hasMusicBrainzEntityIDQuery {
+			entries = a.buildMusicBrainzEntityIDSearchResultsLocked(musicBrainzEntityIDQuery)
+			mode = "musicbrainz-mbid"
 		} else if a.isLibrarySearchIndexReadyLocked() {
 			var derivedMode string
 			entries, derivedMode, canceled = a.buildSearchResultsLocked(normalizedQuery, searchCanceled)

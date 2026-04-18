@@ -49,6 +49,10 @@ export type { LibraryControllerOptions } from './library-controller-types';
 
 export type LibraryController = ReturnType<typeof createLibraryController>;
 
+type ProgrammaticLibrarySearchOptions = {
+    expandFilteredFolders?: boolean;
+};
+
 type AlbumGridEntry = {
     folderPath: string;
     albumTitle: string;
@@ -102,6 +106,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     let librarySearchRequestVersion = 0;
     let librarySearchDebounceHandle: number | undefined;
+    let expandFilteredFoldersOnNextSearchTree = false;
     let suppressNextLibrarySearchPasteInput = false;
     let activeSearchTreeRoot: SearchTreeNode | null = null;
     let pastedPathLookupCache: PastedPathLookupCache = createEmptyPastedPathLookupCache();
@@ -967,6 +972,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     const cancelLibrarySearch = (): void => {
         librarySearchRequestVersion += 1;
+        expandFilteredFoldersOnNextSearchTree = false;
         controllerState.librarySearchPending = false;
         controllerState.activeSearchResult = null;
         controllerState.expandedSearchFolders.clear();
@@ -1175,6 +1181,19 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         },
         setActiveSearchTreeRoot: (value) => {
             activeSearchTreeRoot = value;
+            if (value && expandFilteredFoldersOnNextSearchTree) {
+                const expandableFolderPaths = collectSearchTreeExpandableFolderPaths(value);
+                for (const folderPath of expandableFolderPaths) {
+                    if (folderPath === '') {
+                        continue;
+                    }
+
+                    controllerState.expandedSearchFolders.add(folderPath);
+                }
+            }
+            if (value) {
+                expandFilteredFoldersOnNextSearchTree = false;
+            }
         },
         getHoveredBrowserEntryKey: () => hoveredBrowserEntryKey,
         getLibraryRootName: () => controllerState.libraryRootName,
@@ -1704,10 +1723,24 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         return paths;
     };
 
-    const startLibrarySearch = (query: string): void => {
+    const startLibrarySearch = (query: string, options?: ProgrammaticLibrarySearchOptions): void => {
         const nextQuery = query.trim();
+        expandFilteredFoldersOnNextSearchTree = !!options?.expandFilteredFolders && nextQuery !== '';
         librarySearch.value = nextQuery;
         setLibrarySearchQuery(nextQuery);
+
+        if (expandFilteredFoldersOnNextSearchTree && activeSearchTreeRoot && normalizedLibrarySearchQuery() === nextQuery.toLowerCase()) {
+            const expandableFolderPaths = collectSearchTreeExpandableFolderPaths(activeSearchTreeRoot);
+            for (const folderPath of expandableFolderPaths) {
+                if (folderPath === '') {
+                    continue;
+                }
+
+                controllerState.expandedSearchFolders.add(folderPath);
+            }
+            expandFilteredFoldersOnNextSearchTree = false;
+            renderFolder('none');
+        }
     };
 
     const setSearchTreeSubtreeExpanded = (folderPath: string, expanded: boolean): void => {
