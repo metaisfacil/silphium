@@ -129,12 +129,12 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         }
 
         context.refreshNowPlayingLabel();
+        context.tagRequestVersion += 1;
+        void context.hydrateCurrentTrackTag(index, context.tagRequestVersion);
+
         await context.applyCoverArtForTrack(index);
         updateMediaSessionMetadata();
         context.libraryController().renderFolder('none');
-
-        context.tagRequestVersion += 1;
-        void context.hydrateCurrentTrackTag(index, context.tagRequestVersion);
 
         context.artistInfoRequestVersion += 1;
         void context.hydrateCurrentArtistInfo(index);
