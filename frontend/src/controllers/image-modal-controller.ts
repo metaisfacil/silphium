@@ -580,6 +580,9 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
     const resetImageModalZoom = (): void => {
         stopImageModalZoomEasing();
+        if (imageModalPanPointerId !== undefined && imageFileContent.hasPointerCapture(imageModalPanPointerId)) {
+            imageFileContent.releasePointerCapture(imageModalPanPointerId);
+        }
         imageModalPanDragging = false;
         imageModalPanPointerId = undefined;
         imageModalPanStartClientX = 0;
@@ -904,6 +907,15 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         event.preventDefault();
         zoomImageModalFromWheel(event.deltaY, event.clientX, event.clientY);
     }, { passive: false });
+
+    imageFileContent.addEventListener('dblclick', (event) => {
+        if (event.button !== 0 || imageFileModal.hidden || !imageFilePreview.getAttribute('src')) {
+            return;
+        }
+
+        event.preventDefault();
+        resetImageModalZoom();
+    });
 
     imageFileContent.addEventListener('pointerdown', (event) => {
         if (event.button !== 0 || imageModalZoom <= 1 || !imageFilePreview.getAttribute('src')) {
