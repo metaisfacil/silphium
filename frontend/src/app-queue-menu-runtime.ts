@@ -14,11 +14,55 @@ export type SidebarQueueSelectionContext = {
 };
 
 export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) => {
+    let pendingSidebarQueueMenuPositionFrame = 0;
+    let pendingTrackMetaMenuPositionFrame = 0;
+    let pendingPlayOrderMenuPositionFrame = 0;
+
+    const scheduleMenuPosition = (
+        menu: HTMLElement,
+        clientX: number,
+        clientY: number,
+        pendingFrameId: number,
+        setPendingFrameId: (frameId: number) => void,
+    ): void => {
+        if (pendingFrameId !== 0) {
+            window.cancelAnimationFrame(pendingFrameId);
+        }
+
+        menu.style.visibility = 'hidden';
+        setPendingFrameId(window.requestAnimationFrame(() => {
+            setPendingFrameId(0);
+            if (menu.hidden) {
+                menu.style.visibility = '';
+                return;
+            }
+
+            const margin = 10;
+            const rect = menu.getBoundingClientRect();
+            const clampedX = Math.min(clientX, window.innerWidth - rect.width - margin);
+            const clampedY = Math.min(clientY, window.innerHeight - rect.height - margin);
+
+            menu.style.left = `${Math.max(margin, clampedX)}px`;
+            menu.style.top = `${Math.max(margin, clampedY)}px`;
+            menu.style.visibility = '';
+        }));
+    };
+
     const closePlayOrderMenu = (): void => {
+        if (pendingPlayOrderMenuPositionFrame !== 0) {
+            window.cancelAnimationFrame(pendingPlayOrderMenuPositionFrame);
+            pendingPlayOrderMenuPositionFrame = 0;
+        }
+        context.playOrderMenu.style.visibility = '';
         context.playOrderMenu.hidden = true;
     };
 
     const closeTrackMetaMenu = (): void => {
+        if (pendingTrackMetaMenuPositionFrame !== 0) {
+            window.cancelAnimationFrame(pendingTrackMetaMenuPositionFrame);
+            pendingTrackMetaMenuPositionFrame = 0;
+        }
+        context.trackMetaMenu.style.visibility = '';
         context.trackMetaMenu.hidden = true;
         context.trackMetaMenuTarget = null;
         context.trackMetaMenuActionScope = null;
@@ -46,6 +90,11 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
     };
 
     const closeSidebarQueueMenu = (): void => {
+        if (pendingSidebarQueueMenuPositionFrame !== 0) {
+            window.cancelAnimationFrame(pendingSidebarQueueMenuPositionFrame);
+            pendingSidebarQueueMenuPositionFrame = 0;
+        }
+        context.sidebarQueueMenu.style.visibility = '';
         context.sidebarQueueMenu.hidden = true;
         context.sidebarQueueTrackIndexes = [];
         context.sidebarQueueFeedbackTrackIndex = null;
@@ -196,14 +245,15 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
             delete context.sidebarQueueTreeToggleBtn.dataset.expandAll;
         }
         context.sidebarQueueMenu.hidden = false;
-
-        const margin = 10;
-        const rect = context.sidebarQueueMenu.getBoundingClientRect();
-        const clampedX = Math.min(clientX, window.innerWidth - rect.width - margin);
-        const clampedY = Math.min(clientY, window.innerHeight - rect.height - margin);
-
-        context.sidebarQueueMenu.style.left = `${Math.max(margin, clampedX)}px`;
-        context.sidebarQueueMenu.style.top = `${Math.max(margin, clampedY)}px`;
+        scheduleMenuPosition(
+            context.sidebarQueueMenu,
+            clientX,
+            clientY,
+            pendingSidebarQueueMenuPositionFrame,
+            (frameId) => {
+                pendingSidebarQueueMenuPositionFrame = frameId;
+            },
+        );
     };
 
     const closeQueueConfirmModal = (confirmed: boolean): void => {
@@ -461,14 +511,15 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
             context.trackMetaSendToList.innerHTML = '';
         }
         context.trackMetaMenu.hidden = false;
-
-        const margin = 10;
-        const rect = context.trackMetaMenu.getBoundingClientRect();
-        const clampedX = Math.min(clientX, window.innerWidth - rect.width - margin);
-        const clampedY = Math.min(clientY, window.innerHeight - rect.height - margin);
-
-        context.trackMetaMenu.style.left = `${Math.max(margin, clampedX)}px`;
-        context.trackMetaMenu.style.top = `${Math.max(margin, clampedY)}px`;
+        scheduleMenuPosition(
+            context.trackMetaMenu,
+            clientX,
+            clientY,
+            pendingTrackMetaMenuPositionFrame,
+            (frameId) => {
+                pendingTrackMetaMenuPositionFrame = frameId;
+            },
+        );
     };
 
     const navigateSidebarToFolder = (nextFolderPath: string): void => {
@@ -559,14 +610,15 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         context.closeListenBrainzFeedbackMenu();
         updatePlayOrderMenuState();
         context.playOrderMenu.hidden = false;
-
-        const margin = 10;
-        const rect = context.playOrderMenu.getBoundingClientRect();
-        const clampedX = Math.min(clientX, window.innerWidth - rect.width - margin);
-        const clampedY = Math.min(clientY, window.innerHeight - rect.height - margin);
-
-        context.playOrderMenu.style.left = `${Math.max(margin, clampedX)}px`;
-        context.playOrderMenu.style.top = `${Math.max(margin, clampedY)}px`;
+        scheduleMenuPosition(
+            context.playOrderMenu,
+            clientX,
+            clientY,
+            pendingPlayOrderMenuPositionFrame,
+            (frameId) => {
+                pendingPlayOrderMenuPositionFrame = frameId;
+            },
+        );
     };
 
     return {

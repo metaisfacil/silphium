@@ -30,12 +30,13 @@ import { createPlaybackStateService } from './services/playback-state-service';
 import { createScrobbleService } from './services/scrobble-service';
 import { createTrackMetadataService } from './services/track-metadata-service';
 import { openMbLink } from './musicbrainz';
+import { noteSlowBackgroundBridgeCall, runBackgroundBridgeCall } from './utils/bridge-load-gate';
 import { formatPerfLogMessage } from './utils/perf-log';
 import { lookupMusicBrainzTrackMetadata, setMusicBrainzRequestLogServerResolver } from './utils/musicbrainz-entity-helpers';
 import { scheduleLastFmRequest } from './utils/lastfm-request-scheduler';
 import { scheduleListenBrainzRequest } from './utils/musicbrainz-request-scheduler';
 import type { AudioVisualizationFrame, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
-import { firstTagValue, hasActiveSelectionWithin, normalizedTrackNumber } from './utils/display-helpers';
+import { activeSelectionTargetWithin, firstTagValue, normalizedTrackNumber } from './utils/display-helpers';
 
 type WindowWithOptionalReleaseFolderResolver = Window & {
     go?: {
@@ -74,16 +75,40 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         void LogFrontendMessage(message).catch(() => undefined);
     };
 
-    const measureBridgeCall = async <T>(name: string, thresholdMs: number, callback: () => Promise<T>): Promise<T> => {
-        const startedAtMs = performance.now();
-        try {
-            return await callback();
-        } finally {
-            const elapsedMs = performance.now() - startedAtMs;
-            if (elapsedMs >= thresholdMs) {
-                logSlowBridgeCall(name, elapsedMs);
+    const measureBridgeCall = async <T>(
+        name: string,
+        thresholdMs: number,
+        callback: () => Promise<T>,
+        options: {
+            background?: boolean;
+            maxWaitMs?: number;
+            onTimeout?: () => Promise<T> | T;
+            cooldownOnSlowMs?: number;
+        } = {},
+    ): Promise<T> => {
+        const execute = async (): Promise<T> => {
+            const startedAtMs = performance.now();
+            try {
+                return await callback();
+            } finally {
+                const elapsedMs = performance.now() - startedAtMs;
+                if (elapsedMs >= thresholdMs) {
+                    logSlowBridgeCall(name, elapsedMs);
+                    if ((options.cooldownOnSlowMs || 0) > 0) {
+                        noteSlowBackgroundBridgeCall(options.cooldownOnSlowMs);
+                    }
+                }
             }
+        };
+
+        if (!options.background) {
+            return await execute();
         }
+
+        return await runBackgroundBridgeCall(execute, {
+            maxWaitMs: options.maxWaitMs,
+            onTimeout: options.onTimeout,
+        });
     };
 
     const hasLastFmCredentialsConfigured = (): boolean => context.currentSettings.lastFmApiKey.trim() !== ''
@@ -149,18 +174,30 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         setTrack: (index: number, track: Track) => {
             context.tracks[index] = track;
         },
-        readTrackTags: async (paths: string[]) => await measureBridgeCall('ReadTrackTags', 80, async () => await ReadTrackTags(paths)),
+        readTrackTags: async (paths: string[]) => await measureBridgeCall('ReadTrackTags', 80, async () => await ReadTrackTags(paths), {
+            background: true,
+            maxWaitMs: 600,
+            cooldownOnSlowMs: 350,
+        }),
         forceRefreshTrackTags: async (paths: string[]) => {
             const runtimeWindow = window as WindowWithOptionalReleaseFolderResolver;
             const refreshTrackMetadata = runtimeWindow.go?.main?.App?.RefreshTrackMetadata;
             if (typeof refreshTrackMetadata !== 'function') {
-                return await measureBridgeCall('ReadTrackTags(force)', 80, async () => await ReadTrackTags(paths));
+                return await measureBridgeCall('ReadTrackTags(force)', 80, async () => await ReadTrackTags(paths), {
+                    background: true,
+                    maxWaitMs: 600,
+                    cooldownOnSlowMs: 350,
+                });
             }
 
             const entries = await measureBridgeCall('RefreshTrackMetadata', 80, async () => await Promise.all(paths.map(async (path) => [
                 path,
                 await Promise.resolve(refreshTrackMetadata(path)),
-            ] as const)));
+            ] as const)), {
+                background: true,
+                maxWaitMs: 600,
+                cooldownOnSlowMs: 350,
+            });
             return Object.fromEntries(entries);
         },
         lookupMusicBrainzTrackMetadata: async (recordingId: string, releaseId: string) => await lookupMusicBrainzTrackMetadata(recordingId, releaseId),
@@ -170,10 +207,26 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     });
     const coverArtService = createCoverArtService({
         getCoverArtPriority: () => context.currentSettings.coverArtPriority,
-        getLibraryFolderCoverPath: async (folderPath: string): Promise<string> => await measureBridgeCall('GetLibraryFolderCoverPath', 40, async () => await GetLibraryFolderCoverPath(folderPath) as string),
-        readImageThumbnail: async (filePath: string, maxEdge: number): Promise<{ base64?: string; mimeType?: string }> => await measureBridgeCall('ReadImageThumbnail', 60, async () => await ReadImageThumbnail(filePath, maxEdge) as { base64?: string; mimeType?: string }),
-        readFileBase64: async (filePath: string): Promise<string> => await measureBridgeCall('ReadFileBase64', 80, async () => await ReadFileBase64(filePath) as string),
-        readTrackEmbeddedCover: async (trackPath: string): Promise<{ base64?: string; mimeType?: string }> => await measureBridgeCall('ReadTrackEmbeddedCover', 80, async () => await ReadTrackEmbeddedCover(trackPath) as { base64?: string; mimeType?: string }),
+        getLibraryFolderCoverPath: async (folderPath: string): Promise<string> => await measureBridgeCall('GetLibraryFolderCoverPath', 40, async () => await GetLibraryFolderCoverPath(folderPath) as string, {
+            background: true,
+            maxWaitMs: 500,
+            cooldownOnSlowMs: 300,
+        }),
+        readImageThumbnail: async (filePath: string, maxEdge: number): Promise<{ base64?: string; mimeType?: string }> => await measureBridgeCall('ReadImageThumbnail', 60, async () => await ReadImageThumbnail(filePath, maxEdge) as { base64?: string; mimeType?: string }, {
+            background: true,
+            maxWaitMs: 600,
+            cooldownOnSlowMs: 350,
+        }),
+        readFileBase64: async (filePath: string): Promise<string> => await measureBridgeCall('ReadFileBase64', 80, async () => await ReadFileBase64(filePath) as string, {
+            background: true,
+            maxWaitMs: 600,
+            cooldownOnSlowMs: 350,
+        }),
+        readTrackEmbeddedCover: async (trackPath: string): Promise<{ base64?: string; mimeType?: string }> => await measureBridgeCall('ReadTrackEmbeddedCover', 80, async () => await ReadTrackEmbeddedCover(trackPath) as { base64?: string; mimeType?: string }, {
+            background: true,
+            maxWaitMs: 600,
+            cooldownOnSlowMs: 350,
+        }),
         registerObjectUrl: (url: string): void => {
             context.objectUrls.push(url);
         },
@@ -183,7 +236,9 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         canvas: context.playerVisualizerCanvas,
         getPlaybackState: () => playbackStateService.getPlaybackState(),
         fetchVisualizationFrame: async (frameCount: number): Promise<AudioVisualizationFrame> => (
-            await measureBridgeCall('AudioGetVisualizationFrame', 40, async () => await AudioGetVisualizationFrame(frameCount) as AudioVisualizationFrame)
+            await measureBridgeCall('AudioGetVisualizationFrame', 40, async () => await AudioGetVisualizationFrame(frameCount) as AudioVisualizationFrame, {
+                cooldownOnSlowMs: 300,
+            })
         ),
         getCoverArtImageSource: () => context.getCoverArtImageSource?.(),
     });
@@ -450,13 +505,32 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
     const shouldSuppressTrackMetaClick = (): boolean => Date.now() < suppressTrackMetaClickUntil;
     const shouldBlockTrackMetaModalOpen = (): boolean => shouldSuppressTrackMetaClick() || context.app.classList.contains('sidebar-open');
+    const trackMetaSelectionTargets = [
+        context.trackTitle,
+        context.trackAlbum,
+        context.trackArtist,
+        context.trackTitleInline,
+        context.trackReleaseAlbum,
+        context.trackReleaseLabel,
+        context.trackArtistHeader,
+    ] as const;
+    let activeTrackMetaSelectionTarget: HTMLElement | null = null;
+
+    const updateTrackMetaSelectionTarget = (): void => {
+        activeTrackMetaSelectionTarget = activeSelectionTargetWithin(trackMetaSelectionTargets);
+    };
+
+    updateTrackMetaSelectionTarget();
+    document.addEventListener('selectionchange', updateTrackMetaSelectionTarget);
+
+    const hasTrackMetaSelection = (target: HTMLElement): boolean => activeTrackMetaSelectionTarget === target;
 
     context.trackTitle.addEventListener('click', (event: MouseEvent) => {
         if (shouldBlockTrackMetaModalOpen()) {
             return;
         }
 
-        if (hasActiveSelectionWithin(context.trackTitle)) {
+        if (hasTrackMetaSelection(context.trackTitle)) {
             return;
         }
 
@@ -478,7 +552,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
-        if (hasActiveSelectionWithin(context.trackAlbum)) {
+        if (hasTrackMetaSelection(context.trackAlbum)) {
             return;
         }
 
@@ -500,7 +574,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
-        if (hasActiveSelectionWithin(context.trackArtist)) {
+        if (hasTrackMetaSelection(context.trackArtist)) {
             return;
         }
 
@@ -532,7 +606,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
-        if (hasActiveSelectionWithin(context.trackTitleInline)) {
+        if (hasTrackMetaSelection(context.trackTitleInline)) {
             return;
         }
 
@@ -554,7 +628,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
-        if (hasActiveSelectionWithin(context.trackReleaseAlbum)) {
+        if (hasTrackMetaSelection(context.trackReleaseAlbum)) {
             return;
         }
 
@@ -576,7 +650,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
-        if (hasActiveSelectionWithin(context.trackReleaseLabel)) {
+        if (hasTrackMetaSelection(context.trackReleaseLabel)) {
             return;
         }
 
@@ -592,7 +666,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
-        if (hasActiveSelectionWithin(context.trackArtistHeader)) {
+        if (hasTrackMetaSelection(context.trackArtistHeader)) {
             return;
         }
 

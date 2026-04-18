@@ -4,6 +4,7 @@ import type { AppEventBindingsContext } from './app-bootstrap-setup';
 import { openMbLink } from './musicbrainz';
 import type { AudioPlaybackState, LibraryScanProgress, LibraryScanResult, MusicBrainzTagWorkerProgress, PlaybackOrderMode } from './types/app-types';
 import { hasExternalFileDragPayload, isSupportedAudioFilePath } from './utils/main-helpers';
+import { formatPerfLogMessage } from './utils/perf-log';
 
 type VolumeControlBindingsContext = {
     document: Document;
@@ -12,6 +13,11 @@ type VolumeControlBindingsContext = {
     audioSetVolume: (volumeValue: number) => Promise<AudioPlaybackState>;
     applyPlaybackState: (state: AudioPlaybackState) => void;
     handleAudioError: (error: unknown) => void;
+};
+
+type ClickStepMetric = {
+    label: string;
+    elapsedMs: number;
 };
 
 const clampUnitVolume = (value: number): number => {
@@ -271,9 +277,9 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         trackMetaMenuActionPath,
         goToTrack,
         toggleCurrentTrack,
+        unlockMediaSessionAnchorFromUserGesture,
         updateLyricsPanelVisibility,
         hideToTrayWhenMinimized,
-        unlockMediaSessionAnchorFromUserGesture,
         handleFocusedHardwareMediaKey,
         handleFocusedKeyboardShortcut,
         focusedShortcutBindingsUseCode,
@@ -283,11 +289,83 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         normalizeMusicBrainzTagWorkerProgress,
         setMusicBrainzTagWorkerProgress,
         dispatchExternalPlaybackAction,
+        logFrontendMessage,
         playlistControllerLoadPlaylistByPath,
         handleDocumentClickWithinSettings,
         playerCardResizeObserver,
         logRescan,
     } = context;
+    const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
+    let lastSlowClickLogAtMs = 0;
+
+    const describeEventTarget = (target: EventTarget | null): string => {
+        if (!(target instanceof Element)) {
+            return 'unknown';
+        }
+
+        const tagName = target.tagName.toLowerCase();
+        const id = target.id ? `#${target.id}` : '';
+        const className = typeof target.className === 'string'
+            ? target.className.trim().split(/\s+/).filter((name) => name !== '').slice(0, 2).map((name) => `.${name}`).join('')
+            : '';
+        return `${tagName}${id}${className}`;
+    };
+
+    const formatSlowClickSteps = (steps: readonly ClickStepMetric[]): string => {
+        const significantSteps = steps
+            .filter((step) => step.elapsedMs >= 1)
+            .sort((left, right) => right.elapsedMs - left.elapsedMs)
+            .slice(0, 4);
+        if (significantSteps.length === 0) {
+            return '';
+        }
+
+        return ` steps=${significantSteps.map((step) => `${step.label}:${step.elapsedMs.toFixed(1)}ms`).join(',')}`;
+    };
+
+    const logSlowClick = (kind: 'handler' | 'frame', elapsedMs: number, target: EventTarget | null, steps: readonly ClickStepMetric[] = []): void => {
+        if (!devPerfLoggingEnabled || elapsedMs < (kind === 'handler' ? 16 : 40)) {
+            return;
+        }
+
+        const nowMs = Date.now();
+        if (nowMs - lastSlowClickLogAtMs < 500) {
+            return;
+        }
+
+        lastSlowClickLogAtMs = nowMs;
+        const message = formatPerfLogMessage(`slow click ${kind} ${elapsedMs.toFixed(1)}ms target=${describeEventTarget(target)}${formatSlowClickSteps(steps)}`);
+        console.warn(message);
+        void logFrontendMessage(message).catch(() => undefined);
+    };
+
+    const logTransportGesture = (name: string, target: HTMLElement): void => {
+        if (!devPerfLoggingEnabled) {
+            return;
+        }
+
+        const state = (target.dataset.state || '').trim();
+        const suffix = state !== '' ? ` state=${state}` : '';
+        const message = formatPerfLogMessage(`transport ${name}${suffix}`);
+        console.warn(message);
+        void logFrontendMessage(message).catch(() => undefined);
+    };
+
+    const measureClickStep = <T>(steps: ClickStepMetric[], label: string, callback: () => T): T => {
+        if (!devPerfLoggingEnabled) {
+            return callback();
+        }
+
+        const startedAtMs = performance.now();
+        try {
+            return callback();
+        } finally {
+            steps.push({
+                label,
+                elapsedMs: performance.now() - startedAtMs,
+            });
+        }
+    };
 
     const preventBrowserFileDropDefault = (event: DragEvent): void => {
         if (!hasExternalFileDragPayload(event.dataTransfer)) {
@@ -592,7 +670,14 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         }
     });
 
-    playPause.addEventListener('click', () => { void toggleCurrentTrack(); });
+    playPause.addEventListener('pointerdown', () => {
+        logTransportGesture('playPause pointerdown', playPause);
+        unlockMediaSessionAnchorFromUserGesture();
+    }, { passive: true });
+    playPause.addEventListener('click', () => {
+        logTransportGesture('playPause click', playPause);
+        void toggleCurrentTrack();
+    });
     playPause.addEventListener('contextmenu', (event: MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
@@ -654,6 +739,8 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         void runCustomSendToAction(action, actionPath);
     });
 
+    back.addEventListener('pointerdown', () => { unlockMediaSessionAnchorFromUserGesture(); }, { passive: true });
+    forward.addEventListener('pointerdown', () => { unlockMediaSessionAnchorFromUserGesture(); }, { passive: true });
     back.addEventListener('click', () => { goToTrack(-1); });
     forward.addEventListener('click', () => { goToTrack(1); });
     shareBtn.addEventListener('click', () => { void shareController.open(); });
@@ -685,39 +772,60 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     });
 
     document.addEventListener('click', (e: MouseEvent) => {
+        const startedAtMs = devPerfLoggingEnabled ? performance.now() : 0;
+        const clickTarget = e.target;
+        const slowSteps: ClickStepMetric[] = [];
+        if (devPerfLoggingEnabled) {
+            requestAnimationFrame(() => {
+                logSlowClick('frame', performance.now() - startedAtMs, clickTarget);
+            });
+        }
+
         const target = e.target as Node;
         const clickPath = e.composedPath();
+        const pathIncludes = (node: EventTarget | null): boolean => node !== null && clickPath.includes(node);
+        const sidebarOpen = libraryController.isSidebarOpen();
         const shouldSuppressSidebarOutsideClose = suppressSidebarOutsideCloseOnce
-            && libraryController.isSidebarOpen()
-            && !clickPath.includes(librarySidebar)
-            && !clickPath.includes(sidebarToggle)
-            && !clickPath.includes(libraryAbout);
+            && sidebarOpen
+            && !pathIncludes(librarySidebar)
+            && !pathIncludes(sidebarToggle)
+            && !pathIncludes(libraryAbout);
         suppressSidebarOutsideCloseOnce = false;
 
-        if (!playOrderMenu.hidden && !playOrderMenu.contains(target)) closePlayOrderMenu();
-        if (!trackMetaMenu.hidden && !trackMetaMenu.contains(target)) closeTrackMetaMenu();
-        if (!sidebarQueueMenu.hidden && !sidebarQueueMenu.contains(target)) closeSidebarQueueMenu();
-        if (!queueConfirmModal.hidden && !queueConfirmModal.contains(target)) closeQueueConfirmModal(false);
-        if (!listenBrainzFeedbackMenu.hidden && !listenBrainzFeedbackMenu.contains(target) && !listenBrainzLoveBtn.contains(target)) closeListenBrainzFeedbackMenu();
-        if (!volumeRow.contains(target)) volumeRow.classList.remove('open');
-        if (playlistTargetModalController.handleDocumentClick(target) || playlistController.handleDocumentClick(target)) return;
-        if (clickPath.includes(settingsElements.settingsModal)) return;
-        if (handleDocumentClickWithinSettings(target)) return;
-        if (musicBrainzEntityModal.contains(target) || sidebarQueueMenu.contains(target) || queueConfirmModal.contains(target) || errorModal.contains(target) || technicalInfoModal.contains(target) || aboutModal.contains(target) || textFileModal.contains(target) || imageModalController.contains(target)) return;
-        if (clickPath.includes(trackMetaMenu) || clickPath.includes(listenBrainzFeedbackMenu)) return;
-        if (shouldSuppressSidebarOutsideClose) return;
-        if (!libraryController.isSidebarOpen()) return;
-        if (clickPath.includes(librarySidebar) || clickPath.includes(sidebarToggle) || clickPath.includes(libraryAbout)) return;
-        libraryController.setSidebarOpen(false);
+        try {
+            measureClickStep(slowSteps, 'dismiss-overlays', () => {
+                if (!playOrderMenu.hidden && !pathIncludes(playOrderMenu)) closePlayOrderMenu();
+                if (!trackMetaMenu.hidden && !pathIncludes(trackMetaMenu)) closeTrackMetaMenu();
+                if (!sidebarQueueMenu.hidden && !pathIncludes(sidebarQueueMenu)) closeSidebarQueueMenu();
+                if (!queueConfirmModal.hidden && !pathIncludes(queueConfirmModal)) closeQueueConfirmModal(false);
+                if (!listenBrainzFeedbackMenu.hidden && !pathIncludes(listenBrainzFeedbackMenu) && !pathIncludes(listenBrainzLoveBtn)) closeListenBrainzFeedbackMenu();
+                if (!pathIncludes(volumeRow)) volumeRow.classList.remove('open');
+            });
+            if (measureClickStep(slowSteps, 'playlist-click-hooks', () => playlistTargetModalController.handleDocumentClick(target) || playlistController.handleDocumentClick(target))) return;
+            if (pathIncludes(settingsElements.settingsModal)) return;
+            if (measureClickStep(slowSteps, 'settings-click-hook', () => handleDocumentClickWithinSettings(target))) return;
+            const imageModalContainsTarget = measureClickStep(slowSteps, 'image-modal-contains', () => imageModalController.contains(target));
+            if (pathIncludes(musicBrainzEntityModal) || pathIncludes(sidebarQueueMenu) || pathIncludes(queueConfirmModal) || pathIncludes(errorModal) || pathIncludes(technicalInfoModal) || pathIncludes(aboutModal) || pathIncludes(textFileModal) || imageModalContainsTarget) return;
+            if (pathIncludes(trackMetaMenu) || pathIncludes(listenBrainzFeedbackMenu)) return;
+            if (shouldSuppressSidebarOutsideClose) return;
+            if (!sidebarOpen) return;
+            if (pathIncludes(librarySidebar) || pathIncludes(sidebarToggle) || pathIncludes(libraryAbout)) return;
+            measureClickStep(slowSteps, 'sidebar-close', () => {
+                libraryController.setSidebarOpen(false);
+            });
+        } finally {
+            logSlowClick('handler', performance.now() - startedAtMs, clickTarget, slowSteps);
+        }
     });
 
     document.addEventListener('contextmenu', (event: MouseEvent) => {
         if (toggleCoverFlipFromContextMenu(event)) return;
-        const target = event.target as Node;
-        if (!sidebarQueueMenu.hidden && !sidebarQueueMenu.contains(target)) closeSidebarQueueMenu();
-        if (!listenBrainzFeedbackMenu.hidden && !listenBrainzFeedbackMenu.contains(target) && !listenBrainzLoveBtn.contains(target)) closeListenBrainzFeedbackMenu();
-        if (listenBrainzLoveBtn.contains(target) || listenBrainzFeedbackMenu.contains(target)) return;
-        if (trackTitle.contains(target) || trackAlbum.contains(target) || trackArtist.contains(target) || trackTitleInline.contains(target) || trackReleaseAlbum.contains(target) || trackArtistHeader.contains(target) || trackMetaMenu.contains(target)) return;
+        const clickPath = event.composedPath();
+        const pathIncludes = (node: EventTarget | null): boolean => node !== null && clickPath.includes(node);
+        if (!sidebarQueueMenu.hidden && !pathIncludes(sidebarQueueMenu)) closeSidebarQueueMenu();
+        if (!listenBrainzFeedbackMenu.hidden && !pathIncludes(listenBrainzFeedbackMenu) && !pathIncludes(listenBrainzLoveBtn)) closeListenBrainzFeedbackMenu();
+        if (pathIncludes(listenBrainzLoveBtn) || pathIncludes(listenBrainzFeedbackMenu)) return;
+        if (pathIncludes(trackTitle) || pathIncludes(trackAlbum) || pathIncludes(trackArtist) || pathIncludes(trackTitleInline) || pathIncludes(trackReleaseAlbum) || pathIncludes(trackArtistHeader) || pathIncludes(trackMetaMenu)) return;
         if (!trackMetaMenu.hidden) closeTrackMetaMenu();
     });
 
@@ -758,8 +866,6 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         event.preventDefault();
     }, { capture: true });
 
-    document.addEventListener('pointerdown', () => { unlockMediaSessionAnchorFromUserGesture(); }, { capture: true, passive: true });
-    document.addEventListener('keydown', () => { unlockMediaSessionAnchorFromUserGesture(); }, { capture: true });
     document.addEventListener('keydown', (event: KeyboardEvent) => {
         if (event.key !== 'F5' || event.repeat) {
             return;

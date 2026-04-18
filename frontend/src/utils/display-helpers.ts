@@ -249,15 +249,19 @@ export const renderSendToButtons = (container: HTMLDivElement, actions: Array<{ 
     });
 };
 
-export const hasActiveSelectionWithin = (target: HTMLElement): boolean => {
+export const activeSelectionTargetWithin = (targets: readonly HTMLElement[]): HTMLElement | null => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-        return false;
+        return null;
     }
 
     const range = selection.getRangeAt(0);
     const commonAncestor = range.commonAncestorContainer;
-    return target.contains(commonAncestor);
+    return targets.find((target) => target.contains(commonAncestor)) ?? null;
+};
+
+export const hasActiveSelectionWithin = (target: HTMLElement): boolean => {
+    return activeSelectionTargetWithin([target]) === target;
 };
 
 export const cleanSidebarQueueSelectionLabel = (label: string): string => {

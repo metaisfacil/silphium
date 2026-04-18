@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppQueueMenuRuntime } from './app-queue-menu-runtime';
 
@@ -134,5 +134,77 @@ describe('createAppQueueMenuRuntime addSidebarSelectionToPlaylist', () => {
 
         expect(appendTracksToPlaylist).toHaveBeenCalledWith('/playlists/demo.m3u8', [0]);
         expect(openErrorModal).not.toHaveBeenCalled();
+    });
+});
+
+describe('createAppQueueMenuRuntime menu positioning', () => {
+    let animationFrameCallback: FrameRequestCallback | undefined;
+
+    beforeEach(() => {
+        animationFrameCallback = undefined;
+        vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback): number => {
+            animationFrameCallback = callback;
+            return 1;
+        }));
+        vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    it('defers play-order menu measurement until the next animation frame', () => {
+        const playOrderMenu = document.createElement('div');
+        playOrderMenu.hidden = true;
+        const getBoundingClientRect = vi.fn(() => ({
+            width: 120,
+            height: 40,
+            top: 0,
+            left: 0,
+            right: 120,
+            bottom: 40,
+            x: 0,
+            y: 0,
+            toJSON: () => ({}),
+        }));
+        Object.defineProperty(playOrderMenu, 'getBoundingClientRect', {
+            configurable: true,
+            value: getBoundingClientRect,
+        });
+
+        const playPause = document.createElement('button');
+        const context = {
+            currentTrackIndex: 0,
+            tracks: [{ folderPath: 'Library/Artist/Album', path: 'Library/Artist/Album/track.flac' }],
+            playOrderMenu,
+            playPause,
+            trackMetaMenu: document.createElement('div'),
+            trackMetaSendToList: document.createElement('div'),
+            trackMetaSendToDivider: document.createElement('div'),
+            trackMetaMenuTarget: null,
+            trackMetaMenuActionScope: null,
+            trackMetaMenuActionPath: '',
+            closeListenBrainzFeedbackMenu: vi.fn(),
+            playbackSequencingService: {
+                getPlaybackOrderMode: vi.fn(() => 'ordered-library'),
+                getPlaybackOrderLabel: vi.fn(() => 'Ordered'),
+            },
+        } as unknown as Parameters<typeof createAppQueueMenuRuntime>[0];
+
+        const runtime = createAppQueueMenuRuntime(context);
+        runtime.openPlayOrderMenu(300, 200);
+
+        expect(getBoundingClientRect).not.toHaveBeenCalled();
+        expect(playOrderMenu.hidden).toBe(false);
+        expect(playOrderMenu.style.visibility).toBe('hidden');
+        expect(animationFrameCallback).toBeTypeOf('function');
+
+        animationFrameCallback?.(16);
+
+        expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
+        expect(playOrderMenu.style.left).toBe('300px');
+        expect(playOrderMenu.style.top).toBe('200px');
+        expect(playOrderMenu.style.visibility).toBe('');
     });
 });

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+    activeSelectionTargetWithin,
     blobToBase64,
     buildShareImageDefaultFilename,
     cleanSidebarQueueSelectionLabel,
@@ -259,9 +260,11 @@ describe('display helpers', () => {
         selection?.removeAllRanges();
         selection?.addRange(range);
 
+        expect(activeSelectionTargetWithin([outer])).toBe(outer);
         expect(hasActiveSelectionWithin(outer)).toBe(true);
 
         selection?.removeAllRanges();
+        expect(activeSelectionTargetWithin([outer])).toBeNull();
         expect(hasActiveSelectionWithin(outer)).toBe(false);
 
         const emptySelection = window.getSelection();
@@ -270,7 +273,29 @@ describe('display helpers', () => {
         collapsedRange.setEnd(inner.firstChild as Text, 0);
         emptySelection?.removeAllRanges();
         emptySelection?.addRange(collapsedRange);
+        expect(activeSelectionTargetWithin([outer])).toBeNull();
         expect(hasActiveSelectionWithin(outer)).toBe(false);
+    });
+
+    it('returns the matching owner when a selection is inside one of several targets', () => {
+        const first = document.createElement('div');
+        const second = document.createElement('div');
+        const firstText = document.createElement('span');
+        const secondText = document.createElement('span');
+        firstText.textContent = 'First';
+        secondText.textContent = 'Second';
+        first.append(firstText);
+        second.append(secondText);
+        document.body.append(first, second);
+
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(secondText);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        expect(activeSelectionTargetWithin([first, second])).toBe(second);
+        expect(activeSelectionTargetWithin([first])).toBeNull();
     });
 
     it('cleans sidebar labels and formats playback state logs', () => {

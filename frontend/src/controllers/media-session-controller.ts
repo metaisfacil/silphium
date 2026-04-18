@@ -1,4 +1,6 @@
+import { LogFrontendMessage } from '../../wailsjs/go/main/App';
 import type { AudioPlaybackState, Track } from '../types/app-types';
+import { formatPerfLogMessage } from '../utils/perf-log';
 
 export type ExternalPlaybackAction = 'play' | 'pause' | 'playpause' | 'next' | 'previous' | 'stop';
 
@@ -69,6 +71,7 @@ export type MediaSessionController = ReturnType<typeof createMediaSessionControl
 
 export const createMediaSessionController = (options: MediaSessionControllerOptions) => {
     const supportsMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
+    const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
     const mediaSessionAnchorUrl = supportsMediaSession ? createSilentWavObjectUrl() : '';
     const mediaSessionAnchorAudio = supportsMediaSession
         ? new Audio(mediaSessionAnchorUrl)
@@ -89,13 +92,35 @@ export const createMediaSessionController = (options: MediaSessionControllerOpti
         mediaSessionAnchorAudio.preload = 'auto';
     }
 
+    const logUnlockPerf = (phase: 'sync' | 'settled', elapsedMs: number): void => {
+        const thresholdMs = phase === 'sync' ? 8 : 120;
+        if (!devPerfLoggingEnabled || elapsedMs < thresholdMs) {
+            return;
+        }
+
+        const message = formatPerfLogMessage(`media-session unlock ${phase} ${elapsedMs.toFixed(1)}ms`);
+        console.warn(message);
+        void LogFrontendMessage(message).catch(() => undefined);
+    };
+
     const unlockFromUserGesture = (): void => {
         if (!mediaSessionAnchorAudio || mediaSessionAnchorUnlocked || mediaSessionAnchorUnlockPending) {
             return;
         }
 
         mediaSessionAnchorUnlockPending = true;
-        void mediaSessionAnchorAudio.play().then(() => {
+        const unlockStartedAtMs = performance.now();
+        let unlockPromise: Promise<void>;
+        try {
+            unlockPromise = mediaSessionAnchorAudio.play();
+        } catch (error) {
+            mediaSessionAnchorUnlockPending = false;
+            console.debug(error);
+            return;
+        }
+
+        logUnlockPerf('sync', performance.now() - unlockStartedAtMs);
+        void unlockPromise.then(() => {
             mediaSessionAnchorUnlocked = true;
             const playbackState = options.getPlaybackState();
             if (!playbackState.loaded || !playbackState.playing) {
@@ -105,6 +130,7 @@ export const createMediaSessionController = (options: MediaSessionControllerOpti
         }).catch((error) => {
             console.debug(error);
         }).finally(() => {
+            logUnlockPerf('settled', performance.now() - unlockStartedAtMs);
             mediaSessionAnchorUnlockPending = false;
         });
     };

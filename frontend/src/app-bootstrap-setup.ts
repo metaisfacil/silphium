@@ -261,6 +261,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'updateLibraryLoadingEtaFromProgress'
     | 'normalizeMusicBrainzTagWorkerProgress'
     | 'dispatchExternalPlaybackAction'
+    | 'logFrontendMessage'
     | 'cardResizeObserver'
     | 'logRescan'
     | 'coverFlipped'
@@ -635,6 +636,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
             scope.settingsControllerRef.setMusicBrainzTagWorkerProgress(value);
         },
         dispatchExternalPlaybackAction: scope.dispatchExternalPlaybackAction,
+        logFrontendMessage: scope.logFrontendMessage,
         playlistControllerLoadPlaylistByPath: (playlistPath: string) => scope.playlistControllerRef.loadPlaylistByPath(playlistPath),
         handleDocumentClickWithinSettings: (target: Node) => scope.settingsControllerRef.handleDocumentClick(target),
         playerCardResizeObserver: scope.cardResizeObserver,
