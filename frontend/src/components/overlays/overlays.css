@@ -1705,12 +1705,9 @@
 }
 
 .about-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
+    position: absolute;
+    right: 0px;
     padding: 0.7rem 0.9rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .about-version {
