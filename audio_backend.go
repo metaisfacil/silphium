@@ -18,10 +18,13 @@ const (
 	audioSampleRate                  = 44100
 	audioChannelCount                = 2
 	audioBytesPerFrame               = audioChannelCount * 2
-	defaultAudioOutputBuffer         = 256 * time.Millisecond
-	defaultAudioPlayerBuffer         = 1500 * time.Millisecond
+	defaultAudioOutputBuffer         = 0 * time.Millisecond
+	defaultAudioPlayerBuffer         = 250 * time.Millisecond
+	maxAudioPlayerReadChunk          = 50 * time.Millisecond
 	maxAudioPlayerBuffer             = 3 * time.Second
 	playerBufferHeadroomFactor       = 4
+	playResumeProbeInterval          = 10 * time.Millisecond
+	playResumeProbeTimeout           = 2 * time.Second
 	playbackHeadroomLowThreshold     = 150 * time.Millisecond
 	playbackHeadroomRecoverThreshold = 500 * time.Millisecond
 	remoteStreamReadinessMinProbe    = 150 * time.Millisecond
@@ -109,6 +112,10 @@ type audioPlayerSource struct {
 }
 
 func (s *audioPlayerSource) Read(p []byte) (int, error) {
+	if maxChunkBytes := durationToAlignedAudioBytes(maxAudioPlayerReadChunk); maxChunkBytes > 0 && len(p) > maxChunkBytes {
+		p = p[:maxChunkBytes]
+	}
+
 	return s.backend.Read(p)
 }
 
@@ -129,6 +136,8 @@ type audioOutputPlayer interface {
 type audioOutputContext interface {
 	NewPlayer(source io.Reader) audioOutputPlayer
 	Err() error
+	Suspend() error
+	Resume() error
 	Close() error
 }
 
@@ -193,6 +202,8 @@ func (a *otoPlayerAdapter) Seek(offset int64, whence int) (int64, error) {
 type otoContextAdapter struct {
 	newPlayer func(source io.Reader) audioOutputPlayer
 	err       func() error
+	suspend   func() error
+	resume    func() error
 	close     func() error
 }
 
@@ -210,6 +221,22 @@ func (a *otoContextAdapter) Err() error {
 	}
 
 	return a.err()
+}
+
+func (a *otoContextAdapter) Suspend() error {
+	if a.suspend == nil {
+		return nil
+	}
+
+	return a.suspend()
+}
+
+func (a *otoContextAdapter) Resume() error {
+	if a.resume == nil {
+		return nil
+	}
+
+	return a.resume()
 }
 
 func (a *otoContextAdapter) Close() error {
@@ -239,8 +266,10 @@ var newAudioOutputContext = func(options *oto.NewContextOptions) (audioOutputCon
 				seek:      player.Seek,
 			}
 		},
-		err:   context.Err,
-		close: context.Close,
+		err:     context.Err,
+		suspend: context.Suspend,
+		resume:  context.Resume,
+		close:   context.Close,
 	}, ready, nil
 }
 
@@ -255,6 +284,8 @@ type AudioBackend struct {
 	streamReadOffset            int64
 	streamDroppedBytes          int64
 	playStarted                 time.Time
+	playResumeRequestedAt       time.Time
+	playResumeStartBytes        int64
 	playbackBaseBytes           int64
 	playing                     bool
 	volume                      float64
@@ -620,8 +651,20 @@ func (b *AudioBackend) Initialize() error {
 	if err != nil {
 		return err
 	}
+	outputContext := b.context
+
 	b.ffmpegPath = resolvedFFmpegPath
 
+	if outputContext != nil {
+		if err := outputContext.Resume(); err != nil {
+			b.mutex.Lock()
+			b.playing = false
+			b.playStarted = time.Time{}
+			b.clearPendingPlayResumeLocked()
+			b.mutex.Unlock()
+			return fmt.Errorf("audio playback resume failed after reinitialize: %w", err)
+		}
+	}
 	if b.context != nil {
 		if b.player == nil {
 			b.player = b.context.NewPlayer(&audioPlayerSource{backend: b})
@@ -666,6 +709,7 @@ func (b *AudioBackend) Close() error {
 	b.player = nil
 	b.playing = false
 	b.playStarted = time.Time{}
+	b.clearPendingPlayResumeLocked()
 	b.streamCond.Broadcast()
 	summary := b.stateSummaryLocked()
 	b.mutex.Unlock()
@@ -701,6 +745,7 @@ func (b *AudioBackend) Reinitialize() error {
 	b.streamReadOffset = playedLocalBytes
 	b.playbackBaseBytes = b.streamDroppedBytes + playedLocalBytes
 	b.playStarted = time.Time{}
+	b.clearPendingPlayResumeLocked()
 	b.playing = false
 	b.streamCond.Broadcast()
 	beforeSummary := b.stateSummaryLocked()
@@ -720,8 +765,10 @@ func (b *AudioBackend) Reinitialize() error {
 		player.SetVolume(b.effectivePlayerVolumeLocked())
 	}
 	if wasPlaying && player != nil && len(b.streamSegments) > 0 {
+		resumeBaseBytes := b.currentPlayedGlobalBytesLocked()
 		b.playing = true
 		b.playStarted = time.Now()
+		b.notePendingPlayResumeLocked(resumeBaseBytes)
 		b.endEventSent = false
 	}
 	afterSummary := b.stateSummaryLocked()
@@ -733,6 +780,7 @@ func (b *AudioBackend) Reinitialize() error {
 			b.mutex.Lock()
 			b.playing = false
 			b.playStarted = time.Time{}
+			b.clearPendingPlayResumeLocked()
 			b.mutex.Unlock()
 			return fmt.Errorf("audio playback failed after reinitialize: %w", player.Err())
 		}
@@ -776,6 +824,7 @@ func (b *AudioBackend) seekLocked(seconds float64) error {
 	} else {
 		b.playStarted = time.Time{}
 	}
+	b.clearPendingPlayResumeLocked()
 	b.endEventSent = false
 	b.streamCond.Broadcast()
 
@@ -1064,8 +1113,119 @@ func (b *AudioBackend) resetTimelineLocked() {
 	b.streamDroppedBytes = 0
 	b.playbackBaseBytes = 0
 	b.playStarted = time.Time{}
+	b.clearPendingPlayResumeLocked()
 	b.endEventSent = false
 	b.streamCond.Broadcast()
+}
+
+func (b *AudioBackend) notePendingPlayResumeLocked(startBytes int64) {
+	b.playResumeRequestedAt = time.Now()
+	b.playResumeStartBytes = startBytes
+}
+
+func (b *AudioBackend) clearPendingPlayResumeLocked() {
+	b.playResumeRequestedAt = time.Time{}
+	b.playResumeStartBytes = 0
+}
+
+func (b *AudioBackend) observePendingPlayResumeBufferDrain(player audioOutputPlayer, requestedAt time.Time) {
+	if player == nil || requestedAt.IsZero() {
+		return
+	}
+
+	startBufferedBytes := int64(player.BufferedSize())
+	if startBufferedBytes <= 0 {
+		return
+	}
+
+	ticker := time.NewTicker(playResumeProbeInterval)
+	defer ticker.Stop()
+	timeout := time.NewTimer(playResumeProbeTimeout)
+	defer timeout.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			currentBufferedBytes := int64(player.BufferedSize())
+			if currentBufferedBytes < 0 {
+				currentBufferedBytes = 0
+			}
+
+			b.mutex.Lock()
+			stale := !b.playing || b.player != player || !b.playResumeRequestedAt.Equal(requestedAt)
+			summary := ""
+			if !stale && currentBufferedBytes < startBufferedBytes {
+				summary = b.stateSummaryLocked()
+			}
+			b.mutex.Unlock()
+
+			if stale {
+				return
+			}
+
+			if currentBufferedBytes < startBufferedBytes {
+				logAudioEvent(
+					"PlayResumeBufferDrain latency=%s drained=%s startBuffered=%s currentBuffered=%s state=%s",
+					time.Since(requestedAt).Round(time.Millisecond),
+					audioDurationForByteCount(startBufferedBytes-currentBufferedBytes),
+					audioDurationForByteCount(startBufferedBytes),
+					audioDurationForByteCount(currentBufferedBytes),
+					summary,
+				)
+				return
+			}
+		case <-timeout.C:
+			currentBufferedBytes := int64(player.BufferedSize())
+			if currentBufferedBytes < 0 {
+				currentBufferedBytes = 0
+			}
+
+			b.mutex.Lock()
+			stale := !b.playing || b.player != player || !b.playResumeRequestedAt.Equal(requestedAt)
+			summary := ""
+			if !stale {
+				summary = b.stateSummaryLocked()
+			}
+			b.mutex.Unlock()
+
+			if stale {
+				return
+			}
+
+			logAudioEvent(
+				"PlayResumeBufferDrainTimedOut waited=%s startBuffered=%s currentBuffered=%s state=%s",
+				playResumeProbeTimeout,
+				audioDurationForByteCount(startBufferedBytes),
+				audioDurationForByteCount(currentBufferedBytes),
+				summary,
+			)
+			return
+		}
+	}
+}
+
+func (b *AudioBackend) reportPendingPlayResumeLocked(playedGlobalBytes int64) {
+	if b.playResumeRequestedAt.IsZero() {
+		return
+	}
+
+	if !b.playing {
+		b.clearPendingPlayResumeLocked()
+		return
+	}
+
+	if playedGlobalBytes <= b.playResumeStartBytes {
+		return
+	}
+
+	logAudioEvent(
+		"PlayResumeAdvanced latency=%s advanced=%s buffered=%s state=%s",
+		time.Since(b.playResumeRequestedAt).Round(time.Millisecond),
+		audioDurationForByteCount(playedGlobalBytes-b.playResumeStartBytes),
+		audioDurationForByteCount(b.playerBufferedBytesLocked()),
+		b.stateSummaryLocked(),
+	)
+	b.clearPendingPlayResumeLocked()
 }
 
 func (b *AudioBackend) invalidatePendingQueuedTrackLocked() {
@@ -1088,6 +1248,7 @@ func (b *AudioBackend) syncPlaybackLocked() {
 	if totalTimelineBytes == 0 {
 		b.playing = false
 		b.playStarted = time.Time{}
+		b.clearPendingPlayResumeLocked()
 		b.playbackBaseBytes = 0
 		b.endEventSent = false
 		b.playbackHeadroomLow = false
@@ -1106,6 +1267,7 @@ func (b *AudioBackend) syncPlaybackLocked() {
 		if b.playing {
 			b.playing = false
 		}
+		b.clearPendingPlayResumeLocked()
 		b.playbackHeadroomLow = false
 		if !b.endEventSent {
 			b.endEventID++
@@ -1122,6 +1284,7 @@ func (b *AudioBackend) syncPlaybackLocked() {
 
 	b.endEventSent = false
 	b.reportPlaybackHeadroomLocked()
+	b.reportPendingPlayResumeLocked(playedGlobalBytes)
 }
 
 func (b *AudioBackend) snapshotLocked() AudioPlaybackState {
@@ -1166,6 +1329,7 @@ func (b *AudioBackend) unloadTrackLocked() {
 	b.streamDroppedBytes = 0
 	b.playStarted = time.Time{}
 	b.playbackBaseBytes = 0
+	b.clearPendingPlayResumeLocked()
 	b.playing = false
 	b.playbackHeadroomLow = false
 	b.endEventSent = false

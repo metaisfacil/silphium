@@ -50,9 +50,15 @@ func TestAudioBackendPlaybackMethods(t *testing.T) {
 	if playState, err := backend.Play(); err != nil || !playState.Playing || fakeContext.player.playCalls == 0 {
 		t.Fatalf("Play() = (%#v, %v), want playing state and play call", playState, err)
 	}
+	if fakeContext.resumeCalls == 0 {
+		t.Fatal("Play() should resume the audio output context")
+	}
 
 	if pauseState, err := backend.Pause(); err != nil || pauseState.Playing || fakeContext.player.pauseCalls == 0 {
 		t.Fatalf("Pause() = (%#v, %v), want paused state and pause call", pauseState, err)
+	}
+	if fakeContext.suspendCalls == 0 {
+		t.Fatal("Pause() should suspend the audio output context")
 	}
 
 	if _, err := (&AudioBackend{ffmpegPath: helperPath}).Seek(1); err == nil {

@@ -329,40 +329,32 @@ func replayGainCompensatedVisualizationSample(sample int16, replayGainScale floa
 	return int16(compensated)
 }
 
-// VisualizationFrame returns a decimated stereo sample window around the current playback position.
-func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFrame {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
+type visualizationFrameSnapshot struct {
+	state           AudioPlaybackState
+	sourcePath      string
+	replayGainScale float64
+	frameCount      int
+	sampleStride    float64
+	pcmWindow       []byte
+}
 
+func (b *AudioBackend) visualizationFrameSnapshotLocked(frameCount int) visualizationFrameSnapshot {
 	b.syncPlaybackLocked()
 	state := b.snapshotLocked()
 	if !state.Loaded {
-		return AudioVisualizationFrame{
-			Loaded:       false,
-			Playing:      false,
-			SampleRate:   audioSampleRate,
-			ChannelCount: audioChannelCount,
-			SampleStride: 1,
-			Samples:      []int16{},
-		}
+		return visualizationFrameSnapshot{state: state}
 	}
 
-	activeSegment, segmentOffset, _ := b.activeSegmentLocked()
-	if len(activeSegment.PCMData) < audioBytesPerFrame {
-		return AudioVisualizationFrame{
-			Loaded:       state.Loaded,
-			Playing:      state.Playing,
-			SourcePath:   state.SourcePath,
-			SampleRate:   audioSampleRate,
-			ChannelCount: audioChannelCount,
-			SampleStride: 1,
-			Samples:      []int16{},
+	activeSegment, segmentOffset, ok := b.activeSegmentLocked()
+	if !ok || len(activeSegment.PCMData) < audioBytesPerFrame {
+		return visualizationFrameSnapshot{
+			state:      state,
+			sourcePath: state.SourcePath,
 		}
 	}
 
 	normalizedFrameCount := normalizeVisualizationFrameCount(frameCount)
 	totalFrames := len(activeSegment.PCMData) / audioBytesPerFrame
-
 	actualFrameCount := normalizedFrameCount
 	if totalFrames < actualFrameCount {
 		actualFrameCount = totalFrames
@@ -394,7 +386,6 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 	}
 
 	availableFrames := endFrame - startFrame
-
 	stride := 0.0
 	if actualFrameCount > 1 && availableFrames > 1 {
 		stride = float64(availableFrames-1) / float64(actualFrameCount-1)
@@ -404,19 +395,68 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 		sampleStride = math.Max(1, stride)
 	}
 
-	samples := make([]int16, actualFrameCount*audioChannelCount)
+	windowByteStart := startFrame * audioBytesPerFrame
+	windowByteEnd := endFrame * audioBytesPerFrame
+	pcmWindow := append([]byte(nil), activeSegment.PCMData[windowByteStart:windowByteEnd]...)
+
+	return visualizationFrameSnapshot{
+		state:           state,
+		sourcePath:      activeSegment.SourcePath,
+		replayGainScale: activeSegment.ReplayGainScale,
+		frameCount:      actualFrameCount,
+		sampleStride:    sampleStride,
+		pcmWindow:       pcmWindow,
+	}
+}
+
+// VisualizationFrame returns a decimated stereo sample window around the current playback position.
+func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFrame {
+	b.mutex.Lock()
+	snapshot := b.visualizationFrameSnapshotLocked(frameCount)
+	b.mutex.Unlock()
+
+	if !snapshot.state.Loaded {
+		return AudioVisualizationFrame{
+			Loaded:       false,
+			Playing:      false,
+			SampleRate:   audioSampleRate,
+			ChannelCount: audioChannelCount,
+			SampleStride: 1,
+			Samples:      []int16{},
+		}
+	}
+
+	if len(snapshot.pcmWindow) < audioBytesPerFrame {
+		return AudioVisualizationFrame{
+			Loaded:       snapshot.state.Loaded,
+			Playing:      snapshot.state.Playing,
+			SourcePath:   snapshot.sourcePath,
+			SampleRate:   audioSampleRate,
+			ChannelCount: audioChannelCount,
+			SampleStride: 1,
+			Samples:      []int16{},
+		}
+	}
+
+	windowFrames := len(snapshot.pcmWindow) / audioBytesPerFrame
+	stride := 0.0
+	if snapshot.frameCount > 1 && windowFrames > 1 {
+		stride = float64(windowFrames-1) / float64(snapshot.frameCount-1)
+	}
+
+	samples := make([]int16, snapshot.frameCount*audioChannelCount)
 	peak := 0.0
-	for index := 0; index < actualFrameCount; index++ {
-		sourceFrame := startFrame
+	for index := 0; index < snapshot.frameCount; index++ {
+		sourceFrame := 0
 		if stride > 0 {
-			sourceFrame = startFrame + int(math.Round(float64(index)*stride))
+			sourceFrame = int(math.Round(float64(index) * stride))
 		}
 
 		byteOffset := sourceFrame * audioBytesPerFrame
-		left := int16(binary.LittleEndian.Uint16(activeSegment.PCMData[byteOffset : byteOffset+2]))
-		right := int16(binary.LittleEndian.Uint16(activeSegment.PCMData[byteOffset+2 : byteOffset+4]))
-		left = replayGainCompensatedVisualizationSample(left, activeSegment.ReplayGainScale)
-		right = replayGainCompensatedVisualizationSample(right, activeSegment.ReplayGainScale)
+		left := int16(binary.LittleEndian.Uint16(snapshot.pcmWindow[byteOffset : byteOffset+2]))
+		right := int16(binary.LittleEndian.Uint16(snapshot.pcmWindow[byteOffset+2 : byteOffset+4]))
+		left = replayGainCompensatedVisualizationSample(left, snapshot.replayGainScale)
+		right = replayGainCompensatedVisualizationSample(right, snapshot.replayGainScale)
 		samples[index*2] = left
 		samples[index*2+1] = right
 
@@ -425,13 +465,13 @@ func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFram
 	}
 
 	return AudioVisualizationFrame{
-		Loaded:       state.Loaded,
-		Playing:      state.Playing,
-		SourcePath:   activeSegment.SourcePath,
+		Loaded:       snapshot.state.Loaded,
+		Playing:      snapshot.state.Playing,
+		SourcePath:   snapshot.sourcePath,
 		SampleRate:   audioSampleRate,
 		ChannelCount: audioChannelCount,
-		FrameCount:   actualFrameCount,
-		SampleStride: sampleStride,
+		FrameCount:   snapshot.frameCount,
+		SampleStride: snapshot.sampleStride,
 		Peak:         peak / 32768.0,
 		Samples:      samples,
 	}

@@ -387,15 +387,20 @@ func (b *AudioBackend) Play() (AudioPlaybackState, error) {
 	}
 
 	b.syncPlaybackLocked()
+	resumeBaseBytes := b.currentPlayedGlobalBytesLocked()
 	shouldReset := false
 	if totalTimelineBytes := b.totalTimelineBytesLocked(); totalTimelineBytes > 0 && b.currentPlayedLocalBytesLocked() >= totalTimelineBytes {
 		b.resetTimelineLocked()
+		resumeBaseBytes = 0
 		shouldReset = true
 	}
 
 	player := b.player
+	outputContext := b.context
 	b.playing = true
 	b.playStarted = time.Now()
+	b.notePendingPlayResumeLocked(resumeBaseBytes)
+	resumeRequestedAt := b.playResumeRequestedAt
 	b.endEventSent = false
 	b.streamCond.Broadcast()
 	b.mutex.Unlock()
@@ -405,20 +410,34 @@ func (b *AudioBackend) Play() (AudioPlaybackState, error) {
 			b.mutex.Lock()
 			b.playing = false
 			b.playStarted = time.Time{}
+			b.clearPendingPlayResumeLocked()
 			state := b.snapshotLocked()
 			b.mutex.Unlock()
 			return state, err
 		}
 	}
 	player.Play()
+	if outputContext != nil {
+		if err := outputContext.Resume(); err != nil {
+			b.mutex.Lock()
+			b.playing = false
+			b.playStarted = time.Time{}
+			b.clearPendingPlayResumeLocked()
+			state := b.snapshotLocked()
+			b.mutex.Unlock()
+			return state, fmt.Errorf("audio playback resume failed: %w", err)
+		}
+	}
 	if player.Err() != nil {
 		b.mutex.Lock()
 		b.playing = false
 		b.playStarted = time.Time{}
+		b.clearPendingPlayResumeLocked()
 		state := b.snapshotLocked()
 		b.mutex.Unlock()
 		return state, fmt.Errorf("audio playback failed: %w", player.Err())
 	}
+	go b.observePendingPlayResumeBufferDrain(player, resumeRequestedAt)
 
 	b.mutex.Lock()
 	state := b.snapshotLocked()
@@ -442,14 +461,21 @@ func (b *AudioBackend) Pause() (AudioPlaybackState, error) {
 	}
 
 	b.syncPlaybackLocked()
+	outputContext := b.context
 	player := b.player
 	b.playing = false
 	b.playStarted = time.Time{}
+	b.clearPendingPlayResumeLocked()
 	state := b.snapshotLocked()
 	summary := b.stateSummaryLocked()
 	b.mutex.Unlock()
 
 	player.Pause()
+	if outputContext != nil {
+		if err := outputContext.Suspend(); err != nil {
+			return state, fmt.Errorf("audio playback suspend failed: %w", err)
+		}
+	}
 	logAudioEvent("Pause state=%s", summary)
 
 	return state, nil
@@ -509,6 +535,7 @@ func (b *AudioBackend) Seek(seconds float64) (AudioPlaybackState, error) {
 	_ = b.seekLocked(seconds)
 
 	player := b.player
+	outputContext := b.context
 	shouldResume := b.playing
 	state := b.snapshotLocked()
 	summary := b.stateSummaryLocked()
@@ -520,6 +547,16 @@ func (b *AudioBackend) Seek(seconds float64) (AudioPlaybackState, error) {
 		}
 		if shouldResume {
 			player.Play()
+			if outputContext != nil {
+				if err := outputContext.Resume(); err != nil {
+					b.mutex.Lock()
+					b.playing = false
+					b.playStarted = time.Time{}
+					state = b.snapshotLocked()
+					b.mutex.Unlock()
+					return state, fmt.Errorf("audio playback resume failed after seek: %w", err)
+				}
+			}
 			if player.Err() != nil {
 				b.mutex.Lock()
 				b.playing = false

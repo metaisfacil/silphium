@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"math"
 	"testing"
@@ -240,5 +241,37 @@ func TestAudioBackendDecodeAdditionalCoverageBranches(t *testing.T) {
 	}
 	if longWindowFrame.SampleStride <= 200 {
 		t.Fatalf("VisualizationFrame(long window) sample stride = %.4f, want > 200", longWindowFrame.SampleStride)
+	}
+}
+
+func TestVisualizationFrameSnapshotLockedCopiesPCMWindow(t *testing.T) {
+	backend := NewAudioBackend()
+	backend.streamSegments = []audioTrackSegment{{
+		SourcePath:      "snapshot.flac",
+		ReplayGainScale: 0.5,
+		PCMData:         encodeStereoPCM([][2]int16{{100, -100}, {200, -200}, {300, -300}, {400, -400}}),
+	}}
+	backend.streamReadOffset = int64(len(backend.streamSegments[0].PCMData))
+	backend.playbackBaseBytes = backend.streamReadOffset
+
+	backend.mutex.Lock()
+	snapshot := backend.visualizationFrameSnapshotLocked(4)
+	mutatedLeft := int16(999)
+	mutatedRight := int16(-999)
+	binary.LittleEndian.PutUint16(backend.streamSegments[0].PCMData[0:2], uint16(mutatedLeft))
+	binary.LittleEndian.PutUint16(backend.streamSegments[0].PCMData[2:4], uint16(mutatedRight))
+	backend.mutex.Unlock()
+
+	if snapshot.sourcePath != "snapshot.flac" {
+		t.Fatalf("visualizationFrameSnapshotLocked().sourcePath = %q, want %q", snapshot.sourcePath, "snapshot.flac")
+	}
+	if snapshot.replayGainScale != 0.5 {
+		t.Fatalf("visualizationFrameSnapshotLocked().replayGainScale = %.2f, want 0.5", snapshot.replayGainScale)
+	}
+	if got := int16(binary.LittleEndian.Uint16(snapshot.pcmWindow[0:2])); got != 100 {
+		t.Fatalf("visualizationFrameSnapshotLocked() first left sample = %d, want 100", got)
+	}
+	if got := int16(binary.LittleEndian.Uint16(snapshot.pcmWindow[2:4])); got != -100 {
+		t.Fatalf("visualizationFrameSnapshotLocked() first right sample = %d, want -100", got)
 	}
 }
