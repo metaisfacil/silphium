@@ -220,7 +220,11 @@ const openExplorationModal = async (track: Track): Promise<void> => {
     ensureExplorationProgressListener();
 
     modal.hidden = false;
-    modal.classList.add('is-visible');
+    window.requestAnimationFrame(() => {
+        if (!modal.hidden) {
+            modal.classList.add('is-visible');
+        }
+    });
     const { explorationClose, explorationContent, explorationTitle } = getExplorationModalElements(document);
     explorationClose.onclick = () => {
         closeExplorationModal(modal, explorationContent, explorationTitle);
