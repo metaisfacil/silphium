@@ -22,6 +22,7 @@ export const createImageModalController = (options: ImageModalControllerOptions)
         imageFileBackdrop,
         imageFileDialog,
         imageFileTools,
+        imageFileClose,
         imageFileRotateLeft,
         imageFileRotateRight,
         imageFileContent,
@@ -885,6 +886,10 @@ export const createImageModalController = (options: ImageModalControllerOptions)
 
     imageFileTools.addEventListener('click', (event) => {
         event.stopPropagation();
+    });
+
+    imageFileClose.addEventListener('click', () => {
+        close();
     });
 
     imageFileRotateLeft.addEventListener('click', () => {

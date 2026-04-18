@@ -141,6 +141,7 @@
 }
 
 .image-file-tools {
+    position: relative;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -164,6 +165,30 @@
 }
 
 .image-file-tool-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.image-file-close {
+    position: absolute;
+    right: 0.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.45rem;
+    height: 1.45rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.95);
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease;
+}
+
+.image-file-close:hover {
     background: rgba(255, 255, 255, 0.2);
     border-color: rgba(255, 255, 255, 0.35);
 }
