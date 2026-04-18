@@ -73,6 +73,7 @@ const testState = vi.hoisted(() => {
     const setEqualizerPosition = vi.fn();
     const setPlaybackOrderMode = vi.fn();
     const updatePlayOrderMenuState = vi.fn();
+    const openLibrarySearch = vi.fn();
 
     const createShell = () => {
         const cache = new Map<string, unknown>();
@@ -129,6 +130,7 @@ const testState = vi.hoisted(() => {
         normalizedSettings,
         playlistController,
         refreshAvailableAudioOutputDevices,
+        openLibrarySearch,
         refreshListenBrainzFeedbackForCurrentTrack,
         resetControllerScope: () => {
             controllerScope = null;
@@ -181,6 +183,7 @@ vi.mock('./app-runtime-setup', () => ({
         applyPlayerCardLayout: testState.applyPlayerCardLayout,
         defaultMusicBrainzServerUrl: 'https://musicbrainz.org',
         getStoredLayout: testState.getStoredLayout,
+        openLibrarySearch: testState.openLibrarySearch,
         visualizerController: {
             setEnabled: testState.setLissajousEnabled,
             setLissajousScale: testState.setLissajousScale,
@@ -306,6 +309,8 @@ vi.mock('../wailsjs/runtime/runtime', () => ({
     EventsOn: vi.fn(() => vi.fn()),
 }));
 
+import { setupExplorationButton } from './components/media-controls-exploration';
+
 describe('main entrypoint runtime scope', () => {
     beforeEach(() => {
         vi.resetModules();
@@ -379,5 +384,22 @@ describe('main entrypoint runtime scope', () => {
         expect(scope).not.toBeNull();
         expect(scope?.audioReinitializeBackend).toBeTypeOf('function');
         await expect(scope?.audioReinitializeBackend?.()).resolves.toEqual({ loaded: false });
+    });
+
+    it('routes the exploration search callback to the runtime openLibrarySearch helper', async () => {
+        await import('./main');
+
+        const call = vi.mocked(setupExplorationButton).mock.calls[0];
+        expect(call).toBeDefined();
+
+        const options = call?.[1] as { openLibrarySearch?: (query: string, searchOptions?: { expandFilteredFolders?: boolean }) => void } | undefined;
+        expect(options?.openLibrarySearch).toBeTypeOf('function');
+
+        options?.openLibrarySearch?.('mbid-artist:5e9450ca-77d5-4f64-a385-f453cfe98b24', { expandFilteredFolders: true });
+
+        expect(testState.openLibrarySearch).toHaveBeenCalledWith(
+            'mbid-artist:5e9450ca-77d5-4f64-a385-f453cfe98b24',
+            { expandFilteredFolders: true },
+        );
     });
 });

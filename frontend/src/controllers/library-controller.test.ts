@@ -321,6 +321,52 @@ describe('createLibraryController', () => {
         expect(searchLibrary).toHaveBeenCalledWith('track 0', 0, 100);
     });
 
+    it('can expand all filtered folders for a programmatic library search', async () => {
+        const { controller } = mountLibraryController({
+            searchLibrary: async (query: string) => createSearchPage(query, [
+                {
+                    kind: 'folder',
+                    path: 'Library/Artist One',
+                    name: 'Artist One',
+                    folderPath: 'Library',
+                    relativePath: 'Library/Artist One',
+                    modifiedAtMs: 0,
+                },
+                {
+                    kind: 'folder',
+                    path: 'Library/Artist One/Album One',
+                    name: 'Album One',
+                    folderPath: 'Library/Artist One',
+                    relativePath: 'Library/Artist One/Album One',
+                    modifiedAtMs: 0,
+                },
+                {
+                    kind: 'track',
+                    path: '/music/library/artist-one/album-one/01 Intro.flac',
+                    name: '01 Intro.flac',
+                    folderPath: 'Library/Artist One/Album One',
+                    relativePath: 'Library/Artist One/Album One/01 Intro.flac',
+                    modifiedAtMs: 0,
+                },
+            ]),
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.startLibrarySearch('mbid-artist:test', { expandFilteredFolders: true });
+
+        await vi.advanceTimersByTimeAsync(220);
+        await flushPromises();
+
+        expect(controller.getLibrarySearchStateSnapshot().expandedFolderPaths).toEqual([
+            'Library',
+            'Library/Artist One',
+            'Library/Artist One/Album One',
+        ]);
+    });
+
     it('renders an expanded album grid and shrinks back when the search input is used', async () => {
         const { controller, libraryBrowser, librarySearch } = mountLibraryController();
 

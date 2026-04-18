@@ -358,7 +358,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         context.libraryController().navigateToFolder(cleanFolderPath);
     };
 
-    const openLibrarySearch = (query: string): void => {
+    const openLibrarySearch = (query: string, options?: { expandFilteredFolders?: boolean }): void => {
         const cleanQuery = query.trim();
         if (cleanQuery === '') {
             return;
@@ -371,7 +371,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             libraryController.setSidebarOpen(true);
         }
 
-        libraryController.startLibrarySearch(cleanQuery);
+        libraryController.startLibrarySearch(cleanQuery, options);
         context.librarySearch.focus({ preventScroll: true });
         context.librarySearch.select();
     };
@@ -708,6 +708,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         listenBrainzController,
         sidebarController,
         socialController,
+        openLibrarySearch,
         playbackSequencingService,
         playbackStateService,
         refreshListenBrainzFeedbackForCurrentTrack,

@@ -216,6 +216,65 @@ describe('setupLibraryEventHandlers', () => {
         expect(deps.setSidebarExpanded).toHaveBeenCalledWith(false);
     });
 
+    it('preserves tagged album folder highlighting when toggling a search-tree folder', () => {
+        const { deps, libraryBrowser } = createDeps();
+        deps.options.getHighlightMusicBrainzTaggedAlbumFolders = () => true;
+        deps.getActiveSearchTreeRoot = vi.fn(() => ({
+            name: 'Library',
+            path: '',
+            musicBrainzTaggedAlbumDir: false,
+            folders: [{
+                name: 'Library',
+                path: 'Library',
+                musicBrainzTaggedAlbumDir: false,
+                folders: [{
+                    name: 'Artist One',
+                    path: 'Library/Artist One',
+                    musicBrainzTaggedAlbumDir: false,
+                    folders: [{
+                        name: 'Album One',
+                        path: 'Library/Artist One/Album One',
+                        musicBrainzTaggedAlbumDir: true,
+                        folders: [],
+                        trackEntries: [],
+                        textFileEntries: [],
+                        imageFileEntries: [],
+                    }],
+                    trackEntries: [],
+                    textFileEntries: [],
+                    imageFileEntries: [],
+                }],
+                trackEntries: [],
+                textFileEntries: [],
+                imageFileEntries: [],
+            }],
+            trackEntries: [],
+            textFileEntries: [],
+            imageFileEntries: [],
+        }));
+        setupLibraryEventHandlers(deps);
+
+        libraryBrowser.innerHTML = `
+            <li class="library-tree-node">
+                <button
+                    type="button"
+                    class="library-tree-folder"
+                    data-search-folder-path="Library/Artist One/Album One"
+                    data-search-folder-expandable="true"
+                >Album One</button>
+            </li>
+        `;
+
+        const button = libraryBrowser.querySelector('button') as HTMLButtonElement;
+        button.click();
+
+        expect(button.querySelector('.library-entry-icon.folder.musicbrainz-tagged-album')).not.toBeNull();
+
+        button.click();
+
+        expect(button.querySelector('.library-entry-icon.folder.musicbrainz-tagged-album')).not.toBeNull();
+    });
+
     it('shows the enumeration tooltip instead of navigating when descendants are not ready', async () => {
         const { deps, libraryBrowser } = createDeps();
         deps.options.isFolderImmediateDescendantsEnumerated = vi.fn(async () => false);

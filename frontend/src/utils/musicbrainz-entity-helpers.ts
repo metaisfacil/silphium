@@ -57,6 +57,25 @@ const emptyMusicBrainzExplorationGraph = (): MusicBrainzExplorationGraph => ({
     warnings: [],
 });
 
+export const musicBrainzMBIDSearchQuery = (entityType: string, mbid: string): string => {
+    const normalizedEntityType = entityType.trim().toLowerCase();
+    const normalizedMBID = mbid.trim().toLowerCase();
+    if (normalizedMBID === '') {
+        return '';
+    }
+
+    switch (normalizedEntityType) {
+        case 'artist':
+            return `mbid-artist:${normalizedMBID}`;
+        case 'release':
+            return `mbid-release:${normalizedMBID}`;
+        case 'recording':
+            return `mbid-recording:${normalizedMBID}`;
+        default:
+            return '';
+    }
+};
+
 export const lookupMusicBrainzTrackMetadata = async (recordingId: string, releaseId: string): Promise<MusicBrainzTrackMetadata> => {
     const cleanRecordingId = recordingId.trim();
     const cleanReleaseId = releaseId.trim();

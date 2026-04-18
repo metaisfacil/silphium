@@ -1,11 +1,12 @@
-import type { MusicBrainzExplorationGraph, Track } from '../types/app-types';
-import { lookupMusicBrainzExploration } from '../utils/musicbrainz-entity-helpers';
+import type { MusicBrainzExplorationGraph, MusicBrainzExplorationNode, Track } from '../types/app-types';
+import { lookupMusicBrainzExploration, musicBrainzMBIDSearchQuery } from '../utils/musicbrainz-entity-helpers';
 import { renderExplorationGraph } from './overlays/exploration-graph';
 import { getExplorationModalElements, renderExplorationModal } from './overlays/exploration-modal';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 type ExplorationButtonOptions = {
     getActiveTrack: () => Track | undefined;
+    openLibrarySearch?: (query: string, options?: { expandFilteredFolders?: boolean }) => void;
 };
 
 type ExplorationProgress = {
@@ -143,7 +144,11 @@ const renderExplorationMessage = (content: HTMLElement, className: string, messa
     content.replaceChildren(status);
 };
 
-const renderExplorationData = (content: HTMLElement, graph: MusicBrainzExplorationGraph): void => {
+const renderExplorationData = (
+    content: HTMLElement,
+    graph: MusicBrainzExplorationGraph,
+    onNodeActivated?: (node: MusicBrainzExplorationNode) => void,
+): void => {
     destroyActiveExplorationGraph();
 
     if (!graph.found || graph.nodes.length === 0) {
@@ -185,7 +190,7 @@ const renderExplorationData = (content: HTMLElement, graph: MusicBrainzExplorati
     graphHost.className = 'exploration-graph';
 
     content.replaceChildren(meta, graphHost);
-    activeExplorationGraph = renderExplorationGraph(graphHost, graph);
+    activeExplorationGraph = renderExplorationGraph(graphHost, graph, { onNodeActivated });
 };
 
 const ensureExplorationModal = (): HTMLDivElement | null => {
@@ -211,7 +216,10 @@ const closeExplorationModal = (modal: HTMLDivElement, content: HTMLElement, titl
     }, 200);
 };
 
-const openExplorationModal = async (track: Track): Promise<void> => {
+const openExplorationModal = async (
+    track: Track,
+    openLibrarySearch?: (query: string, options?: { expandFilteredFolders?: boolean }) => void,
+): Promise<void> => {
     const modal = ensureExplorationModal();
     if (!modal) {
         return;
@@ -239,7 +247,15 @@ const openExplorationModal = async (track: Track): Promise<void> => {
     const cached = explorationCache.get(cacheKey);
     if (cached) {
         activeExplorationRequestId = null;
-        renderExplorationData(explorationContent, cached);
+        renderExplorationData(explorationContent, cached, (node) => {
+            const query = musicBrainzMBIDSearchQuery(node.entityType, node.mbid);
+            if (query === '' || !openLibrarySearch) {
+                return;
+            }
+
+            closeExplorationModal(modal, explorationContent, explorationTitle);
+            openLibrarySearch(query, { expandFilteredFolders: true });
+        });
         return;
     }
 
@@ -252,7 +268,15 @@ const openExplorationModal = async (track: Track): Promise<void> => {
 
     activeExplorationRequestId = null;
     explorationCache.set(cacheKey, graph);
-    renderExplorationData(explorationContent, graph);
+    renderExplorationData(explorationContent, graph, (node) => {
+        const query = musicBrainzMBIDSearchQuery(node.entityType, node.mbid);
+        if (query === '' || !openLibrarySearch) {
+            return;
+        }
+
+        closeExplorationModal(modal, explorationContent, explorationTitle);
+        openLibrarySearch(query, { expandFilteredFolders: true });
+    });
 };
 
 export function setupExplorationButton(root: ParentNode, options: ExplorationButtonOptions) {
@@ -272,7 +296,7 @@ export function setupExplorationButton(root: ParentNode, options: ExplorationBut
             return;
         }
 
-        void openExplorationModal(activeTrack);
+        void openExplorationModal(activeTrack, options.openLibrarySearch);
     });
 }
 

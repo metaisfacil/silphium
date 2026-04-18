@@ -107,6 +107,7 @@ type ReturnedRuntimeMethods = {
     resetArtistInfoPanel: () => void;
     hasLastFmScrobbling: () => boolean;
     hasListenBrainzScrobbling: () => boolean;
+    openLibrarySearch: (query: string, options?: { expandFilteredFolders?: boolean }) => void;
     refreshListenBrainzFeedbackForCurrentTrack: (force?: boolean) => Promise<void>;
     resetListenBrainzFeedbackState: () => void;
     submitListenBrainzFeedbackForTrack: (trackIndex: number, score: ListenBrainzFeedbackScore) => Promise<void>;

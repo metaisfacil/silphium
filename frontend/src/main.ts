@@ -96,6 +96,7 @@ renderAppShell(app);
 
 const state = createAppState();
 const runtimeControllerRefs = {} as ReturnType<typeof setupControllersFromScope>;
+let openExplorationLibrarySearch: ((query: string, options?: { expandFilteredFolders?: boolean }) => void) | null = null;
 
 setupExplorationButton(document, {
     getActiveTrack: () => (
@@ -103,6 +104,9 @@ setupExplorationButton(document, {
             ? state.tracks[state.currentTrackIndex]
             : undefined
     ),
+    openLibrarySearch: (query: string, options?: { expandFilteredFolders?: boolean }) => {
+        openExplorationLibrarySearch?.(query, options);
+    },
 });
 
 const musicBrainzEntityModalTransitionMs = UI_TIMINGS_MS.modalTransition;
@@ -433,6 +437,10 @@ Object.assign(runtimeScope, setupCoreServicesRuntime(Object.assign(Object.create
         runtimeScope.openTrackMetaMenu(clientX, clientY, includeCopyActions, actionScope, actionKind, actionPath);
     },
 })));
+
+openExplorationLibrarySearch = (query: string, options?: { expandFilteredFolders?: boolean }) => {
+    (runtimeScope as typeof runtimeScope & { openLibrarySearch?: (searchQuery: string, searchOptions?: { expandFilteredFolders?: boolean }) => void }).openLibrarySearch?.(query, options);
+};
 
 const {
     applyPlayerCardLayout,

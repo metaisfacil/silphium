@@ -34,6 +34,7 @@ import {
     lookupMusicBrainzEntity,
     lookupMusicBrainzExploration,
     lookupMusicBrainzTrackMetadata,
+    musicBrainzMBIDSearchQuery,
     mbidForTrackEntity,
     renderMusicBrainzEntityContent,
     setMusicBrainzRequestLogServerResolver,
@@ -158,6 +159,11 @@ describe('musicbrainz entity helpers', () => {
         expect(mbidForTrackEntity({ ...track, mbIds: { ...track.mbIds, labelId: '' } }, 'label')).toBe('');
         expect(mbidForTrackEntity({ ...track, mbIds: {}, artistMbids: ['artist-two'] }, 'artist')).toBe('artist-two');
         expect(mbidForTrackEntity({ ...track, mbIds: {}, artistMbids: [] }, 'artist')).toBe('');
+        expect(musicBrainzMBIDSearchQuery('artist', ' Artist-ID ')).toBe('mbid-artist:artist-id');
+        expect(musicBrainzMBIDSearchQuery('release', 'Release-ID')).toBe('mbid-release:release-id');
+        expect(musicBrainzMBIDSearchQuery('recording', ' Recording-ID ')).toBe('mbid-recording:recording-id');
+        expect(musicBrainzMBIDSearchQuery('label', 'label-id')).toBe('');
+        expect(musicBrainzMBIDSearchQuery('artist', '   ')).toBe('');
         expect(faviconUrlForResource('https://example.com/page')).toBe('https://example.com/favicon.ico');
         expect(faviconUrlForResource('not a url')).toBeUndefined();
     });

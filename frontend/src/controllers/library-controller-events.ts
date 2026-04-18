@@ -256,11 +256,23 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
 
             if (expandedSearchFolders.has(searchFolderPath)) {
                 expandedSearchFolders.delete(searchFolderPath);
-                setSearchFolderButtonExpanded(button, folder.name, true, false);
+                setSearchFolderButtonExpanded(
+                    button,
+                    folder.name,
+                    true,
+                    false,
+                    folder.musicBrainzTaggedAlbumDir && options.getHighlightMusicBrainzTaggedAlbumFolders(),
+                );
                 collapseSearchTreeFolder(folderItem);
             } else {
                 expandedSearchFolders.add(searchFolderPath);
-                setSearchFolderButtonExpanded(button, folder.name, true, true);
+                setSearchFolderButtonExpanded(
+                    button,
+                    folder.name,
+                    true,
+                    true,
+                    folder.musicBrainzTaggedAlbumDir && options.getHighlightMusicBrainzTaggedAlbumFolders(),
+                );
                 expandSearchTreeFolder(folderItem, folder);
             }
             return;
