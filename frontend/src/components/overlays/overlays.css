@@ -1751,7 +1751,7 @@
 .about-logo-wrap {
     display: grid;
     place-items: center;
-    margin-top: 0.1rem;
+    margin-top: 0.5rem;
     margin-bottom: 0.5rem;
 }
 
@@ -1766,6 +1766,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    margin-top: 0.5rem;
 }
 
 .about-name,
