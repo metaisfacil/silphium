@@ -37,8 +37,27 @@ vi.mock('./app-release-runtime', () => ({
     })),
 }));
 
+vi.mock('./utils/bridge-load-gate', async () => {
+    const actual = await vi.importActual<typeof import('./utils/bridge-load-gate')>('./utils/bridge-load-gate');
+    return {
+        ...actual,
+        runBackgroundBridgeCall: vi.fn(async (callback: () => Promise<unknown> | unknown, options?: { onTimeout?: () => Promise<unknown> | unknown }) => {
+            if (options?.onTimeout) {
+                return await callback();
+            }
+
+            return await callback();
+        }),
+        shouldDeferBackgroundBridgeCall: vi.fn(() => false),
+    };
+});
+
 import { createAppNowPlayingRuntime } from './app-now-playing-runtime';
+import { AudioGetState, InitializeAudioBackend } from '../wailsjs/go/main/App';
 import type { AppNowPlayingRuntimeContext } from './app-runtime-setup';
+import { createPlaybackStateService } from './services/playback-state-service';
+import { playbackReconcileMaxPollIntervalMs } from './utils/playback-reconcile-delay';
+import { runBackgroundBridgeCall, shouldDeferBackgroundBridgeCall } from './utils/bridge-load-gate';
 
 const createContext = (): AppNowPlayingRuntimeContext => {
     const playerShell = document.createElement('div');
@@ -60,6 +79,7 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         currentTimeLabel: document.createElement('div'),
         trackDurationLabel: document.createElement('div'),
         seek: document.createElement('input'),
+        volume: document.createElement('input'),
         isSeeking: false,
         tracks: [{
             title: 'Track',
@@ -86,6 +106,9 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         }],
         currentTrackIndex: 0,
         currentSettings: {
+            audio: {
+                gaplessPlayback: false,
+            },
             scrobblingEnabled: false,
             scrobbleFilterMode: 'blacklist',
             scrobbleRules: [],
@@ -112,6 +135,8 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         artistInfoRequestVersion: 0,
         playPause: document.createElement('button'),
         coverArt: document.createElement('img'),
+        coverArtBackground: document.createElement('img'),
+        coverFlipper: document.createElement('div'),
         trackTitle: document.createElement('div'),
         trackAlbum: document.createElement('div'),
         trackPosition: document.createElement('div'),
@@ -144,8 +169,11 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         trackMetadataService: {
             ensureTrackTagsResolved: vi.fn(async () => undefined),
             ensureTrackTagsResolvedBatch: vi.fn(async () => undefined),
-            refreshTrack: vi.fn(async () => null),
+            refreshTrack: vi.fn(async () => ({ updatedTags: false, updatedMusicBrainz: false })),
         } as never,
+        resolveCoverForTrack: vi.fn(async () => undefined),
+        hydrateCurrentTrackTag: vi.fn(async () => undefined),
+        hydrateCurrentArtistInfo: vi.fn(async () => undefined),
         playbackSequencingService: {
             getPlaybackOrderMode: vi.fn(() => 'ordered-library'),
             peekNextTrackIndexForDirection: vi.fn(() => undefined),
@@ -166,11 +194,18 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         openErrorModal: vi.fn(),
         handleAudioError: vi.fn(),
         setCoverFlipped: vi.fn(),
+        setBackgroundCover: vi.fn(),
         shouldSkipLoadedTrack: vi.fn(async () => false),
         nextTrackIndexForDirection: vi.fn(() => undefined),
         applyCoverArtForTrack: vi.fn(async () => undefined),
         setActiveReplayGainReleaseTrackPaths: vi.fn(),
-        libraryController: () => ({ isSidebarOpen: vi.fn(() => false), setSidebarAutoFolderPath: vi.fn(), renderFolder: vi.fn() }) as never,
+        libraryController: () => ({
+            getLibraryRootName: vi.fn(() => ''),
+            isSidebarOpen: vi.fn(() => false),
+            renderFolder: vi.fn(),
+            setLibraryPathMessage: vi.fn(),
+            setSidebarAutoFolderPath: vi.fn(),
+        }) as never,
         refreshNowPlayingLabel: vi.fn(),
         updatePlayButton: vi.fn(),
         loadTrack: vi.fn(async () => undefined),
@@ -285,5 +320,241 @@ describe('createAppNowPlayingRuntime', () => {
 
         await expect(runtime.shouldSkipLoadedTrack()).resolves.toBe(false);
         expect(context.trackMetadataService.ensureTrackTagsResolved).toHaveBeenCalledWith(0);
+    });
+
+    it('reconciles an automatic track transition within the capped polling interval', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentTrackIndex = -1;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+                displayAlbum: 'Next Album',
+                displayArtist: 'Next Artist',
+            },
+        ];
+        context.playbackStateService = createPlaybackStateService() as never;
+
+        vi.mocked(InitializeAudioBackend).mockResolvedValue({
+            loaded: true,
+            playing: true,
+            currentTime: 0,
+            duration: 180,
+            volume: 0.8,
+            sourcePath: '/music/track.flac',
+            endEventId: 0,
+        });
+        vi.mocked(AudioGetState).mockResolvedValue({
+            loaded: true,
+            playing: true,
+            currentTime: 18,
+            duration: 240,
+            volume: 0.8,
+            sourcePath: '/music/next.flac',
+            endEventId: 0,
+        });
+
+        const runtime = createAppNowPlayingRuntime(context);
+        await runtime.initializeBackendPlayback();
+
+        expect(context.currentTrackIndex).toBe(0);
+        expect(context.trackTitle.textContent).toBe('Track');
+
+        await vi.advanceTimersByTimeAsync(playbackReconcileMaxPollIntervalMs + 1);
+
+        expect(context.currentTrackIndex).toBe(1);
+        expect(context.trackTitle.textContent).toBe('Next Track');
+
+        vi.useRealTimers();
+    });
+
+    it('keeps the transport UI active across a transient not-playing snapshot during automatic track advance', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentTrackIndex = -1;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+                displayAlbum: 'Next Album',
+                displayArtist: 'Next Artist',
+            },
+        ];
+        context.playbackStateService = createPlaybackStateService() as never;
+
+        vi.mocked(InitializeAudioBackend).mockResolvedValue({
+            loaded: true,
+            playing: true,
+            currentTime: 178,
+            duration: 180,
+            volume: 0.8,
+            sourcePath: '/music/track.flac',
+            endEventId: 0,
+        });
+        vi.mocked(AudioGetState)
+            .mockResolvedValueOnce({
+                loaded: true,
+                playing: false,
+                currentTime: 0,
+                duration: 240,
+                volume: 0.8,
+                sourcePath: '/music/next.flac',
+                endEventId: 0,
+            })
+            .mockResolvedValueOnce({
+                loaded: true,
+                playing: true,
+                currentTime: 2.4,
+                duration: 240,
+                volume: 0.8,
+                sourcePath: '/music/next.flac',
+                endEventId: 0,
+            });
+
+        const runtime = createAppNowPlayingRuntime(context);
+        await runtime.initializeBackendPlayback();
+
+        await vi.advanceTimersByTimeAsync(playbackReconcileMaxPollIntervalMs + 1);
+
+        expect(context.currentTrackIndex).toBe(1);
+        expect(context.playPause.dataset.state).toBe('pause');
+        expect(context.playbackStateService.getPlaybackState().playing).toBe(true);
+
+        await vi.advanceTimersByTimeAsync(playbackReconcileMaxPollIntervalMs + 1);
+
+        expect(context.currentTimeLabel.textContent).toBe('0:02');
+
+        vi.useRealTimers();
+    });
+
+    it('re-pushes a current-track metadata refresh as soon as an automatic advance settles', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentTrackIndex = -1;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+                displayAlbum: 'Next Album',
+                displayArtist: 'Next Artist',
+            },
+        ];
+        context.playbackStateService = createPlaybackStateService() as never;
+
+        const refreshTrack = vi.fn(async () => ({ updatedTags: true, updatedMusicBrainz: false }));
+        context.trackMetadataService = {
+            ensureTrackTagsResolved: vi.fn(async () => undefined),
+            ensureTrackTagsResolvedBatch: vi.fn(async () => undefined),
+            refreshTrack,
+        } as never;
+
+        vi.mocked(InitializeAudioBackend).mockResolvedValue({
+            loaded: true,
+            playing: true,
+            currentTime: 178,
+            duration: 180,
+            volume: 0.8,
+            sourcePath: '/music/track.flac',
+            endEventId: 0,
+        });
+        vi.mocked(AudioGetState).mockResolvedValue({
+            loaded: true,
+            playing: true,
+            currentTime: 0,
+            duration: 240,
+            volume: 0.8,
+            sourcePath: '/music/next.flac',
+            endEventId: 0,
+        });
+
+        const runtime = createAppNowPlayingRuntime(context);
+        await runtime.initializeBackendPlayback();
+
+        expect(refreshTrack).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(playbackReconcileMaxPollIntervalMs + 1);
+        expect(context.currentTrackIndex).toBe(1);
+        expect(refreshTrack).toHaveBeenCalledTimes(1);
+        expect(refreshTrack).toHaveBeenCalledWith(1, 3);
+
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(refreshTrack).toHaveBeenCalledTimes(1);
+
+        vi.useRealTimers();
+    });
+
+    it('still polls playback state when the background bridge window times out', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentTrackIndex = -1;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+                displayAlbum: 'Next Album',
+                displayArtist: 'Next Artist',
+            },
+        ];
+        context.playbackStateService = createPlaybackStateService() as never;
+
+        vi.mocked(runBackgroundBridgeCall).mockImplementation(async (_callback, options) => {
+            return await options?.onTimeout?.();
+        });
+        vi.mocked(shouldDeferBackgroundBridgeCall).mockReturnValue(true);
+
+        vi.mocked(InitializeAudioBackend).mockResolvedValue({
+            loaded: true,
+            playing: true,
+            currentTime: 0,
+            duration: 180,
+            volume: 0.8,
+            sourcePath: '/music/track.flac',
+            endEventId: 0,
+        });
+        vi.mocked(AudioGetState).mockResolvedValue({
+            loaded: true,
+            playing: true,
+            currentTime: 4,
+            duration: 240,
+            volume: 0.8,
+            sourcePath: '/music/next.flac',
+            endEventId: 0,
+        });
+
+        const runtime = createAppNowPlayingRuntime(context);
+        await runtime.initializeBackendPlayback();
+
+        await vi.advanceTimersByTimeAsync(playbackReconcileMaxPollIntervalMs + 1);
+
+        expect(context.currentTrackIndex).toBe(1);
+        expect(vi.mocked(AudioGetState)).toHaveBeenCalled();
+
+        vi.useRealTimers();
     });
 });

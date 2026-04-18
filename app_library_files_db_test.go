@@ -367,3 +367,51 @@ func TestMetadataDatabaseMigratesLegacyMusicBrainzAndLibraryFilesData(t *testing
 		t.Fatalf("loaded migrated MusicBrainz release = %#v, want Album One", loadedRelease)
 	}
 }
+
+func TestSetLibraryIndexFromScanUsesStoredMetadataForIndexedTracks(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	app.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	app.settingsLoaded = true
+	app.settings = normalizeAppSettings(AppSettings{})
+
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
+	scan := LibraryScanResult{
+		RootPath: fixture.rootOne,
+		RootName: "Library",
+		TrackFiles: []LibraryIndexedFile{{
+			Name:         "01 Intro.flac",
+			Path:         fixture.trackOne,
+			RelativePath: "Library/Artist One/Album One/01 Intro.flac",
+			FolderPath:   "Library/Artist One/Album One",
+			RootPath:     fixture.rootOne,
+			RootName:     "Library",
+		}},
+	}
+
+	app.musicBrainzTagMu.Lock()
+	app.ensureMusicBrainzTagDatabaseLoadedLocked()
+	app.upsertMusicBrainzTagTrackRecordLocked(fixture.trackOne, musicBrainzTagTrackRecord{
+		Title:       "Database Title",
+		AlbumTitle:  "Database Album",
+		TrackArtist: "Database Artist",
+		TrackNumber: 3,
+		TrackTotal:  11,
+	})
+	app.musicBrainzTagMu.Unlock()
+
+	if !app.setLibraryIndexFromScan(scan, 0) {
+		t.Fatal("setLibraryIndexFromScan() = false, want true")
+	}
+
+	indexed := app.trackByPath[fixture.trackOne]
+	if indexed.CachedTrackTitle != "Database Title" || indexed.CachedAlbumTitle != "Database Album" || indexed.CachedArtistName != "Database Artist" {
+		t.Fatalf("cached indexed metadata = %#v, want stored title/album/artist", indexed)
+	}
+	if indexed.CachedTrackNumber != "3" || indexed.CachedTrackTotal != "11" {
+		t.Fatalf("cached indexed positions = %#v, want stored track numbering", indexed)
+	}
+	if got := app.libraryScan.TrackFiles[0]; got.CachedTrackTitle != "Database Title" || got.CachedAlbumTitle != "Database Album" || got.CachedArtistName != "Database Artist" {
+		t.Fatalf("libraryScan track cache = %#v, want stored metadata copied to scan", got)
+	}
+}

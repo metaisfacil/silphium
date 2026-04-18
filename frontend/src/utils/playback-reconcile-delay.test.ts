@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
     playbackReconcileDelayMs,
+    playbackReconcileMaxPollIntervalMs,
     playbackReconcileNearEndPollIntervalMs,
     playbackReconcileUnknownDurationPollIntervalMs,
 } from './playback-reconcile-delay';
@@ -24,8 +25,8 @@ describe('playbackReconcileDelayMs', () => {
         expect(playbackReconcileDelayMs(createPlaybackState({ playing: false }))).toBeNull();
     });
 
-    it('schedules the next reconcile for the near-end window instead of fixed periodic polling', () => {
-        expect(playbackReconcileDelayMs(createPlaybackState())).toBe(165000);
+    it('caps the next reconcile to a short periodic poll while playback is active', () => {
+        expect(playbackReconcileDelayMs(createPlaybackState())).toBe(playbackReconcileMaxPollIntervalMs);
     });
 
     it('switches to short polling near the end of the track', () => {

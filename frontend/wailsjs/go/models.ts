@@ -426,7 +426,10 @@ export namespace main {
 	    rootName: string;
 	    releaseDepth?: number;
 	    cachedTrackTitle?: string;
+	    cachedAlbumTitle?: string;
 	    cachedArtistName?: string;
+	    cachedTrackNumber?: string;
+	    cachedTrackTotal?: string;
 	    listenedAt?: number;
 	    modifiedAtMs?: number;
 	
@@ -444,7 +447,10 @@ export namespace main {
 	        this.rootName = source["rootName"];
 	        this.releaseDepth = source["releaseDepth"];
 	        this.cachedTrackTitle = source["cachedTrackTitle"];
+	        this.cachedAlbumTitle = source["cachedAlbumTitle"];
 	        this.cachedArtistName = source["cachedArtistName"];
+	        this.cachedTrackNumber = source["cachedTrackNumber"];
+	        this.cachedTrackTotal = source["cachedTrackTotal"];
 	        this.listenedAt = source["listenedAt"];
 	        this.modifiedAtMs = source["modifiedAtMs"];
 	    }

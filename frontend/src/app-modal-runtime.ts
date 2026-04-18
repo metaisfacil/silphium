@@ -119,7 +119,14 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
     };
 
     const hydrateCurrentTrackTag = async (index: number, version: number): Promise<void> => {
-        const result = await context.trackMetadataService.hydrateTrack(index, version);
+        const track = context.tracks[index];
+        if (!track) {
+            return;
+        }
+
+        const result = isRemoteTrackPath(track.path)
+            ? await context.trackMetadataService.hydrateTrack(index, version)
+            : await context.trackMetadataService.refreshTrack(index, version);
         if (index !== context.currentTrackIndex) {
             return;
         }

@@ -1043,6 +1043,68 @@ func trackTagsFromStoredTrackRecord(path string, signature trackTagsFileSignatur
 	return tags, true
 }
 
+func cachedIndexedTrackMetadataFromStoredTrackRecord(record musicBrainzTagTrackRecord) (string, string, string, string, bool) {
+	title := strings.TrimSpace(record.Title)
+	album := strings.TrimSpace(record.AlbumTitle)
+	artist := strings.TrimSpace(record.TrackArtist)
+	trackNumber := ""
+	trackTotal := ""
+	if record.TrackNumber > 0 {
+		trackNumber = strconv.Itoa(record.TrackNumber)
+	}
+	if record.TrackTotal > 0 {
+		trackTotal = strconv.Itoa(record.TrackTotal)
+	}
+
+	if title == "" && album == "" && artist == "" && trackNumber == "" && trackTotal == "" {
+		return "", "", "", "", false
+	}
+
+	return title, album, artist, trackNumber, trackTotal != "" || trackNumber != "" || title != "" || album != "" || artist != ""
+}
+
+func (a *App) applyStoredMetadataToIndexedTracks(entries []LibraryIndexedFile) []LibraryIndexedFile {
+	if len(entries) == 0 || !a.localLibraryFilesDatabaseEnabled() {
+		return entries
+	}
+
+	a.musicBrainzTagMu.Lock()
+	defer a.musicBrainzTagMu.Unlock()
+
+	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+
+	enriched := append([]LibraryIndexedFile(nil), entries...)
+	for index, entry := range enriched {
+		record, exists := a.musicBrainzTagStore.Tracks[entry.Path]
+		if !exists {
+			continue
+		}
+
+		title, album, artist, trackNumber, hasMetadata := cachedIndexedTrackMetadataFromStoredTrackRecord(record)
+		if !hasMetadata {
+			continue
+		}
+
+		if title != "" {
+			enriched[index].CachedTrackTitle = title
+		}
+		if album != "" {
+			enriched[index].CachedAlbumTitle = album
+		}
+		if artist != "" {
+			enriched[index].CachedArtistName = artist
+		}
+		if trackNumber != "" {
+			enriched[index].CachedTrackNumber = trackNumber
+		}
+		if record.TrackTotal > 0 {
+			enriched[index].CachedTrackTotal = strconv.Itoa(record.TrackTotal)
+		}
+	}
+
+	return enriched
+}
+
 func (a *App) readTrackTagsFromMetadataDatabase(jobs []readTrackTagsJob) map[string]TrackTags {
 	if len(jobs) == 0 {
 		return nil

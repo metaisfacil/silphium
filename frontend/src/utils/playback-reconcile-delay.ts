@@ -4,7 +4,8 @@ type PlaybackReconcileDelayState = Pick<AudioPlaybackState, 'currentTime' | 'dur
 
 export const playbackReconcileNearEndPollIntervalMs = 500;
 export const playbackReconcileNearEndThresholdSeconds = 3;
-export const playbackReconcileUnknownDurationPollIntervalMs = 30000;
+export const playbackReconcileMaxPollIntervalMs = 2000;
+export const playbackReconcileUnknownDurationPollIntervalMs = playbackReconcileMaxPollIntervalMs;
 const maxTimerDelayMs = 2147483647;
 
 export const playbackReconcileDelayMs = (playbackState: PlaybackReconcileDelayState): number | null => {
@@ -23,6 +24,7 @@ export const playbackReconcileDelayMs = (playbackState: PlaybackReconcileDelaySt
 
     return Math.min(
         maxTimerDelayMs,
+        playbackReconcileMaxPollIntervalMs,
         Math.max(
             playbackReconcileNearEndPollIntervalMs,
             Math.ceil((remainingSeconds - playbackReconcileNearEndThresholdSeconds) * 1000),

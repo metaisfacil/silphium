@@ -147,7 +147,10 @@ export type LibraryIndexedFile = {
     rootName: string;
     releaseDepth?: number;
     cachedTrackTitle?: string;
+    cachedAlbumTitle?: string;
     cachedArtistName?: string;
+    cachedTrackNumber?: string;
+    cachedTrackTotal?: string;
     listenedAt?: number;
     modifiedAtMs?: number;
 };

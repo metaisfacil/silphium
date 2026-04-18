@@ -40,6 +40,8 @@ import { createSerialAsyncPoller } from './utils/serial-async-poller';
 
 export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext) => {
     const playbackProgressDomUpdateThresholdSeconds = 0.05;
+    const settledTransitionMetadataRefreshThresholdSeconds = 0.05;
+    const settledTransitionMetadataRefreshProbeMs = 50;
     const gaplessQueueLeadTimeMinSeconds = 6;
     const gaplessQueueLeadTimeMaxSeconds = 18;
     const gaplessQueueLeadTimeFraction = 0.12;
@@ -54,6 +56,59 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let lastPlayerCardHeightPx = 0;
     let lastLyricsVisibilityState: boolean | null = null;
     let deferredPlaybackEffectsHandle: number | undefined;
+    let settledTransitionMetadataRefreshHandle: number | undefined;
+    let settledTransitionMetadataRefreshDeferred = false;
+    let pendingSettledTransitionMetadataRefreshPath = '';
+
+    const clearSettledTransitionMetadataRefresh = (): void => {
+        pendingSettledTransitionMetadataRefreshPath = '';
+        settledTransitionMetadataRefreshDeferred = false;
+        if (settledTransitionMetadataRefreshHandle !== undefined) {
+            window.clearTimeout(settledTransitionMetadataRefreshHandle);
+            settledTransitionMetadataRefreshHandle = undefined;
+        }
+    };
+
+    const maybeRefreshSettledTransitionMetadata = (): void => {
+        if (pendingSettledTransitionMetadataRefreshPath === '') {
+            return;
+        }
+
+        const estimatedState = playbackProgressEstimator.estimate();
+        if (!estimatedState.loaded) {
+            clearSettledTransitionMetadataRefresh();
+            return;
+        }
+
+        const pendingPathKey = trackPathKey(pendingSettledTransitionMetadataRefreshPath);
+        const estimatedPathKey = trackPathKey(estimatedState.sourcePath || '');
+        if (estimatedPathKey === '' || estimatedPathKey !== pendingPathKey) {
+            clearSettledTransitionMetadataRefresh();
+            return;
+        }
+
+        const activeTrack = context.tracks[context.currentTrackIndex];
+        if (!activeTrack || trackPathKey(activeTrack.path) !== pendingPathKey) {
+            clearSettledTransitionMetadataRefresh();
+            return;
+        }
+
+        if (estimatedState.playing && estimatedState.currentTime < settledTransitionMetadataRefreshThresholdSeconds) {
+            if (!settledTransitionMetadataRefreshDeferred) {
+                settledTransitionMetadataRefreshDeferred = true;
+                settledTransitionMetadataRefreshHandle = window.setTimeout(() => {
+                    settledTransitionMetadataRefreshHandle = undefined;
+                    maybeRefreshSettledTransitionMetadata();
+                }, settledTransitionMetadataRefreshProbeMs);
+                return;
+            }
+        }
+
+        clearSettledTransitionMetadataRefresh();
+        void refreshCurrentTrackMetadata().catch((error: unknown) => {
+            console.error(error);
+        });
+    };
 
     const logSlowAudioStatePoll = (elapsedMs: number): void => {
         if (!devPerfLoggingEnabled) {
@@ -542,6 +597,24 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         return track;
     };
 
+    const normalizePolledPlaybackState = (nextState: AudioPlaybackState): AudioPlaybackState => {
+        const previousState = context.playbackStateService.getPlaybackState();
+        if (!previousState.loaded || !previousState.playing || !nextState.loaded || nextState.playing) {
+            return nextState;
+        }
+
+        const previousSourcePathKey = trackPathKey(previousState.sourcePath || '');
+        const nextSourcePathKey = trackPathKey(nextState.sourcePath || '');
+        if (previousSourcePathKey === '' || nextSourcePathKey === '' || previousSourcePathKey === nextSourcePathKey) {
+            return nextState;
+        }
+
+        return {
+            ...nextState,
+            playing: true,
+        };
+    };
+
     const applyCoverArtForTrack = async (index: number): Promise<void> => {
         const track = context.tracks[index];
         if (!track) {
@@ -589,6 +662,11 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
+        clearSettledTransitionMetadataRefresh();
+        if (activeTrack) {
+            pendingSettledTransitionMetadataRefreshPath = normalizedSourcePath;
+        }
+
         context.currentTrackIndex = resolvedIndex;
         context.gaplessQueueRequestVersion += 1;
         context.queuedGaplessTrackPath = '';
@@ -611,6 +689,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
         context.tagRequestVersion += 1;
         void context.hydrateCurrentTrackTag(resolvedIndex, context.tagRequestVersion);
+        maybeRefreshSettledTransitionMetadata();
 
         context.artistInfoRequestVersion += 1;
         void context.hydrateCurrentArtistInfo(resolvedIndex);
@@ -811,6 +890,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             context.gaplessQueueRequestVersion += 1;
             context.queuedGaplessTrackPath = '';
             setActiveReplayGainReleaseTrackPaths();
+            clearSettledTransitionMetadataRefresh();
             clearNowPlayingCard();
         }
 
@@ -835,17 +915,10 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         const requestVersion = context.playbackMutationVersion;
         const startedAtMs = performance.now();
         try {
-            if (shouldDeferBackgroundBridgeCall()) {
-                return;
-            }
-
             const nextState = await runBackgroundBridgeCall(async () => await AudioGetState() as AudioPlaybackState, {
                 maxWaitMs: 120,
-                onTimeout: () => null,
+                onTimeout: async () => await AudioGetState() as AudioPlaybackState,
             });
-            if (nextState === null) {
-                return;
-            }
 
             const elapsedMs = performance.now() - startedAtMs;
             if (elapsedMs >= 120) {
@@ -855,7 +928,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 return;
             }
 
-            applyPlaybackState(nextState);
+            applyPlaybackState(normalizePolledPlaybackState(nextState));
         } catch (error) {
             handleAudioError(error);
         } finally {

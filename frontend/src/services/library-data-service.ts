@@ -44,10 +44,10 @@ const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
     rootName: file.rootName || '',
     releaseDepth: file.releaseDepth,
     displayTitle: file.cachedTrackTitle || file.name,
-    displayAlbum: 'Unknown Album',
+    displayAlbum: file.cachedAlbumTitle || 'Unknown Album',
     displayArtist: file.cachedArtistName || 'Unknown Artist',
-    displayTrackNumber: '',
-    displayTrackTotal: '',
+    displayTrackNumber: file.cachedTrackNumber || '',
+    displayTrackTotal: file.cachedTrackTotal || '',
     displayTechnical: '',
     displayLyrics: '',
     tagsResolved: false,
@@ -68,7 +68,10 @@ const applyCachedHistoryMetadata = (track: Track, file: LibraryIndexedFile): Tra
         ...track,
         title: file.cachedTrackTitle || track.title,
         displayTitle: file.cachedTrackTitle || track.displayTitle,
+        displayAlbum: file.cachedAlbumTitle || track.displayAlbum,
         displayArtist: file.cachedArtistName || track.displayArtist,
+        displayTrackNumber: file.cachedTrackNumber || track.displayTrackNumber,
+        displayTrackTotal: file.cachedTrackTotal || track.displayTrackTotal,
     };
 };
 

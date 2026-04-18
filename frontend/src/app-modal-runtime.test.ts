@@ -23,6 +23,7 @@ const createContext = () => ({
     bgLayerB: document.createElement('div'),
     trackMetadataService: {
         hydrateTrack: vi.fn(async () => ({ updatedTags: false, updatedMusicBrainz: false })),
+        refreshTrack: vi.fn(async () => ({ updatedTags: false, updatedMusicBrainz: false })),
         refreshTrackTags: vi.fn(async () => undefined),
     },
     currentTrackIndex: 0,
@@ -212,6 +213,20 @@ describe('createAppModalRuntime', () => {
         expect(context.trackMetadataService.refreshTrackTags).not.toHaveBeenCalled();
         expect(context.refreshNowPlayingLabel).not.toHaveBeenCalled();
         expect(context.libraryController.renderFolder).not.toHaveBeenCalled();
+    });
+
+    it('force-refreshes local current-track metadata when hydrating the now-playing track', async () => {
+        const context = createContext();
+        context.trackMetadataService.refreshTrack.mockResolvedValue({ updatedTags: true, updatedMusicBrainz: false });
+        const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
+
+        await runtime.hydrateCurrentTrackTag(0, 1);
+
+        expect(context.trackMetadataService.refreshTrack).toHaveBeenCalledWith(0, 1);
+        expect(context.trackMetadataService.hydrateTrack).not.toHaveBeenCalled();
+        expect(context.refreshNowPlayingLabel).toHaveBeenCalledTimes(1);
+        expect(context.libraryController.renderFolder).toHaveBeenCalledWith('none');
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
     });
 
     it('renders refreshed file technical details and all file tags when the modal opens', async () => {

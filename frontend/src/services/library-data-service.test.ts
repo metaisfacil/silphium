@@ -177,7 +177,10 @@ describe('library data service', () => {
         const merged = await mergePlaylistFilesIntoTracks(tracks, [
             createIndexedFile('/music/history-track.flac', 'history-track.flac', {
                 cachedTrackTitle: 'Cached History Title',
+                cachedAlbumTitle: 'Cached History Album',
                 cachedArtistName: 'Cached History Artist',
+                cachedTrackNumber: '7',
+                cachedTrackTotal: '12',
                 listenedAt: 1_700_000_000,
             }),
         ]);
@@ -186,7 +189,10 @@ describe('library data service', () => {
         expect(merged.tracks[0]).toEqual(expect.objectContaining({
             title: 'Cached History Title',
             displayTitle: 'Cached History Title',
+            displayAlbum: 'Cached History Album',
             displayArtist: 'Cached History Artist',
+            displayTrackNumber: '7',
+            displayTrackTotal: '12',
         }));
     });
 

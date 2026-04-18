@@ -702,6 +702,7 @@ func cloneCoverPathByFolder(input map[string]string) map[string]string {
 
 func (a *App) setLibraryIndexFromScan(scan LibraryScanResult, expectedScanGeneration uint64) bool {
 	setStartTime := time.Now()
+	scan.TrackFiles = a.applyStoredMetadataToIndexedTracks(scan.TrackFiles)
 	a.logRescanEvent("setLibraryIndexFromScan START: %d tracks, %d text, %d images",
 		len(scan.TrackFiles), len(scan.TextFiles), len(scan.ImageFiles))
 	contentState := a.libraryContentState()
