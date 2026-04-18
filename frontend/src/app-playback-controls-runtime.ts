@@ -7,12 +7,14 @@ import {
     AudioSeek,
     AudioStop,
     GetAppVersion,
+    LogFrontendMessage,
     ScanConfiguredLibraryFolders,
 } from '../wailsjs/go/main/App';
 import { WindowHide, WindowIsMinimised } from '../wailsjs/runtime/runtime';
 import type { AppPlaybackControlsRuntimeContext } from './app-runtime-setup';
 import { createMediaSessionController, type ExternalPlaybackAction } from './controllers/media-session-controller';
 import type { AudioOutputDevice, AudioPlaybackState, LibraryScanResult, Track } from './types/app-types';
+import { runInteractiveBridgeCall } from './utils/bridge-load-gate';
 import {
     describeErrorForLog,
     formatPlaybackStateForLog,
@@ -23,8 +25,49 @@ import {
     formatShortcutBindingFromKeyboardEvent,
     shortcutBindingUsesCode,
 } from './utils/shortcut-bindings';
+import { formatPerfLogMessage } from './utils/perf-log';
 
 export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRuntimeContext) => {
+    const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
+    let lastTransportPerfLogAtMs = 0;
+
+    const applyOptimisticPlayingState = (playing: boolean): void => {
+        if (!context.playbackStateService.setPlaying(playing)) {
+            return;
+        }
+
+        context.updatePlayButton();
+    };
+
+    const logTransportMarker = (name: string): void => {
+        if (!devPerfLoggingEnabled) {
+            return;
+        }
+
+        const message = formatPerfLogMessage(`transport ${name}`);
+        console.warn(message);
+        void LogFrontendMessage(message).catch(() => undefined);
+    };
+
+    const logTransportStep = (name: string, elapsedMs: number, thresholdMs = 0, rateLimited = false): void => {
+        if (!devPerfLoggingEnabled || elapsedMs < thresholdMs) {
+            return;
+        }
+
+        if (rateLimited) {
+            const nowMs = Date.now();
+            if (nowMs - lastTransportPerfLogAtMs < 500) {
+                return;
+            }
+
+            lastTransportPerfLogAtMs = nowMs;
+        }
+
+        const message = formatPerfLogMessage(`transport ${name} ${elapsedMs.toFixed(1)}ms`);
+        console.warn(message);
+        void LogFrontendMessage(message).catch(() => undefined);
+    };
+
     const refreshAvailableAudioOutputDevices = async (): Promise<AudioOutputDevice[]> => {
         const outputDevices = await AudioListOutputDevices() as AudioOutputDevice[];
         context.availableAudioOutputDevices = Array.isArray(outputDevices) ? outputDevices : [];
@@ -79,8 +122,8 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         try {
             const replayGainReleaseTrackPaths = context.collectReplayGainReleaseTrackPathsForIndex(index, replayGainSequenceOverrideIndexes);
             const nextState = replayGainReleaseTrackPaths.length > 1
-                ? await AudioLoadTrackWithReplayGainContext(track.path, replayGainReleaseTrackPaths) as AudioPlaybackState
-                : await AudioLoadTrack(track.path) as AudioPlaybackState;
+                ? await runInteractiveBridgeCall(async () => await AudioLoadTrackWithReplayGainContext(track.path, replayGainReleaseTrackPaths) as AudioPlaybackState)
+                : await runInteractiveBridgeCall(async () => await AudioLoadTrack(track.path) as AudioPlaybackState);
             context.setActiveReplayGainReleaseTrackPaths(replayGainReleaseTrackPaths);
             context.logPlaybackDebug(`LoadTrack success ${formatPlaybackStateForLog(nextState)}`);
             context.applyPlaybackState(nextState);
@@ -158,11 +201,20 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
 
         context.playbackMutationVersion += 1;
         context.logPlaybackDebug(`Play request index=${context.currentTrackIndex} path="${context.tracks[context.currentTrackIndex]?.path || ''}"`);
+        logTransportMarker(`AudioPlay intent index=${context.currentTrackIndex}`);
+        const previousPlaying = context.playbackStateService.getPlaybackState().playing;
+        applyOptimisticPlayingState(true);
         try {
-            const nextState = await AudioPlay() as AudioPlaybackState;
+            logTransportMarker('AudioPlay dispatch');
+            const bridgeStartedAtMs = performance.now();
+            const nextState = await runInteractiveBridgeCall(async () => await AudioPlay() as AudioPlaybackState);
+            logTransportStep('AudioPlay bridge', performance.now() - bridgeStartedAtMs);
             context.logPlaybackDebug(`Play success ${formatPlaybackStateForLog(nextState)}`);
+            const applyStartedAtMs = performance.now();
             context.applyPlaybackState(nextState);
+            logTransportStep('AudioPlay applyPlaybackState', performance.now() - applyStartedAtMs);
         } catch (error) {
+            applyOptimisticPlayingState(previousPlaying);
             context.handleAudioError(error);
         }
     };
@@ -175,11 +227,20 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
 
         context.playbackMutationVersion += 1;
         context.logPlaybackDebug(`Pause request index=${context.currentTrackIndex} path="${context.tracks[context.currentTrackIndex]?.path || ''}"`);
+        logTransportMarker(`AudioPause intent index=${context.currentTrackIndex}`);
+        const previousPlaying = context.playbackStateService.getPlaybackState().playing;
+        applyOptimisticPlayingState(false);
         try {
-            const nextState = await AudioPause() as AudioPlaybackState;
+            logTransportMarker('AudioPause dispatch');
+            const bridgeStartedAtMs = performance.now();
+            const nextState = await runInteractiveBridgeCall(async () => await AudioPause() as AudioPlaybackState);
+            logTransportStep('AudioPause bridge', performance.now() - bridgeStartedAtMs);
             context.logPlaybackDebug(`Pause success ${formatPlaybackStateForLog(nextState)}`);
+            const applyStartedAtMs = performance.now();
             context.applyPlaybackState(nextState);
+            logTransportStep('AudioPause applyPlaybackState', performance.now() - applyStartedAtMs);
         } catch (error) {
+            applyOptimisticPlayingState(previousPlaying);
             context.handleAudioError(error);
         }
     };
@@ -194,6 +255,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         try {
             const playbackState = context.playbackStateService.getPlaybackState();
             context.logPlaybackDebug(`Toggle request ${formatPlaybackStateForLog(playbackState)}`);
+            logTransportMarker(`toggle playPause loaded=${playbackState.loaded} playing=${playbackState.playing}`);
             if (playbackState.playing) {
                 await pauseCurrentTrack();
                 return;
@@ -251,7 +313,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         context.gaplessQueueRequestVersion += 1;
         context.queuedGaplessTrackPath = '';
         try {
-            const nextState = await AudioStop() as AudioPlaybackState;
+            const nextState = await runInteractiveBridgeCall(async () => await AudioStop() as AudioPlaybackState);
             context.applyPlaybackState(nextState);
         } catch (error) {
             context.handleAudioError(error);
@@ -277,7 +339,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
             }
 
             try {
-                const nextState = await AudioSeek(targetSeconds) as AudioPlaybackState;
+                const nextState = await runInteractiveBridgeCall(async () => await AudioSeek(targetSeconds) as AudioPlaybackState);
                 context.applyPlaybackState(nextState);
             } catch (error) {
                 context.handleAudioError(error);

@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const {
     audioLoadTrackMock,
+    audioPauseMock,
+    audioPlayMock,
     createMediaSessionControllerMock,
+    logFrontendMessageMock,
     windowHideMock,
     windowIsMinimisedMock,
 } = vi.hoisted(() => ({
@@ -24,6 +27,9 @@ const {
         unlockFromUserGesture: vi.fn(),
         handleHardwareMediaKey: vi.fn(() => false),
     })),
+    audioPauseMock: vi.fn(async () => ({ loaded: true, playing: false, currentTime: 0, duration: 0, sourcePath: '/music/track.flac', volume: 1, endEventId: 0 })),
+    audioPlayMock: vi.fn(async () => ({ loaded: true, playing: true, currentTime: 0, duration: 0, sourcePath: '/music/track.flac', volume: 1, endEventId: 0 })),
+    logFrontendMessageMock: vi.fn(async () => undefined),
     windowHideMock: vi.fn(),
     windowIsMinimisedMock: vi.fn(async () => false),
 }));
@@ -32,11 +38,12 @@ vi.mock('../wailsjs/go/main/App', () => ({
     AudioListOutputDevices: vi.fn(async () => []),
     AudioLoadTrack: audioLoadTrackMock,
     AudioLoadTrackWithReplayGainContext: vi.fn(async () => ({ loaded: true, playing: false, currentTime: 0, duration: 0, sourcePath: '/music/track.flac', volume: 1, endEventId: 0 })),
-    AudioPause: vi.fn(async () => ({ loaded: true, playing: false, currentTime: 0, duration: 0, sourcePath: '/music/track.flac', volume: 1, endEventId: 0 })),
-    AudioPlay: vi.fn(async () => ({ loaded: true, playing: true, currentTime: 0, duration: 0, sourcePath: '/music/track.flac', volume: 1, endEventId: 0 })),
+    AudioPause: audioPauseMock,
+    AudioPlay: audioPlayMock,
     AudioSeek: vi.fn(async () => ({ loaded: true, playing: false, currentTime: 0, duration: 0, sourcePath: '/music/track.flac', volume: 1, endEventId: 0 })),
     AudioStop: vi.fn(async () => ({ loaded: false, playing: false, currentTime: 0, duration: 0, sourcePath: '', volume: 1, endEventId: 0 })),
     GetAppVersion: vi.fn(async () => 'dev'),
+    LogFrontendMessage: logFrontendMessageMock,
     ScanConfiguredLibraryFolders: vi.fn(async () => ({ trackFiles: [], textFiles: [], imageFiles: [] })),
 }));
 
@@ -51,6 +58,7 @@ vi.mock('./controllers/media-session-controller', () => ({
 
 import { createAppPlaybackControlsRuntime } from './app-playback-controls-runtime';
 import type { AppPlaybackControlsRuntimeContext } from './app-runtime-setup';
+import { createInitialPlaybackState, createPlaybackStateService } from './services/playback-state-service';
 import type { Track } from './types/app-types';
 
 const createTrack = (): Track => ({
@@ -77,9 +85,9 @@ const createTrack = (): Track => ({
     mbArtistCredits: [],
 });
 
-const createDeferred = () => {
-    let resolve!: () => void;
-    const promise = new Promise<void>((nextResolve) => {
+const createDeferred = <T = void>() => {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    const promise = new Promise<T>((nextResolve) => {
         resolve = nextResolve;
     });
     return { promise, resolve };
@@ -139,6 +147,7 @@ const createContext = (coverPromise: Promise<void>): AppPlaybackControlsRuntimeC
         playbackStateService: {
             getPlaybackState: vi.fn(() => ({ loaded: true, playing: false, currentTime: 0, duration: 0, sourcePath: '/music/track.flac', volume: 1, endEventId: 0 })),
             isBackendReady: vi.fn(() => true),
+            setPlaying: vi.fn(() => true),
         } as never,
         coverArt: Object.assign(document.createElement('img'), { src: '/cover.png' }),
         setCoverFlipped: vi.fn(),
@@ -173,6 +182,18 @@ describe('createAppPlaybackControlsRuntime', () => {
         vi.clearAllMocks();
     });
 
+    it('does not unlock the media session anchor inside playCurrentTrack', async () => {
+        const coverDeferred = createDeferred();
+        const context = createContext(coverDeferred.promise);
+        context.currentTrackIndex = 0;
+
+        const runtime = createAppPlaybackControlsRuntime(context);
+        await runtime.playCurrentTrack();
+
+        const mediaSessionController = createMediaSessionControllerMock.mock.results.at(-1)?.value;
+        expect(mediaSessionController?.unlockFromUserGesture).not.toHaveBeenCalled();
+    });
+
     it('starts track tag hydration before cover loading completes', async () => {
         const coverDeferred = createDeferred();
         const context = createContext(coverDeferred.promise);
@@ -189,5 +210,54 @@ describe('createAppPlaybackControlsRuntime', () => {
 
         expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
         expect(context.libraryController().renderFolder).toHaveBeenCalledWith('none');
+    });
+
+    it('updates the play button optimistically before AudioPlay resolves', async () => {
+        const coverDeferred = createDeferred();
+        const playDeferred = createDeferred<{
+            loaded: boolean;
+            playing: boolean;
+            currentTime: number;
+            duration: number;
+            sourcePath: string;
+            volume: number;
+            endEventId: number;
+        }>();
+        audioPlayMock.mockImplementationOnce(async () => await playDeferred.promise);
+
+        const context = createContext(coverDeferred.promise);
+        context.currentTrackIndex = 0;
+        const playbackStateService = createPlaybackStateService();
+        playbackStateService.applyPlaybackState({
+            ...createInitialPlaybackState(),
+            loaded: true,
+            playing: false,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+        }, true);
+        playbackStateService.setBackendReady(true);
+        context.playbackStateService = playbackStateService as never;
+
+        const runtime = createAppPlaybackControlsRuntime(context);
+        const playPromise = runtime.playCurrentTrack();
+
+        await vi.waitFor(() => {
+            expect(playbackStateService.getPlaybackState().playing).toBe(true);
+            expect(context.updatePlayButton).toHaveBeenCalled();
+        });
+        expect(context.applyPlaybackState).not.toHaveBeenCalled();
+
+        playDeferred.resolve({
+            loaded: true,
+            playing: true,
+            currentTime: 0,
+            duration: 0,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+        await playPromise;
+
+        expect(context.applyPlaybackState).toHaveBeenCalled();
     });
 });

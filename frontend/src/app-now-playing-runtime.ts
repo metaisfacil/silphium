@@ -32,6 +32,7 @@ import {
     matchesSilenceTitleHeuristic,
     setTechnicalLabel,
 } from './utils/display-helpers';
+import { runBackgroundBridgeCall, shouldDeferBackgroundBridgeCall } from './utils/bridge-load-gate';
 import { formatPerfLogMessage } from './utils/perf-log';
 import { createPlaybackProgressEstimator } from './utils/playback-progress-estimator';
 import { playbackReconcileDelayMs } from './utils/playback-reconcile-delay';
@@ -52,6 +53,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let lastAudioStatePerfLogAtMs = 0;
     let lastPlayerCardHeightPx = 0;
     let lastLyricsVisibilityState: boolean | null = null;
+    let deferredPlaybackEffectsHandle: number | undefined;
 
     const logSlowAudioStatePoll = (elapsedMs: number): void => {
         if (!devPerfLoggingEnabled) {
@@ -67,6 +69,26 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         const message = formatPerfLogMessage(`slow bridge AudioGetState ${elapsedMs.toFixed(1)}ms`);
         console.warn(message);
         void LogFrontendMessage(message).catch(() => undefined);
+    };
+
+    const scheduleDeferredPlaybackStateEffects = (nextState: AudioPlaybackState): void => {
+        if (deferredPlaybackEffectsHandle !== undefined) {
+            window.clearTimeout(deferredPlaybackEffectsHandle);
+        }
+
+        deferredPlaybackEffectsHandle = window.setTimeout(() => {
+            deferredPlaybackEffectsHandle = undefined;
+            maybeSubmitListenBrainz(nextState);
+            context.updateMediaSessionMetadata();
+            context.updateMediaSessionPlaybackState();
+            context.updateMediaSessionPositionState();
+            syncPlaybackProgressLoop();
+            playbackPoller.poke();
+            if (shouldPrepareGaplessQueue(nextState)) {
+                void queueGaplessNextTrack(nextState);
+            }
+            void refreshReplayGainReleaseDynamicRangeIndicator();
+        }, 0);
     };
 
     const stopPlaybackProgressLoop = (): void => {
@@ -615,6 +637,10 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
+        if (shouldDeferBackgroundBridgeCall()) {
+            return;
+        }
+
         if (sequenceOverrideIndexes === undefined && !shouldPrepareGaplessQueue(playbackState)) {
             return;
         }
@@ -631,7 +657,12 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             context.queuedGaplessTrackPath = '';
             logPlaybackDebug(`GaplessQueue clear after="${activeTrack.path}"`);
             try {
-                await AudioQueueNextTrack(activeTrack.path, '');
+                await runBackgroundBridgeCall(async () => {
+                    await AudioQueueNextTrack(activeTrack.path, '');
+                }, {
+                    maxWaitMs: 180,
+                    onTimeout: () => undefined,
+                });
                 if (requestVersion !== context.gaplessQueueRequestVersion) {
                     return;
                 }
@@ -655,9 +686,19 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 ? currentReleaseTrackPaths
                 : collectReplayGainReleaseTrackPathsForIndex(nextIndex as number, sequenceOverrideIndexes);
             if (replayGainReleaseTrackPaths.length > 1) {
-                await AudioQueueNextTrackWithReplayGainContext(activeTrack.path, nextPath, replayGainReleaseTrackPaths);
+                await runBackgroundBridgeCall(async () => {
+                    await AudioQueueNextTrackWithReplayGainContext(activeTrack.path, nextPath, replayGainReleaseTrackPaths);
+                }, {
+                    maxWaitMs: 180,
+                    onTimeout: () => undefined,
+                });
             } else {
-                await AudioQueueNextTrack(activeTrack.path, nextPath);
+                await runBackgroundBridgeCall(async () => {
+                    await AudioQueueNextTrack(activeTrack.path, nextPath);
+                }, {
+                    maxWaitMs: 180,
+                    onTimeout: () => undefined,
+                });
             }
             if (requestVersion !== context.gaplessQueueRequestVersion) {
                 return;
@@ -719,6 +760,10 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     const logPlaybackDebug = (message: string): void => {
         const formatted = `[PLAYBACK] ${message}`;
         console.debug(formatted);
+        if (!message.startsWith('AudioError')) {
+            return;
+        }
+
         void LogFrontendMessage(formatted).catch(() => undefined);
     };
 
@@ -773,17 +818,8 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         const transition = context.playbackStateService.applyPlaybackState(nextState, context.tracks.length > 0);
         updateTrackLabels();
         updatePlayButton();
-        maybeSubmitListenBrainz(nextState);
-        context.updateMediaSessionMetadata();
-        context.updateMediaSessionPlaybackState();
-        context.updateMediaSessionPositionState();
         context.visualizerController.setPlaybackState(nextState);
-        syncPlaybackProgressLoop();
-        playbackPoller.poke();
-        if (shouldPrepareGaplessQueue(nextState)) {
-            void queueGaplessNextTrack(nextState);
-        }
-        void refreshReplayGainReleaseDynamicRangeIndicator();
+        scheduleDeferredPlaybackStateEffects(nextState);
 
         if (transition.trackEnded) {
             context.goToTrack(1);
@@ -799,7 +835,18 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         const requestVersion = context.playbackMutationVersion;
         const startedAtMs = performance.now();
         try {
-            const nextState = await AudioGetState() as AudioPlaybackState;
+            if (shouldDeferBackgroundBridgeCall()) {
+                return;
+            }
+
+            const nextState = await runBackgroundBridgeCall(async () => await AudioGetState() as AudioPlaybackState, {
+                maxWaitMs: 120,
+                onTimeout: () => null,
+            });
+            if (nextState === null) {
+                return;
+            }
+
             const elapsedMs = performance.now() - startedAtMs;
             if (elapsedMs >= 120) {
                 logSlowAudioStatePoll(elapsedMs);
@@ -1013,8 +1060,6 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return false;
         }
 
-        await ensureTrackTagsResolved(context.currentTrackIndex);
-
         const playbackState = context.playbackStateService.getPlaybackState();
         const track = context.tracks[context.currentTrackIndex];
         if (!playbackState.loaded || playbackState.sourcePath !== track.path) {
@@ -1025,7 +1070,18 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return false;
         }
 
-        return matchesSilenceTitleHeuristic(track);
+        if (matchesSilenceTitleHeuristic(track)) {
+            return true;
+        }
+
+        await ensureTrackTagsResolved(context.currentTrackIndex);
+
+        const refreshedTrack = context.tracks[context.currentTrackIndex];
+        if (!refreshedTrack) {
+            return false;
+        }
+
+        return matchesSilenceTitleHeuristic(refreshedTrack);
     };
 
     const setCoverFlipped = (flipped: boolean): void => {

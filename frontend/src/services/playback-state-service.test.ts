@@ -115,4 +115,22 @@ describe('createPlaybackStateService', () => {
         expect(service.getPlaybackState().currentTime).toBe(12.75);
         expect(service.applyPlaybackState({ ...nextState, currentTime: 13.2 }, true)).toEqual({ trackEnded: false });
     });
+
+    it('supports optimistic local playing-state updates for loaded tracks', () => {
+        const service = createPlaybackStateService();
+        const nextState = {
+            ...createInitialPlaybackState(),
+            loaded: true,
+            playing: false,
+            sourcePath: '/music/current.flac',
+        };
+
+        service.applyPlaybackState(nextState, true);
+
+        expect(service.setPlaying(true)).toBe(true);
+        expect(service.getPlaybackState().playing).toBe(true);
+        expect(service.setPlaying(true)).toBe(false);
+        expect(service.setPlaying(false)).toBe(true);
+        expect(service.getPlaybackState().playing).toBe(false);
+    });
 });

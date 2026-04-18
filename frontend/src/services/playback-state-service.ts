@@ -61,6 +61,17 @@ export const createPlaybackStateService = (state: PlaybackSessionState = createP
         resetEndEventTracking: (): void => {
             state.lastHandledEndEventId = 0;
         },
+        setPlaying: (playing: boolean): boolean => {
+            if (!state.playbackState.loaded || state.playbackState.playing === playing) {
+                return false;
+            }
+
+            state.playbackState = {
+                ...state.playbackState,
+                playing,
+            };
+            return true;
+        },
         setCurrentTime: (nextCurrentTime: number): boolean => {
             if (!state.playbackState.loaded) {
                 return false;

@@ -1,4 +1,5 @@
 import type { AudioPlaybackState, AudioVisualizationFrame, PlayerEqualizerPosition, PlayerVisualizerMode } from '../types/app-types';
+import { runBackgroundBridgeCall, shouldDeferBackgroundBridgeCall } from '../utils/bridge-load-gate';
 import { deriveShareImageAccentPalette } from '../utils/cover-accent-palette';
 
 type VisualizerControllerOptions = {
@@ -188,6 +189,9 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
     let lastFetchAtMs = 0;
     let lastRenderAtMs = 0;
     let latestFrame: AudioVisualizationFrame | null = null;
+    let priorityFetchPending = false;
+    let playbackActive = false;
+    let activePlaybackSourcePath = '';
     let targetPoints: Float32Array | null = null;
     let renderedPoints: Float32Array | null = null;
     let targetBands: Float32Array | null = null;
@@ -572,10 +576,6 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
             return;
         }
 
-        if (syncCanvasSize() && latestFrame?.loaded) {
-            void updateTargetProjection();
-        }
-
         clear();
 
         if (mode === 'equalizer') {
@@ -599,6 +599,9 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         fetchInFlight = false;
         lastFetchAtMs = 0;
         latestFrame = null;
+        priorityFetchPending = false;
+        playbackActive = false;
+        activePlaybackSourcePath = '';
         resetProjectionState();
         canvas.classList.remove(activeVisualizerClass);
         clear();
@@ -617,21 +620,37 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         }
 
         const nowMs = performance.now();
+        const prioritizeFetch = priorityFetchPending;
         const shouldFetch = enabled
             && playbackState.loaded
             && !fetchInFlight
+            && (prioritizeFetch || !shouldDeferBackgroundBridgeCall())
             && (playbackState.playing || latestFrame === null || latestFrame.sourcePath !== playbackState.sourcePath)
-            && (nowMs - lastFetchAtMs >= visualizationFetchIntervalMs);
+            && (prioritizeFetch || (nowMs - lastFetchAtMs >= visualizationFetchIntervalMs));
 
         if (shouldFetch) {
             fetchInFlight = true;
             lastFetchAtMs = nowMs;
+            priorityFetchPending = false;
             const requestId = activeFetchRequestId + 1;
             const requestVersion = frameRequestVersion;
             activeFetchRequestId = requestId;
             const targetFrameCount = mode === 'equalizer' ? equalizerTargetFrameCount : lissajousTargetFrameCount;
-            options.fetchVisualizationFrame(targetFrameCount)
+            const fetchFramePromise = prioritizeFetch
+                ? runBackgroundBridgeCall(async () => await options.fetchVisualizationFrame(targetFrameCount), {
+                    maxWaitMs: 0,
+                    onTimeout: async () => await options.fetchVisualizationFrame(targetFrameCount),
+                })
+                : runBackgroundBridgeCall(async () => await options.fetchVisualizationFrame(targetFrameCount), {
+                    maxWaitMs: 32,
+                    onTimeout: () => null,
+                });
+            fetchFramePromise
                 .then((frame) => {
+                    if (frame === null) {
+                        return;
+                    }
+
                     if (
                         disposed
                         || requestId !== activeFetchRequestId
@@ -680,6 +699,16 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
             clearVisualizer();
             return;
         }
+
+        const sourcePath = playbackState.sourcePath || '';
+        const startingPlayback = !playbackActive || activePlaybackSourcePath !== sourcePath;
+        playbackActive = true;
+        activePlaybackSourcePath = sourcePath;
+        if (startingPlayback) {
+            priorityFetchPending = true;
+            lastFetchAtMs = 0;
+        }
+
         startLoop();
     };
 

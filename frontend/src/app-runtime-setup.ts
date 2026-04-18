@@ -354,6 +354,7 @@ type AppPlaybackControlsRuntimeScope = RuntimeScope<
     | 'hydrateCurrentArtistInfo'
     | 'playbackStateService'
     | 'playPauseToggleInFlight'
+    | 'updatePlayButton'
     | 'shouldSkipLoadedTrack'
     | 'playbackMutationVersion'
     | 'nextTrackIndexForDirection'
@@ -1182,6 +1183,7 @@ const createPlaybackControlsRuntimeContext = (scope: AppPlaybackControlsRuntimeS
     set playPauseToggleInFlight(value) {
         scope.playPauseToggleInFlight = value;
     },
+    updatePlayButton: scope.updatePlayButton,
     shouldSkipLoadedTrack: async (): Promise<boolean> => await scope.shouldSkipLoadedTrack(),
     get playbackMutationVersion() {
         return scope.playbackMutationVersion;

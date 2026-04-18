@@ -57,9 +57,43 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         playerCard,
         lyricsPanel,
         lyricsContent,
-        tracks: [{ displayLyrics: 'hello world', path: '/music/track.flac' }],
+        currentTimeLabel: document.createElement('div'),
+        trackDurationLabel: document.createElement('div'),
+        seek: document.createElement('input'),
+        isSeeking: false,
+        tracks: [{
+            title: 'Track',
+            name: 'track.flac',
+            path: '/music/track.flac',
+            relativePath: 'track.flac',
+            folderPath: '/music',
+            rootPath: '/music',
+            rootName: 'Library',
+            displayTitle: 'Track',
+            displayAlbum: 'Album',
+            displayArtist: 'Artist',
+            displayTrackNumber: '',
+            displayTrackTotal: '',
+            displayTechnical: '',
+            displayLyrics: 'hello world',
+            tagsResolved: false,
+            mbMetadataResolved: false,
+            technicalDetails: {},
+            allFileTags: {},
+            mbIds: {},
+            artistMbids: [],
+            mbArtistCredits: [],
+        }],
         currentTrackIndex: 0,
-        currentSettings: { currentSettingsMarker: true } as never,
+        currentSettings: {
+            scrobblingEnabled: false,
+            scrobbleFilterMode: 'blacklist',
+            scrobbleRules: [],
+            preferMusicBrainzMetadata: false,
+            lastFmApiKey: '',
+            lastFmApiSecret: '',
+            lastFmSessionKey: '',
+        } as never,
         trackIndexByPath: new Map<string, number>(),
         textFileIndexByPath: new Map<string, number>(),
         imageFileIndexByPath: new Map<string, number>(),
@@ -121,7 +155,7 @@ const createContext = (): AppNowPlayingRuntimeContext => {
             start: vi.fn(),
         } as never,
         scrobbleService: {
-            maybeSubmitCurrentTrack: vi.fn(),
+            maybeSubmit: vi.fn(),
             startTrackSession: vi.fn(),
             isTrackSubmissionPending: vi.fn(() => false),
         } as never,
@@ -183,5 +217,73 @@ describe('createAppNowPlayingRuntime', () => {
 
         vi.stubGlobal('innerWidth', originalInnerWidth);
         vi.stubGlobal('innerHeight', originalInnerHeight);
+    });
+
+    it('defers playback side effects until after the current task', () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        const runtime = createAppNowPlayingRuntime(context);
+        const playbackState = {
+            loaded: true,
+            playing: false,
+            currentTime: 1.37,
+            duration: 249.19,
+            volume: 0.8,
+            sourcePath: '/music/track.flac',
+            endEventId: 0,
+        };
+
+        runtime.applyPlaybackState(playbackState);
+
+        expect(context.visualizerController.setPlaybackState).toHaveBeenCalledWith(playbackState);
+        expect(context.updateMediaSessionMetadata).not.toHaveBeenCalled();
+        expect(context.updateMediaSessionPlaybackState).not.toHaveBeenCalled();
+        expect(context.updateMediaSessionPositionState).not.toHaveBeenCalled();
+
+        vi.runOnlyPendingTimers();
+
+        expect(context.updateMediaSessionMetadata).toHaveBeenCalledTimes(1);
+        expect(context.updateMediaSessionPlaybackState).toHaveBeenCalledTimes(1);
+        expect(context.updateMediaSessionPositionState).toHaveBeenCalledTimes(1);
+        expect(context.visualizerController.setPlaybackState).toHaveBeenCalledTimes(1);
+
+        vi.useRealTimers();
+    });
+
+    it('does not resolve tags before play for normal-length tracks', async () => {
+        const context = createContext();
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: false,
+            currentTime: 0,
+            duration: 260.33,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+
+        await expect(runtime.shouldSkipLoadedTrack()).resolves.toBe(false);
+        expect(context.trackMetadataService.ensureTrackTagsResolved).not.toHaveBeenCalled();
+    });
+
+    it('still resolves tags for short tracks before applying the silence heuristic', async () => {
+        const context = createContext();
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: false,
+            currentTime: 0,
+            duration: 5,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+
+        await expect(runtime.shouldSkipLoadedTrack()).resolves.toBe(false);
+        expect(context.trackMetadataService.ensureTrackTagsResolved).toHaveBeenCalledWith(0);
     });
 });
