@@ -54,6 +54,7 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
                 localLibraryFilesDatabaseLoadOnStartup: context.currentSettings.localLibraryFilesDatabaseLoadOnStartup,
                 localLibraryFilesDatabaseListenHistoryEnabled: context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled,
                 localLibraryFilesDatabaseListenHistoryLimit: context.currentSettings.localLibraryFilesDatabaseListenHistoryLimit,
+                localLibraryFilesDatabaseListenHistoryThresholdSeconds: context.currentSettings.localLibraryFilesDatabaseListenHistoryThresholdSeconds,
                 ffmpegPath: context.currentSettings.ffmpegPath,
                 openSubsonicEnabled: !!context.currentSettings.openSubsonicEnabled,
                 openSubsonicPort: context.currentSettings.openSubsonicPort,
@@ -126,6 +127,9 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
             name: loaded.name || 'Listen History',
             historyItems: (loaded.trackFiles || []).map((file) => ({
                 listenedAt: Number.isFinite(file.listenedAt || 0) ? Math.floor(file.listenedAt || 0) : 0,
+                playedPercent: Number.isFinite(file.playedPercent || 0)
+                    ? Math.max(0, Math.min(100, Math.round(file.playedPercent || 0)))
+                    : 0,
             })),
             trackIndexes: mergeResult.trackIndexes,
         };

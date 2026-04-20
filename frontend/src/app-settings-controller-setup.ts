@@ -123,6 +123,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         localLibraryFilesDatabaseLoadOnStartup: boolean;
         localLibraryFilesDatabaseListenHistoryEnabled: boolean;
         localLibraryFilesDatabaseListenHistoryLimit: number;
+        localLibraryFilesDatabaseListenHistoryThresholdSeconds: number;
         ffmpegPath: string;
         remoteLibraryTranscodingEnabled: boolean;
         remoteLibraryTranscodingBitrateKbps: number;
@@ -177,6 +178,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             localLibraryFilesDatabaseLoadOnStartup: values.localLibraryFilesDatabaseLoadOnStartup,
             localLibraryFilesDatabaseListenHistoryEnabled: values.localLibraryFilesDatabaseListenHistoryEnabled,
             localLibraryFilesDatabaseListenHistoryLimit: values.localLibraryFilesDatabaseListenHistoryLimit,
+            localLibraryFilesDatabaseListenHistoryThresholdSeconds: values.localLibraryFilesDatabaseListenHistoryThresholdSeconds,
             ffmpegPath: values.ffmpegPath,
             openSubsonicEnabled: values.librarySharingEnabled,
             openSubsonicPort: values.librarySharingPort,
@@ -277,6 +279,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             localLibraryFilesDatabaseLoadOnStartup: context.currentSettings.localLibraryFilesDatabaseLoadOnStartup,
             localLibraryFilesDatabaseListenHistoryEnabled: context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled,
             localLibraryFilesDatabaseListenHistoryLimit: context.currentSettings.localLibraryFilesDatabaseListenHistoryLimit,
+            localLibraryFilesDatabaseListenHistoryThresholdSeconds: context.currentSettings.localLibraryFilesDatabaseListenHistoryThresholdSeconds,
             ffmpegPath: context.currentSettings.ffmpegPath,
             remoteLibraryTranscodingEnabled: false,
             remoteLibraryTranscodingBitrateKbps: 192,

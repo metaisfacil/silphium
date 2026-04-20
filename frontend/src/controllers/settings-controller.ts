@@ -129,6 +129,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLocalLibraryFilesDatabaseLoadOnStartup,
         settingsLocalLibraryFilesDatabaseListenHistoryEnabled,
         settingsLocalLibraryFilesDatabaseListenHistoryLimit,
+        settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds,
         settingsListenBrainzToken,
         settingsLastFmApiKey,
         settingsLastFmApiSecret,
@@ -372,6 +373,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLocalLibraryFilesDatabaseLoadOnStartup,
         settingsLocalLibraryFilesDatabaseListenHistoryEnabled,
         settingsLocalLibraryFilesDatabaseListenHistoryLimit,
+        settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds,
         settingsMusicBrainzTagDatabaseEnabled,
         settingsHighlightMusicBrainzTaggedAlbumFolders,
         settingsMusicBrainzTagStaleDays,
@@ -605,6 +607,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         localLibraryFilesDatabaseLoadOnStartup: settingsLocalLibraryFilesDatabaseLoadOnStartup.checked,
         localLibraryFilesDatabaseListenHistoryEnabled: settingsLocalLibraryFilesDatabaseListenHistoryEnabled.checked,
         localLibraryFilesDatabaseListenHistoryLimit: Math.max(0, Number.parseInt(settingsLocalLibraryFilesDatabaseListenHistoryLimit.value.trim(), 10) || 0),
+        localLibraryFilesDatabaseListenHistoryThresholdSeconds: Math.max(1, Number.parseInt(settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds.value.trim(), 10) || 30),
         ffmpegPath: settingsFFmpegPath.value,
         remoteLibraryTranscodingEnabled: false,
         remoteLibraryTranscodingBitrateKbps: 192,
@@ -781,6 +784,9 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLocalLibraryFilesDatabaseListenHistoryLimit.value = values.localLibraryFilesDatabaseListenHistoryLimit > 0
             ? String(values.localLibraryFilesDatabaseListenHistoryLimit)
             : '0';
+        settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds.value = values.localLibraryFilesDatabaseListenHistoryThresholdSeconds > 0
+            ? String(values.localLibraryFilesDatabaseListenHistoryThresholdSeconds)
+            : '30';
         settingsFFmpegPath.value = values.ffmpegPath || '';
         settingsLibrarySharingEnabled.checked = !!values.librarySharingEnabled;
         settingsLibrarySharingPort.value = values.librarySharingPort && values.librarySharingPort > 0 ? String(values.librarySharingPort) : String(defaultLibrarySharingPort);

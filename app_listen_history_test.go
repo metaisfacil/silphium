@@ -20,13 +20,13 @@ func TestListenHistoryPlaylistLoadsNewestEntriesAndAppliesLimit(t *testing.T) {
 		{Path: fixture.rootTwo, Name: "Library Two", ReleaseDepth: 0},
 	}
 
-	if ok := app.AddListenHistoryEntry(fixture.trackOne, "Intro", "Artist One", "Album One", 100); !ok {
+	if ok := app.AddListenHistoryEntry(fixture.trackOne, "Intro", "Artist One", "Album One", 100, 64); !ok {
 		t.Fatal("AddListenHistoryEntry(trackOne) = false, want true")
 	}
-	if ok := app.AddListenHistoryEntry(fixture.outsideTrack, "Outside", "Outside Artist", "Outside Album", 200); !ok {
+	if ok := app.AddListenHistoryEntry(fixture.outsideTrack, "Outside", "Outside Artist", "Outside Album", 200, 88); !ok {
 		t.Fatal("AddListenHistoryEntry(outsideTrack) = false, want true")
 	}
-	if ok := app.AddListenHistoryEntry(fixture.trackTwo, "Outro", "Artist Two", "Album Two", 300); !ok {
+	if ok := app.AddListenHistoryEntry(fixture.trackTwo, "Outro", "Artist Two", "Album Two", 300, 100); !ok {
 		t.Fatal("AddListenHistoryEntry(trackTwo) = false, want true")
 	}
 
@@ -49,6 +49,9 @@ func TestListenHistoryPlaylistLoadsNewestEntriesAndAppliesLimit(t *testing.T) {
 	if got := loaded.TrackFiles[0].ListenedAt; got != 300 {
 		t.Fatalf("newest history listened at = %d, want 300", got)
 	}
+	if got := loaded.TrackFiles[0].PlayedPercent; got != 100 {
+		t.Fatalf("newest history played percent = %d, want 100", got)
+	}
 	if got := loaded.TrackFiles[0].RootName; got != "Library Two" {
 		t.Fatalf("indexed history root name = %q, want %q", got, "Library Two")
 	}
@@ -60,6 +63,9 @@ func TestListenHistoryPlaylistLoadsNewestEntriesAndAppliesLimit(t *testing.T) {
 	}
 	if got := loaded.TrackFiles[1].RelativePath; got != filepath.Base(fixture.outsideTrack) {
 		t.Fatalf("outside history relative path = %q, want %q", got, filepath.Base(fixture.outsideTrack))
+	}
+	if got := loaded.TrackFiles[1].PlayedPercent; got != 88 {
+		t.Fatalf("outside history played percent = %d, want 88", got)
 	}
 }
 
@@ -75,10 +81,10 @@ func TestSaveSettingsTrimsStoredListenHistoryToNewLimit(t *testing.T) {
 	})
 	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
 
-	if ok := app.AddListenHistoryEntry(fixture.trackOne, "Intro", "Artist One", "Album One", 100); !ok {
+	if ok := app.AddListenHistoryEntry(fixture.trackOne, "Intro", "Artist One", "Album One", 100, 55); !ok {
 		t.Fatal("AddListenHistoryEntry(trackOne) = false, want true")
 	}
-	if ok := app.AddListenHistoryEntry(fixture.trackTwo, "Outro", "Artist Two", "Album Two", 200); !ok {
+	if ok := app.AddListenHistoryEntry(fixture.trackTwo, "Outro", "Artist Two", "Album Two", 200, 100); !ok {
 		t.Fatal("AddListenHistoryEntry(trackTwo) = false, want true")
 	}
 
@@ -100,5 +106,59 @@ func TestSaveSettingsTrimsStoredListenHistoryToNewLimit(t *testing.T) {
 	}
 	if got := loaded.TrackFiles[0].Path; got != fixture.trackTwo {
 		t.Fatalf("remaining history path after trim = %q, want %q", got, fixture.trackTwo)
+	}
+	if got := loaded.TrackFiles[0].PlayedPercent; got != 100 {
+		t.Fatalf("remaining history played percent after trim = %d, want 100", got)
+	}
+}
+
+func TestListenHistoryEntryUpdatesStoredPlayedPercentForSameSession(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	app.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	app.settingsLoaded = true
+	app.settings = normalizeAppSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled:              boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryEnabled: boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryLimit:   10,
+	})
+
+	if ok := app.AddListenHistoryEntry(fixture.trackOne, "Intro", "Artist One", "Album One", 100, 52); !ok {
+		t.Fatal("AddListenHistoryEntry(initial) = false, want true")
+	}
+	if ok := app.AddListenHistoryEntry(fixture.trackOne, "Intro", "Artist One", "Album One", 100, 97); !ok {
+		t.Fatal("AddListenHistoryEntry(update) = false, want true")
+	}
+
+	loaded := app.LoadListenHistoryPlaylist()
+	if len(loaded.TrackFiles) != 1 {
+		t.Fatalf("len(LoadListenHistoryPlaylist().TrackFiles) = %d, want 1", len(loaded.TrackFiles))
+	}
+	if got := loaded.TrackFiles[0].PlayedPercent; got != 97 {
+		t.Fatalf("updated history played percent = %d, want 97", got)
+	}
+}
+
+func TestAddListenHistoryEntrySkipsSilenceTracks(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	app.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	app.settingsLoaded = true
+	app.settings = normalizeAppSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled:                       boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryEnabled:          boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryThresholdSeconds: defaultListenHistoryThresholdSeconds,
+	})
+
+	if ok := app.AddListenHistoryEntry(filepath.Join(filepath.Dir(fixture.trackOne), "[silence].flac"), "[silence]", "", "", 100, 100); ok {
+		t.Fatal("AddListenHistoryEntry([silence]) = true, want false")
+	}
+	if ok := app.AddListenHistoryEntry(filepath.Join(filepath.Dir(fixture.trackOne), "(silence).flac"), "", "", "", 100, 100); ok {
+		t.Fatal("AddListenHistoryEntry((silence)) = true, want false")
+	}
+
+	loaded := app.LoadListenHistoryPlaylist()
+	if len(loaded.TrackFiles) != 0 {
+		t.Fatalf("len(LoadListenHistoryPlaylist().TrackFiles) = %d, want 0", len(loaded.TrackFiles))
 	}
 }

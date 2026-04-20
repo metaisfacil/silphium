@@ -36,6 +36,7 @@ export const maxMusicBrainzTagStaleDays = 36500;
 export const defaultLissajousScale = 0.25;
 export const minLissajousScale = 0.05;
 export const maxLissajousScale = 1;
+export const defaultListenHistoryThresholdSeconds = 30;
 
 export const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 export const defaultCustomSendToActions: CustomSendToAction[] = [];
@@ -47,6 +48,7 @@ export const defaultAppSettings: AppSettings = {
     localLibraryFilesDatabaseLoadOnStartup: true,
     localLibraryFilesDatabaseListenHistoryEnabled: false,
     localLibraryFilesDatabaseListenHistoryLimit: 0,
+    localLibraryFilesDatabaseListenHistoryThresholdSeconds: defaultListenHistoryThresholdSeconds,
     ffmpegPath: '',
     openSubsonicEnabled: false,
     openSubsonicPort: defaultOpenSubsonicPort,
@@ -241,6 +243,11 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
             && settings.localLibraryFilesDatabaseListenHistoryLimit > 0
             ? Math.floor(settings.localLibraryFilesDatabaseListenHistoryLimit)
             : 0,
+        localLibraryFilesDatabaseListenHistoryThresholdSeconds: typeof settings.localLibraryFilesDatabaseListenHistoryThresholdSeconds === 'number'
+            && Number.isFinite(settings.localLibraryFilesDatabaseListenHistoryThresholdSeconds)
+            && settings.localLibraryFilesDatabaseListenHistoryThresholdSeconds >= 1
+            ? Math.floor(settings.localLibraryFilesDatabaseListenHistoryThresholdSeconds)
+            : defaultListenHistoryThresholdSeconds,
         ffmpegPath: (settings.ffmpegPath || '').trim(),
         openSubsonicEnabled: !!settings.openSubsonicEnabled,
         openSubsonicPort: Number.isFinite(settings.openSubsonicPort)

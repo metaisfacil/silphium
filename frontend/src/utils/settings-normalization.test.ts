@@ -8,6 +8,7 @@ import {
     defaultAppSettings,
     defaultCoverArtPriority,
     defaultCustomSendToActions,
+    defaultListenHistoryThresholdSeconds,
     defaultMusicBrainzTagStaleDays,
     defaultMusicBrainzTagWorkerProgress,
     minLissajousScale,
@@ -86,6 +87,7 @@ describe('settings normalization', () => {
         const normalized = normalizeAppSettings({
             libraryPath: ' /music/library ',
             releaseDepth: 2,
+            localLibraryFilesDatabaseListenHistoryThresholdSeconds: 45,
             ffmpegPath: ' ffmpeg ',
             librarySharingEnabled: true,
             librarySharingPort: 5005,
@@ -154,6 +156,7 @@ describe('settings normalization', () => {
         expect(normalized.preferMusicBrainzMetadata).toBe(true);
         expect(normalized.localLibraryFilesDatabaseEnabled).toBe(true);
         expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(true);
+        expect(normalized.localLibraryFilesDatabaseListenHistoryThresholdSeconds).toBe(45);
         expect(normalized.musicBrainzTagDatabaseEnabled).toBe(true);
         expect(normalized.highlightMusicBrainzTaggedAlbumFolders).toBe(true);
         expect(normalized.musicBrainzTagStaleDays).toBe(maxMusicBrainzTagStaleDays);
@@ -245,6 +248,7 @@ describe('settings normalization', () => {
         expect(normalized.favoritePlaylists).toEqual([]);
         expect(normalized.localLibraryFilesDatabaseEnabled).toBe(true);
         expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(true);
+        expect(normalized.localLibraryFilesDatabaseListenHistoryThresholdSeconds).toBe(defaultListenHistoryThresholdSeconds);
         expect(normalized.scrobblingEnabled).toBe(true);
         expect(normalized.lissajousEnabled).toBe(true);
         expect(normalized.lissajousScale).toBe(defaultLissajousScale);
@@ -268,6 +272,7 @@ describe('settings normalization', () => {
         expect(normalized.audio).toEqual(defaultAppSettings.audio);
         expect(normalized.localLibraryFilesDatabaseEnabled).toBe(true);
         expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(true);
+        expect(normalized.localLibraryFilesDatabaseListenHistoryThresholdSeconds).toBe(defaultListenHistoryThresholdSeconds);
         expect(normalized.scrobblingEnabled).toBe(true);
         expect(normalized.musicBrainzTagStaleDays).toBe(defaultMusicBrainzTagStaleDays);
         expect(normalized.customSendToActions).toEqual([]);

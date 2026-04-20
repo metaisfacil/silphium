@@ -78,6 +78,7 @@ export type SettingsModalElements = {
     settingsLocalLibraryFilesDatabaseLoadOnStartup: HTMLInputElement;
     settingsLocalLibraryFilesDatabaseListenHistoryEnabled: HTMLInputElement;
     settingsLocalLibraryFilesDatabaseListenHistoryLimit: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds: HTMLInputElement;
     settingsListenBrainzToken: HTMLInputElement;
     settingsLastFmApiKey: HTMLInputElement;
     settingsLastFmApiSecret: HTMLInputElement;
@@ -224,7 +225,14 @@ export const renderSettingsModal = (): string => `
                         ${renderSettingsCheckboxLabel('settings-local-library-files-database-load-on-startup', 'Load from local snapshot on startup', 'Restores the last saved local library snapshot immediately on startup, then refreshes it from disk in the background. Disable this to keep writing the snapshot without using it during startup.')}
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-local-library-files-database-listen-history-enabled', 'Store listen history in the local database', 'Keeps a local history of completed listens in the same SQLite database as the library snapshot and exposes it as a read-only playlist view.')}
+                        ${renderSettingsCheckboxLabel('settings-local-library-files-database-listen-history-enabled', 'Store listen history in the local database', 'Keeps a local history once playback reaches the configured threshold and exposes it as a read-only playlist view. [silence] and (silence) are never stored.')}
+                    </div>
+                    <div class="settings-field">
+                        ${renderSettingsLabel('settings-local-library-files-database-listen-history-threshold-seconds', 'Skipped-track history threshold', 'Listen history is recorded once playback reaches the later of 10% of track duration or this many seconds. Tracks shorter than this threshold must finish completely.')}
+                        <div class="settings-server-rate-group">
+                            <input id="settings-local-library-files-database-listen-history-threshold-seconds" class="settings-input settings-server-rate-input" type="number" min="1" step="1" inputmode="numeric" placeholder="30">
+                            <span class="settings-server-rate-unit">sec</span>
+                        </div>
                     </div>
                     <div class="settings-field">
                         ${renderSettingsLabel('settings-local-library-files-database-listen-history-limit', 'Stored listen history limit', 'Set 0 to keep all stored listens. Positive values discard the oldest listens once the limit is reached.')}
@@ -643,6 +651,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsLocalLibraryFilesDatabaseLoadOnStartup: root.querySelector('#settings-local-library-files-database-load-on-startup') as HTMLInputElement,
     settingsLocalLibraryFilesDatabaseListenHistoryEnabled: root.querySelector('#settings-local-library-files-database-listen-history-enabled') as HTMLInputElement,
     settingsLocalLibraryFilesDatabaseListenHistoryLimit: root.querySelector('#settings-local-library-files-database-listen-history-limit') as HTMLInputElement,
+    settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds: root.querySelector('#settings-local-library-files-database-listen-history-threshold-seconds') as HTMLInputElement,
     settingsListenBrainzToken: root.querySelector('#settings-listenbrainz-token') as HTMLInputElement,
     settingsLastFmApiKey: root.querySelector('#settings-lastfm-api-key') as HTMLInputElement,
     settingsLastFmApiSecret: root.querySelector('#settings-lastfm-api-secret') as HTMLInputElement,

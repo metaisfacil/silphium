@@ -309,6 +309,23 @@ func TestNormalizeAppSettingsPreservesDisabledLocalLibraryDatabase(t *testing.T)
 	}
 }
 
+func TestNormalizeAppSettingsListenHistoryThresholdDefaultsAndPreservesValues(t *testing.T) {
+	settings := normalizeAppSettings(AppSettings{})
+	if settings.LocalLibraryFilesDatabaseListenHistoryThresholdSeconds != defaultListenHistoryThresholdSeconds {
+		t.Fatalf("LocalLibraryFilesDatabaseListenHistoryThresholdSeconds = %d, want %d", settings.LocalLibraryFilesDatabaseListenHistoryThresholdSeconds, defaultListenHistoryThresholdSeconds)
+	}
+
+	settings = normalizeAppSettings(AppSettings{LocalLibraryFilesDatabaseListenHistoryThresholdSeconds: 45})
+	if settings.LocalLibraryFilesDatabaseListenHistoryThresholdSeconds != 45 {
+		t.Fatalf("LocalLibraryFilesDatabaseListenHistoryThresholdSeconds = %d, want 45", settings.LocalLibraryFilesDatabaseListenHistoryThresholdSeconds)
+	}
+
+	settings = normalizeAppSettings(AppSettings{LocalLibraryFilesDatabaseListenHistoryThresholdSeconds: -10})
+	if settings.LocalLibraryFilesDatabaseListenHistoryThresholdSeconds != defaultListenHistoryThresholdSeconds {
+		t.Fatalf("LocalLibraryFilesDatabaseListenHistoryThresholdSeconds = %d, want %d", settings.LocalLibraryFilesDatabaseListenHistoryThresholdSeconds, defaultListenHistoryThresholdSeconds)
+	}
+}
+
 func TestNormalizeAppSettingsPreservesDisabledLissajous(t *testing.T) {
 	disabled := false
 	settings := normalizeAppSettings(AppSettings{LissajousEnabled: &disabled})

@@ -4107,7 +4107,7 @@ func (a *App) handleOpenSubsonicScrobble(w http.ResponseWriter, r *http.Request,
 			}
 		}
 		if listenType == "single" {
-			a.AddListenHistoryEntry(trackSnapshot.Track.Path, lastFmMetadata.TrackName, lastFmMetadata.ArtistName, lastFmMetadata.ReleaseName, listenedAt)
+			a.AddListenHistoryEntry(trackSnapshot.Track.Path, lastFmMetadata.TrackName, lastFmMetadata.ArtistName, lastFmMetadata.ReleaseName, listenedAt, 100)
 		}
 	}
 

@@ -15,6 +15,7 @@ type LibraryIndexedFile struct {
 	CachedTrackNumber string `json:"cachedTrackNumber,omitempty"`
 	CachedTrackTotal  string `json:"cachedTrackTotal,omitempty"`
 	ListenedAt        int64  `json:"listenedAt,omitempty"`
+	PlayedPercent     int    `json:"playedPercent,omitempty"`
 	ModifiedAtMs      int64  `json:"modifiedAtMs,omitempty"`
 }
 

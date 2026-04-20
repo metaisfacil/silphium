@@ -192,6 +192,10 @@ func configureMusicBrainzTagSQLite(database *sql.DB) error {
 		return err
 	}
 
+	if _, err := database.Exec(`PRAGMA busy_timeout=5000`); err != nil {
+		return err
+	}
+
 	if _, err := database.Exec(`PRAGMA synchronous=NORMAL`); err != nil {
 		return err
 	}

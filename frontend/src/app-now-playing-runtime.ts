@@ -658,6 +658,15 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
+        if (activeTrack) {
+            const previousPlaybackState = context.playbackStateService.getPlaybackState();
+            if (trackPathKey(previousPlaybackState.sourcePath || '') === trackPathKey(activeTrack.path)
+                && previousPlaybackState.loaded
+                && previousPlaybackState.playing) {
+                context.scrobbleService.completeLocalHistory(activeTrack, previousPlaybackState.duration);
+            }
+        }
+
         if (resolvedIndex === context.currentTrackIndex) {
             return;
         }

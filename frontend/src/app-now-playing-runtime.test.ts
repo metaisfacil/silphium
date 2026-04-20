@@ -185,6 +185,7 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         scrobbleService: {
             maybeSubmit: vi.fn(),
             startTrackSession: vi.fn(),
+            completeLocalHistory: vi.fn(),
             isTrackSubmissionPending: vi.fn(() => false),
         } as never,
         updateMediaSessionMetadata: vi.fn(),
@@ -371,6 +372,10 @@ describe('createAppNowPlayingRuntime', () => {
 
         expect(context.currentTrackIndex).toBe(1);
         expect(context.trackTitle.textContent).toBe('Next Track');
+        expect(context.scrobbleService.completeLocalHistory).toHaveBeenCalledWith(
+            expect.objectContaining({ path: '/music/track.flac' }),
+            180,
+        );
 
         vi.useRealTimers();
     });

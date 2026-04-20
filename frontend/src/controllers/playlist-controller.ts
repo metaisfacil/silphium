@@ -317,6 +317,27 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         return deltaYears === 1 ? '1 year ago' : `${deltaYears} years ago`;
     };
 
+    const formatListenHistoryPlayedPercent = (playedPercent: number | undefined): string => {
+        if (!Number.isFinite(playedPercent || 0)) {
+            return '';
+        }
+
+        const normalized = Math.max(0, Math.min(100, Math.round(playedPercent || 0)));
+        if (normalized <= 0) {
+            return '';
+        }
+
+        return `${normalized}% played`;
+    };
+
+    const formatListenHistoryMeta = (historyItem: LoadedListenHistoryItem | undefined): string => {
+        const parts = [
+            formatListenHistoryPlayedPercent(historyItem?.playedPercent),
+            formatListenHistoryAge(historyItem?.listenedAt || 0),
+        ].filter((part) => part !== '');
+        return parts.join(', ');
+    };
+
     const setHydrationProgress = (completed: number, total: number): void => {
         const setHydrationProgressSlotWidth = (widthPx: number): void => {
             if (!playlistHeader) {
@@ -450,7 +471,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 nextCachedItems.push(loadedPlaylist.cachedItems?.[position] || {});
             }
             if (nextHistoryItems) {
-                nextHistoryItems.push(loadedPlaylist.historyItems?.[position] || { listenedAt: 0 });
+                nextHistoryItems.push(loadedPlaylist.historyItems?.[position] || { listenedAt: 0, playedPercent: 0 });
             }
         });
 
@@ -1455,10 +1476,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
             if (isViewingReadOnlyPlaylist()) {
                 const historyItem = controllerState.loadedPlaylistHistoryItems?.[actualPosition];
-                const ageLabel = formatListenHistoryAge(historyItem?.listenedAt || 0);
+                const metaLabel = formatListenHistoryMeta(historyItem);
                 return `<li class="playlist-row playlist-row-read-only" data-playlist-position="${actualPosition}">
             <span class="playlist-position-indicator">#${actualPosition + 1}</span>
-            <button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}" data-playlist-position="${actualPosition}"><span class="playlist-item-topline"><span class="playlist-item-main"><span class="playlist-item-prefix">${prefix}</span><span class="playlist-item-label">${label}</span></span>${ageLabel ? `<span class="playlist-item-meta">${ageLabel}</span>` : ''}</span><span class="playlist-item-sub">${secondary}</span></button>
+            <button class="playlist-item${activeClass}" data-playlist-track-index="${trackIndex}" data-playlist-position="${actualPosition}"><span class="playlist-item-topline"><span class="playlist-item-main"><span class="playlist-item-prefix">${prefix}</span><span class="playlist-item-label">${label}</span></span>${metaLabel ? `<span class="playlist-item-meta">${metaLabel}</span>` : ''}</span><span class="playlist-item-sub">${secondary}</span></button>
         </li>`;
             }
 
