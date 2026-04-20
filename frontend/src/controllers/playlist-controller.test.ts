@@ -81,8 +81,8 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState } = 
         name: 'Listen History',
         trackIndexes: [2, 0],
         historyItems: [
-            { listenedAt: 1_699_963_200 },
-            { listenedAt: 1_698_840_000 },
+            { listenedAt: 1_699_963_200, playedPercent: 83 },
+            { listenedAt: 1_698_840_000, playedPercent: 100 },
         ],
     }));
     const ensureTrackTagsResolvedBatch = vi.fn(async () => undefined);
@@ -447,6 +447,8 @@ describe('createPlaylistController', () => {
         expect(elements.playlistList.querySelector('.playlist-drag-handle')).toBeNull();
         expect(elements.playlistList.querySelector('.playlist-row-read-only')).not.toBeNull();
         expect(elements.playlistList.classList.contains('is-view-switching')).toBe(true);
+        expect(elements.playlistList.textContent).toContain('83% played');
+        expect(elements.playlistList.textContent).toContain('100% played');
         expect(elements.playlistList.textContent).toContain('1 day ago');
         expect(elements.playlistList.textContent).toContain('2 weeks ago');
 

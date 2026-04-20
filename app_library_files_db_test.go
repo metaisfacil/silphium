@@ -297,11 +297,12 @@ func TestMetadataDatabaseMigratesLegacyMusicBrainzAndLibraryFilesData(t *testing
 		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite(legacy) error = %v", err)
 	}
 	if err := appendLibraryListenHistoryRecordToSQLite(legacyLibraryPath, libraryListenHistoryRecord{
-		TrackPath:   fixture.trackOne,
-		TrackName:   "Intro",
-		ArtistName:  "Artist One",
-		ReleaseName: "Album One",
-		ListenedAt:  123,
+		TrackPath:     fixture.trackOne,
+		TrackName:     "Intro",
+		ArtistName:    "Artist One",
+		ReleaseName:   "Album One",
+		ListenedAt:    123,
+		PlayedPercent: 84,
 	}, 10); err != nil {
 		t.Fatalf("appendLibraryListenHistoryRecordToSQLite(legacy) error = %v", err)
 	}
@@ -350,6 +351,9 @@ func TestMetadataDatabaseMigratesLegacyMusicBrainzAndLibraryFilesData(t *testing
 	history := app.LoadListenHistoryPlaylist()
 	if len(history.TrackFiles) != 1 || history.TrackFiles[0].Path != fixture.trackOne || history.TrackFiles[0].CachedTrackTitle != "Intro" {
 		t.Fatalf("LoadListenHistoryPlaylist() after migration = %#v, want migrated history entry", history)
+	}
+	if got := history.TrackFiles[0].PlayedPercent; got != 84 {
+		t.Fatalf("migrated history played percent = %d, want 84", got)
 	}
 
 	cacheByPath := loadPlaylistTrackCacheRecordsFromSQLite(app.libraryFilesDatabasePath(), []string{fixture.trackOne})

@@ -41,6 +41,7 @@ const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     localLibraryFilesDatabaseLoadOnStartup: true,
     localLibraryFilesDatabaseListenHistoryEnabled: false,
     localLibraryFilesDatabaseListenHistoryLimit: 0,
+    localLibraryFilesDatabaseListenHistoryThresholdSeconds: 30,
     ffmpegPath: '/tools/ffmpeg',
     listenBrainzUserToken: 'lb-token',
     lastFmApiKey: 'lastfm-key',
@@ -251,6 +252,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             trackFiles: [{
                 path: '/music/history-track.flac',
                 listenedAt: 1_700_000_000,
+                playedPercent: 83,
                 cachedTrackTitle: 'Cached History Title',
                 cachedArtistName: 'Cached History Artist',
             }],
@@ -280,7 +282,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
 
         await expect(runtime.loadListenHistoryData()).resolves.toEqual({
             cachedItems: [{ cachedArtistName: 'Cached History Artist', cachedTrackTitle: 'Cached History Title' }],
-            historyItems: [{ listenedAt: 1_700_000_000 }],
+            historyItems: [{ listenedAt: 1_700_000_000, playedPercent: 83 }],
             name: 'Listen History',
             trackIndexes: [0],
         });
@@ -288,6 +290,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         expect(mergePlaylistFilesIntoTracksMock).toHaveBeenCalledWith([], [{
             path: '/music/history-track.flac',
             listenedAt: 1_700_000_000,
+            playedPercent: 83,
             cachedTrackTitle: 'Cached History Title',
             cachedArtistName: 'Cached History Artist',
         }]);

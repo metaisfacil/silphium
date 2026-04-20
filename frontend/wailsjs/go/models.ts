@@ -105,6 +105,7 @@ export namespace main {
 	    localLibraryFilesDatabaseLoadOnStartup?: boolean;
 	    localLibraryFilesDatabaseListenHistoryEnabled?: boolean;
 	    localLibraryFilesDatabaseListenHistoryLimit?: number;
+	    localLibraryFilesDatabaseListenHistoryThresholdSeconds?: number;
 	    ffmpegPath?: string;
 	    remoteLibraryTranscodingEnabled?: boolean;
 	    remoteLibraryTranscodingBitrateKbps?: number;
@@ -162,6 +163,7 @@ export namespace main {
 	        this.localLibraryFilesDatabaseLoadOnStartup = source["localLibraryFilesDatabaseLoadOnStartup"];
 	        this.localLibraryFilesDatabaseListenHistoryEnabled = source["localLibraryFilesDatabaseListenHistoryEnabled"];
 	        this.localLibraryFilesDatabaseListenHistoryLimit = source["localLibraryFilesDatabaseListenHistoryLimit"];
+	        this.localLibraryFilesDatabaseListenHistoryThresholdSeconds = source["localLibraryFilesDatabaseListenHistoryThresholdSeconds"];
 	        this.ffmpegPath = source["ffmpegPath"];
 	        this.remoteLibraryTranscodingEnabled = source["remoteLibraryTranscodingEnabled"];
 	        this.remoteLibraryTranscodingBitrateKbps = source["remoteLibraryTranscodingBitrateKbps"];
@@ -431,6 +433,7 @@ export namespace main {
 	    cachedTrackNumber?: string;
 	    cachedTrackTotal?: string;
 	    listenedAt?: number;
+	    playedPercent?: number;
 	    modifiedAtMs?: number;
 	
 	    static createFrom(source: any = {}) {
@@ -452,6 +455,7 @@ export namespace main {
 	        this.cachedTrackNumber = source["cachedTrackNumber"];
 	        this.cachedTrackTotal = source["cachedTrackTotal"];
 	        this.listenedAt = source["listenedAt"];
+	        this.playedPercent = source["playedPercent"];
 	        this.modifiedAtMs = source["modifiedAtMs"];
 	    }
 	}

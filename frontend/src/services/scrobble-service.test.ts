@@ -339,10 +339,215 @@ describe('createScrobbleService', () => {
                 releaseName: 'Resolved Album',
             }),
             expect.any(Number),
+            67,
         );
         expect(state.localHistorySubmittedSessionId).toBe(1);
+        expect(state.localHistorySubmittedPercent).toBe(67);
 
         service.maybeSubmit(playbackState, track, { listenBrainz: false, lastFm: false });
         expect(submitListenHistory).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not store local listen history before the configured threshold', async () => {
+        const submitListenHistory = vi.fn(async () => undefined);
+        const service = createScrobbleService({
+            submitListenHistory,
+            hasListenHistoryEnabled: () => true,
+            getListenHistoryThresholdSeconds: () => 30,
+        });
+
+        const track = createTrack();
+        service.startTrackSession(track.path);
+        service.maybeSubmit(createPlaybackState({ currentTime: 29, duration: 300 }), track, { listenBrainz: false, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenHistory).not.toHaveBeenCalled();
+    });
+
+    it('stores local listen history after the configured threshold even before scrobble completion', async () => {
+        const submitListenHistory = vi.fn(async () => undefined);
+        const service = createScrobbleService({
+            submitListenHistory,
+            hasListenHistoryEnabled: () => true,
+            getListenHistoryThresholdSeconds: () => 45,
+        });
+
+        const track = createTrack();
+        service.startTrackSession(track.path);
+        service.maybeSubmit(createPlaybackState({ currentTime: 61, duration: 600 }), track, { listenBrainz: false, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenHistory).toHaveBeenCalledTimes(1);
+        expect(submitListenHistory).toHaveBeenCalledWith(track.path, expect.any(Object), expect.any(Number), 10);
+    });
+
+    it('requires full playback for tracks shorter than the configured threshold', async () => {
+        const submitListenHistory = vi.fn(async () => undefined);
+        const service = createScrobbleService({
+            submitListenHistory,
+            hasListenHistoryEnabled: () => true,
+            getListenHistoryThresholdSeconds: () => 30,
+        });
+
+        const track = createTrack();
+        service.startTrackSession(track.path);
+        service.maybeSubmit(createPlaybackState({ currentTime: 20, duration: 25 }), track, { listenBrainz: false, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenHistory).not.toHaveBeenCalled();
+
+        service.completeLocalHistory(track, 25);
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenHistory).toHaveBeenCalledTimes(1);
+        expect(submitListenHistory).toHaveBeenCalledWith(track.path, expect.any(Object), expect.any(Number), 100);
+    });
+
+    it('never stores local listen history for silence placeholder tracks', async () => {
+        const submitListenHistory = vi.fn(async () => undefined);
+        const service = createScrobbleService({
+            submitListenHistory,
+            hasListenHistoryEnabled: () => true,
+        });
+
+        const track = createTrack({
+            title: '[silence]',
+            name: '[silence].flac',
+            displayTitle: '[silence]',
+            path: '/music/artist/album/[silence].flac',
+        });
+
+        service.startTrackSession(track.path);
+        service.maybeSubmit(createPlaybackState({ currentTime: 200, duration: 300 }), track, { listenBrainz: false, lastFm: false });
+        service.completeLocalHistory(track, 300);
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenHistory).not.toHaveBeenCalled();
+    });
+
+    it('does not let a stale automatic-completion callback mark the next track as already stored', async () => {
+        let resolveFirstSubmission: (() => void) | undefined;
+        const submitListenHistory = vi
+            .fn<Parameters<NonNullable<Parameters<typeof createScrobbleService>[0]['submitListenHistory']>>, Promise<void>>()
+            .mockImplementationOnce(async () => await new Promise<void>((resolve) => {
+                resolveFirstSubmission = resolve;
+            }))
+            .mockImplementation(async () => undefined);
+
+        const service = createScrobbleService({
+            submitListenHistory,
+            hasListenHistoryEnabled: () => true,
+        });
+
+        const firstTrack = createTrack({
+            path: '/music/artist/album/first.flac',
+            name: 'first.flac',
+            title: 'First Track',
+            displayTitle: 'First Track',
+        });
+        const secondTrack = createTrack({
+            path: '/music/artist/album/second.flac',
+            name: 'second.flac',
+            title: 'Second Track',
+            displayTitle: 'Second Track',
+        });
+
+        service.startTrackSession(firstTrack.path);
+        service.completeLocalHistory(firstTrack, 300);
+        expect(submitListenHistory).toHaveBeenCalledTimes(1);
+
+        service.startTrackSession(secondTrack.path);
+        resolveFirstSubmission?.();
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        service.maybeSubmit(createPlaybackState({ currentTime: 200, duration: 300, sourcePath: secondTrack.path }), secondTrack, { listenBrainz: false, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenHistory).toHaveBeenCalledTimes(2);
+        expect(submitListenHistory).toHaveBeenLastCalledWith(secondTrack.path, expect.any(Object), expect.any(Number), 67);
+    });
+
+    it('updates local listen history percent as playback advances within the same session', async () => {
+        const submitListenHistory = vi.fn(async () => undefined);
+        const state = createScrobbleSessionState();
+        const service = createScrobbleService({
+            submitListenHistory,
+            hasListenHistoryEnabled: () => true,
+        }, state);
+
+        const track = createTrack();
+
+        service.startTrackSession(track.path);
+        service.maybeSubmit(createPlaybackState({ currentTime: 200, duration: 300 }), track, { listenBrainz: false, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        service.maybeSubmit(createPlaybackState({ currentTime: 300, duration: 300 }), track, { listenBrainz: false, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenHistory).toHaveBeenCalledTimes(2);
+        expect(submitListenHistory).toHaveBeenNthCalledWith(
+            1,
+            track.path,
+            expect.any(Object),
+            expect.any(Number),
+            67,
+        );
+        expect(submitListenHistory).toHaveBeenNthCalledWith(
+            2,
+            track.path,
+            expect.any(Object),
+            expect.any(Number),
+            100,
+        );
+        expect(state.localHistorySubmittedPercent).toBe(100);
+    });
+
+    it('can finalize local listen history to 100 percent on automatic track completion', async () => {
+        const submitListenHistory = vi.fn(async () => undefined);
+        const state = createScrobbleSessionState();
+        const service = createScrobbleService({
+            submitListenHistory,
+            hasListenHistoryEnabled: () => true,
+        }, state);
+
+        const track = createTrack();
+
+        service.startTrackSession(track.path);
+        service.maybeSubmit(createPlaybackState({ currentTime: 200, duration: 300 }), track, { listenBrainz: false, lastFm: false });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        service.completeLocalHistory(track, 300);
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenHistory).toHaveBeenCalledTimes(2);
+        expect(submitListenHistory).toHaveBeenLastCalledWith(
+            track.path,
+            expect.any(Object),
+            expect.any(Number),
+            100,
+        );
+        expect(state.localHistorySubmittedPercent).toBe(100);
     });
 });

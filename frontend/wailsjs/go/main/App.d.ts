@@ -3,7 +3,7 @@
 import {main} from '../models';
 import {profiling} from '../models';
 
-export function AddListenHistoryEntry(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number):Promise<boolean>;
+export function AddListenHistoryEntry(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:number):Promise<boolean>;
 
 export function AppendTracksToPlaylistFile(arg1:string,arg2:Array<string>):Promise<boolean>;
 

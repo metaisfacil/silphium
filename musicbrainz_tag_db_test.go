@@ -1451,6 +1451,14 @@ func TestMusicBrainzTagDatabaseSQLiteUsesWALJournalMode(t *testing.T) {
 	if synchronousMode != 1 {
 		t.Fatalf("synchronous mode = %d, want %d (NORMAL)", synchronousMode, 1)
 	}
+
+	var busyTimeout int
+	if err := database.QueryRow(`PRAGMA busy_timeout`).Scan(&busyTimeout); err != nil {
+		t.Fatalf("PRAGMA busy_timeout query error = %v", err)
+	}
+	if busyTimeout != 5000 {
+		t.Fatalf("busy timeout = %d, want %d", busyTimeout, 5000)
+	}
 }
 
 func TestMusicBrainzTagDatabaseSQLiteDeltaWrite(t *testing.T) {

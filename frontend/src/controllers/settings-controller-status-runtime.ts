@@ -20,6 +20,7 @@ export interface SettingsControllerStatusRuntimeContext {
     settingsLocalLibraryFilesDatabaseLoadOnStartup: HTMLInputElement;
     settingsLocalLibraryFilesDatabaseListenHistoryEnabled: HTMLInputElement;
     settingsLocalLibraryFilesDatabaseListenHistoryLimit: HTMLInputElement;
+    settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds: HTMLInputElement;
     settingsMusicBrainzTagDatabaseEnabled: HTMLInputElement;
     settingsHighlightMusicBrainzTaggedAlbumFolders: HTMLInputElement;
     settingsMusicBrainzTagStaleDays: HTMLInputElement;
@@ -170,6 +171,7 @@ export const createSettingsControllerStatusRuntime = (context: SettingsControlle
         context.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled = disabled;
         context.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.disabled = disabled;
         context.settingsLocalLibraryFilesDatabaseListenHistoryLimit.disabled = disabled || !context.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.checked;
+        context.settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds.disabled = disabled || !context.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.checked;
     };
 
     const refreshForceReloadStatus = (): void => {

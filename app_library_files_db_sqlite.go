@@ -10,7 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const libraryFilesDatabaseVersion = 3
+const libraryFilesDatabaseVersion = 4
 
 type libraryFilesDatabaseRecord struct {
 	Path         string
@@ -22,11 +22,12 @@ type libraryFilesDatabaseRecord struct {
 }
 
 type libraryListenHistoryRecord struct {
-	TrackPath   string
-	TrackName   string
-	ArtistName  string
-	ReleaseName string
-	ListenedAt  int64
+	TrackPath     string
+	TrackName     string
+	ArtistName    string
+	ReleaseName   string
+	ListenedAt    int64
+	PlayedPercent int
 }
 
 type playlistTrackCacheRecord struct {
@@ -100,7 +101,8 @@ var libraryFilesSQLiteSchemaStatements = []string{
 		track_name TEXT NOT NULL DEFAULT '',
 		artist_name TEXT NOT NULL DEFAULT '',
 		release_name TEXT NOT NULL DEFAULT '',
-		listened_at INTEGER NOT NULL DEFAULT 0
+		listened_at INTEGER NOT NULL DEFAULT 0,
+		played_percent INTEGER NOT NULL DEFAULT 0
 	)`,
 	`CREATE TABLE IF NOT EXISTS playlist_track_cache (
 		track_path TEXT PRIMARY KEY,
@@ -128,6 +130,14 @@ func openLibraryFilesSQLite(path string) (*sql.DB, error) {
 func initializeLibraryFilesSQLite(database *sql.DB) error {
 	for _, statement := range libraryFilesSQLiteSchemaStatements {
 		if _, err := database.Exec(statement); err != nil {
+			return err
+		}
+	}
+
+	for _, statement := range []string{
+		`ALTER TABLE listen_history ADD COLUMN played_percent INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := database.Exec(statement); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
 			return err
 		}
 	}
@@ -416,15 +426,45 @@ func appendLibraryListenHistoryRecordToSQLite(path string, record libraryListenH
 		_ = transaction.Rollback()
 	}()
 
-	if _, err := transaction.Exec(
-		`INSERT INTO listen_history (track_path, track_name, artist_name, release_name, listened_at) VALUES (?, ?, ?, ?, ?)`,
+	var existingID int64
+	storedPlayedPercent := 0
+	lookupErr := transaction.QueryRow(
+		`SELECT id, played_percent FROM listen_history WHERE track_path = ? AND listened_at = ? ORDER BY id DESC LIMIT 1`,
 		record.TrackPath,
-		record.TrackName,
-		record.ArtistName,
-		record.ReleaseName,
 		record.ListenedAt,
-	); err != nil {
-		return err
+	).Scan(&existingID, &storedPlayedPercent)
+	if lookupErr != nil && lookupErr != sql.ErrNoRows {
+		return lookupErr
+	}
+
+	playedPercent := record.PlayedPercent
+	if playedPercent < storedPlayedPercent {
+		playedPercent = storedPlayedPercent
+	}
+
+	if lookupErr == sql.ErrNoRows {
+		if _, err := transaction.Exec(
+			`INSERT INTO listen_history (track_path, track_name, artist_name, release_name, listened_at, played_percent) VALUES (?, ?, ?, ?, ?, ?)`,
+			record.TrackPath,
+			record.TrackName,
+			record.ArtistName,
+			record.ReleaseName,
+			record.ListenedAt,
+			playedPercent,
+		); err != nil {
+			return err
+		}
+	} else {
+		if _, err := transaction.Exec(
+			`UPDATE listen_history SET track_name = ?, artist_name = ?, release_name = ?, played_percent = ? WHERE id = ?`,
+			record.TrackName,
+			record.ArtistName,
+			record.ReleaseName,
+			playedPercent,
+			existingID,
+		); err != nil {
+			return err
+		}
 	}
 
 	if err := trimLibraryListenHistoryInSQLite(transaction, limit); err != nil {
@@ -458,7 +498,7 @@ func loadLibraryListenHistoryRecordsFromSQLite(databasePath string) ([]libraryLi
 		return nil, false
 	}
 
-	rows, err := database.Query(`SELECT track_path, track_name, artist_name, release_name, listened_at FROM listen_history ORDER BY listened_at DESC, id DESC`)
+	rows, err := database.Query(`SELECT track_path, track_name, artist_name, release_name, listened_at, played_percent FROM listen_history ORDER BY listened_at DESC, id DESC`)
 	if err != nil {
 		return nil, false
 	}
@@ -467,7 +507,7 @@ func loadLibraryListenHistoryRecordsFromSQLite(databasePath string) ([]libraryLi
 	records := make([]libraryListenHistoryRecord, 0)
 	for rows.Next() {
 		var record libraryListenHistoryRecord
-		if err := rows.Scan(&record.TrackPath, &record.TrackName, &record.ArtistName, &record.ReleaseName, &record.ListenedAt); err != nil {
+		if err := rows.Scan(&record.TrackPath, &record.TrackName, &record.ArtistName, &record.ReleaseName, &record.ListenedAt, &record.PlayedPercent); err != nil {
 			return nil, false
 		}
 		records = append(records, record)
@@ -759,23 +799,24 @@ func migrateLegacyLibraryFilesDatabaseToMetadata(metadataPath string, legacyPath
 	}
 	fileRows.Close()
 
-	historyRows, err := legacyDatabase.Query(`SELECT track_path, track_name, artist_name, release_name, listened_at FROM listen_history ORDER BY id`)
+	historyRows, err := legacyDatabase.Query(`SELECT track_path, track_name, artist_name, release_name, listened_at, played_percent FROM listen_history ORDER BY id`)
 	if err != nil {
 		return err
 	}
 	for historyRows.Next() {
 		var record libraryListenHistoryRecord
-		if err := historyRows.Scan(&record.TrackPath, &record.TrackName, &record.ArtistName, &record.ReleaseName, &record.ListenedAt); err != nil {
+		if err := historyRows.Scan(&record.TrackPath, &record.TrackName, &record.ArtistName, &record.ReleaseName, &record.ListenedAt, &record.PlayedPercent); err != nil {
 			historyRows.Close()
 			return err
 		}
 		if _, err := transaction.Exec(
-			`INSERT INTO listen_history (track_path, track_name, artist_name, release_name, listened_at) VALUES (?, ?, ?, ?, ?)`,
+			`INSERT INTO listen_history (track_path, track_name, artist_name, release_name, listened_at, played_percent) VALUES (?, ?, ?, ?, ?, ?)`,
 			record.TrackPath,
 			record.TrackName,
 			record.ArtistName,
 			record.ReleaseName,
 			record.ListenedAt,
+			record.PlayedPercent,
 		); err != nil {
 			historyRows.Close()
 			return err

@@ -49,6 +49,39 @@ type WindowWithOptionalReleaseFolderResolver = Window & {
     };
 };
 
+type WindowWithListenHistoryBridge = Window & {
+    go?: {
+        main?: {
+            App?: {
+                AddListenHistoryEntry?: (
+                    trackPath: string,
+                    trackName: string,
+                    artistName: string,
+                    releaseName: string,
+                    listenedAt: number,
+                    playedPercent: number,
+                ) => Promise<boolean>;
+            };
+        };
+    };
+};
+
+const addListenHistoryEntry = async (
+    trackPath: string,
+    trackName: string,
+    artistName: string,
+    releaseName: string,
+    listenedAt: number,
+    playedPercent: number,
+): Promise<boolean> => {
+    const runtimeBridge = (window as WindowWithListenHistoryBridge).go?.main?.App?.AddListenHistoryEntry;
+    if (runtimeBridge) {
+        return await runtimeBridge(trackPath, trackName, artistName, releaseName, listenedAt, playedPercent);
+    }
+
+    return await AddListenHistoryEntry(trackPath, trackName, artistName, releaseName, listenedAt, playedPercent);
+};
+
 export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeContext) => {
     const defaultMusicBrainzServerUrl = 'https://musicbrainz.org';
     const defaultListenBrainzServerUrl = 'https://api.listenbrainz.org';
@@ -152,17 +185,19 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             server: defaultLastFmServerUrl,
             path: eventType === 'playing_now' ? 'track.updateNowPlaying' : 'track.scrobble',
         }),
-        submitListenHistory: async (trackPath, payload, listenedAt) => await AddListenHistoryEntry(
+        submitListenHistory: async (trackPath, payload, listenedAt, playedPercent) => await addListenHistoryEntry(
             trackPath,
             payload.trackName,
             payload.artistName,
             payload.releaseName,
             listenedAt,
+            playedPercent,
         ),
         hasListenHistoryEnabled: () => (
             context.currentSettings.localLibraryFilesDatabaseEnabled
             && context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled
         ),
+        getListenHistoryThresholdSeconds: () => context.currentSettings.localLibraryFilesDatabaseListenHistoryThresholdSeconds,
     }, context.scrobbleSessionState);
     const playbackSequencingService = createPlaybackSequencingService({
         getTracks: () => context.tracks,

@@ -152,6 +152,7 @@ export type LibraryIndexedFile = {
     cachedTrackNumber?: string;
     cachedTrackTotal?: string;
     listenedAt?: number;
+    playedPercent?: number;
     modifiedAtMs?: number;
 };
 
@@ -356,6 +357,7 @@ export type AppSettings = {
     localLibraryFilesDatabaseLoadOnStartup: boolean;
     localLibraryFilesDatabaseListenHistoryEnabled: boolean;
     localLibraryFilesDatabaseListenHistoryLimit: number;
+    localLibraryFilesDatabaseListenHistoryThresholdSeconds: number;
     ffmpegPath: string;
     openSubsonicEnabled?: boolean;
     openSubsonicPort?: number;

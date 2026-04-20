@@ -24,6 +24,7 @@ export type SettingsFormValues = {
     localLibraryFilesDatabaseLoadOnStartup: boolean;
     localLibraryFilesDatabaseListenHistoryEnabled: boolean;
     localLibraryFilesDatabaseListenHistoryLimit: number;
+    localLibraryFilesDatabaseListenHistoryThresholdSeconds: number;
     ffmpegPath: string;
     remoteLibraryTranscodingEnabled: boolean;
     remoteLibraryTranscodingBitrateKbps: number;

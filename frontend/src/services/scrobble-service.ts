@@ -1,4 +1,6 @@
 import type { AudioPlaybackState, Track } from '../types/app-types';
+import { matchesSilenceTitleHeuristic } from '../utils/display-helpers';
+import { defaultListenHistoryThresholdSeconds } from '../utils/settings-normalization';
 
 type ScrobblePayload = {
     artistName: string;
@@ -23,8 +25,9 @@ type ScrobbleSubmissionOptions = {
 type ScrobbleServiceOptions = {
     submitListenBrainz?: (eventType: 'playing_now' | 'single', payload: ScrobblePayload, listenedAt: number) => Promise<unknown>;
     submitLastFm?: (eventType: 'playing_now' | 'single', payload: ScrobblePayload, listenedAt: number) => Promise<unknown>;
-    submitListenHistory?: (trackPath: string, payload: ScrobblePayload, listenedAt: number) => Promise<unknown>;
+    submitListenHistory?: (trackPath: string, payload: ScrobblePayload, listenedAt: number, playedPercent: number) => Promise<unknown>;
     hasListenHistoryEnabled?: () => boolean;
+    getListenHistoryThresholdSeconds?: () => number;
 };
 
 const createProviderRecord = <T>(initial: T): Record<ScrobbleProvider, T> => ({
@@ -40,6 +43,7 @@ export type ScrobbleSessionState = {
     scrobbleInFlight: Record<ScrobbleProvider, boolean>;
     localHistorySubmittedSessionId: number;
     localHistoryInFlight: boolean;
+    localHistorySubmittedPercent: number;
     scrobbleSessionStartedAt: number;
     activeSessionTrackKey: string;
     recentSinglesByProvider: Record<ScrobbleProvider, Map<string, number>>;
@@ -53,6 +57,7 @@ export const createScrobbleSessionState = (): ScrobbleSessionState => ({
     scrobbleInFlight: createProviderRecord(false),
     localHistorySubmittedSessionId: -1,
     localHistoryInFlight: false,
+    localHistorySubmittedPercent: 0,
     scrobbleSessionStartedAt: 0,
     activeSessionTrackKey: '',
     recentSinglesByProvider: {
@@ -69,6 +74,7 @@ export const createScrobbleService = (
 ) => {
     const providers: ScrobbleProvider[] = ['listenBrainz', 'lastFm'];
     const singleDedupWindowSeconds = 15 * 60;
+    let sessionSerial = 0;
 
     const sessionTrackKey = (trackPath: string | undefined): string => {
         return (trackPath || '')
@@ -82,24 +88,77 @@ export const createScrobbleService = (
         lastFm: options.submitLastFm,
     };
 
-    const submitListenHistory = (trackPath: string, payload: ScrobblePayload, listenedAt: number): void => {
+    const localHistoryThresholdSeconds = (): number => {
+        const configuredThreshold = options.getListenHistoryThresholdSeconds?.();
+        if (!Number.isFinite(configuredThreshold) || (configuredThreshold || 0) < 1) {
+            return defaultListenHistoryThresholdSeconds;
+        }
+
+        return Math.floor(configuredThreshold as number);
+    };
+
+    const canTrackBeStoredInLocalHistory = (track: Track): boolean => !matchesSilenceTitleHeuristic(track);
+
+    const localHistoryThreshold = (duration: number | undefined): number => {
+        if (!Number.isFinite(duration || 0) || (duration || 0) <= 0) {
+            return Number.POSITIVE_INFINITY;
+        }
+
+        const totalDuration = duration as number;
+        const configuredThresholdSeconds = localHistoryThresholdSeconds();
+        if (totalDuration < configuredThresholdSeconds) {
+            return totalDuration;
+        }
+
+        return Math.max(totalDuration * 0.1, configuredThresholdSeconds);
+    };
+
+    const submitListenHistory = (trackPath: string, payload: ScrobblePayload, listenedAt: number, playedPercent: number): void => {
         const submit = options.submitListenHistory;
         if (!submit || trackPath.trim() === '') {
             return;
         }
 
+        const requestSessionSerial = sessionSerial;
         state.localHistoryInFlight = true;
 
-        void submit(trackPath, payload, listenedAt)
+        void submit(trackPath, payload, listenedAt, playedPercent)
             .then(() => {
+                if (requestSessionSerial !== sessionSerial) {
+                    return;
+                }
+
                 state.localHistorySubmittedSessionId = state.scrobbleSessionId;
+                state.localHistorySubmittedPercent = Math.max(0, Math.min(100, Math.round(playedPercent)));
             })
             .catch((error) => {
                 console.error(error);
             })
             .finally(() => {
+                if (requestSessionSerial !== sessionSerial) {
+                    return;
+                }
+
                 state.localHistoryInFlight = false;
             });
+    };
+
+    const completeLocalHistory = (track: Track | undefined, stateDuration: number): void => {
+        if (!track || options.hasListenHistoryEnabled?.() !== true || !options.submitListenHistory) {
+            return;
+        }
+
+        if (!canTrackBeStoredInLocalHistory(track)) {
+            return;
+        }
+
+        if (state.localHistoryInFlight || state.localHistorySubmittedPercent >= 100) {
+            return;
+        }
+
+        const payload = buildScrobbleMetadata(track, stateDuration);
+        const listenedAt = state.scrobbleSessionStartedAt > 0 ? state.scrobbleSessionStartedAt : Math.floor(Date.now() / 1000);
+        submitListenHistory(track.path || '', payload, listenedAt, 100);
     };
 
     const firstTagValue = (track: Track, ...keys: string[]): string => {
@@ -162,6 +221,14 @@ export const createScrobbleService = (
         return Math.min(duration / 2, 240);
     };
 
+    const playedPercent = (currentTime: number, totalDuration: number | undefined): number => {
+        if (!Number.isFinite(currentTime) || currentTime <= 0 || !Number.isFinite(totalDuration || 0) || (totalDuration || 0) <= 0) {
+            return 0;
+        }
+
+        return Math.max(0, Math.min(100, Math.round((currentTime / (totalDuration || 1)) * 100)));
+    };
+
     const singleDedupKey = (payload: ScrobblePayload): string => {
         const recordingMbid = (payload.recordingMbid || '').trim().toLowerCase();
         if (recordingMbid !== '') {
@@ -217,6 +284,8 @@ export const createScrobbleService = (
             return;
         }
 
+        const requestSessionSerial = sessionSerial;
+
         if (eventType === 'playing_now') {
             state.nowPlayingInFlight[provider] = true;
         } else {
@@ -230,6 +299,10 @@ export const createScrobbleService = (
 
         void submit(eventType, payload, listenedAt)
             .then(() => {
+                if (requestSessionSerial !== sessionSerial) {
+                    return;
+                }
+
                 if (eventType === 'playing_now') {
                     state.nowPlayingSubmittedSessionId[provider] = state.scrobbleSessionId;
                     return;
@@ -243,6 +316,10 @@ export const createScrobbleService = (
                 console.error(error);
             })
             .finally(() => {
+                if (requestSessionSerial !== sessionSerial) {
+                    return;
+                }
+
                 if (eventType === 'playing_now') {
                     state.nowPlayingInFlight[provider] = false;
                     return;
@@ -294,15 +371,20 @@ export const createScrobbleService = (
             }
 
             const threshold = scrobbleThreshold(playbackState.duration);
-            if (playbackState.currentTime < threshold) {
-                return;
+            const listenedAt = state.scrobbleSessionStartedAt > 0 ? state.scrobbleSessionStartedAt : Math.floor(Date.now() / 1000);
+            const currentPlayedPercent = playedPercent(playbackState.currentTime, payload.durationSeconds);
+            if (localHistoryEnabled
+                && canTrackBeStoredInLocalHistory(track)
+                && !state.localHistoryInFlight
+                && currentPlayedPercent > 0
+                && playbackState.currentTime >= localHistoryThreshold(payload.durationSeconds)
+                && (state.localHistorySubmittedSessionId !== state.scrobbleSessionId
+                    || currentPlayedPercent > state.localHistorySubmittedPercent)) {
+                submitListenHistory(track.path || '', payload, listenedAt, currentPlayedPercent);
             }
 
-            const listenedAt = state.scrobbleSessionStartedAt > 0 ? state.scrobbleSessionStartedAt : Math.floor(Date.now() / 1000);
-            if (localHistoryEnabled
-                && state.localHistorySubmittedSessionId !== state.scrobbleSessionId
-                && !state.localHistoryInFlight) {
-                submitListenHistory(track.path || '', payload, listenedAt);
+            if (playbackState.currentTime < threshold) {
+                return;
             }
 
             for (const provider of enabledProviders) {
@@ -319,6 +401,7 @@ export const createScrobbleService = (
             }
         },
         reset: (): void => {
+            sessionSerial += 1;
             state.scrobbleSessionId = 0;
             state.nowPlayingSubmittedSessionId = createProviderRecord(-1);
             state.scrobbleSubmittedSessionId = createProviderRecord(-1);
@@ -326,6 +409,7 @@ export const createScrobbleService = (
             state.scrobbleInFlight = createProviderRecord(false);
             state.localHistorySubmittedSessionId = -1;
             state.localHistoryInFlight = false;
+            state.localHistorySubmittedPercent = 0;
             state.scrobbleSessionStartedAt = 0;
             state.activeSessionTrackKey = '';
         },
@@ -335,13 +419,16 @@ export const createScrobbleService = (
                 return;
             }
 
+            sessionSerial += 1;
             state.scrobbleSessionId += 1;
             state.nowPlayingSubmittedSessionId = createProviderRecord(-1);
             state.scrobbleSubmittedSessionId = createProviderRecord(-1);
             state.localHistorySubmittedSessionId = -1;
             state.localHistoryInFlight = false;
+            state.localHistorySubmittedPercent = 0;
             state.scrobbleSessionStartedAt = 0;
             state.activeSessionTrackKey = nextTrackKey;
         },
+        completeLocalHistory,
     };
 };

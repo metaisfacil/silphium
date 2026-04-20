@@ -47,6 +47,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     localLibraryFilesDatabaseLoadOnStartup: true,
     localLibraryFilesDatabaseListenHistoryEnabled: false,
     localLibraryFilesDatabaseListenHistoryLimit: 0,
+    localLibraryFilesDatabaseListenHistoryThresholdSeconds: 30,
     ffmpegPath: '',
     remoteLibraryTranscodingEnabled: false,
     remoteLibraryTranscodingBitrateKbps: 192,
@@ -182,6 +183,7 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-scrobble-rule-list"]')?.textContent).toBe('Scrobble rules');
         expect(document.querySelector('label[for="settings-audio-output-device"]')?.textContent).toBe('Audio output device');
         expect(document.querySelector('label[for="settings-audio-output-buffer-ms"]')?.textContent).toBe('Audio output buffer (ms)');
+        expect(document.querySelector('label[for="settings-local-library-files-database-listen-history-threshold-seconds"]')?.textContent).toBe('Skipped-track history threshold');
         expect(document.querySelector('label[for="settings-player-card-layout"]')?.textContent).toBe('Player card layout');
         expect(document.querySelector('label[for="settings-lissajous-enabled"]')?.textContent?.trim()).toBe('Show player visualizer');
         expect(document.querySelector('label[for="settings-visualizer-mode"]')?.textContent).toBe('Visualizer style');
@@ -270,6 +272,7 @@ describe('createSettingsController', () => {
             localLibraryFilesDatabaseLoadOnStartup: true,
             localLibraryFilesDatabaseListenHistoryEnabled: false,
             localLibraryFilesDatabaseListenHistoryLimit: 0,
+            localLibraryFilesDatabaseListenHistoryThresholdSeconds: 30,
             ffmpegPath: 'D:/tools/ffmpeg.exe',
             scrobblingEnabled: true,
             scrobbleFilterMode: 'blacklist',
@@ -510,6 +513,12 @@ describe('createSettingsController', () => {
 
         expect(elements.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled).toBe(false);
         expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.disabled).toBe(false);
+        expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds.disabled).toBe(true);
+
+        elements.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.checked = true;
+        elements.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+
+        expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds.disabled).toBe(false);
 
         elements.settingsLocalLibraryFilesDatabaseEnabled.checked = false;
         elements.settingsLocalLibraryFilesDatabaseEnabled.dispatchEvent(new Event('change', { bubbles: true }));
@@ -517,6 +526,7 @@ describe('createSettingsController', () => {
         expect(elements.settingsLocalLibraryFilesDatabaseLoadOnStartup.disabled).toBe(true);
         expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryEnabled.disabled).toBe(true);
         expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryLimit.disabled).toBe(true);
+        expect(elements.settingsLocalLibraryFilesDatabaseListenHistoryThresholdSeconds.disabled).toBe(true);
 
         elements.settingsSave.click();
         await flushPromises();
@@ -524,8 +534,9 @@ describe('createSettingsController', () => {
         expect(save).toHaveBeenCalledWith(expect.objectContaining({
             localLibraryFilesDatabaseEnabled: false,
             localLibraryFilesDatabaseLoadOnStartup: true,
-            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryEnabled: true,
             localLibraryFilesDatabaseListenHistoryLimit: 0,
+            localLibraryFilesDatabaseListenHistoryThresholdSeconds: 30,
         }));
     });
 

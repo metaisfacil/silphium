@@ -2,6 +2,7 @@ export type PlaylistSource = 'queue' | 'playlist' | 'history';
 
 export type LoadedListenHistoryItem = {
     listenedAt: number;
+    playedPercent?: number;
 };
 
 export type LoadedPlaylistCachedItem = {
