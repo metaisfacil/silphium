@@ -30,6 +30,7 @@ const lissajousTargetFrameCount = 192;
 const equalizerTargetFrameCount = 320;
 const equalizerFallbackBandCount = 40;
 const visualizationFetchIntervalMs = 75;
+const visualizationStartupQuietMs = 500;
 const maxCanvasDevicePixelRatio = 1.5;
 const pointSmoothingTimeMs = 72;
 const equalizerRiseSmoothingTimeMs = 70;
@@ -192,6 +193,7 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
     let priorityFetchPending = false;
     let playbackActive = false;
     let activePlaybackSourcePath = '';
+    let playbackActivatedAtMs = -1;
     let targetPoints: Float32Array | null = null;
     let renderedPoints: Float32Array | null = null;
     let targetBands: Float32Array | null = null;
@@ -602,6 +604,7 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         priorityFetchPending = false;
         playbackActive = false;
         activePlaybackSourcePath = '';
+        playbackActivatedAtMs = -1;
         resetProjectionState();
         canvas.classList.remove(activeVisualizerClass);
         clear();
@@ -620,10 +623,12 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         }
 
         const nowMs = performance.now();
+        const startupQuietActive = playbackActivatedAtMs >= 0 && (nowMs - playbackActivatedAtMs) < visualizationStartupQuietMs;
         const prioritizeFetch = priorityFetchPending;
         const shouldFetch = enabled
             && playbackState.loaded
             && !fetchInFlight
+            && !startupQuietActive
             && (prioritizeFetch || !shouldDeferBackgroundBridgeCall())
             && (playbackState.playing || latestFrame === null || latestFrame.sourcePath !== playbackState.sourcePath)
             && (prioritizeFetch || (nowMs - lastFetchAtMs >= visualizationFetchIntervalMs));
@@ -705,6 +710,7 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         playbackActive = true;
         activePlaybackSourcePath = sourcePath;
         if (startingPlayback) {
+            playbackActivatedAtMs = performance.now();
             priorityFetchPending = true;
             lastFetchAtMs = 0;
         }

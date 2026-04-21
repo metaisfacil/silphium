@@ -8,6 +8,7 @@ type MediaArtwork = {
 
 type CoverArtServiceOptions = {
     getCoverArtPriority: () => CoverArtPrioritySource[] | string[] | undefined;
+    getIndexedFolderCoverPath?: (folderPath: string) => string | undefined;
     getLibraryFolderCoverPath: (folderPath: string) => Promise<string>;
     readImageThumbnail: (filePath: string, maxEdge: number) => Promise<{ base64?: string; mimeType?: string }>;
     readFileBase64: (filePath: string) => Promise<string>;
@@ -30,7 +31,7 @@ type CoverArtArchiveResponse = {
 };
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
-const nowPlayingCoverThumbnailMaxEdgePx = 800;
+const nowPlayingCoverThumbnailMaxEdgePx = 512;
 
 const loadImageSource = async (src: string): Promise<string | undefined> => {
     return await new Promise((resolve) => {
@@ -133,49 +134,118 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
     const coverPathByFolder = new Map<string, string>();
     const coverUrlByFolder = new Map<string, string>();
     const coverMediaArtworkByFolder = new Map<string, MediaArtwork>();
+    const folderCoverInFlightByFolder = new Map<string, Promise<string | undefined>>();
     const coverUrlByTrackPath = new Map<string, string>();
     const coverMediaArtworkByTrackPath = new Map<string, MediaArtwork>();
+    const embeddedCoverInFlightByTrackPath = new Map<string, Promise<string | undefined>>();
     const coverUrlByMusicBrainzRelease = new Map<string, string>();
     const coverMediaArtworkByMusicBrainzRelease = new Map<string, MediaArtwork>();
+    const musicBrainzCoverInFlightByRelease = new Map<string, Promise<string | undefined>>();
     const coverSourceByTrackPath = new Map<string, CoverArtPrioritySource>();
+
+    const resolveInFlight = (
+        key: string,
+        inflight: Map<string, Promise<string | undefined>>,
+        resolve: () => Promise<string | undefined>,
+    ): Promise<string | undefined> => {
+        const existing = inflight.get(key);
+        if (existing) {
+            return existing;
+        }
+
+        const pending = (async () => {
+            try {
+                return await resolve();
+            } finally {
+                inflight.delete(key);
+            }
+        })();
+        inflight.set(key, pending);
+        return pending;
+    };
+
+    const clearResolvedCache = (): void => {
+        coverUrlByFolder.clear();
+        coverMediaArtworkByFolder.clear();
+        folderCoverInFlightByFolder.clear();
+        coverUrlByTrackPath.clear();
+        coverMediaArtworkByTrackPath.clear();
+        embeddedCoverInFlightByTrackPath.clear();
+        coverUrlByMusicBrainzRelease.clear();
+        coverMediaArtworkByMusicBrainzRelease.clear();
+        musicBrainzCoverInFlightByRelease.clear();
+        coverSourceByTrackPath.clear();
+    };
+
+    const invalidateResolvedForTrack = (track: Track): void => {
+        const trackKey = trackPathKey(track.path || '');
+        const folderKey = folderKeyForPath(track.folderPath || '');
+
+        if (trackKey) {
+            coverUrlByTrackPath.delete(trackKey);
+            coverMediaArtworkByTrackPath.delete(trackKey);
+            embeddedCoverInFlightByTrackPath.delete(trackKey);
+            coverSourceByTrackPath.delete(trackKey);
+        }
+
+        if (folderKey) {
+            folderCoverInFlightByFolder.delete(folderKey);
+            coverUrlByFolder.delete(folderKey);
+            coverMediaArtworkByFolder.delete(folderKey);
+        }
+    };
 
     const resolveFolderCoverForTrack = async (track: Track): Promise<string | undefined> => {
         const folderKey = folderKeyForPath(track.folderPath);
+        if (!folderKey) {
+            return undefined;
+        }
+
         const cached = coverUrlByFolder.get(folderKey);
         if (cached) {
             return cached;
         }
 
-        let coverPath = coverPathByFolder.get(folderKey);
-        if (!coverPath) {
-            const backendCoverPath = await options.getLibraryFolderCoverPath(track.folderPath || '');
-            if (backendCoverPath) {
-                coverPathByFolder.set(folderKey, backendCoverPath);
-                coverPath = backendCoverPath;
+        return await resolveInFlight(folderKey, folderCoverInFlightByFolder, async () => {
+            let coverPath = coverPathByFolder.get(folderKey);
+            if (!coverPath) {
+                const indexedCoverPath = options.getIndexedFolderCoverPath?.(track.folderPath || '')?.trim() || '';
+                if (indexedCoverPath !== '') {
+                    coverPathByFolder.set(folderKey, indexedCoverPath);
+                    coverPath = indexedCoverPath;
+                }
             }
-        }
 
-        if (!coverPath) {
-            return undefined;
-        }
+            if (!coverPath) {
+                const backendCoverPath = await options.getLibraryFolderCoverPath(track.folderPath || '');
+                if (backendCoverPath) {
+                    coverPathByFolder.set(folderKey, backendCoverPath);
+                    coverPath = backendCoverPath;
+                }
+            }
 
-        const thumbnail = await options.readImageThumbnail(coverPath, nowPlayingCoverThumbnailMaxEdgePx);
-        const base64 = thumbnail.base64 || await options.readFileBase64(coverPath);
-        if (!base64) {
-            return undefined;
-        }
+            if (!coverPath) {
+                return undefined;
+            }
 
-        const coverMimeType = thumbnail.mimeType && thumbnail.mimeType.startsWith('image/')
-            ? thumbnail.mimeType
-            : mimeTypeForFileName(coverPath);
-        const coverUrl = base64ToObjectUrl(base64, coverMimeType);
-        coverUrlByFolder.set(folderKey, coverUrl);
-        coverMediaArtworkByFolder.set(folderKey, {
-            src: `data:${coverMimeType};base64,${base64}`,
-            type: coverMimeType,
+            const thumbnail = await options.readImageThumbnail(coverPath, nowPlayingCoverThumbnailMaxEdgePx);
+            const base64 = thumbnail.base64 || await options.readFileBase64(coverPath);
+            if (!base64) {
+                return undefined;
+            }
+
+            const coverMimeType = thumbnail.mimeType && thumbnail.mimeType.startsWith('image/')
+                ? thumbnail.mimeType
+                : mimeTypeForFileName(coverPath);
+            const coverUrl = base64ToObjectUrl(base64, coverMimeType);
+            coverUrlByFolder.set(folderKey, coverUrl);
+            coverMediaArtworkByFolder.set(folderKey, {
+                src: `data:${coverMimeType};base64,${base64}`,
+                type: coverMimeType,
+            });
+            options.registerObjectUrl(coverUrl);
+            return coverUrl;
         });
-        options.registerObjectUrl(coverUrl);
-        return coverUrl;
     };
 
     const resolveEmbeddedCoverForTrack = async (track: Track): Promise<string | undefined> => {
@@ -189,23 +259,25 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
             return cached;
         }
 
-        const embeddedCover = await options.readTrackEmbeddedCover(track.path);
-        const base64 = embeddedCover.base64 || '';
-        if (!base64) {
-            return undefined;
-        }
+        return await resolveInFlight(trackKey, embeddedCoverInFlightByTrackPath, async () => {
+            const embeddedCover = await options.readTrackEmbeddedCover(track.path);
+            const base64 = embeddedCover.base64 || '';
+            if (!base64) {
+                return undefined;
+            }
 
-        const mimeType = embeddedCover.mimeType && embeddedCover.mimeType.startsWith('image/')
-            ? embeddedCover.mimeType
-            : 'image/jpeg';
-        const coverUrl = base64ToObjectUrl(base64, mimeType);
-        coverUrlByTrackPath.set(trackKey, coverUrl);
-        coverMediaArtworkByTrackPath.set(trackKey, {
-            src: `data:${mimeType};base64,${base64}`,
-            type: mimeType,
+            const mimeType = embeddedCover.mimeType && embeddedCover.mimeType.startsWith('image/')
+                ? embeddedCover.mimeType
+                : 'image/jpeg';
+            const coverUrl = base64ToObjectUrl(base64, mimeType);
+            coverUrlByTrackPath.set(trackKey, coverUrl);
+            coverMediaArtworkByTrackPath.set(trackKey, {
+                src: `data:${mimeType};base64,${base64}`,
+                type: mimeType,
+            });
+            options.registerObjectUrl(coverUrl);
+            return coverUrl;
         });
-        options.registerObjectUrl(coverUrl);
-        return coverUrl;
     };
 
     const resolveMusicBrainzCoverForTrack = async (track: Track): Promise<string | undefined> => {
@@ -219,35 +291,32 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
             return cached;
         }
 
-        const releaseCoverUrl = await resolveCoverArtArchiveImageUrl(releaseId);
-        if (!releaseCoverUrl) {
-            return undefined;
-        }
+        return await resolveInFlight(releaseId, musicBrainzCoverInFlightByRelease, async () => {
+            const releaseCoverUrl = await resolveCoverArtArchiveImageUrl(releaseId);
+            if (!releaseCoverUrl) {
+                return undefined;
+            }
 
-        const resolved = await loadImageSource(releaseCoverUrl);
-        if (!resolved) {
-            return undefined;
-        }
+            const resolved = await loadImageSource(releaseCoverUrl);
+            if (!resolved) {
+                return undefined;
+            }
 
-        coverUrlByMusicBrainzRelease.set(releaseId, releaseCoverUrl);
-        coverMediaArtworkByMusicBrainzRelease.set(releaseId, {
-            src: releaseCoverUrl,
-            type: 'image/jpeg',
+            coverUrlByMusicBrainzRelease.set(releaseId, releaseCoverUrl);
+            coverMediaArtworkByMusicBrainzRelease.set(releaseId, {
+                src: releaseCoverUrl,
+                type: 'image/jpeg',
+            });
+            return resolved;
         });
-        return resolved;
     };
 
     return {
         clearCache: (): void => {
             coverPathByFolder.clear();
-            coverUrlByFolder.clear();
-            coverMediaArtworkByFolder.clear();
-            coverUrlByTrackPath.clear();
-            coverMediaArtworkByTrackPath.clear();
-            coverUrlByMusicBrainzRelease.clear();
-            coverMediaArtworkByMusicBrainzRelease.clear();
-            coverSourceByTrackPath.clear();
+            clearResolvedCache();
         },
+        clearResolvedCache,
         getCachedMediaArtwork: (track: Track): MediaArtwork | undefined => {
             const trackKey = trackPathKey(track.path);
             const folderKey = folderKeyForPath(track.folderPath || '');
@@ -270,18 +339,18 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
             const trackKey = trackPathKey(track.path || '');
             const folderKey = folderKeyForPath(track.folderPath || '');
 
+            invalidateResolvedForTrack(track);
+
             if (trackKey) {
-                coverUrlByTrackPath.delete(trackKey);
-                coverMediaArtworkByTrackPath.delete(trackKey);
-                coverSourceByTrackPath.delete(trackKey);
+                embeddedCoverInFlightByTrackPath.delete(trackKey);
             }
 
             if (folderKey) {
                 coverPathByFolder.delete(folderKey);
-                coverUrlByFolder.delete(folderKey);
-                coverMediaArtworkByFolder.delete(folderKey);
+                folderCoverInFlightByFolder.delete(folderKey);
             }
         },
+        invalidateResolvedForTrack,
         resolveForTrack: async (track: Track): Promise<string | undefined> => {
             const trackKey = trackPathKey(track.path);
             const priority = normalizeCoverArtPriority(options.getCoverArtPriority());

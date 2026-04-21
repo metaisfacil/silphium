@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+func preparedTrackReplayGainContextKey(paths []string) string {
+	normalized := normalizeReplayGainReleasePaths(paths)
+	if len(normalized) == 0 {
+		return ""
+	}
+
+	return strings.Join(normalized, "\n")
+}
+
 func (b *AudioBackend) prepareTrackSegment(path string, replayGainReleasePaths []string) (audioTrackSegment, error) {
 	return b.prepareTrackSegmentForSource(path, path, nil, replayGainReleasePaths, audioDecodeHints{})
 }
@@ -68,10 +77,11 @@ func (b *AudioBackend) prepareTrackSegmentForSource(displayPath string, decodePa
 	}
 
 	return audioTrackSegment{
-		SourcePath:       displayPath,
-		PCMData:          decodedPCM,
-		ReplayGainScale:  replayGainInfo.Scale(),
-		ExpectedPCMBytes: expectedPCMBytes,
+		SourcePath:        displayPath,
+		PCMData:           decodedPCM,
+		ReplayGainScale:   replayGainInfo.Scale(),
+		ReplayGainContext: preparedTrackReplayGainContextKey(replayGainReleasePaths),
+		ExpectedPCMBytes:  expectedPCMBytes,
 	}, nil
 }
 
@@ -109,9 +119,10 @@ func (b *AudioBackend) loadTrackFromStreamingDecodeSource(displayPath string, de
 	}
 
 	segment := audioTrackSegment{
-		SourcePath:       displayPath,
-		ReplayGainScale:  replayGainInfo.Scale(),
-		ExpectedPCMBytes: trimmedExpectedBytes,
+		SourcePath:        displayPath,
+		ReplayGainScale:   replayGainInfo.Scale(),
+		ReplayGainContext: preparedTrackReplayGainContextKey(replayGainReleasePaths),
+		ExpectedPCMBytes:  trimmedExpectedBytes,
 	}
 
 	decodeCtx, cancelDecode := context.WithCancel(context.Background())
@@ -211,6 +222,72 @@ func (b *AudioBackend) loadTrackFromDecodeSource(displayPath string, decodePath 
 		return AudioPlaybackState{}, err
 	}
 
+	logAudioEvent("LoadTrack start path=%q progressive=%t durationHint=%.2f", displayPath, decodeHints.Progressive, decodeHints.ExpectedDurationSeconds)
+
+	preparedReplayGainContext := preparedTrackReplayGainContextKey(replayGainReleasePaths)
+	trimmedDisplayPath := strings.TrimSpace(displayPath)
+	b.mutex.Lock()
+	if b.preparedTrackReady && strings.EqualFold(strings.TrimSpace(b.preparedTrack.Segment.SourcePath), trimmedDisplayPath) && b.preparedTrack.ReplayGainContext == preparedReplayGainContext {
+		segment := b.preparedTrack.Segment
+		b.preparedTrack = preparedAudioTrack{}
+		b.preparedTrackReady = false
+		b.unloadTrackLocked()
+		b.streamSegments = []audioTrackSegment{segment}
+		b.streamReadOffset = 0
+		b.streamDroppedBytes = 0
+		b.playStarted = time.Time{}
+		b.playbackBaseBytes = 0
+		b.endEventSent = false
+		b.playing = false
+		player := b.player
+		if b.player != nil {
+			b.player.SetVolume(b.effectivePlayerVolumeLocked())
+		}
+		b.streamCond.Broadcast()
+		state := b.snapshotLocked()
+		summary := b.stateSummaryLocked()
+		b.mutex.Unlock()
+
+		if err := b.flushPlayerBuffer(player); err != nil {
+			return state, err
+		}
+
+		logAudioEvent("LoadTrack reused prepared path=%q bytes=%d state=%s", displayPath, len(segment.PCMData), summary)
+		return state, nil
+	}
+	for index := 1; index < len(b.streamSegments); index += 1 {
+		candidate := b.streamSegments[index]
+		if !strings.EqualFold(strings.TrimSpace(candidate.SourcePath), trimmedDisplayPath) || candidate.ReplayGainContext != preparedReplayGainContext {
+			continue
+		}
+
+		segment := candidate
+		b.unloadTrackLocked()
+		b.streamSegments = []audioTrackSegment{segment}
+		b.streamReadOffset = 0
+		b.streamDroppedBytes = 0
+		b.playStarted = time.Time{}
+		b.playbackBaseBytes = 0
+		b.endEventSent = false
+		b.playing = false
+		player := b.player
+		if b.player != nil {
+			b.player.SetVolume(b.effectivePlayerVolumeLocked())
+		}
+		b.streamCond.Broadcast()
+		state := b.snapshotLocked()
+		summary := b.stateSummaryLocked()
+		b.mutex.Unlock()
+
+		if err := b.flushPlayerBuffer(player); err != nil {
+			return state, err
+		}
+
+		logAudioEvent("LoadTrack reused queued path=%q bytes=%d state=%s", displayPath, len(segment.PCMData), summary)
+		return state, nil
+	}
+	b.mutex.Unlock()
+
 	if decodeHints.Progressive {
 		return b.loadTrackFromStreamingDecodeSource(displayPath, decodePath, preloadedTags, replayGainReleasePaths, decodeHints)
 	}
@@ -285,7 +362,7 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 	b.trimConsumedSegmentsLocked(b.currentPlayedGlobalBytesLocked())
 	b.invalidatePendingQueuedTrackLocked()
 	b.clearFutureQueueLocked()
-	if !b.gaplessPlayback || trimmedNextDisplayPath == "" {
+	if trimmedNextDisplayPath == "" {
 		state := b.snapshotLocked()
 		b.streamCond.Broadcast()
 		summary := b.stateSummaryLocked()
@@ -302,8 +379,9 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 
 	logAudioEvent("QueueNextTrack preparing nextPath=%q state=%s", trimmedNextDisplayPath, summary)
 
-	go func(generation uint64, expectedAfterPath string, expectedNextDisplayPath string, expectedNextDecodePath string, expectedReplayGainReleasePaths []string, expectedDecodeHints audioDecodeHints, expectedTags map[string][]string) {
+	go func(generation uint64, gaplessPlayback bool, expectedAfterPath string, expectedNextDisplayPath string, expectedNextDecodePath string, expectedReplayGainReleasePaths []string, expectedDecodeHints audioDecodeHints, expectedTags map[string][]string) {
 		nextSegment, err := b.prepareTrackSegmentForSource(expectedNextDisplayPath, expectedNextDecodePath, expectedTags, expectedReplayGainReleasePaths, expectedDecodeHints)
+		replayGainContext := preparedTrackReplayGainContextKey(expectedReplayGainReleasePaths)
 
 		b.mutex.Lock()
 		defer b.mutex.Unlock()
@@ -313,7 +391,7 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 		}
 
 		b.syncPlaybackLocked()
-		if len(b.streamSegments) == 0 || !b.gaplessPlayback {
+		if len(b.streamSegments) == 0 {
 			return
 		}
 
@@ -332,10 +410,21 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 			return
 		}
 
+		if !gaplessPlayback {
+			b.preparedTrack = preparedAudioTrack{
+				Segment:           nextSegment,
+				AfterPath:         expectedAfterPath,
+				ReplayGainContext: replayGainContext,
+			}
+			b.preparedTrackReady = true
+			logAudioEvent("QueueNextTrack prepared nextPath=%q state=%s", expectedNextDisplayPath, b.stateSummaryLocked())
+			return
+		}
+
 		b.streamSegments = append(b.streamSegments, nextSegment)
 		b.streamCond.Broadcast()
 		logAudioEvent("QueueNextTrack queued nextPath=%q state=%s", expectedNextDisplayPath, b.stateSummaryLocked())
-	}(requestGeneration, trimmedAfterPath, trimmedNextDisplayPath, trimmedNextDecodePath, replayGainReleasePaths, decodeHints, preloadedTags)
+	}(requestGeneration, b.gaplessPlayback, trimmedAfterPath, trimmedNextDisplayPath, trimmedNextDecodePath, replayGainReleasePaths, decodeHints, preloadedTags)
 
 	return state, nil
 }

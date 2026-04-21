@@ -5,6 +5,39 @@ import (
 	"strings"
 )
 
+func (a *App) audioLoadDecodeHints(path string) audioDecodeHints {
+	hints := audioDecodeHints{}
+	signature, ok := trackTagsFileSignatureForPath(path)
+	if !ok {
+		return hints
+	}
+
+	if cachedTags, cachedHasMetadata, cacheHit := a.getTrackTagsCache(path, signature); cacheHit && cachedHasMetadata && cachedTags.DurationSecs > 0 {
+		return audioDecodeHints{
+			ExpectedDurationSeconds: cachedTags.DurationSecs,
+			Progressive:             true,
+		}
+	}
+
+	if !a.localLibraryFilesDatabaseEnabled() {
+		return hints
+	}
+
+	a.musicBrainzTagMu.Lock()
+	defer a.musicBrainzTagMu.Unlock()
+
+	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+	record, exists := a.musicBrainzTagStore.Tracks[path]
+	if !exists || record.Signature != signature || record.DurationSeconds <= 0 {
+		return hints
+	}
+
+	return audioDecodeHints{
+		ExpectedDurationSeconds: record.DurationSeconds,
+		Progressive:             true,
+	}
+}
+
 func (a *App) normalizeReplayGainContextPaths(paths []string, requiredPath string) ([]string, error) {
 	trimmedRequiredPath := strings.TrimSpace(requiredPath)
 	normalized := make([]string, 0, len(paths)+1)
@@ -80,18 +113,18 @@ func (a *App) AudioLoadTrackWithReplayGainContext(path string, replayGainRelease
 			return AudioPlaybackState{}, err
 		}
 
-		return a.audioBackend().LoadTrackWithReplayGainContext(cleanPath, normalizedReplayGainReleasePaths)
+		return a.audioBackend().loadTrackFromDecodeSource(cleanPath, cleanPath, nil, normalizedReplayGainReleasePaths, a.audioLoadDecodeHints(cleanPath))
 	})
 }
 
-// AudioQueueNextTrack prepares or clears the next track used for seamless playback.
+// AudioQueueNextTrack prepares or clears the immediate next track for transition reuse.
 func (a *App) AudioQueueNextTrack(currentPath string, nextPath string) (AudioPlaybackState, error) {
 	return profiledResult(a, "AudioQueueNextTrack", func() (AudioPlaybackState, error) {
 		return a.AudioQueueNextTrackWithReplayGainContext(currentPath, nextPath, nil)
 	})
 }
 
-// AudioQueueNextTrackWithReplayGainContext prepares or clears the next track using optional release-aware ReplayGain context.
+// AudioQueueNextTrackWithReplayGainContext prepares or clears the immediate next track using optional release-aware ReplayGain context.
 func (a *App) AudioQueueNextTrackWithReplayGainContext(currentPath string, nextPath string, replayGainReleasePaths []string) (AudioPlaybackState, error) {
 	return profiledResult(a, "AudioQueueNextTrackWithReplayGainContext", func() (AudioPlaybackState, error) {
 		trimmedCurrentPath := strings.TrimSpace(currentPath)
@@ -120,7 +153,7 @@ func (a *App) AudioQueueNextTrackWithReplayGainContext(currentPath string, nextP
 			return AudioPlaybackState{}, err
 		}
 
-		return a.audioBackend().QueueNextTrackWithReplayGainContext(cleanCurrentPath, cleanNextPath, normalizedReplayGainReleasePaths)
+		return a.audioBackend().queueNextTrackFromDecodeSource(cleanCurrentPath, cleanNextPath, cleanNextPath, nil, normalizedReplayGainReleasePaths, a.audioLoadDecodeHints(cleanNextPath))
 	})
 }
 

@@ -35,8 +35,9 @@ import { formatPerfLogMessage } from './utils/perf-log';
 import { lookupMusicBrainzTrackMetadata, setMusicBrainzRequestLogServerResolver } from './utils/musicbrainz-entity-helpers';
 import { scheduleLastFmRequest } from './utils/lastfm-request-scheduler';
 import { scheduleListenBrainzRequest } from './utils/musicbrainz-request-scheduler';
-import type { AudioVisualizationFrame, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
+import type { AudioVisualizationFrame, ImageLibraryFile, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
 import { activeSelectionTargetWithin, firstTagValue, normalizedTrackNumber } from './utils/display-helpers';
+import { folderKeyForPath } from './utils/main-helpers';
 
 type WindowWithOptionalReleaseFolderResolver = Window & {
     go?: {
@@ -90,6 +91,66 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     const localReleaseFolderByMBID = new Map<string, Promise<string>>();
     const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
     const lastPerfLogAtByName = new Map<string, number>();
+    let indexedFolderCoverPathsSource: ImageLibraryFile[] | null = null;
+    let indexedFolderCoverPathsByFolder: Map<string, string> | null = null;
+
+    const isPreferredIndexedCoverImagePath = (path: string): boolean => {
+        const lowerPath = path.trim().toLowerCase();
+        return lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || lowerPath.endsWith('.png');
+    };
+
+    const indexedCoverPriority = (name: string): number => {
+        const lowerName = name.trim().toLowerCase();
+        switch (true) {
+            case lowerName === 'cover.jpg':
+                return 0;
+            case lowerName === 'folder.jpg':
+                return 1;
+            case lowerName.startsWith('albumart') && !lowerName.endsWith('.png'):
+                return 2;
+            case lowerName === 'cover.png':
+                return 3;
+            case lowerName === 'folder.png':
+                return 4;
+            case lowerName.startsWith('albumart') && lowerName.endsWith('.png'):
+                return 5;
+            default:
+                return 6;
+        }
+    };
+
+    const indexedFolderCoverPaths = (): Map<string, string> => {
+        if (indexedFolderCoverPathsSource === context.imageFiles && indexedFolderCoverPathsByFolder) {
+            return indexedFolderCoverPathsByFolder;
+        }
+
+        const nextCoverPathsByFolder = new Map<string, string>();
+        const bestPriorityByFolder = new Map<string, number>();
+        const bestNameByFolder = new Map<string, string>();
+        for (const imageFile of context.imageFiles) {
+            const folderKey = folderKeyForPath(imageFile.folderPath || '');
+            const candidatePath = (imageFile.path || '').trim();
+            if (!folderKey || candidatePath === '' || !isPreferredIndexedCoverImagePath(candidatePath)) {
+                continue;
+            }
+
+            const candidateName = (imageFile.name || '').trim().toLowerCase();
+            const candidatePriority = indexedCoverPriority(candidateName);
+            const currentPriority = bestPriorityByFolder.get(folderKey);
+            const currentName = bestNameByFolder.get(folderKey) || '';
+            if (currentPriority !== undefined && (candidatePriority > currentPriority || (candidatePriority === currentPriority && candidateName >= currentName))) {
+                continue;
+            }
+
+            bestPriorityByFolder.set(folderKey, candidatePriority);
+            bestNameByFolder.set(folderKey, candidateName);
+            nextCoverPathsByFolder.set(folderKey, candidatePath);
+        }
+
+        indexedFolderCoverPathsSource = context.imageFiles;
+        indexedFolderCoverPathsByFolder = nextCoverPathsByFolder;
+        return nextCoverPathsByFolder;
+    };
 
     const logSlowBridgeCall = (name: string, elapsedMs: number): void => {
         if (!devPerfLoggingEnabled) {
@@ -242,6 +303,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     });
     const coverArtService = createCoverArtService({
         getCoverArtPriority: () => context.currentSettings.coverArtPriority,
+        getIndexedFolderCoverPath: (folderPath: string): string | undefined => indexedFolderCoverPaths().get(folderKeyForPath(folderPath || '')),
         getLibraryFolderCoverPath: async (folderPath: string): Promise<string> => await measureBridgeCall('GetLibraryFolderCoverPath', 40, async () => await GetLibraryFolderCoverPath(folderPath) as string, {
             background: true,
             maxWaitMs: 500,

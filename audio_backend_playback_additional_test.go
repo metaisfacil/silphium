@@ -132,6 +132,54 @@ func TestAudioBackendPlaybackMethods(t *testing.T) {
 	if queuedSegmentCount != 2 {
 		t.Fatalf("QueueNextTrack() queued segment count = %d, want 2 after async preparation", queuedSegmentCount)
 	}
+
+	gaplessPreloadBackend := NewAudioBackend()
+	gaplessPreloadBackend.ffmpegPath = helperPath
+	useFakeAudioContext(t, &fakeAudioContext{}, nil)
+	gaplessPreloadBackend.ApplyAudioSettings(AudioSettings{GaplessPlayback: true})
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", base64.StdEncoding.EncodeToString(pcmBytes))
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
+	if _, err := gaplessPreloadBackend.LoadTrack("track.flac"); err != nil {
+		t.Fatalf("LoadTrack(gapless preload backend) error = %v", err)
+	}
+	if preloadState, err := gaplessPreloadBackend.QueueNextTrack("track.flac", "next.flac"); err != nil || !preloadState.Loaded {
+		t.Fatalf("QueueNextTrack(gapless preload) = (%#v, %v), want loaded state", preloadState, err)
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		gaplessPreloadBackend.mutex.Lock()
+		queuedSegmentCount = len(gaplessPreloadBackend.streamSegments)
+		gaplessPreloadBackend.mutex.Unlock()
+		if queuedSegmentCount == 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	gaplessPreloadBackend.mutex.Lock()
+	queuedSegmentCount = len(gaplessPreloadBackend.streamSegments)
+	gaplessPreloadBackend.mutex.Unlock()
+	if queuedSegmentCount != 2 {
+		t.Fatalf("QueueNextTrack(gapless preload) queued segment count = %d, want 2 after async preparation", queuedSegmentCount)
+	}
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "1")
+	gaplessPreloadedState, err := gaplessPreloadBackend.LoadTrack("next.flac")
+	if err != nil || !gaplessPreloadedState.Loaded || gaplessPreloadedState.SourcePath != "next.flac" {
+		t.Fatalf("LoadTrack(gapless queued next) = (%#v, %v), want reused queued track", gaplessPreloadedState, err)
+	}
+	gaplessPreloadBackend.mutex.Lock()
+	queuedSegmentCount = len(gaplessPreloadBackend.streamSegments)
+	activePath := ""
+	if queuedSegmentCount > 0 {
+		activePath = gaplessPreloadBackend.streamSegments[0].SourcePath
+	}
+	gaplessPreloadBackend.mutex.Unlock()
+	if queuedSegmentCount != 1 || activePath != "next.flac" {
+		t.Fatalf("LoadTrack(gapless queued next) active queue = (%d, %q), want (1, %q)", queuedSegmentCount, activePath, "next.flac")
+	}
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
 	if queueState, err := queueBackend.QueueNextTrack("other.flac", "next.flac"); err != nil || !queueState.Loaded {
 		t.Fatalf("QueueNextTrack(mismatched afterPath) = (%#v, %v), want unchanged snapshot", queueState, err)
 	}
@@ -169,6 +217,51 @@ func TestAudioBackendPlaybackMethods(t *testing.T) {
 	if queuedSegmentCount != 1 {
 		t.Fatalf("QueueNextTrack(async prepare error) queued segment count = %d, want 1 after failed async preparation", queuedSegmentCount)
 	}
+
+	preloadBackend := NewAudioBackend()
+	preloadBackend.ffmpegPath = helperPath
+	useFakeAudioContext(t, &fakeAudioContext{}, nil)
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", base64.StdEncoding.EncodeToString(pcmBytes))
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
+	if _, err := preloadBackend.LoadTrack("track.flac"); err != nil {
+		t.Fatalf("LoadTrack(preload backend) error = %v", err)
+	}
+	if preloadState, err := preloadBackend.QueueNextTrack("track.flac", "next.flac"); err != nil || !preloadState.Loaded {
+		t.Fatalf("QueueNextTrack(preload) = (%#v, %v), want loaded state", preloadState, err)
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		preloadBackend.mutex.Lock()
+		preparedReady := preloadBackend.preparedTrackReady
+		preparedPath := preloadBackend.preparedTrack.Segment.SourcePath
+		preloadBackend.mutex.Unlock()
+		if preparedReady && preparedPath == "next.flac" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	preloadBackend.mutex.Lock()
+	preparedReady := preloadBackend.preparedTrackReady
+	preparedPath := preloadBackend.preparedTrack.Segment.SourcePath
+	preloadBackend.mutex.Unlock()
+	if !preparedReady || preparedPath != "next.flac" {
+		t.Fatalf("QueueNextTrack(preload) prepared = (%t, %q), want (true, %q)", preparedReady, preparedPath, "next.flac")
+	}
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "1")
+	preloadedState, err := preloadBackend.LoadTrack("next.flac")
+	if err != nil || !preloadedState.Loaded || preloadedState.SourcePath != "next.flac" {
+		t.Fatalf("LoadTrack(preloaded next) = (%#v, %v), want reused prepared track", preloadedState, err)
+	}
+	preloadBackend.mutex.Lock()
+	preparedReady = preloadBackend.preparedTrackReady
+	preloadBackend.mutex.Unlock()
+	if preparedReady {
+		t.Fatal("LoadTrack(preloaded next) should consume the prepared track cache")
+	}
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", base64.StdEncoding.EncodeToString(pcmBytes))
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT", "")
 

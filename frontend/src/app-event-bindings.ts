@@ -20,6 +20,14 @@ type ClickStepMetric = {
     elapsedMs: number;
 };
 
+type TrackNavigationBindingsContext = {
+    back: HTMLElement;
+    forward: HTMLElement;
+    unlockMediaSessionAnchorFromUserGesture: () => void;
+    goToTrack: (direction: -1 | 1) => void;
+    logTransportGesture?: (name: string, target: HTMLElement) => void;
+};
+
 const clampUnitVolume = (value: number): number => {
     if (!Number.isFinite(value)) {
         return 0;
@@ -151,6 +159,36 @@ export const setupVolumeControlBindings = (context: VolumeControlBindingsContext
     });
 
     return volumeRow;
+};
+
+export const setupTrackNavigationBindings = (context: TrackNavigationBindingsContext): void => {
+    const {
+        back,
+        forward,
+        unlockMediaSessionAnchorFromUserGesture,
+        goToTrack,
+        logTransportGesture = () => undefined,
+    } = context;
+
+    back.addEventListener('pointerdown', () => {
+        logTransportGesture('back pointerdown', back);
+        unlockMediaSessionAnchorFromUserGesture();
+    }, { passive: true });
+
+    forward.addEventListener('pointerdown', () => {
+        logTransportGesture('forward pointerdown', forward);
+        unlockMediaSessionAnchorFromUserGesture();
+    }, { passive: true });
+
+    back.addEventListener('click', () => {
+        logTransportGesture('back click', back);
+        goToTrack(-1);
+    });
+
+    forward.addEventListener('click', () => {
+        logTransportGesture('forward click', forward);
+        goToTrack(1);
+    });
 };
 
 export const setupAppEventBindings = (context: AppEventBindingsContext): void => {
@@ -739,10 +777,13 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         void runCustomSendToAction(action, actionPath);
     });
 
-    back.addEventListener('pointerdown', () => { unlockMediaSessionAnchorFromUserGesture(); }, { passive: true });
-    forward.addEventListener('pointerdown', () => { unlockMediaSessionAnchorFromUserGesture(); }, { passive: true });
-    back.addEventListener('click', () => { goToTrack(-1); });
-    forward.addEventListener('click', () => { goToTrack(1); });
+    setupTrackNavigationBindings({
+        back,
+        forward,
+        unlockMediaSessionAnchorFromUserGesture,
+        goToTrack,
+        logTransportGesture,
+    });
     shareBtn.addEventListener('click', () => { void shareController.open(); });
 
     seek.addEventListener('input', () => {

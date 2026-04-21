@@ -53,7 +53,7 @@ vi.mock('./utils/bridge-load-gate', async () => {
 });
 
 import { createAppNowPlayingRuntime } from './app-now-playing-runtime';
-import { AudioGetState, InitializeAudioBackend } from '../wailsjs/go/main/App';
+import { AudioGetState, AudioQueueNextTrack, InitializeAudioBackend } from '../wailsjs/go/main/App';
 import type { AppNowPlayingRuntimeContext } from './app-runtime-setup';
 import { createPlaybackStateService } from './services/playback-state-service';
 import { playbackReconcileMaxPollIntervalMs } from './utils/playback-reconcile-delay';
@@ -160,9 +160,13 @@ const createContext = (): AppNowPlayingRuntimeContext => {
             isBackendReady: vi.fn(() => true),
             setBackendReady: vi.fn(),
         } as never,
-        playlistController: () => ({ scheduleRender: vi.fn() }) as never,
+        playlistController: () => ({
+            scheduleRender: vi.fn(),
+            peekNextTrackIndex: vi.fn(() => undefined),
+        }) as never,
         coverArtService: {
             invalidateForTrack: vi.fn(),
+            invalidateResolvedForTrack: vi.fn(),
             getCachedMediaArtwork: vi.fn(() => undefined),
             resolveForTrack: vi.fn(async () => undefined),
         } as never,
@@ -557,6 +561,56 @@ describe('createAppNowPlayingRuntime', () => {
         vi.useRealTimers();
     });
 
+    it('preloads the next sequential track early in gapless mode so manual forward can reuse it', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentSettings.audio.gaplessPlayback = true;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+            },
+        ];
+        context.playlistController = () => ({
+            scheduleRender: vi.fn(),
+            peekNextTrackIndex: vi.fn(() => 1),
+        }) as never;
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+
+        await vi.runAllTimersAsync();
+
+        expect(AudioQueueNextTrack).toHaveBeenCalledWith('/music/track.flac', '/music/next.flac');
+        expect(context.resolveCoverForTrack).toHaveBeenCalledWith(context.tracks[1]);
+
+        vi.useRealTimers();
+    });
+
     it('still polls playback state when the background bridge window times out', async () => {
         vi.useFakeTimers();
 
@@ -608,6 +662,33 @@ describe('createAppNowPlayingRuntime', () => {
 
         expect(context.currentTrackIndex).toBe(1);
         expect(vi.mocked(AudioGetState)).toHaveBeenCalled();
+
+        vi.useRealTimers();
+    });
+
+    it('keeps the cached cover art intact during current-track metadata refresh', async () => {
+        const context = createContext();
+        const runtime = createAppNowPlayingRuntime(context);
+
+        await runtime.refreshCurrentTrackMetadata();
+
+        expect(context.coverArtService.invalidateForTrack).not.toHaveBeenCalled();
+        expect(context.trackMetadataService.refreshTrack).toHaveBeenCalledWith(0, 1);
+        expect(context.resolveCoverForTrack).toHaveBeenCalledWith(context.tracks[0]);
+    });
+
+    it('refreshes the now-playing cover without dropping the folder cover path cache', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        const runtime = createAppNowPlayingRuntime(context);
+
+        runtime.scheduleNowPlayingCoverRefresh();
+        await vi.advanceTimersByTimeAsync(context.nowPlayingCoverRefreshDebounceMs);
+
+        expect(context.coverArtService.invalidateResolvedForTrack).toHaveBeenCalledWith(context.tracks[0]);
+        expect(context.coverArtService.invalidateForTrack).not.toHaveBeenCalled();
+        expect(context.resolveCoverForTrack).toHaveBeenCalledWith(context.tracks[0]);
 
         vi.useRealTimers();
     });

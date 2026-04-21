@@ -18,6 +18,7 @@ type AppCoreServicesRuntimeScope = RuntimeScope<
     | 'playbackSessionState'
     | 'scrobbleSessionState'
     | 'tracks'
+    | 'imageFiles'
     | 'currentTrackIndex'
     | 'releaseDepthForTrack'
     | 'tagRequestVersion'
@@ -376,6 +377,9 @@ const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) =>
     scrobbleSessionState: scope.scrobbleSessionState,
     get tracks() {
         return scope.tracks;
+    },
+    get imageFiles() {
+        return scope.imageFiles;
     },
     get currentTrackIndex() {
         return scope.currentTrackIndex;
@@ -990,6 +994,9 @@ export const setupLibraryLoadRuntime = (scope: AppLibraryLoadRuntimeScope) => cr
     handleAudioError: scope.handleAudioError,
     clearCoverArtCache: () => {
         scope.coverArtService.clearCache();
+    },
+    clearResolvedCoverArtCache: () => {
+        scope.coverArtService.clearResolvedCache();
     },
     clearArtistInfoCache: () => {
         scope.artistInfoControllerRef.clearCache();

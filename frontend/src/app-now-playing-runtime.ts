@@ -43,9 +43,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     const settledTransitionMetadataRefreshThresholdSeconds = 0.05;
     const settledTransitionMetadataRefreshProbeMs = 50;
     const playerCardTrackTransitionOutMs = 90;
-    const gaplessQueueLeadTimeMinSeconds = 6;
-    const gaplessQueueLeadTimeMaxSeconds = 18;
-    const gaplessQueueLeadTimeFraction = 0.12;
+    const nextTrackPreloadStartSeconds = 1;
     const lyricsPanelWidthPx = 400;
     const lyricsVisibilityBufferPx = 120;
     const playbackProgressEstimator = createPlaybackProgressEstimator();
@@ -60,6 +58,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let settledTransitionMetadataRefreshHandle: number | undefined;
     let settledTransitionMetadataRefreshDeferred = false;
     let pendingSettledTransitionMetadataRefreshPath = '';
+    let queuedTrackCoverPrefetchPath = '';
     let playerCardTrackTransitionHandle: number | undefined;
     let playerCardTrackTransitionFrameHandle = 0;
     let playerCardTrackTransitionVersion = 0;
@@ -187,9 +186,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             context.updateMediaSessionPositionState();
             syncPlaybackProgressLoop();
             playbackPoller.poke();
-            if (shouldPrepareGaplessQueue(nextState)) {
-                void queueGaplessNextTrack(nextState);
-            }
+            void queueGaplessNextTrack(nextState);
             void refreshReplayGainReleaseDynamicRangeIndicator();
         }, 0);
     };
@@ -211,28 +208,6 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         void syncPlaybackState();
     };
 
-    const gaplessQueueLeadTimeSeconds = (durationSeconds: number): number => {
-        if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-            return gaplessQueueLeadTimeMinSeconds;
-        }
-
-        return Math.min(
-            gaplessQueueLeadTimeMaxSeconds,
-            Math.max(gaplessQueueLeadTimeMinSeconds, durationSeconds * gaplessQueueLeadTimeFraction),
-        );
-    };
-
-    const shouldPrepareGaplessQueue = (playbackState: AudioPlaybackState): boolean => {
-        if (!playbackState.loaded || !playbackState.playing) {
-            return false;
-        }
-
-        const remainingSeconds = Number.isFinite(playbackState.duration)
-            ? playbackState.duration - playbackState.currentTime
-            : Number.POSITIVE_INFINITY;
-        return remainingSeconds <= gaplessQueueLeadTimeSeconds(playbackState.duration);
-    };
-
     const tickPlaybackProgressLoop = (): void => {
         playbackProgressAnimationFrameId = 0;
         const estimatedState = playbackProgressEstimator.estimate();
@@ -246,9 +221,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             }
         }
 
-        if (shouldPrepareGaplessQueue(estimatedState)) {
-            void queueGaplessNextTrack(estimatedState);
-        }
+        void queueGaplessNextTrack(estimatedState);
 
         if (estimatedState.loaded && estimatedState.playing) {
             const remainingSeconds = Number.isFinite(estimatedState.duration)
@@ -301,7 +274,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 return;
             }
 
-            context.coverArtService.invalidateForTrack(activeTrack);
+            context.coverArtService.invalidateResolvedForTrack(activeTrack);
             void applyCoverArtForTrack(context.currentTrackIndex);
         }, context.nowPlayingCoverRefreshDebounceMs);
     };
@@ -757,7 +730,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     };
 
     const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState, sequenceOverrideIndexes?: number[]): Promise<void> => {
-        if (!context.currentSettings.audio.gaplessPlayback || !context.playbackStateService.isBackendReady()) {
+        if (!context.playbackStateService.isBackendReady()) {
             return;
         }
 
@@ -771,15 +744,11 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
-        if (!playbackState.playing) {
-            return;
-        }
-
         if (shouldDeferBackgroundBridgeCall()) {
             return;
         }
 
-        if (sequenceOverrideIndexes === undefined && !shouldPrepareGaplessQueue(playbackState)) {
+        if (sequenceOverrideIndexes === undefined && playbackState.playing && playbackState.currentTime < nextTrackPreloadStartSeconds) {
             return;
         }
 
@@ -788,12 +757,22 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         const requestVersion = ++context.gaplessQueueRequestVersion;
 
         if (nextPath === '') {
+            queuedTrackCoverPrefetchPath = '';
+        } else if (nextIndex !== undefined && nextPath !== queuedTrackCoverPrefetchPath) {
+            queuedTrackCoverPrefetchPath = nextPath;
+            const nextTrack = context.tracks[nextIndex];
+            void context.resolveCoverForTrack(nextTrack).catch((error: unknown) => {
+                console.debug(error);
+            });
+        }
+
+        if (nextPath === '') {
             if (context.queuedGaplessTrackPath === '') {
                 return;
             }
 
             context.queuedGaplessTrackPath = '';
-            logPlaybackDebug(`GaplessQueue clear after="${activeTrack.path}"`);
+            logPlaybackDebug(`NextTrackPrep clear after="${activeTrack.path}"`);
             try {
                 await runBackgroundBridgeCall(async () => {
                     await AudioQueueNextTrack(activeTrack.path, '');
@@ -806,7 +785,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 }
             } catch (error) {
                 console.debug(error);
-                logPlaybackDebug(`GaplessQueue clear failed after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
+                logPlaybackDebug(`NextTrackPrep clear failed after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
             }
             return;
         }
@@ -816,7 +795,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         context.queuedGaplessTrackPath = nextPath;
-        logPlaybackDebug(`GaplessQueue next="${nextPath}" after="${activeTrack.path}"`);
+        logPlaybackDebug(`NextTrackPrep next="${nextPath}" after="${activeTrack.path}"`);
         try {
             const currentReleaseTrackPaths = currentReplayGainReleaseTrackPaths(sequenceOverrideIndexes);
             const replayGainReleaseTrackPaths = currentReleaseTrackPaths.length > 1
@@ -843,7 +822,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             }
         } catch (error) {
             console.debug(error);
-            logPlaybackDebug(`GaplessQueue failed next="${nextPath}" after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
+            logPlaybackDebug(`NextTrackPrep failed next="${nextPath}" after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
             if (requestVersion === context.gaplessQueueRequestVersion) {
                 context.queuedGaplessTrackPath = '';
             }
@@ -1168,7 +1147,6 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
-        context.coverArtService.invalidateForTrack(activeTrack);
         context.tagRequestVersion += 1;
         const requestVersion = context.tagRequestVersion;
         const result = await context.trackMetadataService.refreshTrack(index, requestVersion);

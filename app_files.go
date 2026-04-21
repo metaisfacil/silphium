@@ -115,6 +115,21 @@ func (a *App) ReadImageThumbnail(path string, maxEdge int) EmbeddedCoverArt {
 			maxEdge = maxImageThumbnailMaxEdge
 		}
 
+		mimeType := strings.TrimSpace(http.DetectContentType(rawBytes))
+		config, _, err := image.DecodeConfig(bytes.NewReader(rawBytes))
+		if err != nil {
+			return EmbeddedCoverArt{}
+		}
+		if config.Width <= 0 || config.Height <= 0 {
+			return EmbeddedCoverArt{}
+		}
+		if config.Width <= maxEdge && config.Height <= maxEdge && strings.HasPrefix(mimeType, "image/") {
+			return EmbeddedCoverArt{
+				Base64:   base64.StdEncoding.EncodeToString(rawBytes),
+				MimeType: mimeType,
+			}
+		}
+
 		decoded, _, err := image.Decode(bytes.NewReader(rawBytes))
 		if err != nil {
 			return EmbeddedCoverArt{}
@@ -125,17 +140,10 @@ func (a *App) ReadImageThumbnail(path string, maxEdge int) EmbeddedCoverArt {
 			return EmbeddedCoverArt{}
 		}
 
-		mimeType := strings.TrimSpace(http.DetectContentType(rawBytes))
-		if bounds.Dx() <= maxEdge && bounds.Dy() <= maxEdge && strings.HasPrefix(mimeType, "image/") {
-			return EmbeddedCoverArt{
-				Base64:   base64.StdEncoding.EncodeToString(rawBytes),
-				MimeType: mimeType,
-			}
-		}
-
 		thumbnail := resizeImageThumbnail(decoded, maxEdge)
 		var encoded bytes.Buffer
-		if err := png.Encode(&encoded, thumbnail); err != nil {
+		encoder := png.Encoder{CompressionLevel: png.BestSpeed}
+		if err := encoder.Encode(&encoded, thumbnail); err != nil {
 			return EmbeddedCoverArt{}
 		}
 
@@ -165,7 +173,7 @@ func resizeImageThumbnail(source image.Image, maxEdge int) *image.RGBA {
 	}
 
 	resized := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
-	xdraw.CatmullRom.Scale(resized, resized.Bounds(), source, bounds, xdraw.Src, nil)
+	xdraw.ApproxBiLinear.Scale(resized, resized.Bounds(), source, bounds, xdraw.Src, nil)
 
 	return resized
 }

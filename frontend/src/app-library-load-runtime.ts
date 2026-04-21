@@ -64,6 +64,7 @@ export interface AppLibraryLoadRuntimeContext {
     applyPlaybackState: (state: AudioPlaybackState) => void;
     handleAudioError: (error: unknown) => void;
     clearCoverArtCache: () => void;
+    clearResolvedCoverArtCache: () => void;
     clearArtistInfoCache: () => void;
     clearImageModalCache: () => void;
     resetLibraryState: () => void;
@@ -672,7 +673,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
 
         context.setLibraryRootName(nextRootName);
         context.setLibraryIndexTruncated(!!scanResult.truncated);
-        context.clearCoverArtCache();
+        context.clearResolvedCoverArtCache();
         const playbackState = context.getPlaybackState();
         if (!(playbackState.loaded && playbackState.playing)) {
             context.scheduleLibraryIncrementalFolderRefresh();

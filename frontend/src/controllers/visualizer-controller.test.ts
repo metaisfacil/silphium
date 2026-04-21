@@ -26,14 +26,17 @@ const createDeferred = <T>() => {
 
 describe('createVisualizerController', () => {
     let animationFrameCallback: FrameRequestCallback | undefined;
+    let performanceNowMs = 0;
 
     beforeEach(() => {
         animationFrameCallback = undefined;
+        performanceNowMs = 0;
         vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback): number => {
             animationFrameCallback = callback;
             return 1;
         }));
         vi.stubGlobal('cancelAnimationFrame', vi.fn());
+        vi.spyOn(performance, 'now').mockImplementation(() => performanceNowMs);
     });
 
     afterEach(() => {
@@ -82,14 +85,15 @@ describe('createVisualizerController', () => {
         controller.setPlaybackState(playingState);
         expect(animationFrameCallback).toBeTypeOf('function');
 
-        animationFrameCallback?.(16);
+        performanceNowMs = 520;
+        animationFrameCallback?.(520);
         await Promise.resolve();
 
         expect(fetchVisualizationFrame).toHaveBeenCalledTimes(1);
         expect(getBoundingClientRect).not.toHaveBeenCalled();
     });
 
-    it('prioritizes the first visualizer fetch after playback starts even while background bridge work is deferred', async () => {
+    it('waits out the startup quiet window before the first visualizer fetch after playback starts', async () => {
         const canvas = document.createElement('canvas');
         Object.defineProperty(canvas, 'getContext', {
             configurable: true,
@@ -129,7 +133,14 @@ describe('createVisualizerController', () => {
         controller.start();
         controller.setPlaybackState(playingState);
 
+        performanceNowMs = 16;
         animationFrameCallback?.(16);
+        await Promise.resolve();
+
+        expect(fetchVisualizationFrame).not.toHaveBeenCalled();
+
+        performanceNowMs = 520;
+        animationFrameCallback?.(520);
         await Promise.resolve();
 
         expect(fetchVisualizationFrame).toHaveBeenCalledTimes(1);

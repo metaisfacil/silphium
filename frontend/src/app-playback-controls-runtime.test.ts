@@ -179,6 +179,7 @@ const createContext = (coverPromise: Promise<void>): AppPlaybackControlsRuntimeC
 
 describe('createAppPlaybackControlsRuntime', () => {
     afterEach(() => {
+        vi.useRealTimers();
         vi.clearAllMocks();
     });
 
@@ -194,22 +195,54 @@ describe('createAppPlaybackControlsRuntime', () => {
         expect(mediaSessionController?.unlockFromUserGesture).not.toHaveBeenCalled();
     });
 
-    it('starts track tag hydration before cover loading completes', async () => {
+    it('defers current-track hydration until after the post-load idle window', async () => {
+        vi.useFakeTimers();
+
         const coverDeferred = createDeferred();
         const context = createContext(coverDeferred.promise);
         const runtime = createAppPlaybackControlsRuntime(context);
 
-        const loadPromise = runtime.loadTrack(0);
-        await vi.waitFor(() => expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0));
+        await runtime.loadTrack(0);
 
-        expect(context.hydrateCurrentTrackTag).toHaveBeenCalledWith(0, 1);
-        expect(context.libraryController().renderFolder).not.toHaveBeenCalled();
-
-        coverDeferred.resolve();
-        await loadPromise;
-
+        expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
         expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
         expect(context.libraryController().renderFolder).toHaveBeenCalledWith('none');
+
+        await vi.advanceTimersByTimeAsync(1199);
+        expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(context.hydrateCurrentTrackTag).toHaveBeenCalledWith(0, 1);
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(2);
+
+        coverDeferred.resolve();
+    });
+
+    it('reschedules deferred hydration after play so transport is not competing with post-load work', async () => {
+        vi.useFakeTimers();
+
+        const coverDeferred = createDeferred();
+        const context = createContext(coverDeferred.promise);
+        context.currentTrackIndex = 0;
+
+        const runtime = createAppPlaybackControlsRuntime(context);
+
+        await runtime.loadTrack(0);
+        expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
+
+        await runtime.playCurrentTrack();
+
+        await vi.advanceTimersByTimeAsync(1199);
+        expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(context.hydrateCurrentTrackTag).toHaveBeenCalledWith(0, 1);
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(2);
+
+        coverDeferred.resolve();
     });
 
     it('updates the play button optimistically before AudioPlay resolves', async () => {

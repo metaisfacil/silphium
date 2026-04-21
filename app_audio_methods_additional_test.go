@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/base64"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/metaisfacil/oto/v3"
 	taglib "go.senan.xyz/taglib"
@@ -188,6 +190,70 @@ func TestInitializeAudioBackendError(t *testing.T) {
 	if _, err := app.InitializeAudioBackend(); err == nil {
 		t.Fatal("InitializeAudioBackend(missing ffmpeg) error = nil, want error")
 	}
+}
+
+func TestAudioLoadTrackUsesProgressiveDecodeWhenCachedDurationAvailable(t *testing.T) {
+	helperPath := copyCurrentTestBinary(t, t.TempDir(), "ffmpeg.exe")
+	fakeContext := &fakeAudioContext{}
+	useFakeAudioContext(t, fakeContext, nil)
+	app, fixture, _ := newAudioTestApp(t)
+	app.audioBackend().SetFFmpegPath(helperPath)
+	app.audioBackend().ApplyAudioSettings(app.settings.Audio)
+
+	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
+	}
+
+	app.musicBrainzTagMu.Lock()
+	app.ensureMusicBrainzTagDatabaseLoadedLocked()
+	app.musicBrainzTagStore.Tracks[normalizePath(fixture.trackOne)] = musicBrainzTagTrackRecord{
+		Signature:       signature,
+		DurationSeconds: 4,
+	}
+	app.musicBrainzTagMu.Unlock()
+
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STREAM_CHUNK_BYTES", fmt.Sprintf("%d;%d;%d;%d", audioBytesPerSecond, audioBytesPerSecond, audioBytesPerSecond, audioBytesPerSecond))
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STREAM_CHUNK_DELAY_MS", "160")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STREAM_BYTE", "7")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDERR", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
+
+	state, err := app.AudioLoadTrack(fixture.trackOne)
+	if err != nil {
+		t.Fatalf("AudioLoadTrack(progressive cached duration) error = %v", err)
+	}
+	if !state.Loaded || state.Duration != 4 {
+		t.Fatalf("AudioLoadTrack(progressive cached duration) = %#v, want loaded 4s track", state)
+	}
+
+	app.audioBackend().mutex.Lock()
+	bufferedBytes := len(app.audioBackend().streamSegments[0].PCMData)
+	decodeDoneAtReturn := app.audioBackend().streamDecodeDone
+	app.audioBackend().mutex.Unlock()
+	if bufferedBytes >= 4*audioBytesPerSecond {
+		t.Fatalf("AudioLoadTrack(progressive cached duration) buffered bytes = %d, want partial buffer before full decode completes", bufferedBytes)
+	}
+	if decodeDoneAtReturn {
+		t.Fatalf("AudioLoadTrack(progressive cached duration) returned after decode completed; buffered bytes = %d", bufferedBytes)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		app.audioBackend().mutex.Lock()
+		decodeDone := app.audioBackend().streamDecodeDone
+		decodedBytes := len(app.audioBackend().streamSegments[0].PCMData)
+		app.audioBackend().mutex.Unlock()
+		if decodeDone {
+			if decodedBytes != 4*audioBytesPerSecond {
+				t.Fatalf("progressive cached decode bytes = %d, want %d", decodedBytes, 4*audioBytesPerSecond)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal("progressive cached decode did not finish before timeout")
 }
 
 func TestAudioReinitializeBackendError(t *testing.T) {

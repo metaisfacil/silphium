@@ -78,6 +78,7 @@ const createContext = (quickScanResult: LibraryScanResult, trackEntry: LibraryIn
     applyPlaybackState: vi.fn(),
     handleAudioError: vi.fn(),
     clearCoverArtCache: vi.fn(),
+    clearResolvedCoverArtCache: vi.fn(),
     clearArtistInfoCache: vi.fn(),
     clearImageModalCache: vi.fn(),
     resetLibraryState: vi.fn(),
@@ -345,7 +346,7 @@ describe('app-library-load-runtime', () => {
         expect(context.fullLibraryScanLoadActive).toBe(false);
     });
 
-    it('clears cached cover art on incremental scan updates before refreshing the now playing card', async () => {
+    it('clears resolved cover art on incremental scan updates before refreshing the now playing card', async () => {
         const quickScanResult = createScanResult();
         const incrementalScanResult = createScanResult({
             trackCount: 2,
@@ -367,7 +368,8 @@ describe('app-library-load-runtime', () => {
 
         await runtime.handleLibraryScanUpdatedEvent(incrementalScanResult);
 
-        expect(context.clearCoverArtCache).toHaveBeenCalledTimes(1);
+        expect(context.clearResolvedCoverArtCache).toHaveBeenCalledTimes(1);
+        expect(context.clearCoverArtCache).not.toHaveBeenCalled();
         expect(context.scheduleLibraryIncrementalFolderRefresh).toHaveBeenCalledTimes(1);
         expect(context.scheduleNowPlayingCoverRefresh).toHaveBeenCalledTimes(1);
     });
@@ -403,7 +405,8 @@ describe('app-library-load-runtime', () => {
 
         await runtime.handleLibraryScanUpdatedEvent(incrementalScanResult);
 
-        expect(context.clearCoverArtCache).toHaveBeenCalledTimes(1);
+        expect(context.clearResolvedCoverArtCache).toHaveBeenCalledTimes(1);
+        expect(context.clearCoverArtCache).not.toHaveBeenCalled();
         expect(context.scheduleLibraryIncrementalFolderRefresh).not.toHaveBeenCalled();
         expect(context.scheduleNowPlayingCoverRefresh).not.toHaveBeenCalled();
     });

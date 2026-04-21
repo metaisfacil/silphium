@@ -19,7 +19,7 @@ const (
 	audioChannelCount                = 2
 	audioBytesPerFrame               = audioChannelCount * 2
 	defaultAudioOutputBuffer         = 0 * time.Millisecond
-	defaultAudioPlayerBuffer         = 250 * time.Millisecond
+	defaultAudioPlayerBuffer         = 500 * time.Millisecond
 	maxAudioPlayerReadChunk          = 50 * time.Millisecond
 	maxAudioPlayerBuffer             = 3 * time.Second
 	playerBufferHeadroomFactor       = 4
@@ -72,10 +72,17 @@ type AudioOutputDevice struct {
 }
 
 type audioTrackSegment struct {
-	SourcePath       string
-	PCMData          []byte
-	ReplayGainScale  float64
-	ExpectedPCMBytes int64
+	SourcePath        string
+	PCMData           []byte
+	ReplayGainScale   float64
+	ReplayGainContext string
+	ExpectedPCMBytes  int64
+}
+
+type preparedAudioTrack struct {
+	Segment           audioTrackSegment
+	AfterPath         string
+	ReplayGainContext string
 }
 
 func (s audioTrackSegment) byteLen() int64 {
@@ -302,6 +309,8 @@ type AudioBackend struct {
 	streamDecodeDone            bool
 	streamDecodeErr             error
 	nextQueueRequestGeneration  uint64
+	preparedTrack               preparedAudioTrack
+	preparedTrackReady          bool
 	playbackHeadroomLow         bool
 	replayGainCacheMu           sync.Mutex
 	replayGainCacheByPath       map[string]replayGainCacheEntry
@@ -333,13 +342,14 @@ func (b *AudioBackend) stateSummaryLocked() string {
 		streamDecodeState = "error"
 	}
 	return fmt.Sprintf(
-		"loaded=%t playing=%t source=%q time=%.2f/%.2f queue=%d read=%d base=%d dropped=%d decode=%s gapless=%t replayGain=%t",
+		"loaded=%t playing=%t source=%q time=%.2f/%.2f queue=%d prepared=%t read=%d base=%d dropped=%d decode=%s gapless=%t replayGain=%t",
 		state.Loaded,
 		state.Playing,
 		state.SourcePath,
 		state.CurrentTime,
 		state.Duration,
 		len(b.streamSegments),
+		b.preparedTrackReady,
 		b.streamReadOffset,
 		b.playbackBaseBytes,
 		b.streamDroppedBytes,
@@ -1232,7 +1242,19 @@ func (b *AudioBackend) invalidatePendingQueuedTrackLocked() {
 	b.nextQueueRequestGeneration++
 }
 
+func (b *AudioBackend) clearPreparedTrackLocked() {
+	if !b.preparedTrackReady {
+		return
+	}
+
+	b.preparedTrack.Segment.PCMData = nil
+	b.preparedTrack = preparedAudioTrack{}
+	b.preparedTrackReady = false
+}
+
 func (b *AudioBackend) clearFutureQueueLocked() {
+	b.clearPreparedTrackLocked()
+
 	if len(b.streamSegments) <= 1 {
 		return
 	}

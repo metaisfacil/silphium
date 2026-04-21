@@ -7,7 +7,6 @@ import {
     AudioSeek,
     AudioStop,
     GetAppVersion,
-    LogFrontendMessage,
     ScanConfiguredLibraryFolders,
 } from '../wailsjs/go/main/App';
 import { WindowHide, WindowIsMinimised } from '../wailsjs/runtime/runtime';
@@ -29,7 +28,48 @@ import { formatPerfLogMessage } from './utils/perf-log';
 
 export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRuntimeContext) => {
     const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
+    const postLoadTrackHydrationDelayMs = 1200;
+    const postPlayTrackHydrationDelayMs = 1200;
     let lastTransportPerfLogAtMs = 0;
+    let pendingTrackHydrationHandle: number | undefined;
+    let pendingTrackHydrationToken = 0;
+
+    const clearPendingTrackHydration = (): void => {
+        pendingTrackHydrationToken += 1;
+        if (pendingTrackHydrationHandle !== undefined) {
+            window.clearTimeout(pendingTrackHydrationHandle);
+            pendingTrackHydrationHandle = undefined;
+        }
+    };
+
+    const runDeferredTrackHydration = (index: number): void => {
+        if (index !== context.currentTrackIndex || index < 0 || index >= context.tracks.length) {
+            return;
+        }
+
+        context.tagRequestVersion += 1;
+        void context.hydrateCurrentTrackTag(index, context.tagRequestVersion);
+
+        void context.applyCoverArtForTrack(index).catch((error: unknown) => {
+            console.error(error);
+        });
+
+        context.artistInfoRequestVersion += 1;
+        void context.hydrateCurrentArtistInfo(index);
+    };
+
+    const scheduleTrackHydration = (index: number, delayMs: number): void => {
+        clearPendingTrackHydration();
+        const hydrationToken = pendingTrackHydrationToken;
+        pendingTrackHydrationHandle = window.setTimeout(() => {
+            pendingTrackHydrationHandle = undefined;
+            if (hydrationToken !== pendingTrackHydrationToken) {
+                return;
+            }
+
+            runDeferredTrackHydration(index);
+        }, delayMs);
+    };
 
     const applyOptimisticPlayingState = (playing: boolean): void => {
         if (!context.playbackStateService.setPlaying(playing)) {
@@ -46,7 +86,6 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
 
         const message = formatPerfLogMessage(`transport ${name}`);
         console.warn(message);
-        void LogFrontendMessage(message).catch(() => undefined);
     };
 
     const logTransportStep = (name: string, elapsedMs: number, thresholdMs = 0, rateLimited = false): void => {
@@ -65,7 +104,6 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
 
         const message = formatPerfLogMessage(`transport ${name} ${elapsedMs.toFixed(1)}ms`);
         console.warn(message);
-        void LogFrontendMessage(message).catch(() => undefined);
     };
 
     const refreshAvailableAudioOutputDevices = async (): Promise<AudioOutputDevice[]> => {
@@ -98,6 +136,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
 
         context.gaplessQueueRequestVersion += 1;
         context.queuedGaplessTrackPath = '';
+        clearPendingTrackHydration();
         if (manualTrackSelection && context.playbackSequencingService.getPlaybackOrderMode() === 'shuffle-library') {
             context.playlistController().activatePlaybackQueueSource();
             context.resetShuffleHistory();
@@ -172,15 +211,12 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         }
 
         context.refreshNowPlayingLabel();
-        context.tagRequestVersion += 1;
-        void context.hydrateCurrentTrackTag(index, context.tagRequestVersion);
-
-        await context.applyCoverArtForTrack(index);
         updateMediaSessionMetadata();
         context.libraryController().renderFolder('none');
-
-        context.artistInfoRequestVersion += 1;
-        void context.hydrateCurrentArtistInfo(index);
+        void context.applyCoverArtForTrack(index).catch((error: unknown) => {
+            console.error(error);
+        });
+        scheduleTrackHydration(index, postLoadTrackHydrationDelayMs);
     };
 
     const playCurrentTrack = async (): Promise<void> => {
@@ -199,6 +235,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
             return;
         }
 
+        clearPendingTrackHydration();
         context.playbackMutationVersion += 1;
         context.logPlaybackDebug(`Play request index=${context.currentTrackIndex} path="${context.tracks[context.currentTrackIndex]?.path || ''}"`);
         logTransportMarker(`AudioPlay intent index=${context.currentTrackIndex}`);
@@ -213,6 +250,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
             const applyStartedAtMs = performance.now();
             context.applyPlaybackState(nextState);
             logTransportStep('AudioPlay applyPlaybackState', performance.now() - applyStartedAtMs);
+            scheduleTrackHydration(context.currentTrackIndex, postPlayTrackHydrationDelayMs);
         } catch (error) {
             applyOptimisticPlayingState(previousPlaying);
             context.handleAudioError(error);
@@ -310,6 +348,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
             return;
         }
 
+        clearPendingTrackHydration();
         context.gaplessQueueRequestVersion += 1;
         context.queuedGaplessTrackPath = '';
         try {

@@ -6,7 +6,7 @@ vi.mock('../wailsjs/runtime/runtime', () => ({
     OnFileDrop: vi.fn(),
 }));
 
-import { setupVolumeControlBindings } from './app-event-bindings';
+import { setupTrackNavigationBindings, setupVolumeControlBindings } from './app-event-bindings';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -142,5 +142,41 @@ describe('setupVolumeControlBindings', () => {
 
         expect(audioSetVolume).toHaveBeenNthCalledWith(1, 0.55);
         expect(audioSetVolume).toHaveBeenNthCalledWith(2, 0.5);
+    });
+});
+
+describe('setupTrackNavigationBindings', () => {
+    afterEach(() => {
+        document.body.innerHTML = '';
+        vi.clearAllMocks();
+    });
+
+    it('logs and navigates for back and forward player control clicks', () => {
+        const back = document.createElement('button');
+        const forward = document.createElement('button');
+        const unlockMediaSessionAnchorFromUserGesture = vi.fn();
+        const goToTrack = vi.fn();
+        const logTransportGesture = vi.fn();
+
+        setupTrackNavigationBindings({
+            back,
+            forward,
+            unlockMediaSessionAnchorFromUserGesture,
+            goToTrack,
+            logTransportGesture,
+        });
+
+        back.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        back.click();
+        forward.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        forward.click();
+
+        expect(logTransportGesture).toHaveBeenNthCalledWith(1, 'back pointerdown', back);
+        expect(logTransportGesture).toHaveBeenNthCalledWith(2, 'back click', back);
+        expect(logTransportGesture).toHaveBeenNthCalledWith(3, 'forward pointerdown', forward);
+        expect(logTransportGesture).toHaveBeenNthCalledWith(4, 'forward click', forward);
+        expect(unlockMediaSessionAnchorFromUserGesture).toHaveBeenCalledTimes(2);
+        expect(goToTrack).toHaveBeenNthCalledWith(1, -1);
+        expect(goToTrack).toHaveBeenNthCalledWith(2, 1);
     });
 });
