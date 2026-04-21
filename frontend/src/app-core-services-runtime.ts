@@ -1,6 +1,7 @@
 import {
     AddListenHistoryEntry,
     AudioGetVisualizationFrame,
+    GetInternalCoverArtConfig,
     GetLastFmFollowing,
     GetLastFmFollowingFeed,
     GetLibraryFolderCoverPath,
@@ -67,6 +68,11 @@ type WindowWithListenHistoryBridge = Window & {
     };
 };
 
+type InternalCoverArtConfig = {
+    baseUrl?: string;
+    token?: string;
+};
+
 const addListenHistoryEntry = async (
     trackPath: string,
     trackName: string,
@@ -91,6 +97,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     const localReleaseFolderByMBID = new Map<string, Promise<string>>();
     const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
     const lastPerfLogAtByName = new Map<string, number>();
+    let internalCoverArtConfigPromise: Promise<{ baseUrl: string; token: string } | undefined> | undefined;
     let indexedFolderCoverPathsSource: ImageLibraryFile[] | null = null;
     let indexedFolderCoverPathsByFolder: Map<string, string> | null = null;
 
@@ -150,6 +157,24 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         indexedFolderCoverPathsSource = context.imageFiles;
         indexedFolderCoverPathsByFolder = nextCoverPathsByFolder;
         return nextCoverPathsByFolder;
+    };
+
+    const getInternalCoverArtConfig = async (): Promise<{ baseUrl: string; token: string } | undefined> => {
+        if (!internalCoverArtConfigPromise) {
+            internalCoverArtConfigPromise = measureBridgeCall('GetInternalCoverArtConfig', 20, async () => (
+                await GetInternalCoverArtConfig() as InternalCoverArtConfig
+            )).then((config) => {
+                const baseUrl = (config.baseUrl || '').trim().replace(/\/+$/, '');
+                const token = (config.token || '').trim();
+                if (baseUrl === '' || token === '') {
+                    return undefined;
+                }
+
+                return { baseUrl, token };
+            }).catch(() => undefined);
+        }
+
+        return await internalCoverArtConfigPromise;
     };
 
     const logSlowBridgeCall = (name: string, elapsedMs: number): void => {
@@ -303,6 +328,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     });
     const coverArtService = createCoverArtService({
         getCoverArtPriority: () => context.currentSettings.coverArtPriority,
+        getInternalCoverArtConfig,
         getIndexedFolderCoverPath: (folderPath: string): string | undefined => indexedFolderCoverPaths().get(folderKeyForPath(folderPath || '')),
         getLibraryFolderCoverPath: async (folderPath: string): Promise<string> => await measureBridgeCall('GetLibraryFolderCoverPath', 40, async () => await GetLibraryFolderCoverPath(folderPath) as string, {
             background: true,

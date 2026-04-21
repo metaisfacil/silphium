@@ -43,6 +43,8 @@ export function DisposeFrontendSessionState():Promise<void>;
 
 export function GetAppVersion():Promise<string>;
 
+export function GetInternalCoverArtConfig():Promise<main.InternalCoverArtConfig>;
+
 export function GetLastFmFollowing():Promise<Array<string>>;
 
 export function GetLastFmFollowingFeed(arg1:number):Promise<Array<main.ListenBrainzSocialEvent>>;

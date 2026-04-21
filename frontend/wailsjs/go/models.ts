@@ -335,6 +335,20 @@ export namespace main {
 	    }
 	}
 	
+	export class InternalCoverArtConfig {
+	    baseUrl: string;
+	    token: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InternalCoverArtConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.baseUrl = source["baseUrl"];
+	        this.token = source["token"];
+	    }
+	}
 	export class LastFmTrackMetadata {
 	    artistName: string;
 	    trackName: string;

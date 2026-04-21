@@ -3982,40 +3982,13 @@ func (a *App) handleOpenSubsonicGetCoverArt(w http.ResponseWriter, r *http.Reque
 		writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "cover art not found", "")
 		return
 	}
-	if folderPath != "" {
-		coverPath := a.GetLibraryFolderCoverPath(folderPath)
-		if strings.TrimSpace(coverPath) == "" {
-			writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "cover art not found", "")
-			return
-		}
-		if requestedSize > 0 {
-			thumbnail := a.ReadImageThumbnail(coverPath, requestedSize)
-			decoded, err := base64.StdEncoding.DecodeString(thumbnail.Base64)
-			if err == nil && len(decoded) > 0 {
-				w.Header().Set("Content-Type", thumbnail.MimeType)
-				_, _ = w.Write(decoded)
-				return
-			}
-		}
-		contentType := openSubsonicContentType(coverPath)
-		rawBytes, ok := a.readLibraryFileBytes(coverPath)
-		if !ok {
-			writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "cover art not found", "")
-			return
-		}
-		w.Header().Set("Content-Type", contentType)
-		_, _ = w.Write(rawBytes)
-		return
-	}
-
-	cover := a.ReadTrackEmbeddedCover(absoluteTrackPath)
-	decoded, err := base64.StdEncoding.DecodeString(cover.Base64)
-	if err != nil || len(decoded) == 0 {
+	coverBytes, mimeType, ok := a.resolveCoverArtBytes(folderPath, absoluteTrackPath, requestedSize)
+	if !ok {
 		writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "cover art not found", "")
 		return
 	}
-	w.Header().Set("Content-Type", cover.MimeType)
-	_, _ = w.Write(decoded)
+	w.Header().Set("Content-Type", mimeType)
+	_, _ = w.Write(coverBytes)
 }
 
 func (a *App) handleOpenSubsonicStream(w http.ResponseWriter, r *http.Request, values url.Values) {

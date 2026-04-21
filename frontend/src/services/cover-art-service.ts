@@ -6,8 +6,24 @@ type MediaArtwork = {
     type: string;
 };
 
+type BinaryImageObjectUrl = {
+    url: string;
+    mimeType: string;
+};
+
+type BinaryImageObjectUrlResult =
+    | { kind: 'success'; value: BinaryImageObjectUrl }
+    | { kind: 'miss' }
+    | { kind: 'transport-failure' };
+
+type InternalCoverArtConfig = {
+    baseUrl: string;
+    token: string;
+};
+
 type CoverArtServiceOptions = {
     getCoverArtPriority: () => CoverArtPrioritySource[] | string[] | undefined;
+    getInternalCoverArtConfig?: () => Promise<InternalCoverArtConfig | undefined>;
     getIndexedFolderCoverPath?: (folderPath: string) => string | undefined;
     getLibraryFolderCoverPath: (folderPath: string) => Promise<string>;
     readImageThumbnail: (filePath: string, maxEdge: number) => Promise<{ base64?: string; mimeType?: string }>;
@@ -32,6 +48,26 @@ type CoverArtArchiveResponse = {
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
 const nowPlayingCoverThumbnailMaxEdgePx = 512;
+const internalCoverArtFolderIDKind = 'cover-folder';
+const internalCoverArtTrackIDKind = 'cover-track';
+const maxInternalCoverArtFailuresBeforeDisable = 2;
+
+const base64UrlEncodeUtf8 = (value: string): string => {
+    const bytes = new TextEncoder().encode(value);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        const chunk = bytes.subarray(offset, offset + chunkSize);
+        binary += String.fromCharCode(...chunk);
+    }
+
+    return btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+};
+
+const internalCoverArtID = (kind: string, value: string): string => `${kind}:${base64UrlEncodeUtf8(value)}`;
 
 const loadImageSource = async (src: string): Promise<string | undefined> => {
     return await new Promise((resolve) => {
@@ -142,6 +178,105 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
     const coverMediaArtworkByMusicBrainzRelease = new Map<string, MediaArtwork>();
     const musicBrainzCoverInFlightByRelease = new Map<string, Promise<string | undefined>>();
     const coverSourceByTrackPath = new Map<string, CoverArtPrioritySource>();
+    const folderCoverRevisionByFolder = new Map<string, number>();
+    const embeddedCoverRevisionByTrackPath = new Map<string, number>();
+    let resolvedCacheEpoch = 0;
+    let internalCoverArtConfigPromise: Promise<InternalCoverArtConfig | undefined> | undefined;
+    let internalCoverArtDisabled = false;
+    let internalCoverArtFailureCount = 0;
+
+    const noteInternalCoverArtSuccess = (): void => {
+        internalCoverArtFailureCount = 0;
+    };
+
+    const noteInternalCoverArtFailure = (): void => {
+        internalCoverArtFailureCount += 1;
+        if (internalCoverArtFailureCount >= maxInternalCoverArtFailuresBeforeDisable) {
+            internalCoverArtDisabled = true;
+        }
+    };
+
+    const fetchBinaryImageObjectUrl = async (src: string): Promise<BinaryImageObjectUrlResult> => {
+        let objectUrl = '';
+        try {
+            const response = await fetch(src, { cache: 'force-cache' });
+            if (!response.ok) {
+                return { kind: 'miss' };
+            }
+
+            const blob = await response.blob();
+            if (!blob || blob.size <= 0) {
+                return { kind: 'miss' };
+            }
+
+            const mimeType = (blob.type || response.headers?.get('Content-Type') || '').trim();
+            if (mimeType !== '' && !mimeType.startsWith('image/')) {
+                return { kind: 'transport-failure' };
+            }
+
+            objectUrl = URL.createObjectURL(blob);
+            const loadedUrl = await loadImageSource(objectUrl);
+            if (!loadedUrl) {
+                if (typeof URL.revokeObjectURL === 'function') {
+                    URL.revokeObjectURL(objectUrl);
+                }
+                return { kind: 'transport-failure' };
+            }
+
+            options.registerObjectUrl(objectUrl);
+            return {
+                kind: 'success',
+                value: {
+                    url: objectUrl,
+                    mimeType,
+                },
+            };
+        } catch {
+            if (objectUrl !== '' && typeof URL.revokeObjectURL === 'function') {
+                URL.revokeObjectURL(objectUrl);
+            }
+            return { kind: 'transport-failure' };
+        }
+    };
+
+    const resolveInternalCoverArtConfig = async (): Promise<InternalCoverArtConfig | undefined> => {
+        if (!options.getInternalCoverArtConfig || internalCoverArtDisabled) {
+            return undefined;
+        }
+
+        if (!internalCoverArtConfigPromise) {
+            internalCoverArtConfigPromise = options.getInternalCoverArtConfig().then((config) => {
+                if (!config) {
+                    return undefined;
+                }
+
+                const baseUrl = config.baseUrl.trim().replace(/\/+$/, '');
+                const token = config.token.trim();
+                if (baseUrl === '' || token === '') {
+                    return undefined;
+                }
+
+                return { baseUrl, token };
+            }).catch(() => undefined);
+        }
+
+        return await internalCoverArtConfigPromise;
+    };
+
+    const buildInternalCoverArtUrl = (
+        config: InternalCoverArtConfig,
+        id: string,
+        revision: number,
+    ): string => {
+        const query = new URLSearchParams({
+            id,
+            size: String(nowPlayingCoverThumbnailMaxEdgePx),
+            token: config.token,
+            epoch: String(resolvedCacheEpoch),
+            rev: String(revision),
+        });
+        return `${config.baseUrl}/internal/cover?${query.toString()}`;
+    };
 
     const resolveInFlight = (
         key: string,
@@ -165,6 +300,7 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
     };
 
     const clearResolvedCache = (): void => {
+        resolvedCacheEpoch += 1;
         coverUrlByFolder.clear();
         coverMediaArtworkByFolder.clear();
         folderCoverInFlightByFolder.clear();
@@ -182,6 +318,7 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
         const folderKey = folderKeyForPath(track.folderPath || '');
 
         if (trackKey) {
+            embeddedCoverRevisionByTrackPath.set(trackKey, (embeddedCoverRevisionByTrackPath.get(trackKey) || 0) + 1);
             coverUrlByTrackPath.delete(trackKey);
             coverMediaArtworkByTrackPath.delete(trackKey);
             embeddedCoverInFlightByTrackPath.delete(trackKey);
@@ -189,6 +326,7 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
         }
 
         if (folderKey) {
+            folderCoverRevisionByFolder.set(folderKey, (folderCoverRevisionByFolder.get(folderKey) || 0) + 1);
             folderCoverInFlightByFolder.delete(folderKey);
             coverUrlByFolder.delete(folderKey);
             coverMediaArtworkByFolder.delete(folderKey);
@@ -228,6 +366,32 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
                 return undefined;
             }
 
+            const internalCoverArtConfig = await resolveInternalCoverArtConfig();
+            if (internalCoverArtConfig) {
+                const internalCoverUrl = buildInternalCoverArtUrl(
+                    internalCoverArtConfig,
+                    internalCoverArtID(internalCoverArtFolderIDKind, track.folderPath || ''),
+                    folderCoverRevisionByFolder.get(folderKey) || 0,
+                );
+                const resolved = await fetchBinaryImageObjectUrl(internalCoverUrl);
+                if (resolved.kind === 'success') {
+                    noteInternalCoverArtSuccess();
+                    const coverMimeType = resolved.value.mimeType.startsWith('image/')
+                        ? resolved.value.mimeType
+                        : mimeTypeForFileName(coverPath);
+                    coverUrlByFolder.set(folderKey, resolved.value.url);
+                    coverMediaArtworkByFolder.set(folderKey, {
+                        src: resolved.value.url,
+                        type: coverMimeType,
+                    });
+                    return resolved.value.url;
+                }
+
+                if (resolved.kind === 'transport-failure') {
+                    noteInternalCoverArtFailure();
+                }
+            }
+
             const thumbnail = await options.readImageThumbnail(coverPath, nowPlayingCoverThumbnailMaxEdgePx);
             const base64 = thumbnail.base64 || await options.readFileBase64(coverPath);
             if (!base64) {
@@ -260,6 +424,32 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
         }
 
         return await resolveInFlight(trackKey, embeddedCoverInFlightByTrackPath, async () => {
+            const internalCoverArtConfig = await resolveInternalCoverArtConfig();
+            if (internalCoverArtConfig && track.relativePath.trim() !== '') {
+                const internalCoverUrl = buildInternalCoverArtUrl(
+                    internalCoverArtConfig,
+                    internalCoverArtID(internalCoverArtTrackIDKind, track.relativePath),
+                    embeddedCoverRevisionByTrackPath.get(trackKey) || 0,
+                );
+                const resolved = await fetchBinaryImageObjectUrl(internalCoverUrl);
+                if (resolved.kind === 'success') {
+                    noteInternalCoverArtSuccess();
+                    const mimeType = resolved.value.mimeType.startsWith('image/')
+                        ? resolved.value.mimeType
+                        : 'image/jpeg';
+                    coverUrlByTrackPath.set(trackKey, resolved.value.url);
+                    coverMediaArtworkByTrackPath.set(trackKey, {
+                        src: resolved.value.url,
+                        type: mimeType,
+                    });
+                    return resolved.value.url;
+                }
+
+                if (resolved.kind === 'transport-failure') {
+                    noteInternalCoverArtFailure();
+                }
+            }
+
             const embeddedCover = await options.readTrackEmbeddedCover(track.path);
             const base64 = embeddedCover.base64 || '';
             if (!base64) {
@@ -314,6 +504,8 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
     return {
         clearCache: (): void => {
             coverPathByFolder.clear();
+            folderCoverRevisionByFolder.clear();
+            embeddedCoverRevisionByTrackPath.clear();
             clearResolvedCache();
         },
         clearResolvedCache,

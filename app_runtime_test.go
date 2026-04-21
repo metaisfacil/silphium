@@ -83,6 +83,9 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	if app.ctx == nil {
 		t.Fatal("startup() should capture the app context")
 	}
+	if config := app.GetInternalCoverArtConfig(); config.BaseURL == "" || config.Token == "" {
+		t.Fatalf("GetInternalCoverArtConfig() after startup = %#v, want non-empty loopback config", config)
+	}
 	if !app.settingsLoaded {
 		t.Fatal("startup() should mark settings as loaded")
 	}
@@ -96,6 +99,9 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	app.shutdown(context.Background())
 	if !app.quitRequested.Load() {
 		t.Fatal("shutdown() should mark quitRequested")
+	}
+	if config := app.GetInternalCoverArtConfig(); config != (InternalCoverArtConfig{}) {
+		t.Fatalf("GetInternalCoverArtConfig() after shutdown = %#v, want empty config", config)
 	}
 	if app.mediaKeyWatcherState().stopCh != nil || app.musicBrainzTagWorkerState().wakeCh != nil {
 		t.Fatal("shutdown() should stop background workers")

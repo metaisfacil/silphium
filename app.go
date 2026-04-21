@@ -41,7 +41,8 @@ type App struct {
 	appProfilerState
 	appLibraryState
 	appMusicBrainzTagState
-	scrobble appScrobbleState
+	scrobble         appScrobbleState
+	internalCoverArt appInternalCoverArtState
 
 	openSubsonicMu          sync.Mutex
 	openSubsonicServer      *http.Server
@@ -68,6 +69,13 @@ type appProfilerState struct {
 	server            *http.Server
 	httpAddr          string
 	frontendEventsOff func()
+}
+
+type appInternalCoverArtState struct {
+	mu      sync.Mutex
+	server  *http.Server
+	baseURL string
+	token   string
 }
 
 type appSettingsStorageState struct {
@@ -244,6 +252,7 @@ func (a *App) startup(ctx context.Context) {
 	a.loadStoredSettings()
 	a.audioBackend().SetFFmpegPath(settingsState.settings.FFmpegPath)
 	a.audioBackend().ApplyAudioSettings(settingsState.settings.Audio)
+	a.syncInternalCoverArtServer()
 	a.syncOpenSubsonicServer()
 	a.refreshSystemTrayForSettings()
 	a.startMediaKeyWatcher()
@@ -254,6 +263,7 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(context.Context) {
 	a.runtimeState().quitRequested.Store(true)
 	a.stopProfiler()
+	a.stopInternalCoverArtServer()
 	a.stopOpenSubsonicServer()
 	a.stopSystemTray()
 	a.stopMediaKeyWatcher()
@@ -333,6 +343,10 @@ func (a *App) trackTagsCacheState() *appTrackTagsCacheState {
 
 func (a *App) scrobbleState() *appScrobbleState {
 	return &a.scrobble
+}
+
+func (a *App) internalCoverArtState() *appInternalCoverArtState {
+	return &a.internalCoverArt
 }
 
 func (a *App) musicBrainzTagState() *appMusicBrainzTagState {

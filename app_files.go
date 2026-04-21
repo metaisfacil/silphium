@@ -24,6 +24,17 @@ import (
 const defaultImageThumbnailMaxEdge = 96
 const maxImageThumbnailMaxEdge = 800
 
+func clampImageThumbnailMaxEdge(maxEdge int) int {
+	if maxEdge <= 0 {
+		return defaultImageThumbnailMaxEdge
+	}
+	if maxEdge > maxImageThumbnailMaxEdge {
+		return maxImageThumbnailMaxEdge
+	}
+
+	return maxEdge
+}
+
 func (a *App) readLibraryFileBytes(path string) ([]byte, bool) {
 	if !a.isAllowedLibraryPath(path) {
 		return nil, false
@@ -35,6 +46,59 @@ func (a *App) readLibraryFileBytes(path string) ([]byte, bool) {
 	}
 
 	return rawBytes, true
+}
+
+func imageThumbnailBytes(rawBytes []byte, maxEdge int) ([]byte, string, bool) {
+	if len(rawBytes) == 0 {
+		return nil, "", false
+	}
+
+	maxEdge = clampImageThumbnailMaxEdge(maxEdge)
+	mimeType := strings.TrimSpace(http.DetectContentType(rawBytes))
+	config, _, err := image.DecodeConfig(bytes.NewReader(rawBytes))
+	if err != nil {
+		if strings.HasPrefix(mimeType, "image/") {
+			return rawBytes, mimeType, true
+		}
+		return nil, "", false
+	}
+	if config.Width <= 0 || config.Height <= 0 {
+		return nil, "", false
+	}
+	if config.Width <= maxEdge && config.Height <= maxEdge && strings.HasPrefix(mimeType, "image/") {
+		return rawBytes, mimeType, true
+	}
+
+	decoded, _, err := image.Decode(bytes.NewReader(rawBytes))
+	if err != nil {
+		if strings.HasPrefix(mimeType, "image/") {
+			return rawBytes, mimeType, true
+		}
+		return nil, "", false
+	}
+
+	bounds := decoded.Bounds()
+	if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
+		return nil, "", false
+	}
+
+	thumbnail := resizeImageThumbnail(decoded, maxEdge)
+	var encoded bytes.Buffer
+	encoder := png.Encoder{CompressionLevel: png.BestSpeed}
+	if err := encoder.Encode(&encoded, thumbnail); err != nil {
+		return nil, "", false
+	}
+
+	return encoded.Bytes(), "image/png", true
+}
+
+func (a *App) readImageThumbnailBytes(path string, maxEdge int) ([]byte, string, bool) {
+	rawBytes, ok := a.readLibraryFileBytes(path)
+	if !ok {
+		return nil, "", false
+	}
+
+	return imageThumbnailBytes(rawBytes, maxEdge)
 }
 
 // ReadFileBase64 reads a file from the allowed library scope and returns its base64 content.
@@ -103,53 +167,14 @@ func (a *App) CopyShareImageToClipboard(imageBase64 string) bool {
 // ReadImageThumbnail reads an image from the allowed library scope and returns a cheap thumbnail.
 func (a *App) ReadImageThumbnail(path string, maxEdge int) EmbeddedCoverArt {
 	return profiledValue(a, "ReadImageThumbnail", func() EmbeddedCoverArt {
-		rawBytes, ok := a.readLibraryFileBytes(path)
+		thumbnailBytes, mimeType, ok := a.readImageThumbnailBytes(path, maxEdge)
 		if !ok {
 			return EmbeddedCoverArt{}
 		}
 
-		if maxEdge <= 0 {
-			maxEdge = defaultImageThumbnailMaxEdge
-		}
-		if maxEdge > maxImageThumbnailMaxEdge {
-			maxEdge = maxImageThumbnailMaxEdge
-		}
-
-		mimeType := strings.TrimSpace(http.DetectContentType(rawBytes))
-		config, _, err := image.DecodeConfig(bytes.NewReader(rawBytes))
-		if err != nil {
-			return EmbeddedCoverArt{}
-		}
-		if config.Width <= 0 || config.Height <= 0 {
-			return EmbeddedCoverArt{}
-		}
-		if config.Width <= maxEdge && config.Height <= maxEdge && strings.HasPrefix(mimeType, "image/") {
-			return EmbeddedCoverArt{
-				Base64:   base64.StdEncoding.EncodeToString(rawBytes),
-				MimeType: mimeType,
-			}
-		}
-
-		decoded, _, err := image.Decode(bytes.NewReader(rawBytes))
-		if err != nil {
-			return EmbeddedCoverArt{}
-		}
-
-		bounds := decoded.Bounds()
-		if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
-			return EmbeddedCoverArt{}
-		}
-
-		thumbnail := resizeImageThumbnail(decoded, maxEdge)
-		var encoded bytes.Buffer
-		encoder := png.Encoder{CompressionLevel: png.BestSpeed}
-		if err := encoder.Encode(&encoded, thumbnail); err != nil {
-			return EmbeddedCoverArt{}
-		}
-
 		return EmbeddedCoverArt{
-			Base64:   base64.StdEncoding.EncodeToString(encoded.Bytes()),
-			MimeType: "image/png",
+			Base64:   base64.StdEncoding.EncodeToString(thumbnailBytes),
+			MimeType: mimeType,
 		}
 	})
 }
