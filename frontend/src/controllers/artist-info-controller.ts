@@ -32,11 +32,15 @@ export const createArtistInfoController = (options: ArtistInfoControllerOptions)
         artistInfoSummary,
         artistInfoLinks,
     } = options.elements;
+    const ownerDocument = artistInfoLinks.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView ?? window;
 
     const artistInfoByMBID = new Map<string, ArtistDetails>();
     let expandedArtistLinkGroup: string | null = null;
+    let artistInfoContextMenuCopyText = '';
     const artistLinkPanelAnimationMs = 180;
     const artistLinkPanelResetTimers = new WeakMap<HTMLElement, number>();
+    const artistInfoContextMenu = ownerDocument.createElement('div');
     const artistLinkCategoryOrder = [
         'official homepage',
         'discography',
@@ -176,10 +180,102 @@ export const createArtistInfoController = (options: ArtistInfoControllerOptions)
         ['www.amazon.co.jp', 'get the music'],
     ]);
 
+    artistInfoContextMenu.className = 'artist-info-links-context-menu';
+    artistInfoContextMenu.hidden = true;
+    artistInfoContextMenu.setAttribute('role', 'menu');
+    artistInfoContextMenu.setAttribute('aria-label', 'Artist link actions');
+    ownerDocument.body.append(artistInfoContextMenu);
+
     const normalizeArtistUrlType = (rawType?: string): string => {
         const trimmed = (rawType || '').trim();
         return trimmed !== '' ? trimmed : 'link';
     };
+
+    const closeArtistInfoContextMenu = (): void => {
+        artistInfoContextMenu.hidden = true;
+        artistInfoContextMenu.replaceChildren();
+        artistInfoContextMenuCopyText = '';
+    };
+
+    const fallbackCopyTextToClipboard = (text: string): void => {
+        const textarea = ownerDocument.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', 'true');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        ownerDocument.body.append(textarea);
+        textarea.focus();
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+
+        const copied = typeof ownerDocument.execCommand === 'function'
+            ? ownerDocument.execCommand('copy')
+            : false;
+
+        textarea.remove();
+
+        if (!copied) {
+            throw new Error('Clipboard text copy is not available in this environment');
+        }
+    };
+
+    const copyTextToClipboard = async (text: string): Promise<void> => {
+        const clipboard = ownerWindow.navigator.clipboard as Clipboard | undefined;
+        let browserClipboardError: unknown;
+
+        if (clipboard?.writeText) {
+            try {
+                await clipboard.writeText(text);
+                return;
+            } catch (error) {
+                browserClipboardError = error;
+            }
+        }
+
+        try {
+            fallbackCopyTextToClipboard(text);
+        } catch (fallbackError) {
+            if (browserClipboardError) {
+                throw browserClipboardError;
+            }
+
+            throw fallbackError;
+        }
+    };
+
+    const positionArtistInfoContextMenu = (clientX: number, clientY: number): void => {
+        const margin = 10;
+        const rect = artistInfoContextMenu.getBoundingClientRect();
+        const clampedX = Math.min(clientX, ownerWindow.innerWidth - rect.width - margin);
+        const clampedY = Math.min(clientY, ownerWindow.innerHeight - rect.height - margin);
+
+        artistInfoContextMenu.style.left = `${Math.max(margin, clampedX)}px`;
+        artistInfoContextMenu.style.top = `${Math.max(margin, clampedY)}px`;
+    };
+
+    const openArtistInfoContextMenu = (clientX: number, clientY: number, label: string, copyText: string): void => {
+        artistInfoContextMenuCopyText = copyText.trim();
+
+        const actionButton = ownerDocument.createElement('button');
+        actionButton.className = 'artist-info-links-context-menu-item';
+        actionButton.type = 'button';
+        actionButton.setAttribute('role', 'menuitem');
+        actionButton.dataset.artistInfoContextAction = 'copy';
+        actionButton.textContent = label;
+        actionButton.disabled = artistInfoContextMenuCopyText === '';
+
+        artistInfoContextMenu.replaceChildren(actionButton);
+        artistInfoContextMenu.hidden = false;
+        positionArtistInfoContextMenu(clientX, clientY);
+    };
+
+    const copyableArtistResources = (urls: ArtistExternalUrl[]): string => (
+        urls
+            .map(({ resource }) => resource.trim())
+            .filter((resource) => resource !== '')
+            .join('\n')
+    );
 
     const categoryForArtistUrl = (url: ArtistExternalUrl): string => {
         const normalizedType = normalizeArtistUrlType(url.type);
@@ -225,6 +321,7 @@ export const createArtistInfoController = (options: ArtistInfoControllerOptions)
         const button = document.createElement('button');
         button.className = 'artist-link-btn';
         button.type = 'button';
+        button.dataset.artistLinkResource = url.resource;
 
         const fallback = document.createElement('span');
         fallback.className = 'artist-link-fallback';
@@ -321,6 +418,7 @@ export const createArtistInfoController = (options: ArtistInfoControllerOptions)
     };
 
     const renderArtistUrlIcons = (urls?: ArtistExternalUrl[]): void => {
+        closeArtistInfoContextMenu();
         artistInfoLinks.innerHTML = '';
 
         if (!urls || urls.length === 0) {
@@ -377,6 +475,12 @@ export const createArtistInfoController = (options: ArtistInfoControllerOptions)
 
             toggle.append(toggleLabel, toggleCount, toggleChevron);
 
+            toggle.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openArtistInfoContextMenu(event.clientX, event.clientY, 'Copy all', copyableArtistResources(groupUrls));
+            });
+
             const panel = document.createElement('div');
             panel.className = 'artist-link-group-panel';
             panel.setAttribute('aria-hidden', 'true');
@@ -387,7 +491,13 @@ export const createArtistInfoController = (options: ArtistInfoControllerOptions)
             strip.className = 'artist-link-strip';
 
             groupUrls.forEach((url) => {
-                strip.append(createArtistLinkButton(url, groupType));
+                const linkButton = createArtistLinkButton(url, groupType);
+                linkButton.addEventListener('contextmenu', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openArtistInfoContextMenu(event.clientX, event.clientY, 'Copy link', url.resource);
+                });
+                strip.append(linkButton);
             });
             panel.append(strip);
 
@@ -404,6 +514,7 @@ export const createArtistInfoController = (options: ArtistInfoControllerOptions)
     };
 
     const reset = (): void => {
+        closeArtistInfoContextMenu();
         artistInfoName.textContent = 'No artist info';
         artistInfoType.textContent = 'Type: —';
         artistInfoCountry.textContent = 'Country: —';
@@ -464,6 +575,70 @@ export const createArtistInfoController = (options: ArtistInfoControllerOptions)
             }
         }
     };
+
+    artistInfoContextMenu.addEventListener('click', (event) => {
+        const actionButton = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('.artist-info-links-context-menu-item');
+        if (!actionButton || actionButton.disabled || artistInfoContextMenuCopyText === '') {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        const copyText = artistInfoContextMenuCopyText;
+        closeArtistInfoContextMenu();
+        void copyTextToClipboard(copyText).catch((error) => {
+            console.error(error);
+        });
+    });
+
+    ownerDocument.addEventListener('mousedown', (event) => {
+        if (artistInfoContextMenu.hidden) {
+            return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof Node) || artistInfoContextMenu.contains(target)) {
+            return;
+        }
+
+        closeArtistInfoContextMenu();
+    }, { capture: true });
+
+    ownerDocument.addEventListener('contextmenu', (event) => {
+        if (artistInfoContextMenu.hidden) {
+            return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof Element) || artistInfoContextMenu.contains(target)) {
+            return;
+        }
+
+        const trigger = target.closest('.artist-link-group-toggle, .artist-link-btn');
+        if (trigger && artistInfoLinks.contains(trigger)) {
+            return;
+        }
+
+        closeArtistInfoContextMenu();
+    }, { capture: true });
+
+    ownerDocument.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !artistInfoContextMenu.hidden) {
+            closeArtistInfoContextMenu();
+        }
+    });
+
+    ownerDocument.addEventListener('scroll', () => {
+        if (!artistInfoContextMenu.hidden) {
+            closeArtistInfoContextMenu();
+        }
+    }, { capture: true });
+
+    ownerWindow.addEventListener('blur', () => {
+        if (!artistInfoContextMenu.hidden) {
+            closeArtistInfoContextMenu();
+        }
+    });
 
     return {
         clearCache: (): void => {

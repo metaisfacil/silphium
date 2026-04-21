@@ -8,6 +8,19 @@ export const createCoverFlipRuntime = (context: CoverFlipRuntimeContext) => {
     const coverFlipSuppressWindowMs = 320;
     let suppressCoverContextMenuUntil = 0;
     let suppressCoverFrontClickUntil = 0;
+    const coverContextMenuIgnoreSelector = '.artist-link-group-toggle, .artist-link-btn, .artist-info-links-context-menu';
+
+    const coverContextMenuIgnoredTarget = (target: EventTarget | null): Element | null => {
+        if (target instanceof Element) {
+            return target.closest(coverContextMenuIgnoreSelector);
+        }
+
+        if (target instanceof Node) {
+            return target.parentElement?.closest(coverContextMenuIgnoreSelector) ?? null;
+        }
+
+        return null;
+    };
 
     const markCoverFlipHandled = (): void => {
         const suppressUntil = performance.now() + coverFlipSuppressWindowMs;
@@ -17,6 +30,10 @@ export const createCoverFlipRuntime = (context: CoverFlipRuntimeContext) => {
 
     const toggleCoverFlipFromSecondaryInput = (event: MouseEvent): void => {
         if (performance.now() < suppressCoverContextMenuUntil) {
+            return;
+        }
+
+        if (coverContextMenuIgnoredTarget(event.target)) {
             return;
         }
 
@@ -35,6 +52,10 @@ export const createCoverFlipRuntime = (context: CoverFlipRuntimeContext) => {
     const toggleCoverFlipFromContextMenu = (event: MouseEvent): boolean => {
         const target = event.target;
         if (!(target instanceof Node) || !context.coverFrame.contains(target)) {
+            return false;
+        }
+
+        if (coverContextMenuIgnoredTarget(target)) {
             return false;
         }
 

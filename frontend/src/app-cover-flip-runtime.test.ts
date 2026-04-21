@@ -90,4 +90,32 @@ describe('createCoverFlipRuntime', () => {
         expect(stopPropagationSpy).not.toHaveBeenCalled();
         expect(context.setCoverFlipped).not.toHaveBeenCalled();
     });
+
+    it('does not flip the cover when right-clicking artist link controls', () => {
+        document.body.innerHTML = `
+            <div id="frame">
+                <button class="artist-link-group-toggle" type="button"><span>Official homepage</span></button>
+                <button class="artist-link-btn" type="button">Link</button>
+            </div>
+        `;
+        const coverFrame = document.querySelector('#frame') as HTMLDivElement;
+        const groupToggleLabel = coverFrame.querySelector('.artist-link-group-toggle span') as HTMLSpanElement;
+        const linkButton = coverFrame.querySelector('.artist-link-btn') as HTMLButtonElement;
+        const context = {
+            coverFrame,
+            coverFlipped: false,
+            setCoverFlipped: vi.fn(),
+        };
+        const runtime = createCoverFlipRuntime(context);
+
+        const groupPointerDown = new MouseEvent('pointerdown', { button: 2, bubbles: true });
+        Object.defineProperty(groupPointerDown, 'target', { value: groupToggleLabel });
+        runtime.toggleCoverFlipFromSecondaryInput(groupPointerDown);
+
+        const linkContextMenu = new MouseEvent('contextmenu', { bubbles: true });
+        Object.defineProperty(linkContextMenu, 'target', { value: linkButton });
+
+        expect(runtime.toggleCoverFlipFromContextMenu(linkContextMenu)).toBe(false);
+        expect(context.setCoverFlipped).not.toHaveBeenCalled();
+    });
 });

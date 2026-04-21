@@ -53,6 +53,12 @@ describe('artist-info-controller', () => {
     beforeEach(() => {
         vi.useFakeTimers();
         document.body.innerHTML = '';
+        Object.defineProperty(navigator, 'clipboard', {
+            configurable: true,
+            value: {
+                writeText: vi.fn(async () => undefined),
+            },
+        });
     });
 
     afterEach(() => {
@@ -82,8 +88,9 @@ describe('artist-info-controller', () => {
         expect(elements.artistInfoLinks.hidden).toBe(true);
     });
 
-    it('hydrates artist info, groups urls, toggles panels, caches results, and opens links', async () => {
+    it('hydrates artist info, groups urls, toggles panels, copies links, caches results, and opens links', async () => {
         const elements = createElements();
+        const writeText = vi.mocked(navigator.clipboard.writeText);
         const lookupArtistByMBID = vi.fn(async () => createArtistDetails({
             found: true,
             name: 'Artist Name',
@@ -93,7 +100,9 @@ describe('artist-info-controller', () => {
             genres: ['ambient', 'electronic'],
             urls: [
                 { type: 'Official homepage', resource: 'https://artist.example/home' },
+                { type: 'Fanpage', resource: 'https://artist.example/about' },
                 { type: 'Discography', resource: 'https://artist.example/discography' },
+                { type: 'Discography page', resource: 'https://artist.example/releases' },
                 { type: 'Youtube', resource: 'https://youtube.com/watch?v=123' },
                 { type: 'Discogs', resource: 'https://discogs.com/artist/123' },
                 { type: '', resource: 'not a url' },
@@ -141,7 +150,33 @@ describe('artist-info-controller', () => {
         toggles[0].click();
         expect(toggles[0].getAttribute('aria-expanded')).toBe('false');
 
+        toggles[0].dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 60,
+            clientY: 70,
+        }));
+
+        const copyAllButton = document.body.querySelector('.artist-info-links-context-menu-item') as HTMLButtonElement;
+        expect(copyAllButton).not.toBeNull();
+        expect(copyAllButton.textContent).toBe('Copy all');
+
+        copyAllButton.click();
+        expect(writeText).toHaveBeenCalledWith('https://artist.example/home\nhttps://artist.example/about');
+        expect(document.body.querySelector('.artist-info-links-context-menu')?.hasAttribute('hidden')).toBe(true);
+
         const firstLinkButton = elements.artistInfoLinks.querySelector('.artist-link-btn') as HTMLButtonElement;
+        firstLinkButton.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 80,
+            clientY: 90,
+        }));
+        const copyLinkButton = document.body.querySelector('.artist-info-links-context-menu-item') as HTMLButtonElement;
+        expect(copyLinkButton.textContent).toBe('Copy link');
+        copyLinkButton.click();
+        expect(writeText).toHaveBeenLastCalledWith('https://artist.example/home');
+
         firstLinkButton.click();
         expect(openUrl).toHaveBeenCalledWith('https://artist.example/home');
 
