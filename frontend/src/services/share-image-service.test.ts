@@ -117,7 +117,7 @@ describe('share image preview cover rendering', () => {
             const [source, x, y, width, height] = call;
             return source === coverImage
             && Number(x) < 34
-                && Math.abs(Number(y) - 30) < 0.001
+                && Math.abs(Number(y) - 23) < 0.001
             && Number(width) > 194
                 && Math.abs(Number(height) - 194) < 0.001;
         });
@@ -200,7 +200,7 @@ describe('share image preview text fitting', () => {
             coverImage: { width: 10, height: 10 } as unknown as CanvasImageSource,
         });
 
-        const textDraws = drawCalls.filter((call) => call.x >= 262 && call.y >= 68 && call.y < 260);
+        const textDraws = drawCalls.filter((call) => call.x >= 262 && call.y >= 61 && call.y < 260);
         const titleSize = textDraws
             .find((call) => call.font.startsWith('700 '))
             ?.font.match(/\s(\d+)px\s/)?.[1];
@@ -224,7 +224,7 @@ describe('share image preview text fitting', () => {
         expect(titleReduction).toBe(albumReduction);
     });
 
-    it('caps shared shrink at five points and ellipsizes within configured line limits', () => {
+    it('keeps shared shrink within the configured limit and ellipsizes within configured line limits', () => {
         const { canvas, drawCalls } = createTextContext();
 
         const veryLongText = 'extraordinarilylongword extraordinarilylongword extraordinarilylongword extraordinarilylongword';
@@ -235,13 +235,31 @@ describe('share image preview text fitting', () => {
             comment: '',
         });
 
-        const titleLines = drawCalls.filter((call) => call.font === '700 26px "Nunito", "Segoe UI", sans-serif');
-        const artistLines = drawCalls.filter((call) => call.font === '600 18px "Nunito", "Segoe UI", sans-serif');
-        const albumLines = drawCalls.filter((call) => call.font === '500 13px "Nunito", "Segoe UI", sans-serif');
+        const metadataDraws = drawCalls.filter((call) => call.x >= 262 && call.y >= 61 && call.y < 260);
+        const titleLines = metadataDraws.filter((call) => call.font.startsWith('700 '));
+        const artistLines = metadataDraws.filter((call) => call.font.startsWith('600 '));
+        const albumLines = metadataDraws.filter((call) => call.font.startsWith('500 '));
+
+        const titleSize = titleLines[0]?.font.match(/\s(\d+)px\s/)?.[1];
+        const artistSize = artistLines[0]?.font.match(/\s(\d+)px\s/)?.[1];
+        const albumSize = albumLines[0]?.font.match(/\s(\d+)px\s/)?.[1];
+
+        expect(titleSize).toBeDefined();
+        expect(artistSize).toBeDefined();
+        expect(albumSize).toBeDefined();
+
+        const titleReduction = 31 - Number(titleSize);
+        const artistReduction = 23 - Number(artistSize);
+        const albumReduction = 18 - Number(albumSize);
 
         expect(titleLines.length).toBeLessThanOrEqual(3);
         expect(artistLines.length).toBeLessThanOrEqual(1);
         expect(albumLines.length).toBeLessThanOrEqual(2);
+
+        expect(titleReduction).toBeGreaterThan(0);
+        expect(titleReduction).toBe(artistReduction);
+        expect(titleReduction).toBe(albumReduction);
+        expect(titleReduction).toBeLessThanOrEqual(5);
 
         expect(titleLines.some((line) => line.text.includes('...'))).toBe(true);
         expect(artistLines.some((line) => line.text.includes('...'))).toBe(true);
