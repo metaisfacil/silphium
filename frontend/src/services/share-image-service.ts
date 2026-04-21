@@ -444,7 +444,7 @@ const drawImageContain = (
 
 const drawCoverBlock = (ctx: CanvasRenderingContext2D, coverImage: CanvasImageSource | undefined): void => {
     const coverX = 34;
-    const coverY = 30;
+    const coverY = 23;
     const coverSize = 194;
     const coverRadius = 24;
 
@@ -522,10 +522,11 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
     drawWaveformFlourish(ctx, data.accents || defaultShareImageAccents, waveformSamples);
     drawCoverBlock(ctx, data.coverImage);
 
+    const contentStartY = 35;
     const textX = 262;
     const textWidth = shareImageWidth - textX - 34;
 
-    drawLabel(ctx, 'Now playing', textX, 42);
+    drawLabel(ctx, 'Now playing', textX, contentStartY);
 
     const textFieldConfigs = [
         {
@@ -551,8 +552,8 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
         },
     ];
 
-    const metadataStartY = 68;
-    const commentTopY = 228;
+    const metadataStartY = contentStartY + 26;
+    const commentTopY = contentStartY + 193;
     const metadataBottomPadding = 8;
     const metadataHeightBudget = commentTopY - metadataStartY - metadataBottomPadding;
     const maxSharedReduction = Math.min(...textFieldConfigs.map((field) => field.maxReduction));
@@ -678,7 +679,7 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
     ctx.font = '600 12px "Nunito", "Segoe UI", sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Shared from Silphium', shareImageWidth - 34, shareImageHeight - 22);
+    ctx.fillText('Shared from Silphium', shareImageWidth - 34, (shareImageHeight - 22) + (contentStartY - 35));
     ctx.restore();
 };
 
