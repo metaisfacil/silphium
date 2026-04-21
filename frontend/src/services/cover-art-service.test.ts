@@ -39,7 +39,7 @@ describe('createCoverArtService', () => {
         const coverUrl = await service.resolveForTrack(track);
 
         expect(coverUrl).toBe('blob:test-cover-art');
-        expect(readImageThumbnail).toHaveBeenCalledWith('/music/library/cover.jpg', 960);
+        expect(readImageThumbnail).toHaveBeenCalledWith('/music/library/cover.jpg', 800);
         expect(readFileBase64).not.toHaveBeenCalled();
     });
 });

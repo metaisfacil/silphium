@@ -194,33 +194,57 @@ func TestReadImageThumbnailAndResize(t *testing.T) {
 		t.Fatal("ReadImageThumbnail(clamped max edge) should still return the original PNG bytes when the source is already within the capped limit")
 	}
 
-	zeroSized := resizeImageNearest(image.NewRGBA(image.Rect(0, 0, 0, 0)), 10)
+	zeroSized := resizeImageThumbnail(image.NewRGBA(image.Rect(0, 0, 0, 0)), 10)
 	if got, want := zeroSized.Bounds().Dx(), 1; got != want {
-		t.Fatalf("resizeImageNearest(zero).Dx = %d, want %d", got, want)
+		t.Fatalf("resizeImageThumbnail(zero).Dx = %d, want %d", got, want)
 	}
 	if got, want := zeroSized.Bounds().Dy(), 1; got != want {
-		t.Fatalf("resizeImageNearest(zero).Dy = %d, want %d", got, want)
+		t.Fatalf("resizeImageThumbnail(zero).Dy = %d, want %d", got, want)
 	}
 
-	clone := resizeImageNearest(image.NewRGBA(image.Rect(0, 0, 4, 4)), 10)
+	clone := resizeImageThumbnail(image.NewRGBA(image.Rect(0, 0, 4, 4)), 10)
 	if got, want := clone.Bounds().Dx(), 4; got != want {
-		t.Fatalf("resizeImageNearest(clone).Dx = %d, want %d", got, want)
+		t.Fatalf("resizeImageThumbnail(clone).Dx = %d, want %d", got, want)
 	}
 
-	wide := resizeImageNearest(image.NewRGBA(image.Rect(0, 0, 200, 100)), 50)
+	wide := resizeImageThumbnail(image.NewRGBA(image.Rect(0, 0, 200, 100)), 50)
 	if got, want := wide.Bounds().Dx(), 50; got != want {
-		t.Fatalf("resizeImageNearest(wide).Dx = %d, want %d", got, want)
+		t.Fatalf("resizeImageThumbnail(wide).Dx = %d, want %d", got, want)
 	}
 	if got, want := wide.Bounds().Dy(), 25; got != want {
-		t.Fatalf("resizeImageNearest(wide).Dy = %d, want %d", got, want)
+		t.Fatalf("resizeImageThumbnail(wide).Dy = %d, want %d", got, want)
 	}
 
-	tall := resizeImageNearest(image.NewRGBA(image.Rect(0, 0, 100, 200)), 50)
+	tall := resizeImageThumbnail(image.NewRGBA(image.Rect(0, 0, 100, 200)), 50)
 	if got, want := tall.Bounds().Dx(), 25; got != want {
-		t.Fatalf("resizeImageNearest(tall).Dx = %d, want %d", got, want)
+		t.Fatalf("resizeImageThumbnail(tall).Dx = %d, want %d", got, want)
 	}
 	if got, want := tall.Bounds().Dy(), 50; got != want {
-		t.Fatalf("resizeImageNearest(tall).Dy = %d, want %d", got, want)
+		t.Fatalf("resizeImageThumbnail(tall).Dy = %d, want %d", got, want)
+	}
+
+	checkerboard := image.NewRGBA(image.Rect(0, 0, 4, 4))
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 4; x++ {
+			if (x+y)%2 == 0 {
+				checkerboard.Set(x, y, color.RGBA{A: 255})
+				continue
+			}
+
+			checkerboard.Set(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+		}
+	}
+
+	blended := resizeImageThumbnail(checkerboard, 1)
+	red, green, blue, alpha := blended.At(0, 0).RGBA()
+	if alpha != 0xffff {
+		t.Fatalf("resizeImageThumbnail(checkerboard).A = %d, want %d", alpha, 0xffff)
+	}
+	if red == 0 || red == 0xffff {
+		t.Fatalf("resizeImageThumbnail(checkerboard).R = %d, want blended mid-tone", red)
+	}
+	if green != red || blue != red {
+		t.Fatalf("resizeImageThumbnail(checkerboard) RGB = (%d, %d, %d), want neutral blended tone", red, green, blue)
 	}
 }
 

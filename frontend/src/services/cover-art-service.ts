@@ -30,7 +30,7 @@ type CoverArtArchiveResponse = {
 };
 
 const defaultCoverArtPriority: CoverArtPrioritySource[] = ['file', 'embedded'];
-const nowPlayingCoverThumbnailMaxEdgePx = 960;
+const nowPlayingCoverThumbnailMaxEdgePx = 800;
 
 const loadImageSource = async (src: string): Promise<string | undefined> => {
     return await new Promise((resolve) => {

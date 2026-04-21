@@ -17,11 +17,12 @@ import (
 	_ "image/png"
 
 	_ "golang.org/x/image/bmp"
+	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 )
 
 const defaultImageThumbnailMaxEdge = 96
-const maxImageThumbnailMaxEdge = 512
+const maxImageThumbnailMaxEdge = 800
 
 func (a *App) readLibraryFileBytes(path string) ([]byte, bool) {
 	if !a.isAllowedLibraryPath(path) {
@@ -132,7 +133,7 @@ func (a *App) ReadImageThumbnail(path string, maxEdge int) EmbeddedCoverArt {
 			}
 		}
 
-		thumbnail := resizeImageNearest(decoded, maxEdge)
+		thumbnail := resizeImageThumbnail(decoded, maxEdge)
 		var encoded bytes.Buffer
 		if err := png.Encode(&encoded, thumbnail); err != nil {
 			return EmbeddedCoverArt{}
@@ -145,7 +146,7 @@ func (a *App) ReadImageThumbnail(path string, maxEdge int) EmbeddedCoverArt {
 	})
 }
 
-func resizeImageNearest(source image.Image, maxEdge int) *image.RGBA {
+func resizeImageThumbnail(source image.Image, maxEdge int) *image.RGBA {
 	bounds := source.Bounds()
 	sourceWidth := bounds.Dx()
 	sourceHeight := bounds.Dy()
@@ -163,24 +164,8 @@ func resizeImageNearest(source image.Image, maxEdge int) *image.RGBA {
 		targetWidth = max(1, (sourceWidth*maxEdge+sourceHeight/2)/sourceHeight)
 	}
 
-	if targetWidth == sourceWidth && targetHeight == sourceHeight {
-		clone := image.NewRGBA(image.Rect(0, 0, sourceWidth, sourceHeight))
-		for y := 0; y < sourceHeight; y++ {
-			for x := 0; x < sourceWidth; x++ {
-				clone.Set(x, y, source.At(bounds.Min.X+x, bounds.Min.Y+y))
-			}
-		}
-		return clone
-	}
-
 	resized := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
-	for y := 0; y < targetHeight; y++ {
-		sourceY := bounds.Min.Y + (y * sourceHeight / targetHeight)
-		for x := 0; x < targetWidth; x++ {
-			sourceX := bounds.Min.X + (x * sourceWidth / targetWidth)
-			resized.Set(x, y, source.At(sourceX, sourceY))
-		}
-	}
+	xdraw.CatmullRom.Scale(resized, resized.Bounds(), source, bounds, xdraw.Src, nil)
 
 	return resized
 }
