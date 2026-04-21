@@ -4,6 +4,8 @@ export type ShareModalElements = {
     shareDialog: HTMLElement;
     shareClose: HTMLButtonElement;
     sharePreview: HTMLCanvasElement;
+    shareStreamingLinksRegion: HTMLDivElement;
+    shareStreamingLinks: HTMLDivElement;
     shareCommentInput: HTMLTextAreaElement;
     shareStatus: HTMLParagraphElement;
     shareSave: HTMLButtonElement;
@@ -21,6 +23,9 @@ export const renderShareModal = (): string => `
             <div class="share-content">
                 <div class="share-preview-shell">
                     <canvas id="share-preview" class="share-preview" width="600" height="350" role="img" aria-label="Share image preview"></canvas>
+                </div>
+                <div id="share-streaming-links-region" class="share-streaming-links-region" hidden>
+                    <div id="share-streaming-links" class="share-streaming-links" role="list" aria-label="Recording streaming links"></div>
                 </div>
                 <div class="share-field">
                     <textarea id="share-comment-input" class="share-comment-input" rows="3" maxlength="220" placeholder="Add a short comment to include in the image."></textarea>
@@ -41,6 +46,8 @@ export const getShareModalElements = (root: ParentNode): ShareModalElements => (
     shareDialog: root.querySelector('#share-dialog') as HTMLElement,
     shareClose: root.querySelector('#share-close') as HTMLButtonElement,
     sharePreview: root.querySelector('#share-preview') as HTMLCanvasElement,
+    shareStreamingLinksRegion: root.querySelector('#share-streaming-links-region') as HTMLDivElement,
+    shareStreamingLinks: root.querySelector('#share-streaming-links') as HTMLDivElement,
     shareCommentInput: root.querySelector('#share-comment-input') as HTMLTextAreaElement,
     shareStatus: root.querySelector('#share-status') as HTMLParagraphElement,
     shareSave: root.querySelector('#share-save') as HTMLButtonElement,

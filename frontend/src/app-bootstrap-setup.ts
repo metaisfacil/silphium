@@ -88,6 +88,7 @@ type AppControllerSetupScope = RuntimeScope<
     | 'artistInfoElements'
     | 'artistInfoRequestVersion'
     | 'lookupArtistByMBID'
+    | 'lookupMusicBrainzRecordingURLs'
     | 'app'
     | 'sidebarToggle'
     | 'libraryExpandToggle'
@@ -439,6 +440,7 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
         return scope.artistInfoRequestVersion;
     },
     lookupArtistByMBID: scope.lookupArtistByMBID,
+    lookupMusicBrainzRecordingURLs: scope.lookupMusicBrainzRecordingURLs,
     openUrl: scope.browserOpenUrl,
     app: scope.app,
     sidebarToggle: scope.sidebarToggle,

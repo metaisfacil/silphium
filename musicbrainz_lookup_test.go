@@ -80,6 +80,53 @@ func TestMusicBrainzLookupFunctions(t *testing.T) {
 	}
 }
 
+func TestLookupMusicBrainzRecordingURLs(t *testing.T) {
+	recordingID := "56565656-5656-4565-8565-565656565656"
+	requestedQuery := ""
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		requestedQuery = request.URL.RawQuery
+		if !strings.Contains(request.URL.Path, "/recording/") {
+			writer.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		_, _ = writer.Write([]byte(`{
+			"id":"` + recordingID + `",
+			"relations":[
+				{"type":"streaming","target-type":"url","url":{"resource":"https://open.spotify.com/track/example"}},
+				{"type":"streaming","target-type":"url","url":{"resource":"https://open.spotify.com/track/example"}},
+				{"type":"apple music","target-type":"url","url":{"resource":"https://music.apple.com/album/example"}},
+				{"type":"member of band","target-type":"artist","url":{"resource":"https://ignored.example"}}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	app := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0})
+
+	urls := app.LookupMusicBrainzRecordingURLs("  " + strings.ToUpper(recordingID) + "  ")
+	if got, want := len(urls), 2; got != want {
+		t.Fatalf("LookupMusicBrainzRecordingURLs() len = %d, want %d", got, want)
+	}
+	if got, want := urls[0].Resource, "https://music.apple.com/album/example"; got != want {
+		t.Fatalf("LookupMusicBrainzRecordingURLs() first resource = %q, want %q", got, want)
+	}
+	if !strings.Contains(requestedQuery, "inc=url-rels") {
+		t.Fatalf("LookupMusicBrainzRecordingURLs() query = %q, want inc=url-rels", requestedQuery)
+	}
+	if strings.Contains(requestedQuery, "artists") || strings.Contains(requestedQuery, "releases") {
+		t.Fatalf("LookupMusicBrainzRecordingURLs() query = %q, want url-rels-only request", requestedQuery)
+	}
+	if got := app.LookupMusicBrainzRecordingURLs("bad"); len(got) != 0 {
+		t.Fatalf("LookupMusicBrainzRecordingURLs(invalid) = %#v, want empty result", got)
+	}
+	if got := newTestAppWithLoadedSettings(AppSettings{MusicBrainzServerURL: server.URL, MusicBrainzRequestRateMs: 0}).LookupMusicBrainzRecordingURLs("77777777-7777-4777-8777-777777777777"); len(got) != 2 {
+		t.Fatalf("LookupMusicBrainzRecordingURLs(other valid mbid) len = %d, want 2", len(got))
+	}
+}
+
 func TestMusicBrainzLookupEdgeCases(t *testing.T) {
 	artistID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	releaseID := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"

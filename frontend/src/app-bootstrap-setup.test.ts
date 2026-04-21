@@ -157,6 +157,7 @@ const createScope = () => {
         selectShareImageSaveFile: vi.fn(async () => '/art/share.png'),
         saveShareImageFile: vi.fn(async () => undefined),
         copyShareImageToClipboard: vi.fn(async () => true),
+        lookupMusicBrainzRecordingURLs: vi.fn(async () => []),
         imageModalElements: { modal: document.createElement('div') },
         readFileBase64: vi.fn(async () => 'base64'),
         readImageThumbnail: vi.fn(async () => 'thumb'),

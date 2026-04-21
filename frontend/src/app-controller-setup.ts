@@ -188,6 +188,10 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         selectShareImageSaveFile: context.selectShareImageSaveFile,
         saveShareImageFile: context.saveShareImageFile,
         copyShareImageToClipboard: context.copyShareImageToClipboard,
+        lookupMusicBrainzRecordingURLs: async (mbid: string) => {
+            return await context.lookupMusicBrainzRecordingURLs(mbid);
+        },
+        openUrl: context.browserOpenUrl,
         fetchVisualizationFrame: async (frameCount: number): Promise<AudioVisualizationFrame> => await context.fetchVisualizationFrame(frameCount),
     });
 

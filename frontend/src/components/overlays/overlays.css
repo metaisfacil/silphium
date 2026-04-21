@@ -469,8 +469,27 @@
 }
 
 .share-field {
-    display: grid;
-    gap: 0.45rem;
+    display: block;
+}
+
+.share-streaming-links-region {
+    overflow: hidden;
+    height: 0;
+    opacity: 0;
+    margin-bottom: 0;
+    transition: height 180ms ease, opacity 180ms ease, margin-bottom 180ms ease;
+}
+
+.share-streaming-links-region.is-visible {
+    margin-bottom: 0.55rem;
+}
+
+.share-streaming-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.55rem;
+    padding: 0.15rem 0 0.25rem;
 }
 
 .share-comment-input {

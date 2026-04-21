@@ -288,6 +288,7 @@ vi.mock('../wailsjs/go/main/App', () => ({
     LoadListenHistoryPlaylist: vi.fn(async () => ({ name: 'Listen History', trackFiles: [] })),
     LogFrontendMessage: vi.fn(async () => undefined),
     LookupArtistByMBID: vi.fn(async () => ({ found: false })),
+    LookupMusicBrainzRecordingURLs: vi.fn(async () => []),
     ReadFileBase64: vi.fn(async () => ''),
     ReadImageThumbnail: vi.fn(async () => ({})),
     ResolveLibraryFolderForPath: vi.fn(async () => ''),

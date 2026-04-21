@@ -123,6 +123,8 @@ export const getAppShellElements = (document: Document) => {
         shareDialog: shareModalElements.shareDialog,
         shareClose: shareModalElements.shareClose,
         sharePreview: shareModalElements.sharePreview,
+        shareStreamingLinksRegion: shareModalElements.shareStreamingLinksRegion,
+        shareStreamingLinks: shareModalElements.shareStreamingLinks,
         shareCommentInput: shareModalElements.shareCommentInput,
         shareStatus: shareModalElements.shareStatus,
         shareSave: shareModalElements.shareSave,

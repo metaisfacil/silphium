@@ -27,6 +27,7 @@ import {
     GetSettings,
     LogFrontendMessage,
     LookupArtistByMBID,
+    LookupMusicBrainzRecordingURLs,
     ReadFileBase64,
     ReadImageThumbnail,
     SavePlaylistFile,
@@ -288,6 +289,8 @@ const runtimeRefs = {
         shareDialog: shell.shareDialog,
         shareClose: shell.shareClose,
         sharePreview: shell.sharePreview,
+        shareStreamingLinksRegion: shell.shareStreamingLinksRegion,
+        shareStreamingLinks: shell.shareStreamingLinks,
         shareCommentInput: shell.shareCommentInput,
         shareStatus: shell.shareStatus,
         shareSave: shell.shareSave,
@@ -633,6 +636,12 @@ Object.assign(runtimeScope, {
     ), {
         server: state.currentSettings.musicBrainzServerUrl || defaultMusicBrainzServerUrl,
         path: `/ws/2/artist/${mbid}?fmt=json&inc=genres+tags+url-rels`,
+    }),
+    lookupMusicBrainzRecordingURLs: (mbid: string) => scheduleMusicBrainzRequest(async () => (
+        await LookupMusicBrainzRecordingURLs(mbid)
+    ), {
+        server: state.currentSettings.musicBrainzServerUrl || defaultMusicBrainzServerUrl,
+        path: `/ws/2/recording/${mbid}?fmt=json&inc=url-rels`,
     }),
 });
 

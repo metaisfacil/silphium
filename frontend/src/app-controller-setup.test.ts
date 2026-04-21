@@ -205,6 +205,7 @@ const createContext = () => {
         selectShareImageSaveFile: vi.fn(async () => '/art/share.png'),
         saveShareImageFile: vi.fn(async () => undefined),
         copyShareImageToClipboard: vi.fn(async () => true),
+        lookupMusicBrainzRecordingURLs: vi.fn(async () => []),
         fetchVisualizationFrame: vi.fn(async () => ({
             loaded: true,
             playing: true,
@@ -406,6 +407,8 @@ describe('app-controller-setup', () => {
         expect(await shareConfig.resolveCoverForTrack(context.tracks[0])).toBe('cover-data');
         expect(shareConfig.getCachedMediaArtwork(context.tracks[0])).toEqual(['artwork']);
         expect(shareConfig.getCoverArtSrc()).toBe('/cover.png');
+        expect(await shareConfig.lookupMusicBrainzRecordingURLs('recording-id')).toEqual([]);
+        expect(shareConfig.openUrl).toBe(context.browserOpenUrl);
         shareConfig.closeOtherMenus();
 
         expect(artistInfoConfig.getTracks()).toBe(context.tracks);
@@ -469,6 +472,7 @@ describe('app-controller-setup', () => {
         expect(context.loadTrack).toHaveBeenCalledWith(1, true, undefined, true);
         expect(context.playCurrentTrack).toHaveBeenCalled();
         expect(context.ensureTrackTagsResolved).toHaveBeenCalledWith(0);
+        expect(context.lookupMusicBrainzRecordingURLs).toHaveBeenCalledWith('recording-id');
         expect(context.lookupArtistByMBID).toHaveBeenCalledWith('artist-id');
         expect(playlistController.activatePlaybackQueueSource).toHaveBeenCalledTimes(2);
         expect(context.suppressAutoSelectAfterFullLibraryScan).toBe(true);

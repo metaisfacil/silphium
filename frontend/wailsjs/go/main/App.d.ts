@@ -91,6 +91,8 @@ export function LookupMusicBrainzEntity(arg1:string,arg2:string):Promise<main.Mu
 
 export function LookupMusicBrainzExploration(arg1:string,arg2:string,arg3:Array<string>,arg4:string,arg5:string):Promise<main.MusicBrainzExplorationGraph>;
 
+export function LookupMusicBrainzRecordingURLs(arg1:string):Promise<Array<main.MusicBrainzURL>>;
+
 export function LookupTrackMusicBrainzMetadata(arg1:string,arg2:string):Promise<main.MusicBrainzTrackMetadata>;
 
 export function OpenFolderInFileBrowser(arg1:string):Promise<boolean>;

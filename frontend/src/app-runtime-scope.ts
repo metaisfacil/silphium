@@ -22,6 +22,7 @@ import type { createScrobbleService, ScrobbleSessionState } from './services/scr
 import type { createTrackMetadataService } from './services/track-metadata-service';
 import type {
     AppSettings,
+    ArtistExternalUrl,
     AudioOutputDevice,
     AudioPlaybackState,
     AudioVisualizationFrame,
@@ -94,6 +95,7 @@ type SharedRuntimeMethods = {
     finishLibraryLoadTracking: () => void;
     scheduleLibraryIncrementalFolderRefresh: () => void;
     lookupArtistByMBID: (mbid: string) => Promise<ArtistDetails>;
+    lookupMusicBrainzRecordingURLs: (mbid: string) => Promise<ArtistExternalUrl[]>;
     logFrontendMessage: (message: string) => Promise<void>;
     initializeSettings: () => Promise<void>;
     audioSeek: (seconds: number) => Promise<AudioPlaybackState>;

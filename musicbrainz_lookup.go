@@ -235,6 +235,29 @@ func musicBrainzReleaseLabelID(payload map[string]any) string {
 	return ""
 }
 
+// LookupMusicBrainzRecordingURLs fetches URL relationships for a recording MBID.
+func (a *App) LookupMusicBrainzRecordingURLs(recordingID string) []MusicBrainzURL {
+	return profiledValue(a, "LookupMusicBrainzRecordingURLs", func() []MusicBrainzURL {
+		cleanRecordingID := strings.ToLower(strings.TrimSpace(recordingID))
+		if !mbidPattern.MatchString(cleanRecordingID) {
+			return []MusicBrainzURL{}
+		}
+
+		requestURL := fmt.Sprintf("%s/recording/%s?fmt=json&inc=url-rels", a.musicBrainzAPIBaseURL(), cleanRecordingID)
+		responseBody, ok := fetchMusicBrainzJSON(requestURL, a.musicBrainzRequestRateMs())
+		if !ok {
+			return []MusicBrainzURL{}
+		}
+
+		payload := map[string]any{}
+		if err := json.Unmarshal(responseBody, &payload); err != nil {
+			return []MusicBrainzURL{}
+		}
+
+		return collectMusicBrainzURLRelations(payload)
+	})
+}
+
 // LookupMusicBrainzEntity fetches recording, release, or artist metadata by entity type and MBID.
 func (a *App) LookupMusicBrainzEntity(entityType string, mbid string) MusicBrainzEntityInfo {
 	return profiledValue(a, "LookupMusicBrainzEntity", func() MusicBrainzEntityInfo {
