@@ -442,6 +442,27 @@ const drawImageContain = (
     ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
 };
 
+const drawBackgroundCoverOverlay = (ctx: CanvasRenderingContext2D, coverImage: CanvasImageSource | undefined): void => {
+    if (!coverImage) {
+        return;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.filter = 'blur(34px) brightness(0.76) saturate(0.88)';
+    drawImageCover(ctx, coverImage, 0, 0, shareImageWidth, shareImageHeight);
+    ctx.restore();
+
+    ctx.save();
+    const vignette = ctx.createLinearGradient(0, 0, 0, shareImageHeight);
+    vignette.addColorStop(0, 'rgba(8, 10, 14, 0.18)');
+    vignette.addColorStop(0.32, 'rgba(8, 10, 14, 0.08)');
+    vignette.addColorStop(1, 'rgba(8, 10, 14, 0.24)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, shareImageWidth, shareImageHeight);
+    ctx.restore();
+};
+
 const drawCoverBlock = (ctx: CanvasRenderingContext2D, coverImage: CanvasImageSource | undefined): void => {
     const coverX = 34;
     const coverY = 23;
@@ -519,6 +540,7 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
     const waveformSamples = normalizeWaveformSamples(data.waveformSamples, `${trackTitle}|${trackArtist}|${trackAlbum}`);
 
     fillCanvasBackground(ctx, data.accents || defaultShareImageAccents);
+    drawBackgroundCoverOverlay(ctx, data.coverImage);
     drawWaveformFlourish(ctx, data.accents || defaultShareImageAccents, waveformSamples);
     drawCoverBlock(ctx, data.coverImage);
 

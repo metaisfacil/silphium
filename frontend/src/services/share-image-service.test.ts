@@ -61,8 +61,14 @@ describe('share image accents', () => {
 });
 
 describe('share image preview cover rendering', () => {
-    it('uses a blurred cover-fit background plus contained foreground for non-square covers', () => {
-        const drawImage = vi.fn();
+    it('layers a full-background blurred cover wash before the cover block treatment', () => {
+        const drawCalls: Array<{ call: unknown[]; filter: string; globalAlpha: number }> = [];
+        let currentFilter = 'none';
+        let currentGlobalAlpha = 1;
+        const stateStack: Array<{ filter: string; globalAlpha: number }> = [];
+        const drawImage = vi.fn((...call: unknown[]) => {
+            drawCalls.push({ call, filter: currentFilter, globalAlpha: currentGlobalAlpha });
+        });
         const context = {
             clearRect: vi.fn(),
             createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
@@ -77,18 +83,28 @@ describe('share image preview cover rendering', () => {
             fill: vi.fn(),
             stroke: vi.fn(),
             fillText: vi.fn(),
-            save: vi.fn(),
-            restore: vi.fn(),
+            save: vi.fn(() => {
+                stateStack.push({ filter: currentFilter, globalAlpha: currentGlobalAlpha });
+            }),
+            restore: vi.fn(() => {
+                const previousState = stateStack.pop();
+                currentFilter = previousState?.filter ?? 'none';
+                currentGlobalAlpha = previousState?.globalAlpha ?? 1;
+            }),
             measureText: vi.fn((text: string) => ({ width: text.length * 8 })),
             drawImage,
             set fillStyle(_value: string | CanvasGradient | CanvasPattern) { void _value; },
             set strokeStyle(_value: string | CanvasGradient | CanvasPattern) { void _value; },
             set lineWidth(_value: number) { void _value; },
-            set filter(_value: string) { void _value; },
+            set filter(value: string) {
+                currentFilter = value;
+            },
             set font(_value: string) { void _value; },
             set textAlign(_value: CanvasTextAlign) { void _value; },
             set textBaseline(_value: CanvasTextBaseline) { void _value; },
-            set globalAlpha(_value: number) { void _value; },
+            set globalAlpha(value: number) {
+                currentGlobalAlpha = value;
+            },
             set shadowColor(_value: string) { void _value; },
             set shadowBlur(_value: number) { void _value; },
             set shadowOffsetY(_value: number) { void _value; },
@@ -113,19 +129,33 @@ describe('share image preview cover rendering', () => {
             coverImage,
         });
 
-        const blurredBackgroundCall = drawImage.mock.calls.find((call) => {
+        const fullBackgroundBlurCall = drawCalls.find(({ call, filter, globalAlpha }) => {
             const [source, x, y, width, height] = call;
             return source === coverImage
-            && Number(x) < 34
+                && filter === 'blur(34px) brightness(0.76) saturate(0.88)'
+                && Math.abs(globalAlpha - 0.18) < 0.001
+                && Number(x) < 0
+                && Math.abs(Number(y)) < 0.001
+                && Number(width) > 600
+                && Math.abs(Number(height) - 350) < 0.001;
+        });
+        expect(fullBackgroundBlurCall).toBeDefined();
+
+        const blurredBackgroundCall = drawCalls.find(({ call }) => {
+            const [source, x, y, width, height] = call;
+            return source === coverImage
+                && Number(x) < 34
                 && Math.abs(Number(y) - 23) < 0.001
-            && Number(width) > 194
+                && Number(width) > 194
                 && Math.abs(Number(height) - 194) < 0.001;
         });
         expect(blurredBackgroundCall).toBeDefined();
 
-        const containCall = drawImage.mock.calls.find((call) => {
+        const containCall = drawCalls.find(({ call, filter, globalAlpha }) => {
             const [source, x, y, width, height] = call;
             return source === coverImage
+                && filter === 'none'
+                && Math.abs(globalAlpha - 1) < 0.001
                 && Number(x) >= 33.99
                 && Number(y) >= 29.99
                 && Number(width) <= 194.01
