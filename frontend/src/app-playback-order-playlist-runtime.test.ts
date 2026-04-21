@@ -4,24 +4,30 @@ import type { AppSettings, PlaybackOrderMode, Track } from './types/app-types';
 import { createPlaybackOrderPlaylistRuntime } from './app-playback-order-playlist-runtime';
 
 const {
+    appendTracksToPlaylistFileMock,
     loadListenHistoryPlaylistMock,
     loadPlaylistFileMock,
     mergePlaylistFilesIntoTracksMock,
     normalizeAppSettingsMock,
+    savePlaylistFileMock,
     savePlaylistTrackMetadataCacheMock,
     saveSettingsMock,
 } = vi.hoisted(() => ({
+    appendTracksToPlaylistFileMock: vi.fn(),
     loadListenHistoryPlaylistMock: vi.fn(),
     loadPlaylistFileMock: vi.fn(),
     mergePlaylistFilesIntoTracksMock: vi.fn(),
     normalizeAppSettingsMock: vi.fn((value) => value),
+    savePlaylistFileMock: vi.fn(),
     savePlaylistTrackMetadataCacheMock: vi.fn(),
     saveSettingsMock: vi.fn(),
 }));
 
 vi.mock('../wailsjs/go/main/App', () => ({
+    AppendTracksToPlaylistFile: appendTracksToPlaylistFileMock,
     LoadListenHistoryPlaylist: loadListenHistoryPlaylistMock,
     LoadPlaylistFile: loadPlaylistFileMock,
+    SavePlaylistFile: savePlaylistFileMock,
     SavePlaylistTrackMetadataCache: savePlaylistTrackMetadataCacheMock,
     SaveSettings: saveSettingsMock,
 }));
@@ -219,6 +225,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         const context = {
             currentSettings: createSettings(),
             tracks: [createTrack({ path: '/music/existing.flac', name: 'Existing', title: 'Existing', relativePath: 'Library/existing.flac' })],
+            trackIndexByPath: new Map<string, number>([['/music/existing.flac', 0]]),
             playbackSequencingService: {
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
@@ -241,9 +248,49 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         expect(mergePlaylistFilesIntoTracksMock).toHaveBeenCalledWith(
             [createTrack({ path: '/music/existing.flac', name: 'Existing', title: 'Existing', relativePath: 'Library/existing.flac' })],
             [{ path: '/music/new-track.flac' }],
+            context.trackIndexByPath,
         );
         expect(context.tracks).toBe(mergedTracks);
-        expect(context.rebuildTrackPathIndex).toHaveBeenCalledTimes(1);
+        expect(context.rebuildTrackPathIndex).not.toHaveBeenCalled();
+    });
+
+    it('reuses a cached playlist payload when the same playlist path is reopened', async () => {
+        loadPlaylistFileMock.mockResolvedValue({
+            name: 'Favorites',
+            trackFiles: [{ path: '/music/favorite.flac' }],
+        });
+        mergePlaylistFilesIntoTracksMock
+            .mockResolvedValueOnce({
+                tracks: [createTrack({ path: '/music/favorite.flac', name: 'Favorite', title: 'Favorite', relativePath: 'Library/favorite.flac' })],
+                trackIndexes: [0],
+            })
+            .mockResolvedValueOnce({
+                tracks: [createTrack({ path: '/music/favorite.flac', name: 'Favorite', title: 'Favorite', relativePath: 'Library/favorite.flac' })],
+                trackIndexes: [0],
+            });
+        const context = {
+            currentSettings: createSettings(),
+            tracks: [],
+            trackIndexByPath: new Map<string, number>(),
+            playbackSequencingService: {
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
+            },
+            playlistController: {
+                clearEditableQueue: vi.fn(),
+            },
+            updatePlayOrderMenuState: vi.fn(),
+            rebuildTrackPathIndex: vi.fn(),
+        };
+
+        const runtime = createPlaybackOrderPlaylistRuntime(context);
+
+        await runtime.loadPlaylistData('/playlists/favorites.m3u8');
+        await runtime.loadPlaylistData('/playlists/FAVORITES.m3u8');
+
+        expect(loadPlaylistFileMock).toHaveBeenCalledTimes(1);
+        expect(loadPlaylistFileMock).toHaveBeenCalledWith('/playlists/favorites.m3u8');
+        expect(mergePlaylistFilesIntoTracksMock).toHaveBeenCalledTimes(2);
     });
 
     it('loads listen-history tracks through the same merge pipeline', async () => {
@@ -267,6 +314,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         const context = {
             currentSettings: createSettings(),
             tracks: [],
+            trackIndexByPath: new Map<string, number>(),
             playbackSequencingService: {
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
@@ -293,9 +341,9 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             playedPercent: 83,
             cachedTrackTitle: 'Cached History Title',
             cachedArtistName: 'Cached History Artist',
-        }]);
+        }], context.trackIndexByPath);
         expect(context.tracks).toBe(mergedTracks);
-        expect(context.rebuildTrackPathIndex).toHaveBeenCalledTimes(1);
+        expect(context.rebuildTrackPathIndex).not.toHaveBeenCalled();
     });
 
     it('persists playlist metadata cache entries through the backend binding', async () => {
@@ -322,5 +370,73 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
 
         await expect(runtime.savePlaylistTrackMetadataCache(entries)).resolves.toBe(true);
         expect(savePlaylistTrackMetadataCacheMock).toHaveBeenCalledWith(entries);
+    });
+
+    it('invalidates cached playlist loads after saving a playlist file', async () => {
+        loadPlaylistFileMock.mockResolvedValue({
+            name: 'Road Trip',
+            trackFiles: [{ path: '/music/road-trip.flac' }],
+        });
+        savePlaylistFileMock.mockResolvedValue(true);
+        mergePlaylistFilesIntoTracksMock.mockResolvedValue({
+            tracks: [createTrack({ path: '/music/road-trip.flac', name: 'Road Trip', title: 'Road Trip', relativePath: 'Library/road-trip.flac' })],
+            trackIndexes: [0],
+        });
+        const context = {
+            currentSettings: createSettings(),
+            tracks: [],
+            trackIndexByPath: new Map<string, number>(),
+            playbackSequencingService: {
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
+            },
+            playlistController: {
+                clearEditableQueue: vi.fn(),
+            },
+            updatePlayOrderMenuState: vi.fn(),
+        };
+
+        const runtime = createPlaybackOrderPlaylistRuntime(context);
+
+        await runtime.loadPlaylistData('/playlists/road-trip.m3u8');
+        await runtime.savePlaylistData('/playlists/road-trip.m3u8', ['/music/road-trip.flac']);
+        await runtime.loadPlaylistData('/playlists/road-trip.m3u8');
+
+        expect(savePlaylistFileMock).toHaveBeenCalledWith('/playlists/road-trip.m3u8', ['/music/road-trip.flac']);
+        expect(loadPlaylistFileMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidates cached playlist loads after appending playlist tracks', async () => {
+        loadPlaylistFileMock.mockResolvedValue({
+            name: 'Road Trip',
+            trackFiles: [{ path: '/music/road-trip.flac' }],
+        });
+        appendTracksToPlaylistFileMock.mockResolvedValue(true);
+        mergePlaylistFilesIntoTracksMock.mockResolvedValue({
+            tracks: [createTrack({ path: '/music/road-trip.flac', name: 'Road Trip', title: 'Road Trip', relativePath: 'Library/road-trip.flac' })],
+            trackIndexes: [0],
+        });
+        const context = {
+            currentSettings: createSettings(),
+            tracks: [],
+            trackIndexByPath: new Map<string, number>(),
+            playbackSequencingService: {
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
+            },
+            playlistController: {
+                clearEditableQueue: vi.fn(),
+            },
+            updatePlayOrderMenuState: vi.fn(),
+        };
+
+        const runtime = createPlaybackOrderPlaylistRuntime(context);
+
+        await runtime.loadPlaylistData('/playlists/road-trip.m3u8');
+        await runtime.appendTracksToPlaylistData('/playlists/road-trip.m3u8', ['/music/extra.flac']);
+        await runtime.loadPlaylistData('/playlists/road-trip.m3u8');
+
+        expect(appendTracksToPlaylistFileMock).toHaveBeenCalledWith('/playlists/road-trip.m3u8', ['/music/extra.flac']);
+        expect(loadPlaylistFileMock).toHaveBeenCalledTimes(2);
     });
 });

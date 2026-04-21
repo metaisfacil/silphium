@@ -196,6 +196,27 @@ describe('library data service', () => {
         }));
     });
 
+    it('reuses a caller-provided track path index when merging playlist files', async () => {
+        const tracks = [createTrack()];
+        const trackIndexByPath = new Map<string, number>([['/music/track-1.flac', 0]]);
+
+        const merged = await mergePlaylistFilesIntoTracks(tracks, [
+            createIndexedFile('/music/new-track.flac', 'new-track.flac', {
+                cachedTrackTitle: 'Cached New Track',
+                cachedArtistName: 'Cached Artist',
+            }),
+        ], trackIndexByPath);
+
+        expect(merged.tracks).toBe(tracks);
+        expect(merged.trackIndexes).toEqual([1]);
+        expect(trackIndexByPath.get('/music/new-track.flac')).toBe(1);
+        expect(tracks[1]).toEqual(expect.objectContaining({
+            path: '/music/new-track.flac',
+            displayTitle: 'Cached New Track',
+            displayArtist: 'Cached Artist',
+        }));
+    });
+
     it('clears runtime data and optional caches', () => {
         const clearCoverArtCache = vi.fn();
         const clearArtistInfoCache = vi.fn();

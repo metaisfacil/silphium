@@ -517,8 +517,10 @@ const {
 } = runtimeScope;
 
 const {
+    appendTracksToPlaylistData,
     loadListenHistoryData,
     loadPlaylistData,
+    savePlaylistData,
     savePlaylistTrackMetadataCache,
     savePlaybackOrderSetting,
     setPlaybackOrderMode,
@@ -535,6 +537,7 @@ const {
     set tracks(value) {
         state.tracks = value;
     },
+    trackIndexByPath: state.trackIndexByPath,
     get playlistController() {
         return runtimeControllerRefs.playlistController;
     },
@@ -546,8 +549,10 @@ const {
 });
 
 Object.assign(runtimeScope, {
+    appendTracksToPlaylistData,
     loadListenHistoryData,
     loadPlaylistData,
+    savePlaylistData,
     savePlaylistTrackMetadataCache,
     savePlaybackOrderSetting,
     setPlaybackOrderMode,

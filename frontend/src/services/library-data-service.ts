@@ -15,7 +15,7 @@ export type ScanCollections = {
 
 export type ScanCollectionKind = 'track' | 'text-file' | 'image-file';
 
-type MergePlaylistFilesResult = {
+export type MergePlaylistFilesResult = {
     trackIndexes: number[];
     tracks: Track[];
 };
@@ -177,18 +177,24 @@ export const mapLibraryScanResult = async (scanResult: LibraryScanResult): Promi
     return scanCollections;
 };
 
-export const mergePlaylistFilesIntoTracks = async (tracks: Track[], playlistFiles: LibraryIndexedFile[]): Promise<MergePlaylistFilesResult> => {
-    const nextTracks = [...tracks];
+export const mergePlaylistFilesIntoTracks = async (
+    tracks: Track[],
+    playlistFiles: LibraryIndexedFile[],
+    trackIndexByPath?: Map<string, number>,
+): Promise<MergePlaylistFilesResult> => {
+    const nextTracks = trackIndexByPath ? tracks : [...tracks];
     const nextIndexes: number[] = [];
-    const trackIndexByPath = new Map<string, number>();
+    const nextTrackIndexByPath = trackIndexByPath ?? new Map<string, number>();
 
-    nextTracks.forEach((track, index) => {
-        trackIndexByPath.set(track.path.toLowerCase(), index);
-    });
+    if (!trackIndexByPath) {
+        nextTracks.forEach((track, index) => {
+            nextTrackIndexByPath.set(track.path.toLowerCase(), index);
+        });
+    }
 
     const batchSize = BATCH_SIZES.playlistFiles;
     for (let index = 0; index < playlistFiles.length; index += 1) {
-        nextIndexes.push(ensureTrackIndexForPath(nextTracks, playlistFiles[index], trackIndexByPath));
+        nextIndexes.push(ensureTrackIndexForPath(nextTracks, playlistFiles[index], nextTrackIndexByPath));
 
         if ((index + 1) % batchSize === 0) {
             await yieldToUi();

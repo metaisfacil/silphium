@@ -1,4 +1,11 @@
-import { LoadListenHistoryPlaylist, LoadPlaylistFile, SavePlaylistTrackMetadataCache, SaveSettings } from '../wailsjs/go/main/App';
+import {
+    AppendTracksToPlaylistFile,
+    LoadListenHistoryPlaylist,
+    LoadPlaylistFile,
+    SavePlaylistFile,
+    SavePlaylistTrackMetadataCache,
+    SaveSettings,
+} from '../wailsjs/go/main/App';
 import type { LoadedPlaylistData, PlaylistTrackMetadataCacheEntry } from './controllers/playlist-controller';
 import { mergePlaylistFilesIntoTracks } from './services/library-data-service';
 import { normalizeAppSettings } from './utils/settings-normalization';
@@ -11,9 +18,12 @@ const mapLoadedPlaylistCachedItems = (loaded: PlaylistLoadResult): NonNullable<L
     }))
 );
 
+const normalizePlaylistCacheKey = (playlistPath: string): string => playlistPath.trim().toLowerCase();
+
 type PlaybackOrderPlaylistRuntimeContext = {
     currentSettings: AppSettings;
     tracks?: Track[];
+    trackIndexByPath?: Map<string, number>;
     playlistController: {
         clearEditableQueue: () => void;
     };
@@ -33,6 +43,34 @@ type PlaybackOrderPlaylistRuntimeContext = {
 };
 
 export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylistRuntimeContext) => {
+    const playlistLoadCache = new Map<string, PlaylistLoadResult>();
+
+    const invalidatePlaylistLoadCache = (playlistPath: string): void => {
+        const cacheKey = normalizePlaylistCacheKey(playlistPath);
+        if (cacheKey === '') {
+            return;
+        }
+
+        playlistLoadCache.delete(cacheKey);
+    };
+
+    const loadPlaylistResult = async (playlistPath: string): Promise<PlaylistLoadResult> => {
+        const cacheKey = normalizePlaylistCacheKey(playlistPath);
+        if (cacheKey !== '') {
+            const cached = playlistLoadCache.get(cacheKey);
+            if (cached) {
+                return cached;
+            }
+        }
+
+        const loaded = await LoadPlaylistFile(playlistPath) as PlaylistLoadResult;
+        if (cacheKey !== '') {
+            playlistLoadCache.set(cacheKey, loaded);
+        }
+
+        return loaded;
+    };
+
     const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
         const changed = context.playbackSequencingService.setPlaybackOrderMode(nextMode);
         if (!changed) {
@@ -104,10 +142,12 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
     };
 
     const loadPlaylistData = async (playlistPath: string): Promise<LoadedPlaylistData | null> => {
-        const loaded = await LoadPlaylistFile(playlistPath) as PlaylistLoadResult;
-        const mergeResult = await mergePlaylistFilesIntoTracks(context.tracks || [], loaded.trackFiles || []);
+        const loaded = await loadPlaylistResult(playlistPath);
+        const mergeResult = await mergePlaylistFilesIntoTracks(context.tracks || [], loaded.trackFiles || [], context.trackIndexByPath);
         context.tracks = mergeResult.tracks;
-        context.rebuildTrackPathIndex?.();
+        if (!context.trackIndexByPath) {
+            context.rebuildTrackPathIndex?.();
+        }
 
         return {
             name: loaded.name || '',
@@ -118,9 +158,11 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
 
     const loadListenHistoryData = async (): Promise<LoadedPlaylistData | null> => {
         const loaded = await LoadListenHistoryPlaylist() as PlaylistLoadResult;
-        const mergeResult = await mergePlaylistFilesIntoTracks(context.tracks || [], loaded.trackFiles || []);
+        const mergeResult = await mergePlaylistFilesIntoTracks(context.tracks || [], loaded.trackFiles || [], context.trackIndexByPath);
         context.tracks = mergeResult.tracks;
-        context.rebuildTrackPathIndex?.();
+        if (!context.trackIndexByPath) {
+            context.rebuildTrackPathIndex?.();
+        }
 
         return {
             cachedItems: mapLoadedPlaylistCachedItems(loaded),
@@ -139,9 +181,29 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
         return await SavePlaylistTrackMetadataCache(entries);
     };
 
+    const savePlaylistData = async (playlistPath: string, trackPaths: string[]): Promise<boolean> => {
+        const saved = await SavePlaylistFile(playlistPath, trackPaths);
+        if (saved) {
+            invalidatePlaylistLoadCache(playlistPath);
+        }
+
+        return saved;
+    };
+
+    const appendTracksToPlaylistData = async (playlistPath: string, trackPaths: string[]): Promise<boolean> => {
+        const appended = await AppendTracksToPlaylistFile(playlistPath, trackPaths);
+        if (appended) {
+            invalidatePlaylistLoadCache(playlistPath);
+        }
+
+        return appended;
+    };
+
     return {
+        appendTracksToPlaylistData,
         loadListenHistoryData,
         loadPlaylistData,
+        savePlaylistData,
         savePlaylistTrackMetadataCache,
         savePlaybackOrderSetting,
         setPlaybackOrderMode,
