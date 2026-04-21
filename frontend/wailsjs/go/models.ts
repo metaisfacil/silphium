@@ -134,6 +134,7 @@ export namespace main {
 	    playbackOrder: string;
 	    releaseDepth?: number;
 	    favoritePlaylists?: string[];
+	    savePlaylistsOnAddRemove?: boolean;
 	    coverArtPriority?: string[];
 	    audio?: AudioSettings;
 	    preferMusicBrainzMetadata: boolean;
@@ -192,6 +193,7 @@ export namespace main {
 	        this.playbackOrder = source["playbackOrder"];
 	        this.releaseDepth = source["releaseDepth"];
 	        this.favoritePlaylists = source["favoritePlaylists"];
+	        this.savePlaylistsOnAddRemove = source["savePlaylistsOnAddRemove"];
 	        this.coverArtPriority = source["coverArtPriority"];
 	        this.audio = this.convertValues(source["audio"], AudioSettings);
 	        this.preferMusicBrainzMetadata = source["preferMusicBrainzMetadata"];

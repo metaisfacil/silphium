@@ -143,6 +143,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         listenBrainzServerUrl: string;
         listenBrainzRequestRateMs: number;
         favoritePlaylists: string[];
+        savePlaylistsOnAddRemove: boolean;
         coverArtPriority: AppSettings['coverArtPriority'];
         audioOutputDevice: string;
         audioOutputBufferMs: number;
@@ -204,6 +205,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             playbackOrder: context.getPlaybackOrderMode(),
             releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
             favoritePlaylists: values.favoritePlaylists,
+            savePlaylistsOnAddRemove: values.savePlaylistsOnAddRemove,
             coverArtPriority: values.coverArtPriority,
             audio: {
                 outputDevice: values.audioOutputDevice,
@@ -299,6 +301,7 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             listenBrainzServerUrl: context.currentSettings.listenBrainzServerUrl,
             listenBrainzRequestRateMs: context.currentSettings.listenBrainzRequestRateMs,
             favoritePlaylists: context.currentSettings.favoritePlaylists,
+            savePlaylistsOnAddRemove: context.currentSettings.savePlaylistsOnAddRemove,
             coverArtPriority: context.currentSettings.coverArtPriority,
             audioOutputDevice: context.currentSettings.audio.outputDevice,
             audioOutputBufferMs: context.currentSettings.audio.outputBufferMs,

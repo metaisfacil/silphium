@@ -29,6 +29,7 @@ export type SettingsModalElements = {
     settingsFavoritePlaylistList: HTMLUListElement;
     settingsAddFavoritePlaylist: HTMLButtonElement;
     settingsRemoveFavoritePlaylist: HTMLButtonElement;
+    settingsSavePlaylistsOnAddRemove: HTMLInputElement;
     settingsScrobblingEnabled: HTMLInputElement;
     settingsScrobbleFilterMode: HTMLSelectElement;
     settingsScrobbleRuleList: HTMLUListElement;
@@ -136,8 +137,13 @@ const renderSettingsTooltipIcon = (): string => `
     </svg>
 `;
 
-const renderSettingsTooltip = (label: string, hintHtml: string, align: 'start' | 'end' = 'start'): string => `
-    <span class="settings-tooltip settings-tooltip--${align}">
+const renderSettingsTooltip = (
+    label: string,
+    hintHtml: string,
+    align: 'start' | 'end' = 'start',
+    side: 'below' | 'above' = 'below',
+): string => `
+    <span class="settings-tooltip settings-tooltip--${align} settings-tooltip--${side}">
         <button class="settings-tooltip-trigger" type="button" aria-label="Show help for ${label}">
             ${renderSettingsTooltipIcon()}
         </button>
@@ -145,20 +151,32 @@ const renderSettingsTooltip = (label: string, hintHtml: string, align: 'start' |
     </span>
 `;
 
-const renderSettingsLabel = (forId: string, text: string, hintHtml?: string, tooltipAlign: 'start' | 'end' = 'start'): string => `
+const renderSettingsLabel = (
+    forId: string,
+    text: string,
+    hintHtml?: string,
+    tooltipAlign: 'start' | 'end' = 'start',
+    tooltipSide: 'below' | 'above' = 'below',
+): string => `
     <div class="settings-label-row">
         <label class="settings-label" for="${forId}">${text}</label>
-        ${hintHtml ? renderSettingsTooltip(text, hintHtml, tooltipAlign) : ''}
+        ${hintHtml ? renderSettingsTooltip(text, hintHtml, tooltipAlign, tooltipSide) : ''}
     </div>
 `;
 
-const renderSettingsCheckboxLabel = (forId: string, text: string, hintHtml?: string, tooltipAlign: 'start' | 'end' = 'start'): string => `
+const renderSettingsCheckboxLabel = (
+    forId: string,
+    text: string,
+    hintHtml?: string,
+    tooltipAlign: 'start' | 'end' = 'start',
+    tooltipSide: 'below' | 'above' = 'below',
+): string => `
     <div class="settings-label-row settings-checkbox-label-row">
         <label class="settings-checkbox-row" for="${forId}">
             <input id="${forId}" class="settings-checkbox" type="checkbox">
             <span class="settings-label">${text}</span>
         </label>
-        ${hintHtml ? renderSettingsTooltip(text, hintHtml, tooltipAlign) : ''}
+        ${hintHtml ? renderSettingsTooltip(text, hintHtml, tooltipAlign, tooltipSide) : ''}
     </div>
 `;
 
@@ -336,6 +354,9 @@ export const renderSettingsModal = (): string => `
                             <button id="settings-add-favorite-playlist" class="settings-list-btn" type="button" title="Add favourite playlist" aria-label="Add favourite playlist">+</button>
                             <button id="settings-remove-favorite-playlist" class="settings-list-btn" type="button" title="Remove selected favourite playlist" aria-label="Remove selected favourite playlist" disabled>-</button>
                         </div>
+                    </div>
+                    <div class="settings-field settings-toggle-field">
+                        ${renderSettingsCheckboxLabel('settings-save-playlists-on-add-remove', 'Save playlist immediately after adding or removing tracks', 'Disabled by default. When enabled, edits made in a loaded playlist view are written back to the playlist file after each add or remove action.', 'end', 'above')}
                     </div>
                 </div>
                 <div id="settings-panel-scrobbling" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-scrobbling" hidden>
@@ -602,6 +623,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsFavoritePlaylistList: root.querySelector('#settings-favourite-playlist-list') as HTMLUListElement,
     settingsAddFavoritePlaylist: root.querySelector('#settings-add-favorite-playlist') as HTMLButtonElement,
     settingsRemoveFavoritePlaylist: root.querySelector('#settings-remove-favorite-playlist') as HTMLButtonElement,
+    settingsSavePlaylistsOnAddRemove: root.querySelector('#settings-save-playlists-on-add-remove') as HTMLInputElement,
     settingsScrobblingEnabled: root.querySelector('#settings-scrobbling-enabled') as HTMLInputElement,
     settingsScrobbleFilterMode: root.querySelector('#settings-scrobble-filter-mode') as HTMLSelectElement,
     settingsScrobbleRuleList: root.querySelector('#settings-scrobble-rule-list') as HTMLUListElement,

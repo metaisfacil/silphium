@@ -44,6 +44,7 @@ export type SettingsFormValues = {
     listenBrainzServerUrl: string;
     listenBrainzRequestRateMs: number;
     favoritePlaylists: string[];
+    savePlaylistsOnAddRemove: boolean;
     coverArtPriority: CoverArtPrioritySource[];
     audioOutputDevice: string;
     audioOutputBufferMs: number;

@@ -111,6 +111,7 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
                 playbackOrder: context.playbackSequencingService.getPlaybackOrderMode(),
                 releaseDepth: primaryLibraryFolder?.releaseDepth || 0,
                 favoritePlaylists: context.currentSettings.favoritePlaylists,
+                savePlaylistsOnAddRemove: context.currentSettings.savePlaylistsOnAddRemove,
                 coverArtPriority: context.currentSettings.coverArtPriority,
                 audio: context.currentSettings.audio,
                 preferMusicBrainzMetadata: context.currentSettings.preferMusicBrainzMetadata,

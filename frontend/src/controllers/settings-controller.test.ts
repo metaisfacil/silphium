@@ -66,6 +66,7 @@ const createSettingsViewValues = (): SettingsViewValues => ({
     listenBrainzServerUrl: '',
     listenBrainzRequestRateMs: 0,
     favoritePlaylists: ['/playlists/favorites.m3u8', '/playlists/favorites.m3u8', ''],
+    savePlaylistsOnAddRemove: false,
     coverArtPriority: ['embedded', 'file'],
     audioOutputDevice: 'device-1',
     audioOutputBufferMs: 128,
@@ -179,6 +180,7 @@ describe('createSettingsController', () => {
         expect(document.querySelector('[aria-label="Show help for OpenSubsonic API key"]')).not.toBeNull();
         expect(document.querySelector('label[for="settings-musicbrainz-tag-worker-cores"]')?.textContent).toBe('MusicBrainz tag worker cores');
         expect(document.querySelector('label[for="settings-favourite-playlist-list"]')?.textContent).toBe('Favourite playlists');
+        expect(document.querySelector('label[for="settings-save-playlists-on-add-remove"]')?.textContent?.trim()).toBe('Save playlist immediately after adding or removing tracks');
         expect(document.querySelector('label[for="settings-scrobble-filter-mode"]')?.textContent).toBe('Scrobble mode');
         expect(document.querySelector('label[for="settings-scrobble-rule-list"]')?.textContent).toBe('Scrobble rules');
         expect(document.querySelector('label[for="settings-audio-output-device"]')?.textContent).toBe('Audio output device');
@@ -235,10 +237,13 @@ describe('createSettingsController', () => {
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(true);
         expect(elements.settingsLibraryFolderList.querySelectorAll('[data-library-folder-index]')).toHaveLength(1);
         expect(elements.settingsFavoritePlaylistList.querySelectorAll('[data-favorite-playlist-index]')).toHaveLength(1);
+        expect(elements.settingsSavePlaylistsOnAddRemove.checked).toBe(false);
         expect(document.querySelector('#settings-tab-shortcuts')).toBeNull();
 
         elements.settingsFFmpegPath.value = 'D:/tools/ffmpeg.exe';
         elements.settingsAudioOutputBufferMs.value = '2500';
+        elements.settingsTabPlaylists.click();
+        elements.settingsSavePlaylistsOnAddRemove.checked = true;
         elements.settingsTabUi.click();
         expect(document.activeElement).toBe(elements.settingsPlayerCardLayout);
         expect(elements.settingsCoverArtPriorityAccordionPanel.hidden).toBe(true);
@@ -278,6 +283,7 @@ describe('createSettingsController', () => {
             scrobbleFilterMode: 'blacklist',
             scrobbleRules: [{ field: 'path', operator: 'starts_with', value: '/music/private' }],
             favoritePlaylists: ['/playlists/favorites.m3u8'],
+            savePlaylistsOnAddRemove: true,
             coverArtPriority: ['embedded', 'file'],
             audioOutputDevice: 'device-1',
             audioOutputBufferMs: 1000,
@@ -306,6 +312,7 @@ describe('createSettingsController', () => {
         expect(state.selectedLibraryFolderIndex).toBe(0);
         expect(state.selectedFavoritePlaylistIndex).toBe(-1);
         expect(elements.settingsScrobblingEnabled.checked).toBe(true);
+        expect(elements.settingsSavePlaylistsOnAddRemove.checked).toBe(false);
 
         const favoriteButton = elements.settingsFavoritePlaylistList.querySelector('[data-favorite-playlist-index="0"]') as HTMLButtonElement;
         favoriteButton.click();

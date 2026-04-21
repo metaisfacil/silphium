@@ -103,6 +103,7 @@ describe('settings normalization', () => {
             listenBrainzRequestRateMs: 1500.2,
             playbackOrder: 'shuffle-library',
             favoritePlaylists: ['favorites.m3u'],
+            savePlaylistsOnAddRemove: true,
             coverArtPriority: ['musicbrainz', 'embedded', 'musicbrainz'],
             audio: {
                 outputDevice: ' usb-dac ',
@@ -146,6 +147,7 @@ describe('settings normalization', () => {
         expect(normalized.listenBrainzRequestRateMs).toBe(1500);
         expect(normalized.playbackOrder).toBe('shuffle-library');
         expect(normalized.favoritePlaylists).toEqual(['favorites.m3u']);
+        expect(normalized.savePlaylistsOnAddRemove).toBe(true);
         expect(normalized.coverArtPriority).toEqual(['musicbrainz', 'embedded']);
         expect(normalized.audio).toEqual({
             outputDevice: 'usb-dac',
@@ -210,6 +212,7 @@ describe('settings normalization', () => {
             { field: 'path', operator: 'starts_with', value: '/music/keep' },
         ]);
         expect(normalized.favoritePlaylists).toEqual([]);
+        expect(normalized.savePlaylistsOnAddRemove).toBe(false);
         expect(normalized.musicBrainzRequestRateMs).toBe(0);
         expect(normalized.listenBrainzRequestRateMs).toBe(0);
         expect(normalized.audio).toEqual({
@@ -270,6 +273,7 @@ describe('settings normalization', () => {
         expect(normalized.musicBrainzRequestRateMs).toBe(0);
         expect(normalized.listenBrainzRequestRateMs).toBe(0);
         expect(normalized.audio).toEqual(defaultAppSettings.audio);
+        expect(normalized.savePlaylistsOnAddRemove).toBe(false);
         expect(normalized.localLibraryFilesDatabaseEnabled).toBe(true);
         expect(normalized.localLibraryFilesDatabaseLoadOnStartup).toBe(true);
         expect(normalized.localLibraryFilesDatabaseListenHistoryThresholdSeconds).toBe(defaultListenHistoryThresholdSeconds);

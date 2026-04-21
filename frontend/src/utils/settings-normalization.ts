@@ -76,6 +76,7 @@ export const defaultAppSettings: AppSettings = {
     playbackOrder: 'ordered-library',
     releaseDepth: 0,
     favoritePlaylists: [],
+    savePlaylistsOnAddRemove: false,
     coverArtPriority: ['file', 'embedded'],
     audio: {
         outputDevice: 'default',
@@ -283,6 +284,7 @@ export const normalizeAppSettings = (settings: Partial<AppSettings>): AppSetting
         playbackOrder: asPlaybackOrderMode(settings.playbackOrder || ''),
         releaseDepth: libraryFolders[0]?.releaseDepth || 0,
         favoritePlaylists: Array.isArray(settings.favoritePlaylists) ? settings.favoritePlaylists : [],
+        savePlaylistsOnAddRemove: settings.savePlaylistsOnAddRemove === true,
         coverArtPriority: normalizeCoverArtPriority(settings.coverArtPriority),
         audio: {
             outputDevice: (rawAudio.outputDevice || 'default').trim() || 'default',

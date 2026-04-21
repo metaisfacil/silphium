@@ -296,6 +296,7 @@ describe('app-controller-setup', () => {
         });
 
         expect(settingsConfig.getValues().favoritePlaylists).toEqual(['favorites.m3u']);
+        expect(settingsConfig.getValues().savePlaylistsOnAddRemove).toBe(false);
         await expect(settingsConfig.getMusicBrainzTagWorkerProgress()).resolves.toEqual({ enabled: true, active: true, progress: 0.4 });
         expect(settingsConfig.state).toBe(context.settingsControllerState);
         expect(libraryConfig.state).toBe(context.libraryControllerState);
@@ -323,6 +324,7 @@ describe('app-controller-setup', () => {
             listenBrainzServerUrl: '',
             listenBrainzRequestRateMs: 1000,
             favoritePlaylists: ['favorites.m3u'],
+            savePlaylistsOnAddRemove: true,
             coverArtPriority: ['file', 'embedded'],
             audioOutputDevice: 'default',
             audioOutputBufferMs: 64,
@@ -382,6 +384,7 @@ describe('app-controller-setup', () => {
         expect(playlistConfig.getTrackCount()).toBe(2);
         expect(playlistConfig.getCurrentTrackIndex()).toBe(0);
         expect(playlistConfig.getFavoritePlaylists()).toEqual(['favorites.m3u']);
+        expect(playlistConfig.shouldAutoSavePlaylistsOnAddRemove()).toBe(true);
         expect(playlistConfig.hasListenHistoryPlaylist()).toBe(false);
         await playlistConfig.loadListenHistoryData();
         await playlistConfig.loadPlaylistData('/playlists/favorites.m3u');
@@ -390,6 +393,8 @@ describe('app-controller-setup', () => {
         playlistConfig.appendTracksToPlaylistData('/playlists/favorites.m3u', ['/music/library/track-1.flac']);
         await playlistConfig.onTrackChosen(1, { userInitiated: true, source: 'library' });
         playlistConfig.onExternalPlaylistLoaded();
+        context.currentSettings.savePlaylistsOnAddRemove = false;
+        expect(playlistConfig.shouldAutoSavePlaylistsOnAddRemove()).toBe(false);
 
         context.currentTrackIndex = -1;
         expect(shareConfig.getCurrentTrack()).toBeUndefined();
@@ -514,6 +519,7 @@ describe('app-controller-setup', () => {
             listenBrainzServerUrl: '',
             listenBrainzRequestRateMs: 1000,
             favoritePlaylists: ['favorites.m3u'],
+            savePlaylistsOnAddRemove: false,
             coverArtPriority: ['file', 'embedded'],
             audioOutputDevice: 'stale-device',
             audioOutputBufferMs: 64,

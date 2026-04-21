@@ -63,6 +63,7 @@ const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     playbackOrder: 'ordered-library',
     releaseDepth: 2,
     favoritePlaylists: ['/playlists/favorites.m3u8'],
+    savePlaylistsOnAddRemove: false,
     coverArtPriority: ['embedded', 'file'],
     audio: {
         outputDevice: 'default',
@@ -195,6 +196,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             playbackOrder: 'shuffle-library',
             releaseDepth: 2,
             libraryFolders: context.currentSettings.libraryFolders,
+            savePlaylistsOnAddRemove: false,
             visualizerMode: 'lissajous',
         }));
         expect(saveSettingsMock).toHaveBeenCalledTimes(1);

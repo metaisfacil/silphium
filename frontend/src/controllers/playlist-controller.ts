@@ -90,6 +90,7 @@ type PlaylistControllerOptions = {
     appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => Promise<boolean>;
     openErrorModal: (title: string, message: string) => void;
     getFavoritePlaylists: () => string[];
+    shouldAutoSavePlaylistsOnAddRemove?: () => boolean;
     hasListenHistoryPlaylist: () => boolean;
     onTrackChosen: (index: number, context: PlaylistTrackChosenContext) => Promise<void>;
     onExternalPlaylistLoaded: () => void;
@@ -1711,6 +1712,32 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
     };
 
+    const replaceTrackIndexes = (queue: number[], trackIndexes: number[]): void => {
+        queue.length = 0;
+        appendTrackIndexes(queue, trackIndexes);
+    };
+
+    const shouldAutoSaveLoadedPlaylistMutations = (): boolean => (
+        options.shouldAutoSavePlaylistsOnAddRemove?.() === true
+        && controllerState.selectedSource === 'playlist'
+        && controllerState.loadedPlaylistReadOnly === false
+        && controllerState.loadedPlaylistPath.trim() !== ''
+        && !!controllerState.loadedPlaylistTrackIndexes
+    );
+
+    const persistLoadedPlaylistSequenceIfEnabled = async (trackIndexes: number[]): Promise<boolean> => {
+        if (!shouldAutoSaveLoadedPlaylistMutations()) {
+            return true;
+        }
+
+        const trackPaths = trackIndexes.map((trackIndex) => options.getTrackPath(trackIndex).trim());
+        if (trackPaths.some((trackPath) => trackPath === '')) {
+            return false;
+        }
+
+        return await options.savePlaylistData(controllerState.loadedPlaylistPath, trackPaths);
+    };
+
     const appendTracksToPlaylist = async (playlistPath: string, trackIndexes: number[]): Promise<boolean> => {
         const cleanPlaylistPath = playlistPath.trim();
         if (cleanPlaylistPath === '') {
@@ -1896,7 +1923,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
     };
 
-    const addCurrentTrackToEnd = (): void => {
+    const addCurrentTrackToEnd = async (): Promise<void> => {
         if (shouldDisablePlaylistMutationControls()) {
             return;
         }
@@ -1907,6 +1934,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         const activeQueue = mutableCurrentSequence();
+        const previousQueue = activeQueue.slice();
         if (playlistPreventDuplicateCheckbox.checked && activeQueue.includes(currentTrackIndex)) {
             options.openErrorModal(
                 'Track already in playlist',
@@ -1916,6 +1944,16 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         activeQueue.push(currentTrackIndex);
+        if (!(await persistLoadedPlaylistSequenceIfEnabled(activeQueue))) {
+            replaceTrackIndexes(activeQueue, previousQueue);
+            options.openErrorModal(
+                'Playlist save failed',
+                'Silphium could not save the playlist after adding a track, so the change was reverted.',
+            );
+            renderPlaylist(true);
+            return;
+        }
+
         hydrateTrackMetadataInBackground([currentTrackIndex]);
         renderPlaylist(true);
     };
@@ -2251,7 +2289,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     });
 
     playlistAddCurrent.addEventListener('click', () => {
-        addCurrentTrackToEnd();
+        void addCurrentTrackToEnd().catch((error) => {
+            console.error(error);
+        });
     });
 
     playlistCreate.addEventListener('click', () => {
@@ -2308,20 +2348,41 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 return;
             }
 
+            const previousQueue = activeQueue.slice();
             activeQueue.splice(removePosition, 1);
-            if (controllerState.loadedPlaylistTrackIndexes && controllerState.loadedPlaylistTrackIndexes.length === 0) {
-                controllerState.loadedPlaylistTrackIndexes = null;
-                controllerState.loadedPlaylistName = '';
-                controllerState.selectedSource = 'queue';
-            }
+            void (async () => {
+                if (!(await persistLoadedPlaylistSequenceIfEnabled(activeQueue))) {
+                    replaceTrackIndexes(activeQueue, previousQueue);
+                    options.openErrorModal(
+                        'Playlist save failed',
+                        'Silphium could not save the playlist after removing a track, so the change was reverted.',
+                    );
+                    renderPlaylist();
+                    return;
+                }
 
-            if (controllerState.editableQueueTrackIndexes && controllerState.editableQueueTrackIndexes.length === 0) {
-                clearEditableQueueState();
-            } else {
-                updateEditableQueueCurrentPositionAfterRemoval(removePosition, activeQueue.length);
-            }
+                if (controllerState.loadedPlaylistTrackIndexes && controllerState.loadedPlaylistTrackIndexes.length === 0) {
+                    controllerState.loadedPlaylistTrackIndexes = null;
+                    controllerState.loadedPlaylistName = '';
+                    controllerState.selectedSource = 'queue';
+                }
 
-            renderPlaylist();
+                if (controllerState.editableQueueTrackIndexes && controllerState.editableQueueTrackIndexes.length === 0) {
+                    clearEditableQueueState();
+                } else {
+                    updateEditableQueueCurrentPositionAfterRemoval(removePosition, activeQueue.length);
+                }
+
+                renderPlaylist();
+            })().catch((error) => {
+                console.error(error);
+                replaceTrackIndexes(activeQueue, previousQueue);
+                options.openErrorModal(
+                    'Playlist save failed',
+                    'Silphium could not save the playlist after removing a track, so the change was reverted.',
+                );
+                renderPlaylist();
+            });
             return;
         }
 

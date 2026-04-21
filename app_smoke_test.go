@@ -20,7 +20,8 @@ func TestAppHighRiskMethodsSmoke(t *testing.T) {
 			Label:        " Main / Library ",
 			ReleaseDepth: 2,
 		}},
-		FavoritePlaylists: []string{"  " + playlistPath + "  "},
+		FavoritePlaylists:        []string{"  " + playlistPath + "  "},
+		SavePlaylistsOnAddRemove: true,
 		Audio: AudioSettings{
 			OutputBufferMs: 256,
 		},
@@ -44,10 +45,16 @@ func TestAppHighRiskMethodsSmoke(t *testing.T) {
 	if len(savedSettings.FavoritePlaylists) != 1 || savedSettings.FavoritePlaylists[0] != playlistPath {
 		t.Fatalf("SaveSettings() favorite playlists = %#v, want %#v", savedSettings.FavoritePlaylists, []string{playlistPath})
 	}
+	if !savedSettings.SavePlaylistsOnAddRemove {
+		t.Fatal("SaveSettings() SavePlaylistsOnAddRemove = false, want true")
+	}
 
 	loadedSettings := app.GetSettings()
 	if loadedSettings.LibraryFolders[0].Label != "Main Library" {
 		t.Fatalf("GetSettings() library folder label = %q, want %q", loadedSettings.LibraryFolders[0].Label, "Main Library")
+	}
+	if !loadedSettings.SavePlaylistsOnAddRemove {
+		t.Fatal("GetSettings() SavePlaylistsOnAddRemove = false, want true")
 	}
 
 	scan := app.ScanConfiguredLibraryFolders()

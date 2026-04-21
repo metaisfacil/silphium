@@ -101,6 +101,7 @@ type AppSettings struct {
 	PlaybackOrder                                          string                   `json:"playbackOrder"`
 	ReleaseDepth                                           int                      `json:"releaseDepth,omitempty"`
 	FavoritePlaylists                                      []string                 `json:"favoritePlaylists,omitempty"`
+	SavePlaylistsOnAddRemove                               bool                     `json:"savePlaylistsOnAddRemove,omitempty"`
 	CoverArtPriority                                       []string                 `json:"coverArtPriority,omitempty"`
 	Audio                                                  AudioSettings            `json:"audio,omitempty"`
 	PreferMusicBrainzMetadata                              bool                     `json:"preferMusicBrainzMetadata"`
@@ -897,6 +898,7 @@ func normalizeAppSettings(settings AppSettings) AppSettings {
 		PlaybackOrder:                          playbackOrder,
 		ReleaseDepth:                           legacyReleaseDepth,
 		FavoritePlaylists:                      favoritePlaylists,
+		SavePlaylistsOnAddRemove:               settings.SavePlaylistsOnAddRemove,
 		CoverArtPriority:                       coverArtPriority,
 		Audio:                                  audio,
 		PreferMusicBrainzMetadata:              preferMusicBrainzMetadata,

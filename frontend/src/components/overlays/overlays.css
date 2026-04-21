@@ -1184,6 +1184,12 @@
     right: 0;
 }
 
+.settings-tooltip--above .settings-tooltip-bubble {
+    top: auto;
+    bottom: calc(100% + 0.35rem);
+    transform: translateY(0.15rem);
+}
+
 .settings-checkbox-row {
     display: flex;
     align-items: center;

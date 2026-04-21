@@ -77,6 +77,9 @@ func TestNormalizeAppSettingsLibraryFoldersAndFavorites(t *testing.T) {
 	if !reflect.DeepEqual(settings.FavoritePlaylists, []string{playlistPath}) {
 		t.Fatalf("favorite playlists = %#v, want %#v", settings.FavoritePlaylists, []string{playlistPath})
 	}
+	if settings.SavePlaylistsOnAddRemove {
+		t.Fatal("SavePlaylistsOnAddRemove = true, want false by default")
+	}
 }
 
 func TestNormalizeAppSettingsAudioCoverArtAndShortcuts(t *testing.T) {
@@ -173,6 +176,7 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 		MusicBrainzTagRequestStaggeringEnabled: true,
 		MusicBrainzTagWorkerCores:              0,
 		ScrobblingEnabled:                      boolPointer(false),
+		SavePlaylistsOnAddRemove:               true,
 		KeyboardShortcuts:                      FocusedKeyboardShortcuts{NextTrack: "J"},
 		PreferMusicBrainzMetadata:              true,
 		MusicBrainzTagDatabaseEnabled:          true,
@@ -223,6 +227,9 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 	}
 	if settings.ScrobblingEnabled == nil || *settings.ScrobblingEnabled {
 		t.Fatalf("ScrobblingEnabled = %#v, want false", settings.ScrobblingEnabled)
+	}
+	if !settings.SavePlaylistsOnAddRemove {
+		t.Fatal("SavePlaylistsOnAddRemove = false, want true")
 	}
 	if settings.KeyboardShortcuts.NextTrack != "J" {
 		t.Fatalf("NextTrack shortcut = %q, want %q", settings.KeyboardShortcuts.NextTrack, "J")

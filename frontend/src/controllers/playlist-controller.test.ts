@@ -44,7 +44,7 @@ const createTrackView = (index: number): PlaylistTrackView => ({
     tagsResolved: true,
 });
 
-const mountPlaylistController = (options: { state?: PlaylistControllerState } = {}) => {
+const mountPlaylistController = (options: { state?: PlaylistControllerState; shouldAutoSavePlaylistsOnAddRemove?: boolean } = {}) => {
     document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
     const trigger = document.createElement('button');
     document.body.append(trigger);
@@ -114,6 +114,7 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState } = 
         appendTracksToPlaylistData,
         openErrorModal,
         getFavoritePlaylists: () => favoritePlaylists,
+        shouldAutoSavePlaylistsOnAddRemove: () => options.shouldAutoSavePlaylistsOnAddRemove === true,
         hasListenHistoryPlaylist: () => listenHistoryEnabled,
         onTrackChosen,
         onExternalPlaylistLoaded: vi.fn(() => undefined),
@@ -706,6 +707,71 @@ describe('createPlaylistController', () => {
             'Track already in playlist',
             'The current track is already in the active playlist. Disable duplicate prevention to add it again.',
         );
+    });
+
+    it('saves the loaded playlist immediately after adding a track when enabled', async () => {
+        const state = createPlaylistControllerState();
+        const { controller, elements, savePlaylistData } = mountPlaylistController({
+            state,
+            shouldAutoSavePlaylistsOnAddRemove: true,
+        });
+
+        await expect(controller.loadPlaylistByPath('/playlists/demo.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        elements.playlistAddCurrent.click();
+        await flushPromises();
+
+        expect(savePlaylistData).toHaveBeenCalledWith('/playlists/demo.m3u8', [
+            '/music/track-2.flac',
+            '/music/track-1.flac',
+            '/music/track-0.flac',
+        ]);
+        expect(state.loadedPlaylistTrackIndexes).toEqual([2, 1, 0]);
+    });
+
+    it('saves the loaded playlist immediately after removing a track when enabled', async () => {
+        const state = createPlaylistControllerState();
+        const { controller, elements, savePlaylistData } = mountPlaylistController({
+            state,
+            shouldAutoSavePlaylistsOnAddRemove: true,
+        });
+
+        await expect(controller.loadPlaylistByPath('/playlists/demo.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        const removeButton = elements.playlistList.querySelector('[data-playlist-remove-position="0"]') as HTMLButtonElement | null;
+        expect(removeButton).not.toBeNull();
+
+        removeButton?.click();
+        await flushPromises();
+
+        expect(savePlaylistData).toHaveBeenCalledWith('/playlists/demo.m3u8', [
+            '/music/track-1.flac',
+        ]);
+        expect(state.loadedPlaylistTrackIndexes).toEqual([1]);
+    });
+
+    it('reverts a loaded playlist add when immediate save fails', async () => {
+        const state = createPlaylistControllerState();
+        const { controller, elements, openErrorModal, savePlaylistData } = mountPlaylistController({
+            state,
+            shouldAutoSavePlaylistsOnAddRemove: true,
+        });
+        savePlaylistData.mockResolvedValue(false);
+
+        await expect(controller.loadPlaylistByPath('/playlists/demo.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        elements.playlistAddCurrent.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(openErrorModal).toHaveBeenCalledWith(
+            'Playlist save failed',
+            'Silphium could not save the playlist after adding a track, so the change was reverted.',
+        );
+        expect(state.loadedPlaylistTrackIndexes).toEqual([2, 1]);
     });
 
     it('starts queue dragging from the handle instead of the full row', () => {

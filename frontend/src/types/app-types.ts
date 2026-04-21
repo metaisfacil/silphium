@@ -385,6 +385,7 @@ export type AppSettings = {
     playbackOrder: PlaybackOrderMode;
     releaseDepth: number;
     favoritePlaylists: string[];
+    savePlaylistsOnAddRemove: boolean;
     coverArtPriority: CoverArtPrioritySource[];
     audio: AudioSettings;
     preferMusicBrainzMetadata: boolean;

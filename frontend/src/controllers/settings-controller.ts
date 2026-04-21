@@ -81,6 +81,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsRemoveLibraryFolder,
         settingsFavoritePlaylistList,
         settingsRemoveFavoritePlaylist,
+        settingsSavePlaylistsOnAddRemove,
         settingsScrobblingEnabled,
         settingsScrobbleFilterMode,
         settingsScrobbleRuleList,
@@ -627,6 +628,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         listenBrainzServerUrl: settingsListenBrainzServerUrl.value,
         listenBrainzRequestRateMs: normalizedListenBrainzRequestRateMs(),
         favoritePlaylists: controllerState.favoritePlaylists.slice(),
+        savePlaylistsOnAddRemove: settingsSavePlaylistsOnAddRemove.checked,
         coverArtPriority: controllerState.coverArtPriority.slice(),
         audioOutputDevice: settingsAudioOutputDevice.value || 'default',
         audioOutputBufferMs: normalizeAudioOutputBufferMs(settingsAudioOutputBufferMs.value),
@@ -806,6 +808,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         refreshMusicBrainzRateControls();
         refreshListenBrainzRateControls();
         refreshAudioOutputDevices(values.audioOutputDevices, values.audioOutputDevice || 'default');
+        settingsSavePlaylistsOnAddRemove.checked = values.savePlaylistsOnAddRemove === true;
         settingsAudioOutputBufferMs.value = values.audioOutputBufferMs > 0 ? String(values.audioOutputBufferMs) : '';
         settingsGaplessPlayback.checked = !!values.gaplessPlayback;
         settingsReplayGain.checked = !!values.replayGainEnabled;
