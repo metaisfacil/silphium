@@ -356,7 +356,7 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-save-playlists-on-add-remove', 'Save playlist immediately after adding or removing tracks', 'Disabled by default. When enabled, edits made in a loaded playlist view are written back to the playlist file after each add or remove action.', 'end', 'above')}
+                        ${renderSettingsCheckboxLabel('settings-save-playlists-on-add-remove', 'Save playlist immediately after adding or removing tracks', 'Disabled by default. When enabled, edits made in a loaded playlist view are written back to the playlist file after each add or remove action.', 'end', 'below')}
                     </div>
                 </div>
                 <div id="settings-panel-scrobbling" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-scrobbling" hidden>
