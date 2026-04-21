@@ -42,6 +42,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     const playbackProgressDomUpdateThresholdSeconds = 0.05;
     const settledTransitionMetadataRefreshThresholdSeconds = 0.05;
     const settledTransitionMetadataRefreshProbeMs = 50;
+    const playerCardTrackTransitionOutMs = 90;
     const gaplessQueueLeadTimeMinSeconds = 6;
     const gaplessQueueLeadTimeMaxSeconds = 18;
     const gaplessQueueLeadTimeFraction = 0.12;
@@ -59,6 +60,53 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let settledTransitionMetadataRefreshHandle: number | undefined;
     let settledTransitionMetadataRefreshDeferred = false;
     let pendingSettledTransitionMetadataRefreshPath = '';
+    let playerCardTrackTransitionHandle: number | undefined;
+    let playerCardTrackTransitionFrameHandle = 0;
+    let playerCardTrackTransitionVersion = 0;
+
+    const clearPlayerCardTrackTransition = (): void => {
+        playerCardTrackTransitionVersion += 1;
+        if (playerCardTrackTransitionHandle !== undefined) {
+            window.clearTimeout(playerCardTrackTransitionHandle);
+            playerCardTrackTransitionHandle = undefined;
+        }
+
+        if (playerCardTrackTransitionFrameHandle !== 0) {
+            window.cancelAnimationFrame(playerCardTrackTransitionFrameHandle);
+            playerCardTrackTransitionFrameHandle = 0;
+        }
+
+        context.playerCard.classList.remove('is-track-transitioning');
+    };
+
+    const prefersReducedMotion = (): boolean => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+    const runPlayerCardTrackTransition = (applyUpdate: () => void): void => {
+        clearPlayerCardTrackTransition();
+        if (prefersReducedMotion()) {
+            applyUpdate();
+            return;
+        }
+
+        const transitionVersion = playerCardTrackTransitionVersion;
+        context.playerCard.classList.add('is-track-transitioning');
+        playerCardTrackTransitionHandle = window.setTimeout(() => {
+            if (transitionVersion !== playerCardTrackTransitionVersion) {
+                return;
+            }
+
+            playerCardTrackTransitionHandle = undefined;
+            applyUpdate();
+            playerCardTrackTransitionFrameHandle = window.requestAnimationFrame(() => {
+                playerCardTrackTransitionFrameHandle = 0;
+                if (transitionVersion !== playerCardTrackTransitionVersion) {
+                    return;
+                }
+
+                context.playerCard.classList.remove('is-track-transitioning');
+            });
+        }, playerCardTrackTransitionOutMs);
+    };
 
     const clearSettledTransitionMetadataRefresh = (): void => {
         pendingSettledTransitionMetadataRefreshPath = '';
@@ -692,7 +740,9 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             context.libraryController().setSidebarAutoFolderPath(track.folderPath);
         }
 
-        refreshNowPlayingLabel();
+        runPlayerCardTrackTransition(() => {
+            refreshNowPlayingLabel();
+        });
         void applyCoverArtForTrack(resolvedIndex);
         context.libraryController().renderFolder('none');
 
@@ -869,6 +919,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         playbackProgressEndSyncRequested = false;
 
         const clearNowPlayingCard = (): void => {
+            clearPlayerCardTrackTransition();
             context.currentTrackIndex = -1;
             context.trackTitle.textContent = 'Unknown Title';
             context.trackAlbum.textContent = 'Unknown Album';

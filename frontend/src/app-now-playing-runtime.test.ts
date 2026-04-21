@@ -220,6 +220,7 @@ const createContext = (): AppNowPlayingRuntimeContext => {
 describe('createAppNowPlayingRuntime', () => {
     afterEach(() => {
         vi.restoreAllMocks();
+        vi.unstubAllGlobals();
         document.body.innerHTML = '';
     });
 
@@ -305,6 +306,53 @@ describe('createAppNowPlayingRuntime', () => {
         expect(context.trackMetadataService.ensureTrackTagsResolved).not.toHaveBeenCalled();
     });
 
+    it('animates the player card when playback advances to a different track', () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+                displayAlbum: 'Next Album',
+                displayArtist: 'Next Artist',
+            },
+        ];
+
+        vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback): number => {
+            callback(0);
+            return 1;
+        }) as typeof requestAnimationFrame);
+
+        const runtime = createAppNowPlayingRuntime(context);
+
+        runtime.syncCurrentTrackFromPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 0,
+            duration: 240,
+            volume: 0.8,
+            sourcePath: '/music/next.flac',
+            endEventId: 0,
+        });
+
+        expect(context.currentTrackIndex).toBe(1);
+        expect(context.playerCard.classList.contains('is-track-transitioning')).toBe(true);
+        expect(context.trackTitle.textContent).not.toBe('Next Track');
+
+        vi.advanceTimersByTime(90);
+
+        expect(context.playerCard.classList.contains('is-track-transitioning')).toBe(false);
+        expect(context.trackTitle.textContent).toBe('Next Track');
+
+        vi.useRealTimers();
+    });
+
     it('still resolves tags for short tracks before applying the silence heuristic', async () => {
         const context = createContext();
         context.playbackStateService.getPlaybackState = vi.fn(() => ({
@@ -366,6 +414,7 @@ describe('createAppNowPlayingRuntime', () => {
         await runtime.initializeBackendPlayback();
 
         expect(context.currentTrackIndex).toBe(0);
+        await vi.advanceTimersByTimeAsync(90);
         expect(context.trackTitle.textContent).toBe('Track');
 
         await vi.advanceTimersByTimeAsync(playbackReconcileMaxPollIntervalMs + 1);

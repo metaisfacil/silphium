@@ -1330,6 +1330,9 @@
     --player-card-pad: clamp(1.05rem, 4.2cqw, 1.5rem);
     --player-card-gap: clamp(0.45rem, 1.25cqh, 0.9rem);
     --player-card-breath: clamp(0.1rem, 0.5cqh, 0.32rem);
+    --player-track-transition-duration: 220ms;
+    --player-track-transition-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+    --player-track-transition-y: 0.38rem;
     width: min(100%, calc((100vh - 4rem) * 0.75));
     aspect-ratio: 4 / 5;
     display: grid;
@@ -1514,6 +1517,23 @@
     background: rgba(255, 255, 255, 0.07);
     border: 1px solid rgba(255, 255, 255, 0.1);
     cursor: pointer;
+    transition:
+        opacity var(--player-track-transition-duration) var(--player-track-transition-ease),
+        transform var(--player-track-transition-duration) var(--player-track-transition-ease),
+        filter var(--player-track-transition-duration) ease;
+    will-change: opacity, transform, filter;
+}
+
+.cover-frame::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(6, 8, 14, 0.18));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--player-track-transition-duration) ease;
+    z-index: 2;
 }
 
 .cover-frame::after {
@@ -1866,6 +1886,55 @@
     margin: 0;
     width: 100%;
     min-width: 0;
+}
+
+.track-meta,
+.track-release-meta,
+.track-artist-header,
+.track-technical,
+.track-title-inline,
+.track-position-inline,
+.track-genre-inline {
+    transition:
+        opacity var(--player-track-transition-duration) var(--player-track-transition-ease),
+        transform var(--player-track-transition-duration) var(--player-track-transition-ease),
+        filter var(--player-track-transition-duration) ease;
+    will-change: opacity, transform, filter;
+}
+
+.player-card.is-track-transitioning .cover-frame,
+.player-card.is-track-transitioning .track-meta,
+.player-card.is-track-transitioning .track-release-meta,
+.player-card.is-track-transitioning .track-artist-header,
+.player-card.is-track-transitioning .track-technical,
+.player-card.is-track-transitioning .track-title-inline,
+.player-card.is-track-transitioning .track-position-inline,
+.player-card.is-track-transitioning .track-genre-inline {
+    opacity: 0.28;
+    transform: translateY(var(--player-track-transition-y));
+}
+
+.player-card.is-track-transitioning .cover-frame {
+    filter: saturate(0.88) brightness(0.92);
+    transform: translateY(calc(var(--player-track-transition-y) * 0.72)) scale(0.988);
+}
+
+.player-card.is-track-transitioning .cover-frame::before {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cover-frame,
+    .track-meta,
+    .track-release-meta,
+    .track-artist-header,
+    .track-technical,
+    .track-title-inline,
+    .track-position-inline,
+    .track-genre-inline,
+    .cover-frame::before {
+        transition: none;
+    }
 }
 
 .track-line {
