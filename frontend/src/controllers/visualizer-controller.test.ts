@@ -146,6 +146,66 @@ describe('createVisualizerController', () => {
         expect(fetchVisualizationFrame).toHaveBeenCalledTimes(1);
     });
 
+    it('preserves the active visualizer canvas during the startup quiet window for a new track', async () => {
+        const canvas = document.createElement('canvas');
+        canvas.classList.add('is-visualizer-active');
+        const clearRect = vi.fn();
+        Object.defineProperty(canvas, 'getContext', {
+            configurable: true,
+            value: vi.fn(() => ({ clearRect })),
+        });
+        Object.defineProperty(canvas, 'getBoundingClientRect', {
+            configurable: true,
+            value: vi.fn(() => ({
+                width: 320,
+                height: 180,
+                top: 0,
+                left: 0,
+                right: 320,
+                bottom: 180,
+                x: 0,
+                y: 0,
+                toJSON: () => ({}),
+            })),
+        });
+
+        let playbackState = {
+            ...playingState,
+            sourcePath: '/music/track-a.flac',
+        };
+        const fetchVisualizationFrame = vi.fn(async () => ({
+            ...playbackState,
+            sampleRate: 44100,
+            channelCount: 2,
+            frameCount: 0,
+            sampleStride: 1,
+            peak: 0,
+            samples: [],
+        }));
+        const controller = createVisualizerController({
+            canvas,
+            getPlaybackState: () => playbackState,
+            fetchVisualizationFrame,
+        });
+
+        controller.start();
+        controller.setPlaybackState(playbackState);
+
+        playbackState = {
+            ...playbackState,
+            sourcePath: '/music/track-b.flac',
+        };
+        controller.setPlaybackState(playbackState);
+
+        performanceNowMs = 16;
+        animationFrameCallback?.(16);
+        await Promise.resolve();
+
+        expect(fetchVisualizationFrame).not.toHaveBeenCalled();
+        expect(clearRect).not.toHaveBeenCalled();
+        expect(canvas.classList.contains('is-visualizer-active')).toBe(true);
+    });
+
     it('still defers routine visualizer fetches while background bridge work is deferred', () => {
         const canvas = document.createElement('canvas');
         Object.defineProperty(canvas, 'getContext', {

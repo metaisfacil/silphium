@@ -682,7 +682,13 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
                 });
         }
 
-        draw(nowMs);
+        const hasProjectedCurrentTrack = projectedSourcePath === playbackState.sourcePath
+            && (mode === 'equalizer'
+                ? !!targetBands && targetBands.length > 0
+                : !!targetPoints && targetPoints.length >= 4);
+        if (!startupQuietActive || hasProjectedCurrentTrack) {
+            draw(nowMs);
+        }
 
         animationFrameId = window.requestAnimationFrame(tick);
     };
