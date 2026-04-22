@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const { refreshReplayGainReleaseDynamicRangeIndicatorMock } = vi.hoisted(() => ({
+    refreshReplayGainReleaseDynamicRangeIndicatorMock: vi.fn(async () => undefined),
+}));
+
 vi.mock('../wailsjs/go/main/App', () => ({
     AudioGetState: vi.fn(async () => ({ loaded: false })),
     AudioQueueNextTrack: vi.fn(async () => ({ queued: false })),
@@ -28,7 +32,7 @@ vi.mock('./app-release-runtime', () => ({
         collectReplayGainReleaseTrackPathsForIndex: vi.fn(() => []),
         currentReplayGainReleaseTrackPaths: vi.fn(() => []),
         indexOfImageByPath: vi.fn(() => -1),
-        refreshReplayGainReleaseDynamicRangeIndicator: vi.fn(async () => undefined),
+        refreshReplayGainReleaseDynamicRangeIndicator: refreshReplayGainReleaseDynamicRangeIndicatorMock,
         releaseRootPathForTrack: vi.fn(() => ''),
         replayGainReleaseDynamicRangeCacheKey: vi.fn(() => ''),
         replayGainReleaseKeyForTrack: vi.fn(() => ''),
@@ -225,6 +229,7 @@ describe('createAppNowPlayingRuntime', () => {
     afterEach(() => {
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
+        refreshReplayGainReleaseDynamicRangeIndicatorMock.mockClear();
         document.body.innerHTML = '';
     });
 
@@ -607,6 +612,39 @@ describe('createAppNowPlayingRuntime', () => {
 
         expect(AudioQueueNextTrack).toHaveBeenCalledWith('/music/track.flac', '/music/next.flac');
         expect(context.resolveCoverForTrack).toHaveBeenCalledWith(context.tracks[1]);
+
+        vi.useRealTimers();
+    });
+
+    it('does not refresh replay-gain dynamic range during routine playback-state effects', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+
+        await vi.runAllTimersAsync();
+
+        expect(refreshReplayGainReleaseDynamicRangeIndicatorMock).not.toHaveBeenCalled();
 
         vi.useRealTimers();
     });

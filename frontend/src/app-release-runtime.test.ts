@@ -141,7 +141,7 @@ describe('createAppReleaseRuntime', () => {
         await runtime.refreshReplayGainReleaseDynamicRangeIndicator();
 
         expect(audioGetReplayGainReleaseDynamicRangeMock).toHaveBeenCalledTimes(1);
-        expect(updateNowPlayingTechnicalLabels).toHaveBeenCalledTimes(2);
+        expect(updateNowPlayingTechnicalLabels).toHaveBeenCalledTimes(1);
         expect(Array.from(replayGainReleaseDynamicRangeLabelByKey.values())).toEqual(['DR12']);
     });
 

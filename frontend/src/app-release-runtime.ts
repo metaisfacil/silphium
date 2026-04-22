@@ -184,19 +184,16 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
     const refreshReplayGainReleaseDynamicRangeIndicator = async (): Promise<void> => {
         const requestVersion = ++context.replayGainReleaseDynamicRangeRequestVersion;
         if (!context.currentSettings.audio.replayGainEnabled || context.currentTrackIndex < 0 || context.currentTrackIndex >= context.tracks.length) {
-            context.updateNowPlayingTechnicalLabels();
             return;
         }
 
         const releasePaths = currentReplayGainReleaseTrackPaths();
         if (releasePaths.length <= 1) {
-            context.updateNowPlayingTechnicalLabels();
             return;
         }
 
         const cacheKey = replayGainReleaseDynamicRangeCacheKey(releasePaths);
         if (context.replayGainReleaseDynamicRangeLabelByKey.has(cacheKey)) {
-            context.updateNowPlayingTechnicalLabels();
             return;
         }
 

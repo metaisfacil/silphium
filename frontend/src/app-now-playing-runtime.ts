@@ -187,7 +187,6 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             syncPlaybackProgressLoop();
             playbackPoller.poke();
             void queueGaplessNextTrack(nextState);
-            void refreshReplayGainReleaseDynamicRangeIndicator();
         }, 0);
     };
 
@@ -220,8 +219,6 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 context.updateMediaSessionPositionState();
             }
         }
-
-        void queueGaplessNextTrack(estimatedState);
 
         if (estimatedState.loaded && estimatedState.playing) {
             const remainingSeconds = Number.isFinite(estimatedState.duration)
