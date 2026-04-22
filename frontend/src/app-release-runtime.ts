@@ -154,7 +154,11 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
             return context.activeReplayGainReleaseTrackPaths;
         }
 
-        return collectReplayGainReleaseTrackPathsForIndex(context.currentTrackIndex, sequenceOverrideIndexes);
+        const releasePaths = collectReplayGainReleaseTrackPathsForIndex(context.currentTrackIndex, sequenceOverrideIndexes);
+        if (releasePaths.length > 1) {
+            context.activeReplayGainReleaseTrackPaths = releasePaths;
+        }
+        return releasePaths;
     };
 
     const replayGainReleaseDynamicRangeCacheKey = (releasePaths: string[]): string => releasePaths
@@ -215,7 +219,7 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
             context.replayGainReleaseDynamicRangePendingByKey.set(cacheKey, pendingLookup);
         }
 
-        await pendingLookup;
+        const resolvedLabel = await pendingLookup;
         if (requestVersion !== context.replayGainReleaseDynamicRangeRequestVersion) {
             return;
         }
@@ -224,6 +228,10 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
             ? currentReplayGainReleaseTrackPaths()
             : [];
         if (replayGainReleaseDynamicRangeCacheKey(latestReleasePaths) !== cacheKey) {
+            return;
+        }
+
+        if (!resolvedLabel) {
             return;
         }
 

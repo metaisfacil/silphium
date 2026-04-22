@@ -839,6 +839,22 @@ describe('createAppNowPlayingRuntime', () => {
         vi.useRealTimers();
     });
 
+    it('does not reapply the same visible cover art during deferred hydration', async () => {
+        const context = createContext();
+        context.resolveCoverForTrack = vi.fn(async () => '/art/cover.jpg');
+        context.coverArtBackground.setAttribute('src', '/art/cover.jpg');
+        context.coverArtBackground.classList.add('is-visible');
+        context.coverArt.setAttribute('src', '/art/cover.jpg');
+        context.coverArt.classList.add('is-visible');
+
+        const runtime = createAppNowPlayingRuntime(context);
+        await runtime.applyCoverArtForTrack(0);
+
+        expect(context.setBackgroundCover).toHaveBeenCalledWith('/art/cover.jpg');
+        expect(context.coverArtBackground.getAttribute('src')).toBe('/art/cover.jpg');
+        expect(context.coverArt.getAttribute('src')).toBe('/art/cover.jpg');
+    });
+
     it('keeps the cached cover art intact during current-track metadata refresh', async () => {
         const context = createContext();
         const runtime = createAppNowPlayingRuntime(context);

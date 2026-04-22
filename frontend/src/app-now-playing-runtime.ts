@@ -685,11 +685,30 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         if (coverSrc) {
+            const coverArtBackgroundSrc = context.coverArtBackground.getAttribute('src') || '';
+            const coverArtSrc = context.coverArt.getAttribute('src') || '';
+            const coverArtAlreadyVisible = context.coverArtBackground.classList.contains('is-visible')
+                && context.coverArt.classList.contains('is-visible');
+            if (coverArtAlreadyVisible && coverArtBackgroundSrc === coverSrc && coverArtSrc === coverSrc) {
+                context.setBackgroundCover(coverSrc);
+                return;
+            }
+
             context.coverArtBackground.src = coverSrc;
             context.coverArtBackground.classList.add('is-visible');
             context.coverArt.src = coverSrc;
             context.coverArt.classList.add('is-visible');
             context.setBackgroundCover(coverSrc);
+            return;
+        }
+
+        if (
+            !context.coverArtBackground.classList.contains('is-visible')
+            && !context.coverArt.classList.contains('is-visible')
+            && !(context.coverArtBackground.getAttribute('src') || '')
+            && !(context.coverArt.getAttribute('src') || '')
+        ) {
+            context.setBackgroundCover();
             return;
         }
 

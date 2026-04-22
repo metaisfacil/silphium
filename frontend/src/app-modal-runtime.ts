@@ -101,18 +101,30 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
     };
 
     const setBackgroundCover = (coverSrc?: string): void => {
+        const visibleLayer = context.activeBackgroundLayer === 0 ? context.bgLayerA : context.bgLayerB;
         const incomingLayer = context.activeBackgroundLayer === 0 ? context.bgLayerB : context.bgLayerA;
         const outgoingLayer = context.activeBackgroundLayer === 0 ? context.bgLayerA : context.bgLayerB;
 
         if (!coverSrc) {
+            if (!context.bgLayerA.classList.contains('is-visible') && !context.bgLayerB.classList.contains('is-visible')) {
+                return;
+            }
+
             context.bgLayerA.classList.remove('is-visible');
             context.bgLayerB.classList.remove('is-visible');
             context.bgLayerA.style.backgroundImage = '';
             context.bgLayerB.style.backgroundImage = '';
+            delete context.bgLayerA.dataset.coverSrc;
+            delete context.bgLayerB.dataset.coverSrc;
+            return;
+        }
+
+        if (visibleLayer.classList.contains('is-visible') && (visibleLayer.dataset.coverSrc || '') === coverSrc) {
             return;
         }
 
         incomingLayer.style.backgroundImage = `url("${coverSrc}")`;
+        incomingLayer.dataset.coverSrc = coverSrc;
         incomingLayer.classList.add('is-visible');
         outgoingLayer.classList.remove('is-visible');
         context.activeBackgroundLayer = context.activeBackgroundLayer === 0 ? 1 : 0;

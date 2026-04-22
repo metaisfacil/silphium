@@ -78,6 +78,10 @@ describe('display helpers', () => {
         expect(button.classList.contains('has-technical-separator')).toBe(true);
         expect(button.querySelectorAll('.track-technical-separator')).toHaveLength(2);
         expect(Array.from(button.querySelectorAll('.track-technical-value')).map((node) => node.textContent)).toEqual(['Lossless', '24-bit', '96kHz']);
+
+        const renderedNodes = Array.from(button.childNodes);
+        setTechnicalLabel(button, `Lossless${technicalLabelSeparator}24-bit${technicalLabelSeparator}96kHz`);
+        expect(Array.from(button.childNodes)).toEqual(renderedNodes);
     });
 
     it('builds safe share-image filenames', () => {

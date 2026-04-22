@@ -121,6 +121,22 @@ describe('createAppModalRuntime', () => {
         expect(context.bgLayerB.style.backgroundImage).toBe('');
     });
 
+    it('does not restart the background crossfade for the same cover image', () => {
+        const context = createContext();
+        const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
+
+        runtime.setBackgroundCover('/art/cover.jpg');
+        const activeLayerAfterFirstApply = context.activeBackgroundLayer;
+        const bgLayerAVisible = context.bgLayerA.classList.contains('is-visible');
+        const bgLayerBVisible = context.bgLayerB.classList.contains('is-visible');
+
+        runtime.setBackgroundCover('/art/cover.jpg');
+
+        expect(context.activeBackgroundLayer).toBe(activeLayerAfterFirstApply);
+        expect(context.bgLayerA.classList.contains('is-visible')).toBe(bgLayerAVisible);
+        expect(context.bgLayerB.classList.contains('is-visible')).toBe(bgLayerBVisible);
+    });
+
     it('loads text file content into the modal and shows a fallback on read failure', async () => {
         const context = createContext();
         const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);

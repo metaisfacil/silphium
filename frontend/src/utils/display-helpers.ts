@@ -71,19 +71,27 @@ export const composeTechnicalLabel = (baseLabel: string, suffixLabel = ''): stri
 };
 
 export const setTechnicalLabel = (button: HTMLButtonElement, label: string): void => {
-    button.textContent = '';
-    button.classList.remove('has-technical-separator');
-
     const cleaned = label.trim();
+    if ((button.dataset.technicalLabel || '') === cleaned) {
+        return;
+    }
+
+    button.dataset.technicalLabel = cleaned;
+
     if (!cleaned) {
+        button.replaceChildren();
+        button.classList.remove('has-technical-separator');
         return;
     }
 
     const parts = splitTechnicalLabel(cleaned);
     if (parts.length <= 1) {
+        button.classList.remove('has-technical-separator');
         button.textContent = cleaned;
         return;
     }
+
+    const fragment = document.createDocumentFragment();
 
     parts.forEach((part, index) => {
         if (index > 0) {
@@ -91,15 +99,16 @@ export const setTechnicalLabel = (button: HTMLButtonElement, label: string): voi
             separatorSpan.className = 'track-technical-separator';
             separatorSpan.setAttribute('aria-hidden', 'true');
             separatorSpan.textContent = '•';
-            button.append(separatorSpan);
+            fragment.append(separatorSpan);
         }
 
         const valueSpan = document.createElement('span');
         valueSpan.className = 'track-technical-value';
         valueSpan.textContent = part;
-        button.append(valueSpan);
+        fragment.append(valueSpan);
     });
 
+    button.replaceChildren(fragment);
     button.classList.add('has-technical-separator');
 };
 

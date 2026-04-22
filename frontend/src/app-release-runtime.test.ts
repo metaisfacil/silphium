@@ -145,6 +145,64 @@ describe('createAppReleaseRuntime', () => {
         expect(Array.from(replayGainReleaseDynamicRangeLabelByKey.values())).toEqual(['DR12']);
     });
 
+    it('does not refresh technical labels when the dynamic-range lookup resolves blank', async () => {
+        audioGetReplayGainReleaseDynamicRangeMock.mockResolvedValue(0);
+        const updateNowPlayingTechnicalLabels = vi.fn();
+        const replayGainReleaseDynamicRangeLabelByKey = new Map<string, string>();
+        const runtime = createAppReleaseRuntime({
+            tracks: [
+                createTrack({ path: '/music/library/artist/album/disc-1/01.flac', relativePath: 'Library/Artist/Album/Disc 1/01.flac' }),
+                createTrack({ path: '/music/library/artist/album/disc-1/02.flac', relativePath: 'Library/Artist/Album/Disc 1/02.flac' }),
+            ],
+            imageFiles: [],
+            currentTrackIndex: 0,
+            currentSettings: { audio: { replayGainEnabled: true } },
+            activeReplayGainReleaseTrackPaths: [],
+            replayGainReleaseDynamicRangeLabelByKey,
+            replayGainReleaseDynamicRangePendingByKey: new Map(),
+            replayGainReleaseDynamicRangeRequestVersion: 0,
+            releaseDepthForTrack: vi.fn(() => 2),
+            playlistController: { getSequenceOverride: vi.fn(() => null) },
+            baseSequenceIndexes: () => ({ indexes: [0, 1], currentPosition: 0 }),
+            trackPathKey: (path: string) => path.trim().toLowerCase(),
+            updateNowPlayingTechnicalLabels,
+        });
+
+        await runtime.refreshReplayGainReleaseDynamicRangeIndicator();
+
+        expect(audioGetReplayGainReleaseDynamicRangeMock).toHaveBeenCalledTimes(1);
+        expect(runtime.cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack()).toBe('');
+        expect(updateNowPlayingTechnicalLabels).not.toHaveBeenCalled();
+        expect(Array.from(replayGainReleaseDynamicRangeLabelByKey.values())).toEqual(['']);
+    });
+
+    it('caches derived active release paths for repeated current-track label lookups', () => {
+        const baseSequenceIndexes = vi.fn(() => ({ indexes: [0, 1], currentPosition: 0 }));
+        const runtime = createAppReleaseRuntime({
+            tracks: [
+                createTrack({ path: '/music/library/artist/album/disc-1/01.flac', relativePath: 'Library/Artist/Album/Disc 1/01.flac' }),
+                createTrack({ path: '/music/library/artist/album/disc-1/02.flac', relativePath: 'Library/Artist/Album/Disc 1/02.flac' }),
+            ],
+            imageFiles: [],
+            currentTrackIndex: 0,
+            currentSettings: { audio: { replayGainEnabled: true } },
+            activeReplayGainReleaseTrackPaths: [],
+            replayGainReleaseDynamicRangeLabelByKey: new Map(),
+            replayGainReleaseDynamicRangePendingByKey: new Map(),
+            replayGainReleaseDynamicRangeRequestVersion: 0,
+            releaseDepthForTrack: vi.fn(() => 2),
+            playlistController: { getSequenceOverride: vi.fn(() => null) },
+            baseSequenceIndexes,
+            trackPathKey: (path: string) => path.trim().toLowerCase(),
+            updateNowPlayingTechnicalLabels: vi.fn(),
+        });
+
+        expect(runtime.cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack()).toBe('');
+        expect(runtime.cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack()).toBe('');
+
+        expect(baseSequenceIndexes).toHaveBeenCalledTimes(1);
+    });
+
     it('collects release images from the current release root and matching library root only', () => {
         const track = createTrack();
         const runtime = createAppReleaseRuntime({
