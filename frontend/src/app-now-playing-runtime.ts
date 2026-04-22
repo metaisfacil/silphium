@@ -61,7 +61,9 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let queuedGaplessEvaluationTrackPath = '';
     let queuedGaplessEvaluationRequestVersion = 0;
     let queuedTrackCoverPrefetchPath = '';
+    let trackLabelsRefreshDeferred = false;
     let playerCardTrackTransitionHandle: number | undefined;
+    let playerCardTrackTransitionSettleHandle: number | undefined;
     let playerCardTrackTransitionFrameHandle = 0;
     let playerCardTrackTransitionVersion = 0;
 
@@ -82,12 +84,40 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             playerCardTrackTransitionHandle = undefined;
         }
 
+        if (playerCardTrackTransitionSettleHandle !== undefined) {
+            window.clearTimeout(playerCardTrackTransitionSettleHandle);
+            playerCardTrackTransitionSettleHandle = undefined;
+        }
+
         if (playerCardTrackTransitionFrameHandle !== 0) {
             window.cancelAnimationFrame(playerCardTrackTransitionFrameHandle);
             playerCardTrackTransitionFrameHandle = 0;
         }
 
         context.playerCard.classList.remove('is-track-transitioning');
+    };
+
+    const hasActivePlayerCardTrackTransition = (): boolean => context.playerCard.classList.contains('is-track-transitioning');
+
+    const settlePlayerCardTrackTransition = (transitionVersion: number): void => {
+        if (transitionVersion !== playerCardTrackTransitionVersion) {
+            return;
+        }
+
+        if (playerCardTrackTransitionSettleHandle !== undefined) {
+            window.clearTimeout(playerCardTrackTransitionSettleHandle);
+            playerCardTrackTransitionSettleHandle = undefined;
+        }
+
+        if (playerCardTrackTransitionFrameHandle !== 0) {
+            window.cancelAnimationFrame(playerCardTrackTransitionFrameHandle);
+            playerCardTrackTransitionFrameHandle = 0;
+        }
+
+        context.playerCard.classList.remove('is-track-transitioning');
+        if (trackLabelsRefreshDeferred) {
+            updateTrackLabels();
+        }
     };
 
     const prefersReducedMotion = (): boolean => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -109,13 +139,11 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             playerCardTrackTransitionHandle = undefined;
             applyUpdate();
             playerCardTrackTransitionFrameHandle = window.requestAnimationFrame(() => {
-                playerCardTrackTransitionFrameHandle = 0;
-                if (transitionVersion !== playerCardTrackTransitionVersion) {
-                    return;
-                }
-
-                context.playerCard.classList.remove('is-track-transitioning');
+                settlePlayerCardTrackTransition(transitionVersion);
             });
+            playerCardTrackTransitionSettleHandle = window.setTimeout(() => {
+                settlePlayerCardTrackTransition(transitionVersion);
+            }, 32);
         }, playerCardTrackTransitionOutMs);
     };
 
@@ -889,12 +917,33 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     };
 
     const updateTrackLabels = (): void => {
+        if (hasActivePlayerCardTrackTransition()) {
+            trackLabelsRefreshDeferred = true;
+            return;
+        }
+
+        trackLabelsRefreshDeferred = false;
         const playbackState = context.playbackStateService.getPlaybackState();
-        context.currentTimeLabel.textContent = formatTime(playbackState.currentTime);
-        context.trackDurationLabel.textContent = formatTime(playbackState.duration);
-        context.seek.max = Number.isFinite(playbackState.duration) ? String(playbackState.duration) : '0';
+        const currentTimeLabel = formatTime(playbackState.currentTime);
+        if (context.currentTimeLabel.textContent !== currentTimeLabel) {
+            context.currentTimeLabel.textContent = currentTimeLabel;
+        }
+
+        const trackDurationLabel = formatTime(playbackState.duration);
+        if (context.trackDurationLabel.textContent !== trackDurationLabel) {
+            context.trackDurationLabel.textContent = trackDurationLabel;
+        }
+
+        const seekMax = Number.isFinite(playbackState.duration) ? String(playbackState.duration) : '0';
+        if (context.seek.max !== seekMax) {
+            context.seek.max = seekMax;
+        }
+
         if (!context.isSeeking) {
-            context.seek.value = String(playbackState.currentTime);
+            const seekValue = String(playbackState.currentTime);
+            if (context.seek.value !== seekValue) {
+                context.seek.value = seekValue;
+            }
         }
     };
 

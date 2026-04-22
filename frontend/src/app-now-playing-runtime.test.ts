@@ -362,6 +362,81 @@ describe('createAppNowPlayingRuntime', () => {
         vi.useRealTimers();
     });
 
+    it('defers transport label updates until the player-card transition settles', () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+                displayAlbum: 'Next Album',
+                displayArtist: 'Next Artist',
+            },
+        ];
+
+        let playbackState = {
+            loaded: true,
+            playing: false,
+            currentTime: 178,
+            duration: 180,
+            volume: 0.8,
+            sourcePath: '/music/track.flac',
+            endEventId: 0,
+        };
+        context.playbackStateService = {
+            getPlaybackState: vi.fn(() => playbackState),
+            setCurrentTime: vi.fn(() => false),
+            applyPlaybackState: vi.fn((nextState) => {
+                playbackState = nextState;
+                return { trackEnded: false };
+            }),
+            isBackendReady: vi.fn(() => true),
+            setBackendReady: vi.fn(),
+        } as never;
+        context.currentTimeLabel.textContent = '2:58';
+        context.trackDurationLabel.textContent = '3:00';
+        context.seek.max = '180';
+        context.seek.value = '178';
+
+        vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback): number => {
+            callback(0);
+            return 1;
+        }) as typeof requestAnimationFrame);
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: false,
+            currentTime: 2.4,
+            duration: 240,
+            volume: 0.8,
+            sourcePath: '/music/next.flac',
+            endEventId: 0,
+        });
+
+        expect(context.playerCard.classList.contains('is-track-transitioning')).toBe(true);
+        expect(context.currentTimeLabel.textContent).toBe('2:58');
+        expect(context.trackDurationLabel.textContent).toBe('3:00');
+        expect(context.seek.max).toBe('180');
+        expect(context.seek.value).toBe('178');
+
+        vi.advanceTimersByTime(90);
+
+        expect(context.playerCard.classList.contains('is-track-transitioning')).toBe(false);
+        expect(context.currentTimeLabel.textContent).toBe('0:02');
+        expect(context.trackDurationLabel.textContent).toBe('4:00');
+        expect(context.seek.max).toBe('240');
+        expect(context.seek.value).toBe('2.4');
+
+        vi.useRealTimers();
+    });
+
     it('still resolves tags for short tracks before applying the silence heuristic', async () => {
         const context = createContext();
         context.playbackStateService.getPlaybackState = vi.fn(() => ({
