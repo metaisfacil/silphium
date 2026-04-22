@@ -616,6 +616,66 @@ describe('createAppNowPlayingRuntime', () => {
         vi.useRealTimers();
     });
 
+    it('does not re-evaluate next-track prep on every playback reconcile tick for the same track', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        const playlistController = {
+            scheduleRender: vi.fn(),
+            peekNextTrackIndex: vi.fn(() => 1),
+        };
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+            },
+        ];
+        context.playlistController = () => playlistController as never;
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 3.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 3.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+        await vi.runAllTimersAsync();
+
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 5.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+        await vi.runAllTimersAsync();
+
+        expect(playlistController.peekNextTrackIndex).toHaveBeenCalledTimes(1);
+        expect(AudioQueueNextTrack).toHaveBeenCalledTimes(1);
+
+        vi.useRealTimers();
+    });
+
     it('does not refresh replay-gain dynamic range during routine playback-state effects', async () => {
         vi.useFakeTimers();
 

@@ -58,10 +58,22 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let settledTransitionMetadataRefreshHandle: number | undefined;
     let settledTransitionMetadataRefreshDeferred = false;
     let pendingSettledTransitionMetadataRefreshPath = '';
+    let queuedGaplessEvaluationTrackPath = '';
+    let queuedGaplessEvaluationRequestVersion = 0;
     let queuedTrackCoverPrefetchPath = '';
     let playerCardTrackTransitionHandle: number | undefined;
     let playerCardTrackTransitionFrameHandle = 0;
     let playerCardTrackTransitionVersion = 0;
+
+    const clearQueuedGaplessEvaluation = (): void => {
+        queuedGaplessEvaluationTrackPath = '';
+        queuedGaplessEvaluationRequestVersion = 0;
+    };
+
+    const markQueuedGaplessEvaluation = (trackPath: string): void => {
+        queuedGaplessEvaluationTrackPath = trackPath.trim().toLowerCase();
+        queuedGaplessEvaluationRequestVersion = context.gaplessQueueRequestVersion;
+    };
 
     const clearPlayerCardTrackTransition = (): void => {
         playerCardTrackTransitionVersion += 1;
@@ -741,11 +753,22 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
-        if (shouldDeferBackgroundBridgeCall()) {
-            return;
+        if (stateOverride !== undefined && sequenceOverrideIndexes === undefined) {
+            if (!playbackState.playing || playbackState.currentTime < nextTrackPreloadStartSeconds) {
+                return;
+            }
+
+            const activeTrackPath = trackPathKey(activeTrack.path);
+            if (
+                activeTrackPath !== ''
+                && queuedGaplessEvaluationRequestVersion === context.gaplessQueueRequestVersion
+                && queuedGaplessEvaluationTrackPath === activeTrackPath
+            ) {
+                return;
+            }
         }
 
-        if (sequenceOverrideIndexes === undefined && playbackState.playing && playbackState.currentTime < nextTrackPreloadStartSeconds) {
+        if (shouldDeferBackgroundBridgeCall()) {
             return;
         }
 
@@ -765,6 +788,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
         if (nextPath === '') {
             if (context.queuedGaplessTrackPath === '') {
+                markQueuedGaplessEvaluation(activeTrack.path);
                 return;
             }
 
@@ -780,6 +804,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 if (requestVersion !== context.gaplessQueueRequestVersion) {
                     return;
                 }
+                markQueuedGaplessEvaluation(activeTrack.path);
             } catch (error) {
                 console.debug(error);
                 logPlaybackDebug(`NextTrackPrep clear failed after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
@@ -788,6 +813,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         if (nextPath === context.queuedGaplessTrackPath) {
+            markQueuedGaplessEvaluation(activeTrack.path);
             return;
         }
 
@@ -817,6 +843,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             if (requestVersion !== context.gaplessQueueRequestVersion) {
                 return;
             }
+            markQueuedGaplessEvaluation(activeTrack.path);
         } catch (error) {
             console.debug(error);
             logPlaybackDebug(`NextTrackPrep failed next="${nextPath}" after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
@@ -925,6 +952,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         if (!nextState.loaded) {
             context.gaplessQueueRequestVersion += 1;
             context.queuedGaplessTrackPath = '';
+            clearQueuedGaplessEvaluation();
             setActiveReplayGainReleaseTrackPaths();
             clearSettledTransitionMetadataRefresh();
             clearNowPlayingCard();
