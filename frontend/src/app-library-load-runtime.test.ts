@@ -194,6 +194,34 @@ describe('app-library-load-runtime', () => {
         await scanPromise;
     });
 
+    it('replaces a finalizing 1s scan ETA with an explicit status label', () => {
+        const quickScanResult = createScanResult();
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+
+        runtime.updateLibraryLoadingEtaFromProgress({
+            rootPath: 'C:/Library',
+            entriesScanned: 99,
+            totalEntries: 100,
+            elapsedMs: 1500,
+            etaSeconds: 1,
+            phase: 'finalizing',
+        });
+
+        expect(context.setLibraryLoadingStatusLabel).toHaveBeenLastCalledWith('Finalizing library...');
+        expect(context.setLibraryLoadingEtaSeconds).toHaveBeenLastCalledWith(null);
+        expect(context.setForceReloadEtaSeconds).toHaveBeenLastCalledWith(null);
+    });
+
     it('keeps loading active for deferred scans and finishes hydration on the completion update', async () => {
         const quickScanResult = createScanResult({
             deferredFiles: true,
@@ -374,7 +402,7 @@ describe('app-library-load-runtime', () => {
         expect(context.scheduleNowPlayingCoverRefresh).toHaveBeenCalledTimes(1);
     });
 
-    it('skips incremental folder and now-playing refreshes while playback is active', async () => {
+    it('skips incremental folder refresh but still refreshes the now-playing cover while playback is active', async () => {
         const quickScanResult = createScanResult();
         const incrementalScanResult = createScanResult({
             trackCount: 2,
@@ -408,6 +436,6 @@ describe('app-library-load-runtime', () => {
         expect(context.clearResolvedCoverArtCache).toHaveBeenCalledTimes(1);
         expect(context.clearCoverArtCache).not.toHaveBeenCalled();
         expect(context.scheduleLibraryIncrementalFolderRefresh).not.toHaveBeenCalled();
-        expect(context.scheduleNowPlayingCoverRefresh).not.toHaveBeenCalled();
+        expect(context.scheduleNowPlayingCoverRefresh).toHaveBeenCalledTimes(1);
     });
 });

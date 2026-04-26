@@ -102,6 +102,47 @@ func TestMusicBrainzTagSQLiteOpenConfigureAndInitializeErrors(t *testing.T) {
 	}
 }
 
+func TestWriteMusicBrainzTagDatabaseStoreToSQLiteWaitsForMetadataDatabasePathLock(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), metadataDatabaseFileName)
+	unlock := lockMetadataDatabasePath(databasePath)
+	released := false
+	defer func() {
+		if !released {
+			unlock()
+		}
+	}()
+
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		done <- writeMusicBrainzTagDatabaseStoreToSQLite(databasePath, newMusicBrainzTagDatabaseStore())
+	}()
+	<-started
+
+	select {
+	case err := <-done:
+		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite() completed before metadata lock release: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	released = true
+	unlock()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("writeMusicBrainzTagDatabaseStoreToSQLite() did not complete after metadata lock release")
+	}
+
+	if !musicBrainzTagDatabaseFileExists(databasePath) {
+		t.Fatalf("expected metadata database file at %q after write", databasePath)
+	}
+}
+
 func TestReleaseFolderPathForIndexedTrack(t *testing.T) {
 	indexed := LibraryIndexedFile{
 		FolderPath: "Library/Artist/Album/Disc 1",

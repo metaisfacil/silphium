@@ -146,7 +146,10 @@ func initializeLibraryFilesSQLite(database *sql.DB) error {
 }
 
 func loadLibraryFilesDatabaseRecordsFromSQLite(databasePath string, roots []libraryRootConfig) ([]libraryFilesDatabaseRecord, int, bool) {
-	if err := ensureMetadataDatabaseMigrated(databasePath); err != nil {
+	unlock := lockMetadataDatabasePath(databasePath)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(databasePath); err != nil {
 		return nil, 0, false
 	}
 
@@ -231,7 +234,10 @@ func loadLibraryFilesDatabaseRecordsFromSQLite(databasePath string, roots []libr
 }
 
 func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFilesDatabaseSnapshot) error {
-	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+	unlock := lockMetadataDatabasePath(path)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(path); err != nil {
 		return err
 	}
 
@@ -302,7 +308,11 @@ func writeLibraryFilesDatabaseIncrementalChangesToSQLite(path string, changes []
 	if len(changes) == 0 {
 		return nil
 	}
-	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+
+	unlock := lockMetadataDatabasePath(path)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(path); err != nil {
 		return err
 	}
 
@@ -400,7 +410,10 @@ func trimLibraryListenHistoryInSQLite(runner sqliteExecRunner, limit int) error 
 }
 
 func appendLibraryListenHistoryRecordToSQLite(path string, record libraryListenHistoryRecord, limit int) error {
-	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+	unlock := lockMetadataDatabasePath(path)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(path); err != nil {
 		return err
 	}
 
@@ -480,7 +493,10 @@ func appendLibraryListenHistoryRecordToSQLite(path string, record libraryListenH
 }
 
 func loadLibraryListenHistoryRecordsFromSQLite(databasePath string) ([]libraryListenHistoryRecord, bool) {
-	if err := ensureMetadataDatabaseMigrated(databasePath); err != nil {
+	unlock := lockMetadataDatabasePath(databasePath)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(databasePath); err != nil {
 		return nil, false
 	}
 
@@ -520,7 +536,10 @@ func loadLibraryListenHistoryRecordsFromSQLite(databasePath string) ([]libraryLi
 }
 
 func trimLibraryListenHistoryToLimitInSQLite(path string, limit int) error {
-	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+	unlock := lockMetadataDatabasePath(path)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(path); err != nil {
 		return err
 	}
 
@@ -538,7 +557,10 @@ func trimLibraryListenHistoryToLimitInSQLite(path string, limit int) error {
 }
 
 func loadPlaylistTrackCacheRecordsFromSQLite(databasePath string, trackPaths []string) map[string]playlistTrackCacheRecord {
-	if err := ensureMetadataDatabaseMigrated(databasePath); err != nil {
+	unlock := lockMetadataDatabasePath(databasePath)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(databasePath); err != nil {
 		return nil
 	}
 
@@ -635,7 +657,11 @@ func savePlaylistTrackCacheRecordsToSQLite(path string, records []playlistTrackC
 	if len(cleanRecords) == 0 {
 		return nil
 	}
-	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+
+	unlock := lockMetadataDatabasePath(path)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(path); err != nil {
 		return err
 	}
 

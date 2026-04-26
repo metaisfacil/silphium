@@ -132,6 +132,12 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
     let historicalTotalLoadEtaHandle: number | null = null;
     let historicalTotalLoadEtaStartedAtMs: number | null = null;
 
+    const setFinalizingLibraryStatus = (): void => {
+        context.setLibraryLoadingStatusLabel('Finalizing library...');
+        context.setLibraryLoadingEtaSeconds(null);
+        context.setForceReloadEtaSeconds(null);
+    };
+
     const stopHistoricalTotalLoadEtaCountdown = (): void => {
         if (historicalTotalLoadEtaHandle !== null) {
             window.clearInterval(historicalTotalLoadEtaHandle);
@@ -303,19 +309,27 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
     };
 
     const updateLibraryLoadingEtaFromProgress = (progress: LibraryScanProgress): void => {
-        context.setLibraryLoadingStatusLabel('');
         const clientTailSeconds = context.libraryClientFinalizeEstimateMs > 0
             ? Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000))
             : 0;
         const historicalEtaSeconds = historicalTotalLoadEtaSeconds();
 
         if (!progress || !Number.isFinite(progress.etaSeconds)) {
+            context.setLibraryLoadingStatusLabel('');
             const fallbackEtaSeconds = historicalEtaSeconds ?? (clientTailSeconds > 0 ? clientTailSeconds : null);
             context.setLibraryLoadingEtaSeconds(fallbackEtaSeconds);
             context.setForceReloadEtaSeconds(fallbackEtaSeconds);
             return;
         }
 
+        const normalizedPhase = String(progress.phase || '').trim().toLowerCase();
+        if (normalizedPhase === 'finalizing' && progress.etaSeconds <= 1) {
+            stopHistoricalTotalLoadEtaCountdown();
+            setFinalizingLibraryStatus();
+            return;
+        }
+
+        context.setLibraryLoadingStatusLabel('');
         stopHistoricalTotalLoadEtaCountdown();
         const backendSeconds = Math.max(0, Math.ceil(progress.etaSeconds));
         const blendedEtaSeconds = backendSeconds + clientTailSeconds;
@@ -369,6 +383,12 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
 
             const remainingMs = Math.max(measuredRemainingMs, historicalRemainingMs);
             if (remainingMs > 0) {
+                if (remainingMs < 1000) {
+                    setFinalizingLibraryStatus();
+                    return;
+                }
+
+                context.setLibraryLoadingStatusLabel('');
                 context.setLibraryLoadingEtaSeconds(Math.max(1, Math.ceil(remainingMs / 1000)));
             }
         };
@@ -677,10 +697,10 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         const playbackState = context.getPlaybackState();
         if (!(playbackState.loaded && playbackState.playing)) {
             context.scheduleLibraryIncrementalFolderRefresh();
-            context.scheduleNowPlayingCoverRefresh();
         } else {
-            context.logRescan('Skipped incremental UI refresh during active playback');
+            context.logRescan('Skipped incremental folder refresh during active playback');
         }
+        context.scheduleNowPlayingCoverRefresh();
         context.logRescan('handleLibraryScanUpdatedEvent END: took %.2fms', performance.now() - startTime);
     };
 

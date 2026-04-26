@@ -125,6 +125,66 @@ func TestLibraryFilesDatabaseIncrementalChangesUpdateSubtree(t *testing.T) {
 	}
 }
 
+func TestWriteLibraryFilesDatabaseSnapshotToSQLiteWaitsForMetadataDatabasePathLock(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library One", ReleaseDepth: 0}}
+	snapshot := libraryFilesDatabaseSnapshot{
+		Roots:        roots,
+		TotalEntries: 1,
+		TrackFiles: []LibraryIndexedFile{{
+			Name:         "01 Intro.flac",
+			Path:         fixture.trackOne,
+			RelativePath: "Library One/Artist One/Album One/01 Intro.flac",
+			FolderPath:   "Library One/Artist One/Album One",
+			RootPath:     fixture.rootOne,
+			RootName:     "Library One",
+		}},
+	}
+
+	databasePath := filepath.Join(t.TempDir(), metadataDatabaseFileName)
+	unlock := lockMetadataDatabasePath(databasePath)
+	released := false
+	defer func() {
+		if !released {
+			unlock()
+		}
+	}()
+
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		done <- writeLibraryFilesDatabaseSnapshotToSQLite(databasePath, snapshot)
+	}()
+	<-started
+
+	select {
+	case err := <-done:
+		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite() completed before metadata lock release: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	released = true
+	unlock()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("writeLibraryFilesDatabaseSnapshotToSQLite() did not complete after metadata lock release")
+	}
+
+	loaded, ok := loadLibraryFilesDatabaseSnapshot(databasePath, roots)
+	if !ok {
+		t.Fatal("loadLibraryFilesDatabaseSnapshot() = false, want true")
+	}
+	if len(loaded.TrackFiles) != 1 || loaded.TrackFiles[0].Path != fixture.trackOne {
+		t.Fatalf("loaded snapshot after serialization = %#v, want stored track %q", loaded.TrackFiles, fixture.trackOne)
+	}
+}
+
 func TestScanLibraryFoldersDeferredLoadsFromDatabaseBeforeFilesystemRefresh(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	app := NewApp()

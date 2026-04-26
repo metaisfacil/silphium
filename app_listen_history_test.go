@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestListenHistoryPlaylistLoadsNewestEntriesAndAppliesLimit(t *testing.T) {
@@ -160,5 +161,59 @@ func TestAddListenHistoryEntrySkipsSilenceTracks(t *testing.T) {
 	loaded := app.LoadListenHistoryPlaylist()
 	if len(loaded.TrackFiles) != 0 {
 		t.Fatalf("len(LoadListenHistoryPlaylist().TrackFiles) = %d, want 0", len(loaded.TrackFiles))
+	}
+}
+
+func TestAddListenHistoryEntryWaitsForMetadataDatabasePathLock(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	app.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	app.settingsLoaded = true
+	app.settings = normalizeAppSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled:              boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryEnabled: boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryLimit:   10,
+	})
+
+	unlock := lockMetadataDatabasePath(app.libraryFilesDatabasePath())
+	released := false
+	defer func() {
+		if !released {
+			unlock()
+		}
+	}()
+
+	started := make(chan struct{})
+	done := make(chan bool, 1)
+	go func() {
+		close(started)
+		done <- app.AddListenHistoryEntry(fixture.trackOne, "Intro", "Artist One", "Album One", 100, 100)
+	}()
+	<-started
+
+	select {
+	case ok := <-done:
+		t.Fatalf("AddListenHistoryEntry() completed before metadata lock release with %t", ok)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	released = true
+	unlock()
+
+	select {
+	case ok := <-done:
+		if !ok {
+			t.Fatal("AddListenHistoryEntry() = false, want true")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("AddListenHistoryEntry() did not complete after metadata lock release")
+	}
+
+	loaded := app.LoadListenHistoryPlaylist()
+	if len(loaded.TrackFiles) != 1 {
+		t.Fatalf("len(LoadListenHistoryPlaylist().TrackFiles) = %d, want 1", len(loaded.TrackFiles))
+	}
+	if got := loaded.TrackFiles[0].Path; got != fixture.trackOne {
+		t.Fatalf("stored history path = %q, want %q", got, fixture.trackOne)
 	}
 }

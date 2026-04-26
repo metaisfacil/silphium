@@ -255,7 +255,7 @@ func (b *AudioBackend) loadTrackFromDecodeSource(displayPath string, decodePath 
 		logAudioEvent("LoadTrack reused prepared path=%q bytes=%d state=%s", displayPath, len(segment.PCMData), summary)
 		return state, nil
 	}
-	for index := 1; index < len(b.streamSegments); index += 1 {
+	for index := 1; index < len(b.streamSegments); index++ {
 		candidate := b.streamSegments[index]
 		if !strings.EqualFold(strings.TrimSpace(candidate.SourcePath), trimmedDisplayPath) || candidate.ReplayGainContext != preparedReplayGainContext {
 			continue

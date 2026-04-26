@@ -19,6 +19,21 @@ const libraryFilesMetaVersionKey = "library_version"
 const libraryFilesMetaTotalEntriesKey = "library_total_entries"
 
 var metadataDatabaseMigrationMu sync.Mutex
+var metadataDatabasePathLocks sync.Map
+
+func lockMetadataDatabasePath(path string) func() {
+	normalizedPath := normalizePath(path)
+	if normalizedPath == "" {
+		return func() {}
+	}
+
+	value, _ := metadataDatabasePathLocks.LoadOrStore(normalizedPath, &sync.Mutex{})
+	pathMu := value.(*sync.Mutex)
+	pathMu.Lock()
+	return func() {
+		pathMu.Unlock()
+	}
+}
 
 var musicBrainzTagSQLiteSchemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS meta (
@@ -125,7 +140,7 @@ func openMetadataSQLiteNoMigration(path string) (*sql.DB, error) {
 	return database, nil
 }
 
-func ensureMetadataDatabaseMigrated(path string) error {
+func ensureMetadataDatabaseMigratedLocked(path string) error {
 	cleanPath := strings.TrimSpace(path)
 	if cleanPath == "" || musicBrainzTagDatabaseFileExists(cleanPath) {
 		return nil
@@ -168,7 +183,7 @@ func ensureMetadataDatabaseMigrated(path string) error {
 		if err != nil {
 			return err
 		}
-		if err := writeMusicBrainzTagDatabaseStoreToSQLite(cleanPath, store); err != nil {
+		if err := writeMusicBrainzTagDatabaseStoreToSQLiteLocked(cleanPath, store); err != nil {
 			return err
 		}
 	}
@@ -275,12 +290,15 @@ func sortedMusicBrainzTagEntityKeys(store musicBrainzTagDatabaseStore) []string 
 }
 
 func loadMusicBrainzTagDatabaseStore(databasePath string) musicBrainzTagDatabaseStore {
-	if err := ensureMetadataDatabaseMigrated(databasePath); err != nil {
+	unlock := lockMetadataDatabasePath(databasePath)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(databasePath); err != nil {
 		return newMusicBrainzTagDatabaseStore()
 	}
 
 	if musicBrainzTagDatabaseFileExists(databasePath) {
-		if store, err := loadMusicBrainzTagDatabaseStoreFromSQLite(databasePath); err == nil {
+		if store, err := loadMusicBrainzTagDatabaseStoreFromSQLiteLocked(databasePath); err == nil {
 			return store
 		}
 	}
@@ -289,6 +307,13 @@ func loadMusicBrainzTagDatabaseStore(databasePath string) musicBrainzTagDatabase
 }
 
 func loadMusicBrainzTagDatabaseStoreFromSQLite(path string) (musicBrainzTagDatabaseStore, error) {
+	unlock := lockMetadataDatabasePath(path)
+	defer unlock()
+
+	return loadMusicBrainzTagDatabaseStoreFromSQLiteLocked(path)
+}
+
+func loadMusicBrainzTagDatabaseStoreFromSQLiteLocked(path string) (musicBrainzTagDatabaseStore, error) {
 	store := newMusicBrainzTagDatabaseStore()
 	database, err := openMetadataSQLiteNoMigration(path)
 	if err != nil {
@@ -764,7 +789,14 @@ func upsertMusicBrainzTagEntityRow(transaction *sql.Tx, entityKey string, record
 }
 
 func writeMusicBrainzTagDatabaseStoreToSQLite(path string, store musicBrainzTagDatabaseStore) error {
-	if err := ensureMetadataDatabaseMigrated(path); err != nil {
+	unlock := lockMetadataDatabasePath(path)
+	defer unlock()
+
+	return writeMusicBrainzTagDatabaseStoreToSQLiteLocked(path, store)
+}
+
+func writeMusicBrainzTagDatabaseStoreToSQLiteLocked(path string, store musicBrainzTagDatabaseStore) error {
+	if err := ensureMetadataDatabaseMigratedLocked(path); err != nil {
 		return err
 	}
 
