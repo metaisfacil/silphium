@@ -259,6 +259,7 @@ describe('createAppNowPlayingRuntime', () => {
 
         expect(context.playerLane.classList.add).not.toHaveBeenCalledWith('lyrics-visible');
         expect(context.playerLane.classList.remove).not.toHaveBeenCalledWith('lyrics-visible');
+        expect(context.playerCard.getBoundingClientRect).not.toHaveBeenCalled();
         expect(context.lyricsPanel.getAttribute('aria-hidden')).toBe('true');
 
         vi.stubGlobal('innerWidth', originalInnerWidth);
@@ -293,6 +294,60 @@ describe('createAppNowPlayingRuntime', () => {
         expect(context.updateMediaSessionPlaybackState).toHaveBeenCalledTimes(1);
         expect(context.updateMediaSessionPositionState).toHaveBeenCalledTimes(1);
         expect(context.visualizerController.setPlaybackState).toHaveBeenCalledTimes(1);
+
+        vi.useRealTimers();
+    });
+
+    it('schedules gapless next-track prep after deferred playback effects finish', () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentSettings.audio.gaplessPlayback = true;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+            },
+        ];
+        context.playlistController = () => ({
+            scheduleRender: vi.fn(),
+            peekNextTrackIndex: vi.fn(() => 1),
+        }) as never;
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+
+        vi.runOnlyPendingTimers();
+
+        expect(context.updateMediaSessionMetadata).toHaveBeenCalledTimes(1);
+        expect(AudioQueueNextTrack).not.toHaveBeenCalled();
+
+        vi.runOnlyPendingTimers();
+
+        expect(AudioQueueNextTrack).toHaveBeenCalledWith('/music/track.flac', '/music/next.flac');
 
         vi.useRealTimers();
     });
@@ -693,6 +748,56 @@ describe('createAppNowPlayingRuntime', () => {
         vi.useRealTimers();
     });
 
+    it('skips next-track prep work entirely when gapless playback is disabled', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+            },
+        ];
+        context.playlistController = () => ({
+            scheduleRender: vi.fn(),
+            peekNextTrackIndex: vi.fn(() => 1),
+        }) as never;
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+
+        await vi.runAllTimersAsync();
+
+        expect(AudioQueueNextTrack).not.toHaveBeenCalled();
+        expect(context.resolveCoverForTrack).not.toHaveBeenCalled();
+        expect(vi.mocked(LogFrontendMessage)).toHaveBeenCalledWith(expect.stringContaining('[PLAYBACK] Trace NextTrackPrep skip reason=gapless-disabled'));
+
+        vi.useRealTimers();
+    });
+
     it('logs when next-track prep is skipped because playback has not reached the preload threshold', async () => {
         vi.useFakeTimers();
 
@@ -732,6 +837,7 @@ describe('createAppNowPlayingRuntime', () => {
         vi.useFakeTimers();
 
         const context = createContext();
+        context.currentSettings.audio.gaplessPlayback = true;
         const playlistController = {
             scheduleRender: vi.fn(),
             peekNextTrackIndex: vi.fn(() => 1),

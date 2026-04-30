@@ -55,6 +55,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let lastPlayerCardHeightPx = 0;
     let lastLyricsVisibilityState: boolean | null = null;
     let deferredPlaybackEffectsHandle: number | undefined;
+    let deferredGaplessPrepHandle: number | undefined;
     let settledTransitionMetadataRefreshHandle: number | undefined;
     let settledTransitionMetadataRefreshDeferred = false;
     let pendingSettledTransitionMetadataRefreshPath = '';
@@ -70,6 +71,13 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     const clearQueuedGaplessEvaluation = (): void => {
         queuedGaplessEvaluationTrackPath = '';
         queuedGaplessEvaluationRequestVersion = 0;
+    };
+
+    const clearDeferredGaplessPrep = (): void => {
+        if (deferredGaplessPrepHandle !== undefined) {
+            window.clearTimeout(deferredGaplessPrepHandle);
+            deferredGaplessPrepHandle = undefined;
+        }
     };
 
     const markQueuedGaplessEvaluation = (trackPath: string): void => {
@@ -95,6 +103,12 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         context.playerCard.classList.remove('is-track-transitioning');
+    };
+
+    const setTextContentIfChanged = (element: Node, nextValue: string): void => {
+        if (element.textContent !== nextValue) {
+            element.textContent = nextValue;
+        }
     };
 
     const hasActivePlayerCardTrackTransition = (): boolean => context.playerCard.classList.contains('is-track-transitioning');
@@ -218,6 +232,8 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             window.clearTimeout(deferredPlaybackEffectsHandle);
         }
 
+        clearDeferredGaplessPrep();
+
         deferredPlaybackEffectsHandle = window.setTimeout(() => {
             deferredPlaybackEffectsHandle = undefined;
             logPlaybackDebug(
@@ -230,7 +246,11 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             context.updateMediaSessionPositionState();
             syncPlaybackProgressLoop();
             playbackPoller.poke();
-            void queueGaplessNextTrack(nextState);
+
+            deferredGaplessPrepHandle = window.setTimeout(() => {
+                deferredGaplessPrepHandle = undefined;
+                void queueGaplessNextTrack(nextState);
+            }, 0);
         }, 0);
     };
 
@@ -790,6 +810,11 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     };
 
     const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState, sequenceOverrideIndexes?: number[]): Promise<void> => {
+        if (!context.currentSettings.audio.gaplessPlayback) {
+            logPlaybackDebug('Trace NextTrackPrep skip reason=gapless-disabled');
+            return;
+        }
+
         if (!context.playbackStateService.isBackendReady()) {
             logPlaybackDebug('Trace NextTrackPrep skip reason=backend-not-ready');
             return;
@@ -1165,7 +1190,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         const singleCardWidth = Math.min(availableWidth, targetCardWidth);
         const nextMeasuredCardHeightPx = Number.isFinite(measuredCardHeightPx) && (measuredCardHeightPx || 0) > 0
             ? measuredCardHeightPx || 0
-            : (lastPlayerCardHeightPx > 0 ? lastPlayerCardHeightPx : context.playerCard.getBoundingClientRect().height);
+            : lastPlayerCardHeightPx;
         const requiredWidth = singleCardWidth + lyricsPanelWidthPx + laneGapPx + lyricsVisibilityBufferPx;
         const canShow = hasActiveTrackLyrics() && singleCardWidth > 0 && availableWidth >= requiredWidth;
 
@@ -1194,7 +1219,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
     const refreshLyricsPanel = (): void => {
         const nextLyrics = hasActiveTrackLyrics() ? context.tracks[context.currentTrackIndex].displayLyrics : '';
-        context.lyricsContent.textContent = nextLyrics;
+        setTextContentIfChanged(context.lyricsContent, nextLyrics);
         updateLyricsPanelVisibility();
     };
 
@@ -1218,23 +1243,24 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         const activeTrack = context.tracks[context.currentTrackIndex];
-        context.trackTitle.textContent = activeTrack.displayTitle;
-        context.trackAlbum.textContent = activeTrack.displayAlbum;
-        context.trackPosition.textContent = taggedTrackPosition(activeTrack);
-        context.trackArtist.textContent = activeTrack.displayArtist;
+        setTextContentIfChanged(context.trackTitle, activeTrack.displayTitle);
+        setTextContentIfChanged(context.trackAlbum, activeTrack.displayAlbum);
+        setTextContentIfChanged(context.trackPosition, taggedTrackPosition(activeTrack));
+        setTextContentIfChanged(context.trackArtist, activeTrack.displayArtist);
         updateNowPlayingTechnicalLabels();
-        context.trackReleaseAlbum.textContent = activeTrack.displayAlbum;
-        context.trackTitleInline.textContent = activeTrack.displayTitle;
+        setTextContentIfChanged(context.trackReleaseAlbum, activeTrack.displayAlbum);
+        setTextContentIfChanged(context.trackTitleInline, activeTrack.displayTitle);
         const num = activeTrack.displayTrackNumber.trim();
         const total = activeTrack.displayTrackTotal.trim();
-        context.trackPositionInline.textContent = num && total ? `${num}/${total}` : num || '';
+        setTextContentIfChanged(context.trackPositionInline, num && total ? `${num}/${total}` : num || '');
         const fileTags = activeTrack.allFileTags;
-        context.trackReleaseLabel.textContent = getReleaseLabel(fileTags);
-        context.trackReleaseCat.textContent = getReleaseCat(fileTags);
-        context.trackReleaseYear.textContent = getFirstTag(fileTags, 'date', 'year', 'originaldate', 'releasedate');
-        context.trackGenreInline.textContent = getFirstTag(fileTags, 'genre');
+        setTextContentIfChanged(context.trackReleaseLabel, getReleaseLabel(fileTags));
+        setTextContentIfChanged(context.trackReleaseCat, getReleaseCat(fileTags));
+        setTextContentIfChanged(context.trackReleaseYear, getFirstTag(fileTags, 'date', 'year', 'originaldate', 'releasedate'));
+        setTextContentIfChanged(context.trackGenreInline, getFirstTag(fileTags, 'genre'));
         const artistSortName = getFirstTag(fileTags, 'artistsort', 'sortartist', 'artist_sort');
         const headerArtistText = formatSortArtist(activeTrack.displayArtist, artistSortName);
+        setTextContentIfChanged(context.trackArtistHeader, headerArtistText);
         refreshLyricsPanel();
         const mbLinkOptions = {
             artistText: activeTrack.displayArtist,
