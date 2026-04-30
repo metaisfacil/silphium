@@ -23,6 +23,10 @@ type AppReleaseRuntimeContext = {
 };
 
 export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
+    let cachedReleaseTrackPathsTracks: Track[] | null = null;
+    let cachedReleaseTrackPathsLength = -1;
+    const cachedReleaseTrackPathsByKey = new Map<string, string[]>();
+
     const releaseRootPathForTrack = (track: Track): string => {
         const releaseDepth = context.releaseDepthForTrack(track);
         return releaseFolderPathForTrackAtDepth(track, releaseDepth);
@@ -37,13 +41,37 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
         return `${libraryFolderPathKey(track.rootPath || '')}::${releaseRootPath}`;
     };
 
-    const replayGainReleaseTrackPaths = (releaseKey: string): string[] => context.tracks
-        .filter((candidate: Track) => replayGainReleaseKeyForTrack(candidate) === releaseKey)
-        .sort((left: Track, right: Track) => left.relativePath.localeCompare(right.relativePath, undefined, {
-            sensitivity: 'base',
-            numeric: true,
-        }))
-        .map((candidate: Track) => candidate.path);
+    const ensureReplayGainReleaseTrackPathsCache = (): void => {
+        if (cachedReleaseTrackPathsTracks === context.tracks && cachedReleaseTrackPathsLength === context.tracks.length) {
+            return;
+        }
+
+        cachedReleaseTrackPathsTracks = context.tracks;
+        cachedReleaseTrackPathsLength = context.tracks.length;
+        cachedReleaseTrackPathsByKey.clear();
+    };
+
+    const replayGainReleaseTrackPaths = (releaseKey: string): string[] => {
+        if (!releaseKey) {
+            return [];
+        }
+
+        ensureReplayGainReleaseTrackPathsCache();
+        const cachedReleaseTrackPaths = cachedReleaseTrackPathsByKey.get(releaseKey);
+        if (cachedReleaseTrackPaths) {
+            return cachedReleaseTrackPaths;
+        }
+
+        const releaseTrackPaths = context.tracks
+            .filter((candidate: Track) => replayGainReleaseKeyForTrack(candidate) === releaseKey)
+            .sort((left: Track, right: Track) => left.relativePath.localeCompare(right.relativePath, undefined, {
+                sensitivity: 'base',
+                numeric: true,
+            }))
+            .map((candidate: Track) => candidate.path);
+        cachedReleaseTrackPathsByKey.set(releaseKey, releaseTrackPaths);
+        return releaseTrackPaths;
+    };
 
     const replayGainReleaseTrackPathsForIndex = (trackIndex: number): string[] => {
         const track = context.tracks[trackIndex];
@@ -172,12 +200,12 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
         context.replayGainReleaseDynamicRangeRequestVersion += 1;
     };
 
-    const cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack = (): string => {
+    const cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack = (releasePathsOverride?: string[]): string => {
         if (!context.currentSettings.audio.replayGainEnabled || context.currentTrackIndex < 0 || context.currentTrackIndex >= context.tracks.length) {
             return '';
         }
 
-        const releasePaths = currentReplayGainReleaseTrackPaths();
+        const releasePaths = releasePathsOverride ?? currentReplayGainReleaseTrackPaths();
         if (releasePaths.length <= 1) {
             return '';
         }
@@ -185,13 +213,13 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
         return context.replayGainReleaseDynamicRangeLabelByKey.get(replayGainReleaseDynamicRangeCacheKey(releasePaths)) || '';
     };
 
-    const refreshReplayGainReleaseDynamicRangeIndicator = async (): Promise<void> => {
+    const refreshReplayGainReleaseDynamicRangeIndicator = async (releasePathsOverride?: string[]): Promise<void> => {
         const requestVersion = ++context.replayGainReleaseDynamicRangeRequestVersion;
         if (!context.currentSettings.audio.replayGainEnabled || context.currentTrackIndex < 0 || context.currentTrackIndex >= context.tracks.length) {
             return;
         }
 
-        const releasePaths = currentReplayGainReleaseTrackPaths();
+        const releasePaths = releasePathsOverride ?? currentReplayGainReleaseTrackPaths();
         if (releasePaths.length <= 1) {
             return;
         }

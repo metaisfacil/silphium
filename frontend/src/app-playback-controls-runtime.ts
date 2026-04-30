@@ -333,6 +333,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         }
 
         for (let attempt = 0; attempt < context.tracks.length; attempt += 1) {
+            const replayGainSequenceOverrideIndexes = context.playlistController().getSequenceOverride?.()?.indexes;
             const nextIndex = context.nextTrackIndexForDirection(direction);
             if (nextIndex === undefined) {
                 context.logPlaybackDebug(`GoToTrack direction=${direction} found no next index on attempt=${attempt}`);
@@ -340,7 +341,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
             }
 
             context.logPlaybackDebug(`GoToTrack candidate direction=${direction} nextIndex=${nextIndex} path="${context.tracks[nextIndex]?.path || ''}" attempt=${attempt}`);
-            await loadTrack(nextIndex);
+            await loadTrack(nextIndex, true, replayGainSequenceOverrideIndexes);
             if (!(await context.shouldSkipLoadedTrack())) {
                 await playCurrentTrack();
                 return;

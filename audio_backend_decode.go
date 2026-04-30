@@ -367,13 +367,19 @@ func (b *AudioBackend) visualizationFrameSnapshotLocked(frameCount int) visualiz
 			windowFrames = longWindowFrames
 		}
 	}
+	currentFrame := int(segmentOffset / int64(audioBytesPerFrame))
+	if b.playing {
+		bufferedLookaheadFrames := int(b.playerBufferedBytesLocked() / int64(audioBytesPerFrame))
+		if bufferedLookaheadFrames > windowFrames && currentFrame < bufferedLookaheadFrames {
+			windowFrames = bufferedLookaheadFrames
+		}
+	}
 	if windowFrames > totalFrames {
 		windowFrames = totalFrames
 	}
 
-	currentFrame := int(segmentOffset / int64(audioBytesPerFrame))
 	endFrame := currentFrame
-	if endFrame <= 0 {
+	if endFrame < windowFrames {
 		endFrame = windowFrames
 	}
 	if endFrame > totalFrames {
@@ -410,6 +416,8 @@ func (b *AudioBackend) visualizationFrameSnapshotLocked(frameCount int) visualiz
 }
 
 // VisualizationFrame returns a decimated stereo sample window around the current playback position.
+// Near the start of playback it widens the window into already-buffered audio so a new track can
+// render useful startup data before enough audible history has accumulated.
 func (b *AudioBackend) VisualizationFrame(frameCount int) AudioVisualizationFrame {
 	b.mutex.Lock()
 	snapshot := b.visualizationFrameSnapshotLocked(frameCount)

@@ -120,6 +120,7 @@ const createContext = (coverPromise: Promise<void>): AppPlaybackControlsRuntimeC
         } as never,
         playlistController: () => ({
             activatePlaybackQueueSource: vi.fn(),
+            getSequenceOverride: vi.fn(() => null),
             scheduleRender: vi.fn(),
         }) as never,
         scrobbleService: {
@@ -316,5 +317,35 @@ describe('createAppPlaybackControlsRuntime', () => {
         await playPromise;
 
         expect(context.applyPlaybackState).toHaveBeenCalled();
+    });
+
+    it('passes playlist sequence override indexes into loadTrack during manual navigation', async () => {
+        const coverDeferred = createDeferred();
+        const context = createContext(coverDeferred.promise);
+        (context.tracks as Track[]).push({
+            ...createTrack(),
+            title: 'Next Track',
+            name: 'next.flac',
+            path: '/music/next.flac',
+            relativePath: 'next.flac',
+            displayTitle: 'Next Track',
+        });
+        context.currentTrackIndex = 0;
+        const getSequenceOverride = vi.fn(() => ({ indexes: [0, 1], currentPosition: 0 }));
+        context.playlistController = () => ({
+            activatePlaybackQueueSource: vi.fn(),
+            getSequenceOverride,
+            scheduleRender: vi.fn(),
+        }) as never;
+        context.nextTrackIndexForDirection = vi.fn(() => 1);
+
+        const runtime = createAppPlaybackControlsRuntime(context);
+        runtime.goToTrack(1);
+        await context.trackNavigationChain;
+
+        expect(getSequenceOverride).toHaveBeenCalled();
+        expect(context.collectReplayGainReleaseTrackPathsForIndex).toHaveBeenCalledWith(1, [0, 1]);
+
+        coverDeferred.resolve();
     });
 });

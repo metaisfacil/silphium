@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/metaisfacil/oto/v3"
 )
@@ -204,6 +205,25 @@ func TestAudioBackendDecodeAdditionalCoverageBranches(t *testing.T) {
 	}
 	if frame.Samples[0] != 100 || frame.Samples[1] != -100 || frame.Samples[4] != 300 || frame.Samples[5] != -300 {
 		t.Fatalf("VisualizationFrame(start of track) samples = %#v, want first and last frame preserved", frame.Samples)
+	}
+
+	startupLookaheadBackend := NewAudioBackend()
+	startupFrames := make([][2]int16, audioSampleRate)
+	startupFrames[len(startupFrames)-1] = [2]int16{4000, -4000}
+	startupLookaheadBackend.streamSegments = []audioTrackSegment{{
+		SourcePath: "startup-lookahead.flac",
+		PCMData:    encodeStereoPCM(startupFrames),
+	}}
+	startupLookaheadBackend.streamReadOffset = int64(len(startupLookaheadBackend.streamSegments[0].PCMData))
+	startupLookaheadBackend.player = &fakeAudioPlayer{buffered: len(startupLookaheadBackend.streamSegments[0].PCMData)}
+	startupLookaheadBackend.playing = true
+	startupLookaheadBackend.playStarted = time.Now()
+	startupLookaheadFrame := startupLookaheadBackend.VisualizationFrame(minVisualizationFrameCount)
+	if startupLookaheadFrame.Peak <= 0.12 || startupLookaheadFrame.Samples[len(startupLookaheadFrame.Samples)-2] != 4000 || startupLookaheadFrame.Samples[len(startupLookaheadFrame.Samples)-1] != -4000 {
+		t.Fatalf("VisualizationFrame(startup lookahead) = %#v, want buffered startup audio reflected immediately", startupLookaheadFrame)
+	}
+	if startupLookaheadFrame.SampleStride <= 600 {
+		t.Fatalf("VisualizationFrame(startup lookahead) sample stride = %.4f, want widened startup window", startupLookaheadFrame.SampleStride)
 	}
 
 	decimatedBackend := NewAudioBackend()

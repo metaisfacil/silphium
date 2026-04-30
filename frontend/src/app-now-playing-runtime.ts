@@ -61,6 +61,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let pendingSettledTransitionMetadataRefreshPath = '';
     let queuedGaplessEvaluationTrackPath = '';
     let queuedGaplessEvaluationRequestVersion = 0;
+    let queuedGaplessReleaseTrackPaths: string[] = [];
     let queuedTrackCoverPrefetchPath = '';
     let trackLabelsRefreshDeferred = false;
     let playerCardTrackTransitionHandle: number | undefined;
@@ -777,14 +778,34 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             pendingSettledTransitionMetadataRefreshPath = normalizedSourcePath;
         }
 
+        const normalizedSourcePathKey = trackPathKey(normalizedSourcePath);
+        const queuedGaplessTrackPathKey = trackPathKey(context.queuedGaplessTrackPath);
+        const queuedReplayGainReleaseTrackPaths = queuedGaplessTrackPathKey !== ''
+            && queuedGaplessTrackPathKey === normalizedSourcePathKey
+            ? queuedGaplessReleaseTrackPaths
+            : [];
+        const activeReplayGainReleaseTrackPaths = context.activeReplayGainReleaseTrackPaths;
+
         context.currentTrackIndex = resolvedIndex;
         context.gaplessQueueRequestVersion += 1;
         context.queuedGaplessTrackPath = '';
+        queuedGaplessReleaseTrackPaths = [];
         context.playlistController().scheduleRender();
         setCoverFlipped(false);
         context.scrobbleService.startTrackSession(normalizedSourcePath);
 
         const track = context.tracks[resolvedIndex];
+        if (queuedReplayGainReleaseTrackPaths.length > 1) {
+            setActiveReplayGainReleaseTrackPaths(queuedReplayGainReleaseTrackPaths);
+        } else if (
+            activeReplayGainReleaseTrackPaths.length > 1
+            && activeReplayGainReleaseTrackPaths.some((path) => trackPathKey(path) === normalizedSourcePathKey)
+        ) {
+            setActiveReplayGainReleaseTrackPaths(activeReplayGainReleaseTrackPaths);
+        } else {
+            setActiveReplayGainReleaseTrackPaths();
+        }
+
         if (context.currentSettings.preferMusicBrainzMetadata) {
             track.mbMetadataResolved = false;
         }
@@ -864,7 +885,9 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
-        const nextIndex = peekNextTrackIndexForDirection(1);
+        const gaplessPrepSequence = resolveGaplessPrepSequence(sequenceOverrideIndexes);
+        const gaplessPrepSequenceIndexes = gaplessPrepSequence.indexes;
+        const nextIndex = peekTrackIndexInSequence(gaplessPrepSequenceIndexes, gaplessPrepSequence.currentPosition);
         const nextPath = nextIndex !== undefined ? context.tracks[nextIndex]?.path || '' : '';
         const requestVersion = ++context.gaplessQueueRequestVersion;
         logPlaybackDebug(
@@ -874,6 +897,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
         if (nextPath === '') {
             queuedTrackCoverPrefetchPath = '';
+            queuedGaplessReleaseTrackPaths = [];
         } else if (nextIndex !== undefined && nextPath !== queuedTrackCoverPrefetchPath) {
             queuedTrackCoverPrefetchPath = nextPath;
             const nextTrack = context.tracks[nextIndex];
@@ -894,6 +918,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             }
 
             context.queuedGaplessTrackPath = '';
+            queuedGaplessReleaseTrackPaths = [];
             logPlaybackDebug(`NextTrackPrep clear after="${activeTrack.path}"`);
             logPlaybackDebug(`Trace NextTrackPrep dispatch action=clear after="${activeTrack.path}" requestVersion=${requestVersion}`);
             try {
@@ -923,13 +948,13 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         context.queuedGaplessTrackPath = nextPath;
+        queuedGaplessReleaseTrackPaths = [];
         logPlaybackDebug(`NextTrackPrep next="${nextPath}" after="${activeTrack.path}"`);
         try {
-            const currentReleaseTrackPaths = currentReplayGainReleaseTrackPaths(sequenceOverrideIndexes);
-            const replayGainReleaseTrackPaths = currentReleaseTrackPaths.length > 1
-                && currentReleaseTrackPaths.some((path) => trackPathKey(path) === trackPathKey(nextPath))
-                ? currentReleaseTrackPaths
-                : collectReplayGainReleaseTrackPathsForIndex(nextIndex as number, sequenceOverrideIndexes);
+            const replayGainReleaseTrackPaths = collectReplayGainReleaseTrackPathsForIndex(
+                nextIndex as number,
+                gaplessPrepSequenceIndexes,
+            );
             const method = replayGainReleaseTrackPaths.length > 1
                 ? 'AudioQueueNextTrackWithReplayGainContext'
                 : 'AudioQueueNextTrack';
@@ -958,6 +983,9 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 );
                 return;
             }
+            queuedGaplessReleaseTrackPaths = replayGainReleaseTrackPaths.length > 1
+                ? [...replayGainReleaseTrackPaths]
+                : [];
             markQueuedGaplessEvaluation(activeTrack.path);
             logPlaybackDebug(
                 `Trace NextTrackPrep success action=queue after="${activeTrack.path}" next="${nextPath}" requestVersion=${requestVersion}`,
@@ -967,6 +995,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             logPlaybackDebug(`NextTrackPrep failed next="${nextPath}" after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
             if (requestVersion === context.gaplessQueueRequestVersion) {
                 context.queuedGaplessTrackPath = '';
+                queuedGaplessReleaseTrackPaths = [];
             }
         }
     };
@@ -1091,6 +1120,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         if (!nextState.loaded) {
             context.gaplessQueueRequestVersion += 1;
             context.queuedGaplessTrackPath = '';
+            queuedGaplessReleaseTrackPaths = [];
             clearQueuedGaplessEvaluation();
             setActiveReplayGainReleaseTrackPaths();
             clearSettledTransitionMetadataRefresh();
@@ -1223,14 +1253,17 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         updateLyricsPanelVisibility();
     };
 
-    const updateNowPlayingTechnicalLabels = (): void => {
+    const updateNowPlayingTechnicalLabels = (replayGainReleaseTrackPaths?: string[]): void => {
         if (context.currentTrackIndex < 0 || context.currentTrackIndex >= context.tracks.length) {
             return;
         }
 
         const activeTrack = context.tracks[context.currentTrackIndex];
         const technicalLabel = effectivePlaybackTechnicalMetadata(activeTrack, context.currentSettings);
-        const label = composeTechnicalLabel(technicalLabel, cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack()) || 'Details';
+        const label = composeTechnicalLabel(
+            technicalLabel,
+            cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack(replayGainReleaseTrackPaths),
+        ) || 'Details';
         setTechnicalLabel(context.trackTechnical, label);
         context.trackTechnical.disabled = false;
         setTechnicalLabel(context.trackTechnicalAlt, label);
@@ -1243,11 +1276,14 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         const activeTrack = context.tracks[context.currentTrackIndex];
+        const replayGainReleaseTrackPaths = context.currentSettings.audio.replayGainEnabled
+            ? currentReplayGainReleaseTrackPaths()
+            : [];
         setTextContentIfChanged(context.trackTitle, activeTrack.displayTitle);
         setTextContentIfChanged(context.trackAlbum, activeTrack.displayAlbum);
         setTextContentIfChanged(context.trackPosition, taggedTrackPosition(activeTrack));
         setTextContentIfChanged(context.trackArtist, activeTrack.displayArtist);
-        updateNowPlayingTechnicalLabels();
+        updateNowPlayingTechnicalLabels(replayGainReleaseTrackPaths);
         setTextContentIfChanged(context.trackReleaseAlbum, activeTrack.displayAlbum);
         setTextContentIfChanged(context.trackTitleInline, activeTrack.displayTitle);
         const num = activeTrack.displayTrackNumber.trim();
@@ -1284,7 +1320,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         void context.refreshListenBrainzFeedbackForCurrentTrack();
 
         context.playlistController().scheduleRender();
-        void refreshReplayGainReleaseDynamicRangeIndicator();
+        void refreshReplayGainReleaseDynamicRangeIndicator(replayGainReleaseTrackPaths);
     };
 
     const ensureTrackTagsResolved = async (index: number): Promise<void> => {
@@ -1374,21 +1410,53 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     };
 
     const nextTrackIndexForDirection = (direction: -1 | 1): number | undefined => {
-        const nextPlaylistIndex = context.playlistController().getNextTrackIndex(direction);
-        if (nextPlaylistIndex !== undefined) {
-            return nextPlaylistIndex;
+        const playlistController = context.playlistController();
+        if (playlistController.getSequenceOverride?.()) {
+            return playlistController.getNextTrackIndex(direction);
         }
 
         return context.playbackSequencingService.nextTrackIndexForDirection(direction);
     };
 
     const peekNextTrackIndexForDirection = (direction: -1 | 1): number | undefined => {
-        const nextPlaylistIndex = context.playlistController().peekNextTrackIndex(direction);
-        if (nextPlaylistIndex !== undefined) {
-            return nextPlaylistIndex;
+        const playlistController = context.playlistController();
+        if (playlistController.getSequenceOverride?.()) {
+            return playlistController.peekNextTrackIndex(direction);
         }
 
         return context.playbackSequencingService.peekNextTrackIndexForDirection(direction);
+    };
+
+    const resolveGaplessPrepSequence = (sequenceOverrideIndexes?: number[]): { indexes: number[]; currentPosition: number } => {
+        if (Array.isArray(sequenceOverrideIndexes)) {
+            return {
+                indexes: sequenceOverrideIndexes,
+                currentPosition: sequenceOverrideIndexes.indexOf(context.currentTrackIndex),
+            };
+        }
+
+        const playlistSequence = context.playlistController().getSequenceOverride?.();
+        if (playlistSequence) {
+            return playlistSequence;
+        }
+
+        return baseSequenceIndexes();
+    };
+
+    const peekTrackIndexInSequence = (
+        sequenceIndexes: number[],
+        currentPosition: number,
+    ): number | undefined => {
+        if (sequenceIndexes.length === 0) {
+            return undefined;
+        }
+
+        if (currentPosition < 0) {
+            return sequenceIndexes[0];
+        }
+
+        const nextPosition = (currentPosition + 1 + sequenceIndexes.length) % sequenceIndexes.length;
+        return sequenceIndexes[nextPosition];
     };
 
     return {

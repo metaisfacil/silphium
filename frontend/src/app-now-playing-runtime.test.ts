@@ -57,7 +57,14 @@ vi.mock('./utils/bridge-load-gate', async () => {
 });
 
 import { createAppNowPlayingRuntime } from './app-now-playing-runtime';
-import { AudioGetState, AudioQueueNextTrack, InitializeAudioBackend, LogFrontendMessage } from '../wailsjs/go/main/App';
+import { createAppReleaseRuntime } from './app-release-runtime';
+import {
+    AudioGetState,
+    AudioQueueNextTrack,
+    AudioQueueNextTrackWithReplayGainContext,
+    InitializeAudioBackend,
+    LogFrontendMessage,
+} from '../wailsjs/go/main/App';
 import type { AppNowPlayingRuntimeContext } from './app-runtime-setup';
 import { createPlaybackStateService } from './services/playback-state-service';
 import { playbackReconcileMaxPollIntervalMs } from './utils/playback-reconcile-delay';
@@ -74,7 +81,7 @@ const createContext = (): AppNowPlayingRuntimeContext => {
     lyricsPanel.append(lyricsContent);
     document.body.append(playerShell);
 
-    return {
+    const context = {
         playerShell,
         playerLane,
         playerCard,
@@ -166,6 +173,8 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         } as never,
         playlistController: () => ({
             scheduleRender: vi.fn(),
+            getSequenceOverride: vi.fn(() => null),
+            getNextTrackIndex: vi.fn(() => undefined),
             peekNextTrackIndex: vi.fn(() => undefined),
         }) as never,
         coverArtService: {
@@ -182,10 +191,7 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         resolveCoverForTrack: vi.fn(async () => undefined),
         hydrateCurrentTrackTag: vi.fn(async () => undefined),
         hydrateCurrentArtistInfo: vi.fn(async () => undefined),
-        playbackSequencingService: {
-            getPlaybackOrderMode: vi.fn(() => 'ordered-library'),
-            peekNextTrackIndexForDirection: vi.fn(() => undefined),
-        } as never,
+        playbackSequencingService: undefined as never,
         visualizerController: {
             setPlaybackState: vi.fn(),
             start: vi.fn(),
@@ -223,6 +229,18 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         goToTrack: vi.fn(),
         currentSettingsMarker: true,
     } as unknown as AppNowPlayingRuntimeContext;
+
+    context.playbackSequencingService = {
+        baseSequenceIndexes: vi.fn(() => ({
+            indexes: context.tracks.map((_, index) => index),
+            currentPosition: context.currentTrackIndex >= 0 ? context.currentTrackIndex : 0,
+        })),
+        getPlaybackOrderMode: vi.fn(() => 'ordered-library'),
+        nextTrackIndexForDirection: vi.fn(() => undefined),
+        peekNextTrackIndexForDirection: vi.fn(() => undefined),
+    } as never;
+
+    return context;
 };
 
 describe('createAppNowPlayingRuntime', () => {
@@ -696,6 +714,235 @@ describe('createAppNowPlayingRuntime', () => {
         vi.useRealTimers();
     });
 
+    it('reuses queued replay-gain release paths after an automatic gapless advance', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentSettings.audio.gaplessPlayback = true;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+            },
+        ];
+        context.playlistController = () => ({
+            scheduleRender: vi.fn(),
+            peekNextTrackIndex: vi.fn(() => 1),
+        }) as never;
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            volume: 1,
+            sourcePath: '/music/track.flac',
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const queuedReleaseTrackPaths = ['/music/next.flac', '/music/next-disc-2.flac'];
+        vi.mocked(createAppReleaseRuntime).mockReturnValueOnce({
+            cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack: vi.fn(() => ''),
+            clearReplayGainReleaseDynamicRangeCache: vi.fn(),
+            collectReleaseImageFiles: vi.fn(() => []),
+            collectReplayGainReleaseTrackPathsForIndex: vi.fn((trackIndex: number) => trackIndex === 1 ? queuedReleaseTrackPaths : []),
+            currentReplayGainReleaseTrackPaths: vi.fn(() => []),
+            indexOfImageByPath: vi.fn(() => -1),
+            refreshReplayGainReleaseDynamicRangeIndicator: refreshReplayGainReleaseDynamicRangeIndicatorMock,
+            releaseRootPathForTrack: vi.fn(() => ''),
+            replayGainReleaseDynamicRangeCacheKey: vi.fn(() => ''),
+            replayGainReleaseKeyForTrack: vi.fn(() => ''),
+            replayGainReleaseTrackPaths: vi.fn(() => []),
+            replayGainReleaseTrackPathsForIndex: vi.fn(() => []),
+        } as never);
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            volume: 1,
+            sourcePath: '/music/track.flac',
+            endEventId: 0,
+        });
+
+        await vi.runAllTimersAsync();
+
+        expect(vi.mocked(AudioQueueNextTrackWithReplayGainContext)).toHaveBeenCalledWith(
+            '/music/track.flac',
+            '/music/next.flac',
+            queuedReleaseTrackPaths,
+        );
+
+        runtime.syncCurrentTrackFromPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 0,
+            duration: 240,
+            volume: 1,
+            sourcePath: '/music/next.flac',
+            endEventId: 0,
+        });
+
+        expect(context.activeReplayGainReleaseTrackPaths).toEqual(queuedReleaseTrackPaths);
+
+        vi.useRealTimers();
+    });
+
+    it('uses one sequence snapshot for gapless prep instead of re-entering sequencing peek and current-release lookup', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentSettings.audio.gaplessPlayback = true;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+            },
+        ];
+
+        const getSequenceOverride = vi.fn(() => ({ indexes: [0, 1], currentPosition: 0 }));
+        context.playlistController = () => ({
+            scheduleRender: vi.fn(),
+            getSequenceOverride,
+            peekNextTrackIndex: vi.fn(() => {
+                throw new Error('peekNextTrackIndex should not be used during gapless prep');
+            }),
+        }) as never;
+        context.playbackSequencingService.peekNextTrackIndexForDirection = vi.fn(() => {
+            throw new Error('playbackSequencingService.peekNextTrackIndexForDirection should not be used during gapless prep');
+        }) as never;
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const queuedReleaseTrackPaths = ['/music/track.flac', '/music/next.flac'];
+        const collectReplayGainReleaseTrackPathsForIndex = vi.fn((trackIndex: number, sequenceIndexes?: number[]) => (
+            trackIndex === 1 && Array.isArray(sequenceIndexes) && sequenceIndexes.join(',') === '0,1'
+                ? queuedReleaseTrackPaths
+                : []
+        ));
+        const currentReplayGainReleaseTrackPaths = vi.fn(() => {
+            throw new Error('currentReplayGainReleaseTrackPaths should not be used during gapless prep');
+        });
+        vi.mocked(createAppReleaseRuntime).mockReturnValueOnce({
+            cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack: vi.fn(() => ''),
+            clearReplayGainReleaseDynamicRangeCache: vi.fn(),
+            collectReleaseImageFiles: vi.fn(() => []),
+            collectReplayGainReleaseTrackPathsForIndex,
+            currentReplayGainReleaseTrackPaths,
+            indexOfImageByPath: vi.fn(() => -1),
+            refreshReplayGainReleaseDynamicRangeIndicator: refreshReplayGainReleaseDynamicRangeIndicatorMock,
+            releaseRootPathForTrack: vi.fn(() => ''),
+            replayGainReleaseDynamicRangeCacheKey: vi.fn(() => ''),
+            replayGainReleaseKeyForTrack: vi.fn(() => ''),
+            replayGainReleaseTrackPaths: vi.fn(() => []),
+            replayGainReleaseTrackPathsForIndex: vi.fn(() => []),
+        } as never);
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 1.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+
+        await vi.runAllTimersAsync();
+
+        expect(getSequenceOverride).toHaveBeenCalled();
+        expect(collectReplayGainReleaseTrackPathsForIndex).toHaveBeenCalledWith(1, [0, 1]);
+        expect(currentReplayGainReleaseTrackPaths).not.toHaveBeenCalled();
+        expect(AudioQueueNextTrackWithReplayGainContext).toHaveBeenCalledWith(
+            '/music/track.flac',
+            '/music/next.flac',
+            queuedReleaseTrackPaths,
+        );
+
+        vi.useRealTimers();
+    });
+
+    it('skips playlist-controller next-track resolution when there is no active queue or playlist override', () => {
+        const context = createContext();
+        const getSequenceOverride = vi.fn(() => null);
+        const getNextTrackIndex = vi.fn(() => {
+            throw new Error('getNextTrackIndex should not be used without a sequence override');
+        });
+        const peekNextTrackIndex = vi.fn(() => {
+            throw new Error('peekNextTrackIndex should not be used without a sequence override');
+        });
+        context.playlistController = () => ({
+            scheduleRender: vi.fn(),
+            getSequenceOverride,
+            getNextTrackIndex,
+            peekNextTrackIndex,
+        }) as never;
+        context.playbackSequencingService.nextTrackIndexForDirection = vi.fn(() => 1) as never;
+        context.playbackSequencingService.peekNextTrackIndexForDirection = vi.fn(() => 1) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+
+        expect(runtime.nextTrackIndexForDirection(1)).toBe(1);
+        expect(runtime.peekNextTrackIndexForDirection(1)).toBe(1);
+        expect(getSequenceOverride).toHaveBeenCalledTimes(2);
+        expect(getNextTrackIndex).not.toHaveBeenCalled();
+        expect(peekNextTrackIndex).not.toHaveBeenCalled();
+    });
+
+    it('reuses the current replay-gain release lookup across one now-playing label refresh', () => {
+        const context = createContext();
+        const currentReplayGainReleaseTrackPaths = vi.fn(() => []);
+        const cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack = vi.fn(() => '');
+        const refreshReplayGainReleaseDynamicRangeIndicator = vi.fn(async () => undefined);
+        vi.mocked(createAppReleaseRuntime).mockReturnValueOnce({
+            cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack,
+            clearReplayGainReleaseDynamicRangeCache: vi.fn(),
+            collectReleaseImageFiles: vi.fn(() => []),
+            collectReplayGainReleaseTrackPathsForIndex: vi.fn(() => []),
+            currentReplayGainReleaseTrackPaths,
+            indexOfImageByPath: vi.fn(() => -1),
+            refreshReplayGainReleaseDynamicRangeIndicator,
+            releaseRootPathForTrack: vi.fn(() => ''),
+            replayGainReleaseDynamicRangeCacheKey: vi.fn(() => ''),
+            replayGainReleaseKeyForTrack: vi.fn(() => ''),
+            replayGainReleaseTrackPaths: vi.fn(() => []),
+            replayGainReleaseTrackPathsForIndex: vi.fn(() => []),
+        } as never);
+
+        context.currentSettings.audio = {
+            ...(context.currentSettings.audio as object),
+            replayGainEnabled: true,
+        } as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.refreshNowPlayingLabel();
+
+        expect(currentReplayGainReleaseTrackPaths).toHaveBeenCalledTimes(1);
+        expect(cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack).toHaveBeenCalledWith([]);
+        expect(refreshReplayGainReleaseDynamicRangeIndicator).toHaveBeenCalledWith([]);
+    });
+
     it('preloads the next sequential track early in gapless mode so manual forward can reuse it', async () => {
         vi.useFakeTimers();
 
@@ -888,7 +1135,8 @@ describe('createAppNowPlayingRuntime', () => {
         });
         await vi.runAllTimersAsync();
 
-        expect(playlistController.peekNextTrackIndex).toHaveBeenCalledTimes(1);
+        expect(playlistController.peekNextTrackIndex).not.toHaveBeenCalled();
+        expect(context.playbackSequencingService.baseSequenceIndexes).toHaveBeenCalledTimes(1);
         expect(AudioQueueNextTrack).toHaveBeenCalledTimes(1);
 
         vi.useRealTimers();
