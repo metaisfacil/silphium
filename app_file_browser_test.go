@@ -64,6 +64,16 @@ func TestOpenFolderInFileBrowser(t *testing.T) {
 		t.Fatalf("OpenFolderInFileBrowser(file) marker = %q, want album folder %q", markerContents, fixture.albumOneFolder)
 	}
 
+	markerPath = filepath.Join(helperDir, "explorer-virtual-dir-marker.txt")
+	t.Setenv("SILPHIUM_TEST_SENDTO_MARKER", markerPath)
+	if !app.OpenFolderInFileBrowser("Library/Artist One/Album One") {
+		t.Fatal("OpenFolderInFileBrowser(virtual dir) = false, want true")
+	}
+	markerContents = waitForMarkerFile(t, markerPath)
+	if !strings.Contains(markerContents, fixture.albumOneFolder) {
+		t.Fatalf("OpenFolderInFileBrowser(virtual dir) marker = %q, want album folder %q", markerContents, fixture.albumOneFolder)
+	}
+
 	markerPath = filepath.Join(helperDir, "explorer-dir-marker.txt")
 	t.Setenv("SILPHIUM_TEST_SENDTO_MARKER", markerPath)
 	if !app.OpenFolderInFileBrowser(fixture.albumOneFolder) {
@@ -79,5 +89,84 @@ func TestOpenFolderInFileBrowser(t *testing.T) {
 	}
 	if app.OpenFolderInFileBrowser(fixture.albumOneFolder) {
 		t.Fatal("OpenFolderInFileBrowser(no explorer) = true, want false")
+	}
+}
+
+func TestOpenFileInFileBrowser(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	helperDir := t.TempDir()
+	helperPath := copyCurrentTestBinary(t, helperDir, "sendto-helper.exe")
+	originalOpenFileInBrowserCommand := openFileInBrowserCommand
+	defaultCommand := originalOpenFileInBrowserCommand(`C:\temp\track.flac`)
+	switch got := strings.ToLower(filepath.Base(defaultCommand.Path)); runtime.GOOS {
+	case "windows":
+		if got != "explorer" && got != "explorer.exe" {
+			t.Fatalf("openFileInBrowserCommand(default) path = %q, want explorer on Windows", defaultCommand.Path)
+		}
+	case "darwin":
+		if got != "open" {
+			t.Fatalf("openFileInBrowserCommand(default) path = %q, want open on macOS", defaultCommand.Path)
+		}
+	default:
+		if got != "xdg-open" {
+			t.Fatalf("openFileInBrowserCommand(default) path = %q, want xdg-open on non-Windows platforms", defaultCommand.Path)
+		}
+	}
+	openFileInBrowserCommand = func(path string) *exec.Cmd {
+		return exec.Command(helperPath, path)
+	}
+	t.Cleanup(func() {
+		openFileInBrowserCommand = originalOpenFileInBrowserCommand
+	})
+
+	markerPath := filepath.Join(helperDir, "explorer-file-marker.txt")
+	t.Setenv("SILPHIUM_TEST_SENDTO_MARKER", markerPath)
+	t.Setenv("SILPHIUM_TEST_SENDTO_EXIT", "0")
+	app := &App{}
+	app.activeLibraryRoots = []libraryRootConfig{{Path: fixture.rootOne, Name: "Library"}}
+
+	if app.OpenFileInFileBrowser("") {
+		t.Fatal("OpenFileInFileBrowser(empty) = true, want false")
+	}
+	if app.OpenFileInFileBrowser(fixture.outsideTrack) {
+		t.Fatal("OpenFileInFileBrowser(outside) = true, want false")
+	}
+	if app.OpenFileInFileBrowser(filepath.Join(fixture.rootOne, "missing-track.flac")) {
+		t.Fatal("OpenFileInFileBrowser(missing) = true, want false")
+	}
+	if app.OpenFileInFileBrowser(fixture.albumOneFolder) {
+		t.Fatal("OpenFileInFileBrowser(dir) = true, want false")
+	}
+
+	if !app.OpenFileInFileBrowser(filepath.Join("Artist One", "Album One", filepath.Base(fixture.trackOne))) {
+		t.Fatal("OpenFileInFileBrowser(relative file) = false, want true")
+	}
+	markerContents := waitForMarkerFile(t, markerPath)
+	if !strings.Contains(markerContents, fixture.trackOne) {
+		t.Fatalf("OpenFileInFileBrowser(file) marker = %q, want file path %q", markerContents, fixture.trackOne)
+	}
+
+	markerPath = filepath.Join(helperDir, "explorer-virtual-file-marker.txt")
+	t.Setenv("SILPHIUM_TEST_SENDTO_MARKER", markerPath)
+	virtualFilePath := filepath.ToSlash(filepath.Join("Library", "Artist One", "Album One", filepath.Base(fixture.trackOne)))
+	if !app.OpenFileInFileBrowser(virtualFilePath) {
+		t.Fatal("OpenFileInFileBrowser(virtual file) = false, want true")
+	}
+	markerContents = waitForMarkerFile(t, markerPath)
+	if !strings.Contains(markerContents, fixture.trackOne) {
+		t.Fatalf("OpenFileInFileBrowser(virtual file) marker = %q, want file path %q", markerContents, fixture.trackOne)
+	}
+
+	fileRootApp := &App{}
+	fileRootApp.activeLibraryRoots = []libraryRootConfig{{Path: fixture.trackOne, Name: filepath.Base(fixture.trackOne)}}
+	if !fileRootApp.OpenFileInFileBrowser(fixture.trackOne) {
+		t.Fatal("OpenFileInFileBrowser(file root) = false, want true")
+	}
+
+	openFileInBrowserCommand = func(path string) *exec.Cmd {
+		return exec.Command(filepath.Join(t.TempDir(), "missing-helper.exe"), path)
+	}
+	if app.OpenFileInFileBrowser(fixture.trackOne) {
+		t.Fatal("OpenFileInFileBrowser(no explorer) = true, want false")
 	}
 }

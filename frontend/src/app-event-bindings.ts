@@ -191,6 +191,14 @@ export const setupTrackNavigationBindings = (context: TrackNavigationBindingsCon
     });
 };
 
+export const triggerSidebarOpenInBrowserAction = (
+    openSidebarQueueItemInFileBrowser: () => Promise<void>,
+    closeSidebarQueueMenu: () => void,
+): void => {
+    void openSidebarQueueItemInFileBrowser();
+    closeSidebarQueueMenu();
+};
+
 export const setupAppEventBindings = (context: AppEventBindingsContext): void => {
     const {
         window,
@@ -207,6 +215,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         sidebarQueueLove,
         sidebarQueueHate,
         sidebarQueueEnd,
+        sidebarQueueOpenInBrowser,
         sidebarQueueTreeToggleBtn,
         sidebarQueueSendToList,
         errorBackdrop,
@@ -308,6 +317,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         savePlaybackOrderSetting,
         openCurrentTrackFolderInSidebar,
         openCurrentTrackFolderInFileBrowser,
+        openSidebarQueueItemInFileBrowser,
         copyCurrentTrackFilePath,
         copyCurrentTrackFolderPath,
         trackMetaMenuTarget,
@@ -591,6 +601,10 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         }
 
         libraryController.setSearchTreeSubtreeExpanded(folderPath, expandAll);
+    });
+
+    sidebarQueueOpenInBrowser.addEventListener('click', () => {
+        triggerSidebarOpenInBrowserAction(openSidebarQueueItemInFileBrowser, closeSidebarQueueMenu);
     });
 
     sidebarQueueSendToList.addEventListener('click', (event: MouseEvent) => {

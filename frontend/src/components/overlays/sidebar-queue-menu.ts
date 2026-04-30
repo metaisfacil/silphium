@@ -4,6 +4,8 @@ export type SidebarQueueMenuElements = {
     sidebarQueueAddNext: HTMLButtonElement;
     sidebarQueueEnd: HTMLButtonElement;
     sidebarQueueAddToPlaylist: HTMLButtonElement;
+    sidebarQueueBrowserActionsDivider: HTMLHRElement;
+    sidebarQueueOpenInBrowser: HTMLButtonElement;
     sidebarQueueTreeToggleDivider: HTMLHRElement;
     sidebarQueueTreeToggleBtn: HTMLButtonElement;
     sidebarQueueSendToDivider: HTMLHRElement;
@@ -19,6 +21,8 @@ export const renderSidebarQueueMenu = (): string => `
         <button id="sidebar-queue-add-next" class="playlist-menu-item" type="button" role="menuitem">Add next</button>
         <button id="sidebar-queue-end" class="playlist-menu-item" type="button" role="menuitem">Queue</button>
         <button id="sidebar-queue-add-to-playlist" class="playlist-menu-item" type="button" role="menuitem">Add to playlist</button>
+        <hr id="sidebar-queue-browser-actions-divider" class="playlist-menu-divider" aria-hidden="true" hidden>
+        <button id="sidebar-queue-open-in-browser" class="playlist-menu-item" type="button" role="menuitem" hidden>Open folder in browser</button>
         <hr id="sidebar-queue-tree-toggle-divider" class="playlist-menu-divider" aria-hidden="true" hidden>
         <button id="sidebar-queue-tree-toggle" class="playlist-menu-item" type="button" role="menuitem" hidden>Expand all</button>
         <hr id="sidebar-queue-send-to-divider" class="playlist-menu-divider" aria-hidden="true" hidden>
@@ -35,6 +39,8 @@ export const getSidebarQueueMenuElements = (root: ParentNode): SidebarQueueMenuE
     sidebarQueueAddNext: root.querySelector('#sidebar-queue-add-next') as HTMLButtonElement,
     sidebarQueueEnd: root.querySelector('#sidebar-queue-end') as HTMLButtonElement,
     sidebarQueueAddToPlaylist: root.querySelector('#sidebar-queue-add-to-playlist') as HTMLButtonElement,
+    sidebarQueueBrowserActionsDivider: root.querySelector('#sidebar-queue-browser-actions-divider') as HTMLHRElement,
+    sidebarQueueOpenInBrowser: root.querySelector('#sidebar-queue-open-in-browser') as HTMLButtonElement,
     sidebarQueueTreeToggleDivider: root.querySelector('#sidebar-queue-tree-toggle-divider') as HTMLHRElement,
     sidebarQueueTreeToggleBtn: root.querySelector('#sidebar-queue-tree-toggle') as HTMLButtonElement,
     sidebarQueueSendToDivider: root.querySelector('#sidebar-queue-send-to-divider') as HTMLHRElement,

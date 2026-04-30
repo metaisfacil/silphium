@@ -187,6 +187,7 @@ type ReturnedRuntimeMethods = {
     logSendToFrontend: (message: string) => void;
     openCurrentTrackFolderInFileBrowser: () => Promise<void>;
     openCurrentTrackFolderInSidebar: () => void;
+    openSidebarQueueItemInFileBrowser: () => Promise<void>;
     openPlayOrderMenu: (clientX: number, clientY: number) => void;
     closePlayOrderMenu: () => void;
     openSidebarQueueMenu: (...args: unknown[]) => void;

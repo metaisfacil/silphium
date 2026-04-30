@@ -6,7 +6,7 @@ vi.mock('../wailsjs/runtime/runtime', () => ({
     OnFileDrop: vi.fn(),
 }));
 
-import { setupTrackNavigationBindings, setupVolumeControlBindings } from './app-event-bindings';
+import { setupTrackNavigationBindings, setupVolumeControlBindings, triggerSidebarOpenInBrowserAction } from './app-event-bindings';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -178,5 +178,26 @@ describe('setupTrackNavigationBindings', () => {
         expect(unlockMediaSessionAnchorFromUserGesture).toHaveBeenCalledTimes(2);
         expect(goToTrack).toHaveBeenNthCalledWith(1, -1);
         expect(goToTrack).toHaveBeenNthCalledWith(2, 1);
+    });
+});
+
+describe('triggerSidebarOpenInBrowserAction', () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('starts the browser action before clearing the sidebar menu state', async () => {
+        const callOrder: string[] = [];
+        const openSidebarQueueItemInFileBrowser = vi.fn(async () => {
+            callOrder.push('open');
+        });
+        const closeSidebarQueueMenu = vi.fn(() => {
+            callOrder.push('close');
+        });
+
+        triggerSidebarOpenInBrowserAction(openSidebarQueueItemInFileBrowser, closeSidebarQueueMenu);
+        await flushPromises();
+
+        expect(callOrder).toEqual(['open', 'close']);
     });
 });

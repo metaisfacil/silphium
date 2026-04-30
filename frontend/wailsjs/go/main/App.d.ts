@@ -97,6 +97,8 @@ export function LookupMusicBrainzRecordingURLs(arg1:string):Promise<Array<main.M
 
 export function LookupTrackMusicBrainzMetadata(arg1:string,arg2:string):Promise<main.MusicBrainzTrackMetadata>;
 
+export function OpenFileInFileBrowser(arg1:string):Promise<boolean>;
+
 export function OpenFolderInFileBrowser(arg1:string):Promise<boolean>;
 
 export function ProfilerSnapshot():Promise<profiling.Snapshot>;

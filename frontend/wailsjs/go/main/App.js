@@ -190,6 +190,10 @@ export function LookupTrackMusicBrainzMetadata(arg1, arg2) {
   return window['go']['main']['App']['LookupTrackMusicBrainzMetadata'](arg1, arg2);
 }
 
+export function OpenFileInFileBrowser(arg1) {
+  return window['go']['main']['App']['OpenFileInFileBrowser'](arg1);
+}
+
 export function OpenFolderInFileBrowser(arg1) {
   return window['go']['main']['App']['OpenFolderInFileBrowser'](arg1);
 }

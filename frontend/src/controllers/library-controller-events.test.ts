@@ -290,4 +290,31 @@ describe('setupLibraryEventHandlers', () => {
         expect(deps.showFolderEnumerationTooltip).toHaveBeenCalledWith(folderButton);
         expect(deps.navigateToFolder).not.toHaveBeenCalled();
     });
+
+    it('opens the sidebar queue menu for a track file even when it is not currently indexed', () => {
+        const { deps, libraryBrowser } = createDeps();
+        deps.options.resolveTrackIndex = vi.fn(() => -1);
+        setupLibraryEventHandlers(deps);
+
+        const trackButton = document.createElement('button');
+        trackButton.dataset.trackPath = '/music/library/unindexed-track.flac';
+        libraryBrowser.append(trackButton);
+
+        trackButton.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }));
+
+        expect(deps.options.onQueueRequested).toHaveBeenCalledWith(10, 20, [], undefined, true, '/music/library/unindexed-track.flac');
+    });
+
+    it('opens the sidebar queue menu for non-track files', () => {
+        const { deps, libraryBrowser } = createDeps();
+        setupLibraryEventHandlers(deps);
+
+        const textFileButton = document.createElement('button');
+        textFileButton.dataset.textFilePath = '/music/library/notes.txt';
+        libraryBrowser.append(textFileButton);
+
+        textFileButton.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }));
+
+        expect(deps.options.onQueueRequested).toHaveBeenCalledWith(30, 40, [], undefined, true, '/music/library/notes.txt');
+    });
 });

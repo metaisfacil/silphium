@@ -13,10 +13,36 @@ export type SidebarQueueSelectionContext = {
     trackIndexesScopedToSelection: boolean;
 };
 
+type FileBrowserAppBindings = {
+    OpenFileInFileBrowser?: (path: string) => Promise<boolean>;
+};
+
 export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) => {
     let pendingSidebarQueueMenuPositionFrame = 0;
     let pendingTrackMetaMenuPositionFrame = 0;
     let pendingPlayOrderMenuPositionFrame = 0;
+
+    const fileBrowserBindings = (): FileBrowserAppBindings | null => {
+        const goBindings = (window as typeof window & {
+            go?: {
+                main?: {
+                    App?: FileBrowserAppBindings;
+                };
+            };
+        }).go;
+
+        return goBindings?.main?.App ?? null;
+    };
+
+    const openFileInBrowser = async (path: string): Promise<boolean> => {
+        const bindings = fileBrowserBindings();
+        const openFile = bindings?.OpenFileInFileBrowser;
+        if (typeof openFile !== 'function') {
+            return false;
+        }
+
+        return await openFile(path);
+    };
 
     const scheduleMenuPosition = (
         menu: HTMLElement,
@@ -105,6 +131,13 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         context.sidebarQueueFileActionPath = '';
         context.sidebarQueueIncludeFileActions = false;
         context.sidebarQueueSendToActionScope = null;
+        context.sidebarQueuePlay.hidden = false;
+        context.sidebarQueueAddNext.hidden = false;
+        context.sidebarQueueEnd.hidden = false;
+        context.sidebarQueueAddToPlaylist.hidden = false;
+        context.sidebarQueueBrowserActionsDivider.hidden = true;
+        context.sidebarQueueOpenInBrowser.hidden = true;
+        context.sidebarQueueOpenInBrowser.textContent = 'Open folder in browser';
         context.sidebarQueueTreeToggleDivider.hidden = true;
         context.sidebarQueueTreeToggleBtn.hidden = true;
         context.sidebarQueueTreeToggleBtn.textContent = 'Expand all';
@@ -176,7 +209,8 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         searchTreeExpandAll?: boolean,
     ): void => {
         const normalizedFolderPath = (folderPath || '').trim();
-        if (trackIndexes.length === 0 && normalizedFolderPath === '' && !folderTarget) {
+        const normalizedFileActionPath = fileActionPath.trim();
+        if (trackIndexes.length === 0 && normalizedFolderPath === '' && !folderTarget && normalizedFileActionPath === '') {
             return;
         }
 
@@ -192,7 +226,12 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         context.sidebarQueueFolderTarget = isFolderTarget;
         context.sidebarQueueTrackIndexesScopedToSelection = trackIndexesScopedToSelection;
         context.sidebarQueueIncludeFileActions = includeFileActions;
-        context.sidebarQueueFileActionPath = fileActionPath.trim();
+        context.sidebarQueueFileActionPath = normalizedFileActionPath;
+        const showTrackActions = trackIndexes.length > 0 || isFolderTarget;
+        context.sidebarQueuePlay.hidden = !showTrackActions;
+        context.sidebarQueueAddNext.hidden = !showTrackActions;
+        context.sidebarQueueEnd.hidden = !showTrackActions;
+        context.sidebarQueueAddToPlaylist.hidden = !showTrackActions;
         const canShowFeedbackActions = !isFolderTarget
             && Number.isInteger(feedbackTrackIndex)
             && (feedbackTrackIndex as number) >= 0
@@ -244,6 +283,14 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
             delete context.sidebarQueueTreeToggleBtn.dataset.folderPath;
             delete context.sidebarQueueTreeToggleBtn.dataset.expandAll;
         }
+        const showOpenInBrowserAction = isFolderTarget
+            ? normalizedFolderPath !== ''
+            : context.sidebarQueueFileActionPath !== '';
+        const showBrowserActionsDivider = showOpenInBrowserAction
+            && (showTrackActions || showSendToActions || showSearchTreeToggle || canShowFeedbackActions);
+        context.sidebarQueueBrowserActionsDivider.hidden = !showBrowserActionsDivider;
+        context.sidebarQueueOpenInBrowser.hidden = !showOpenInBrowserAction;
+        context.sidebarQueueOpenInBrowser.textContent = isFolderTarget ? 'Open folder in browser' : 'Open file in browser';
         context.sidebarQueueMenu.hidden = false;
         scheduleMenuPosition(
             context.sidebarQueueMenu,
@@ -558,6 +605,25 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         }
     };
 
+    const openSidebarQueueItemInFileBrowser = async (): Promise<void> => {
+        const folderTarget = context.sidebarQueueFolderTarget;
+        const targetPath = (folderTarget ? context.sidebarQueueFolderPath : context.sidebarQueueFileActionPath).trim();
+        if (targetPath === '') {
+            return;
+        }
+
+        try {
+            if (folderTarget) {
+                await OpenFolderInFileBrowser(targetPath);
+                return;
+            }
+
+            await openFileInBrowser(targetPath);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     const copyCurrentTrackFilePath = async (): Promise<void> => {
         if (context.currentTrackIndex < 0 || context.currentTrackIndex >= context.tracks.length) {
             return;
@@ -634,6 +700,7 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         logSendToFrontend,
         openCurrentTrackFolderInFileBrowser,
         openCurrentTrackFolderInSidebar,
+        openSidebarQueueItemInFileBrowser,
         openPlayOrderMenu,
         openQueueConfirmModal,
         openSidebarQueueMenu,

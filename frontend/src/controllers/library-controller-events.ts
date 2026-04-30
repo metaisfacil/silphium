@@ -413,13 +413,30 @@ export const setupLibraryEventHandlers = (deps: LibraryEventDeps): void => {
         const trackPath = button.dataset.trackPath;
         if (trackPath !== undefined) {
             const trackIndex = options.resolveTrackIndex(trackPath);
-            if (trackIndex < 0) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (trackIndex >= 0) {
+                options.onQueueRequested(event.clientX, event.clientY, [trackIndex], trackIndex, true, trackPath);
                 return;
             }
 
+            options.onQueueRequested(event.clientX, event.clientY, [], undefined, true, trackPath);
+            return;
+        }
+
+        const textFilePath = button.dataset.textFilePath;
+        if (textFilePath !== undefined) {
             event.preventDefault();
             event.stopPropagation();
-            options.onQueueRequested(event.clientX, event.clientY, [trackIndex], trackIndex, true, trackPath);
+            options.onQueueRequested(event.clientX, event.clientY, [], undefined, true, textFilePath);
+            return;
+        }
+
+        const imageFilePath = button.dataset.imageFilePath;
+        if (imageFilePath !== undefined) {
+            event.preventDefault();
+            event.stopPropagation();
+            options.onQueueRequested(event.clientX, event.clientY, [], undefined, true, imageFilePath);
             return;
         }
 

@@ -132,6 +132,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'sidebarQueueLove'
     | 'sidebarQueueHate'
     | 'sidebarQueueEnd'
+    | 'sidebarQueueOpenInBrowser'
     | 'sidebarQueueTreeToggleBtn'
     | 'sidebarQueueSendToList'
     | 'errorBackdrop'
@@ -235,6 +236,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'savePlaybackOrderSetting'
     | 'openCurrentTrackFolderInSidebar'
     | 'openCurrentTrackFolderInFileBrowser'
+    | 'openSidebarQueueItemInFileBrowser'
     | 'copyCurrentTrackFilePath'
     | 'copyCurrentTrackFolderPath'
     | 'trackMetaMenuTarget'
@@ -503,6 +505,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         sidebarQueueLove: scope.sidebarQueueLove,
         sidebarQueueHate: scope.sidebarQueueHate,
         sidebarQueueEnd: scope.sidebarQueueEnd,
+        sidebarQueueOpenInBrowser: scope.sidebarQueueOpenInBrowser,
         sidebarQueueTreeToggleBtn: scope.sidebarQueueTreeToggleBtn,
         sidebarQueueSendToList: scope.sidebarQueueSendToList,
         errorBackdrop: scope.errorBackdrop,
@@ -606,6 +609,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         savePlaybackOrderSetting: scope.savePlaybackOrderSetting,
         openCurrentTrackFolderInSidebar: scope.openCurrentTrackFolderInSidebar,
         openCurrentTrackFolderInFileBrowser: scope.openCurrentTrackFolderInFileBrowser,
+        openSidebarQueueItemInFileBrowser: scope.openSidebarQueueItemInFileBrowser,
         copyCurrentTrackFilePath: scope.copyCurrentTrackFilePath,
         copyCurrentTrackFolderPath: scope.copyCurrentTrackFolderPath,
         trackMetaMenuTarget: () => scope.trackMetaMenuTarget,
