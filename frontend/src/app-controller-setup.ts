@@ -161,6 +161,9 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         onExternalPlaylistLoaded: () => {
             context.resetShuffleHistory();
         },
+        onPlaybackSequenceMutated: async () => {
+            await context.queueGaplessNextTrack();
+        },
     });
 
     const playlistTargetModalController = createPlaylistTargetModalController(context.playlistTargetModalElements);

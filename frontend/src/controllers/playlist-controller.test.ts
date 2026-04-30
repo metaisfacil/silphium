@@ -89,6 +89,7 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState; sho
     const savePlaylistTrackMetadataCache = vi.fn(async () => true);
     const savePlaylistData = vi.fn(async () => true);
     const openErrorModal = vi.fn();
+    const onPlaybackSequenceMutated = vi.fn(async () => undefined);
 
     const controller = createPlaylistController({
         trigger,
@@ -118,6 +119,7 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState; sho
         hasListenHistoryPlaylist: () => listenHistoryEnabled,
         onTrackChosen,
         onExternalPlaylistLoaded: vi.fn(() => undefined),
+        onPlaybackSequenceMutated,
     });
 
     return {
@@ -127,6 +129,7 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState; sho
         ensureTrackTagsResolvedBatch,
         loadListenHistoryData,
         loadPlaylistData,
+        onPlaybackSequenceMutated,
         onTrackChosen,
         openErrorModal,
         savePlaylistTrackMetadataCache,
@@ -732,7 +735,7 @@ describe('createPlaylistController', () => {
 
     it('saves the loaded playlist immediately after removing a track when enabled', async () => {
         const state = createPlaylistControllerState();
-        const { controller, elements, savePlaylistData } = mountPlaylistController({
+        const { controller, elements, onPlaybackSequenceMutated, savePlaylistData } = mountPlaylistController({
             state,
             shouldAutoSavePlaylistsOnAddRemove: true,
         });
@@ -750,6 +753,29 @@ describe('createPlaylistController', () => {
             '/music/track-1.flac',
         ]);
         expect(state.loadedPlaylistTrackIndexes).toEqual([1]);
+        expect(onPlaybackSequenceMutated).not.toHaveBeenCalled();
+    });
+
+    it('notifies playback-sequence listeners after removing the queued next track', async () => {
+        const state = createPlaylistControllerState();
+        state.editableQueueTrackIndexes = [0, 1, 2];
+        state.editableQueueCurrentPosition = 0;
+        state.selectedSource = 'queue';
+        state.playbackSource = 'queue';
+
+        const { controller, elements, onPlaybackSequenceMutated } = mountPlaylistController({ state });
+
+        controller.openModal();
+
+        const removeButton = elements.playlistList.querySelector('[data-playlist-remove-position="1"]') as HTMLButtonElement | null;
+        expect(removeButton).not.toBeNull();
+
+        removeButton?.click();
+        await flushPromises();
+
+        expect(state.editableQueueTrackIndexes).toEqual([0, 2]);
+        expect(state.editableQueueCurrentPosition).toBe(0);
+        expect(onPlaybackSequenceMutated).toHaveBeenCalledTimes(1);
     });
 
     it('reverts a loaded playlist add when immediate save fails', async () => {

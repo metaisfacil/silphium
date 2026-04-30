@@ -94,6 +94,7 @@ type PlaylistControllerOptions = {
     hasListenHistoryPlaylist: () => boolean;
     onTrackChosen: (index: number, context: PlaylistTrackChosenContext) => Promise<void>;
     onExternalPlaylistLoaded: () => void;
+    onPlaybackSequenceMutated?: () => void | Promise<void>;
 };
 
 export type PlaylistController = ReturnType<typeof createPlaylistController>;
@@ -178,6 +179,10 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
     const playlistDragIcon = '<svg class="playlist-inline-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M9 6.5C9 7.33 8.33 8 7.5 8C6.67 8 6 7.33 6 6.5C6 5.67 6.67 5 7.5 5C8.33 5 9 5.67 9 6.5ZM18 6.5C18 7.33 17.33 8 16.5 8C15.67 8 15 7.33 15 6.5C15 5.67 15.67 5 16.5 5C17.33 5 18 5.67 18 6.5ZM9 12C9 12.83 8.33 13.5 7.5 13.5C6.67 13.5 6 12.83 6 12C6 11.17 6.67 10.5 7.5 10.5C8.33 10.5 9 11.17 9 12ZM18 12C18 12.83 17.33 13.5 16.5 13.5C15.67 13.5 15 12.83 15 12C15 11.17 15.67 10.5 16.5 10.5C17.33 10.5 18 11.17 18 12ZM9 17.5C9 18.33 8.33 19 7.5 19C6.67 19 6 18.33 6 17.5C6 16.67 6.67 16 7.5 16C8.33 16 9 16.67 9 17.5ZM18 17.5C18 18.33 17.33 19 16.5 19C15.67 19 15 18.33 15 17.5C15 16.67 15.67 16 16.5 16C17.33 16 18 16.67 18 17.5Z"/></svg>';
     const playlistRemoveIcon = '<svg class="playlist-inline-icon" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M6.4 5.34C6.11 5.05 5.64 5.05 5.34 5.34C5.05 5.64 5.05 6.11 5.34 6.4L10.94 12L5.34 17.6C5.05 17.89 5.05 18.36 5.34 18.66C5.64 18.95 6.11 18.95 6.4 18.66L12 13.06L17.6 18.66C17.89 18.95 18.36 18.95 18.66 18.66C18.95 18.36 18.95 17.89 18.66 17.6L13.06 12L18.66 6.4C18.95 6.11 18.95 5.64 18.66 5.34C18.36 5.05 17.89 5.05 17.6 5.34L12 10.94L6.4 5.34Z"/></svg>';
+
+    const notifyPlaybackQueueMutated = (): void => {
+        void options.onPlaybackSequenceMutated?.();
+    };
 
     const hasCachedPlaylistLabels = (item?: LoadedPlaylistCachedItem): boolean => (
         (item?.cachedTrackTitle || '').trim() !== ''
@@ -641,7 +646,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         if (applyReorder) {
             const activeQueue = mutableCurrentSequence();
+            const queueMutated = activeQueue === controllerState.editableQueueTrackIndexes;
             const { fromPosition, targetPosition } = dragState;
+            let reordered = false;
             if (
                 Number.isInteger(fromPosition)
                 && Number.isInteger(targetPosition)
@@ -654,6 +661,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 const [moved] = activeQueue.splice(fromPosition, 1);
                 activeQueue.splice(targetPosition, 0, moved);
                 updateEditableQueueCurrentPositionAfterMove(fromPosition, targetPosition, activeQueue.length);
+                reordered = true;
+            }
+
+            if (reordered && queueMutated) {
+                notifyPlaybackQueueMutated();
             }
         }
 
@@ -1825,6 +1837,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         hydrateTrackMetadataInBackground(normalizedTrackIndexes);
         scheduleRender();
+        notifyPlaybackQueueMutated();
     };
 
     const resolveNextTrackIndex = (direction: PlaylistDirection, mutateState: boolean): number | undefined => {
@@ -1934,6 +1947,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         const activeQueue = mutableCurrentSequence();
+        const queueMutated = activeQueue === controllerState.editableQueueTrackIndexes;
         const previousQueue = activeQueue.slice();
         if (playlistPreventDuplicateCheckbox.checked && activeQueue.includes(currentTrackIndex)) {
             options.openErrorModal(
@@ -1956,6 +1970,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         hydrateTrackMetadataInBackground([currentTrackIndex]);
         renderPlaylist(true);
+        if (queueMutated) {
+            notifyPlaybackQueueMutated();
+        }
     };
 
     const saveCurrentSequenceAsPlaylist = async (): Promise<void> => {
@@ -2343,6 +2360,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             }
 
             const activeQueue = mutableCurrentSequence();
+            const queueMutated = activeQueue === controllerState.editableQueueTrackIndexes;
             const removePosition = Number(removeButton.dataset.playlistRemovePosition);
             if (!Number.isInteger(removePosition)) {
                 return;
@@ -2374,6 +2392,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 }
 
                 renderPlaylist();
+                if (queueMutated) {
+                    notifyPlaybackQueueMutated();
+                }
             })().catch((error) => {
                 console.error(error);
                 replaceTrackIndexes(activeQueue, previousQueue);

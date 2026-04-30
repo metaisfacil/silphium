@@ -394,6 +394,7 @@ describe('app-controller-setup', () => {
         playlistConfig.appendTracksToPlaylistData('/playlists/favorites.m3u', ['/music/library/track-1.flac']);
         await playlistConfig.onTrackChosen(1, { userInitiated: true, source: 'library' });
         playlistConfig.onExternalPlaylistLoaded();
+        await playlistConfig.onPlaybackSequenceMutated();
         context.currentSettings.savePlaylistsOnAddRemove = false;
         expect(playlistConfig.shouldAutoSavePlaylistsOnAddRemove()).toBe(false);
 
@@ -456,7 +457,7 @@ describe('app-controller-setup', () => {
         expect(context.resetShuffleHistory).toHaveBeenCalled();
         expect(context.closeListenBrainzFeedbackMenu).toHaveBeenCalled();
         expect(context.audioQueueNextTrack).toHaveBeenCalledWith('', '');
-        expect(context.queueGaplessNextTrack).toHaveBeenCalledTimes(1);
+        expect(context.queueGaplessNextTrack).toHaveBeenCalledTimes(2);
         expect(context.completeStartupIfReady).toHaveBeenCalled();
         expect(context.refreshListenBrainzFeedbackForCurrentTrack).toHaveBeenCalled();
         expect(context.browserOpenUrl).toHaveBeenCalledWith('https://www.last.fm/api/auth/?api_key=key&token=request-token');
