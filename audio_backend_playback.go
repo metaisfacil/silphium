@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"strings"
@@ -374,12 +375,23 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 
 	requestGeneration := b.nextQueueRequestGeneration
 	state := b.snapshotLocked()
+	bufferSummary := b.bufferSummaryLocked()
 	summary := b.stateSummaryLocked()
+	gaplessPlayback := b.gaplessPlayback
 	b.mutex.Unlock()
 
-	logAudioEvent("QueueNextTrack preparing nextPath=%q state=%s", trimmedNextDisplayPath, summary)
+	logAudioEvent(
+		"QueueNextTrack request afterPath=%q nextPath=%q generation=%d gapless=%t buffers=%s state=%s",
+		trimmedAfterPath,
+		trimmedNextDisplayPath,
+		requestGeneration,
+		gaplessPlayback,
+		bufferSummary,
+		summary,
+	)
 
 	go func(generation uint64, gaplessPlayback bool, expectedAfterPath string, expectedNextDisplayPath string, expectedNextDecodePath string, expectedReplayGainReleasePaths []string, expectedDecodeHints audioDecodeHints, expectedTags map[string][]string) {
+		startedAt := time.Now()
 		nextSegment, err := b.prepareTrackSegmentForSource(expectedNextDisplayPath, expectedNextDecodePath, expectedTags, expectedReplayGainReleasePaths, expectedDecodeHints)
 		replayGainContext := preparedTrackReplayGainContextKey(expectedReplayGainReleasePaths)
 
@@ -387,17 +399,41 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 		defer b.mutex.Unlock()
 
 		if generation != b.nextQueueRequestGeneration {
+			logAudioEvent(
+				"QueueNextTrack stale nextPath=%q reason=generation-changed generation=%d currentGeneration=%d elapsed=%s",
+				expectedNextDisplayPath,
+				generation,
+				b.nextQueueRequestGeneration,
+				time.Since(startedAt).Round(time.Millisecond),
+			)
 			return
 		}
 
 		b.syncPlaybackLocked()
 		if len(b.streamSegments) == 0 {
+			logAudioEvent(
+				"QueueNextTrack stale nextPath=%q reason=no-active-queue elapsed=%s",
+				expectedNextDisplayPath,
+				time.Since(startedAt).Round(time.Millisecond),
+			)
 			return
 		}
 
 		if expectedAfterPath != "" {
 			activeSegment, _, ok := b.activeSegmentLocked()
 			if !ok || !strings.EqualFold(strings.TrimSpace(activeSegment.SourcePath), expectedAfterPath) {
+				activePath := ""
+				if ok {
+					activePath = activeSegment.SourcePath
+				}
+				logAudioEvent(
+					"QueueNextTrack stale nextPath=%q reason=active-track-changed expectedAfter=%q active=%q elapsed=%s state=%s",
+					expectedNextDisplayPath,
+					expectedAfterPath,
+					activePath,
+					time.Since(startedAt).Round(time.Millisecond),
+					b.stateSummaryLocked(),
+				)
 				return
 			}
 		}
@@ -406,7 +442,14 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 		b.clearFutureQueueLocked()
 
 		if err != nil {
-			logAudioEvent("QueueNextTrack failed nextPath=%q error=%v state=%s", expectedNextDisplayPath, err, b.stateSummaryLocked())
+			logAudioEvent(
+				"QueueNextTrack failed nextPath=%q error=%v elapsed=%s buffers=%s state=%s",
+				expectedNextDisplayPath,
+				err,
+				time.Since(startedAt).Round(time.Millisecond),
+				b.bufferSummaryLocked(),
+				b.stateSummaryLocked(),
+			)
 			return
 		}
 
@@ -417,13 +460,27 @@ func (b *AudioBackend) queueNextTrackFromDecodeSource(afterDisplayPath string, n
 				ReplayGainContext: replayGainContext,
 			}
 			b.preparedTrackReady = true
-			logAudioEvent("QueueNextTrack prepared nextPath=%q state=%s", expectedNextDisplayPath, b.stateSummaryLocked())
+			logAudioEvent(
+				"QueueNextTrack prepared nextPath=%q elapsed=%s bytes=%s buffers=%s state=%s",
+				expectedNextDisplayPath,
+				time.Since(startedAt).Round(time.Millisecond),
+				audioDurationForByteCount(nextSegment.byteLen()),
+				b.bufferSummaryLocked(),
+				b.stateSummaryLocked(),
+			)
 			return
 		}
 
 		b.streamSegments = append(b.streamSegments, nextSegment)
 		b.streamCond.Broadcast()
-		logAudioEvent("QueueNextTrack queued nextPath=%q state=%s", expectedNextDisplayPath, b.stateSummaryLocked())
+		logAudioEvent(
+			"QueueNextTrack queued nextPath=%q elapsed=%s bytes=%s buffers=%s state=%s",
+			expectedNextDisplayPath,
+			time.Since(startedAt).Round(time.Millisecond),
+			audioDurationForByteCount(nextSegment.byteLen()),
+			b.bufferSummaryLocked(),
+			b.stateSummaryLocked(),
+		)
 	}(requestGeneration, b.gaplessPlayback, trimmedAfterPath, trimmedNextDisplayPath, trimmedNextDecodePath, replayGainReleasePaths, decodeHints, preloadedTags)
 
 	return state, nil
@@ -491,8 +548,22 @@ func (b *AudioBackend) Play() (AudioPlaybackState, error) {
 	b.notePendingPlayResumeLocked(resumeBaseBytes)
 	resumeRequestedAt := b.playResumeRequestedAt
 	b.endEventSent = false
+	bufferSummary := b.bufferSummaryLocked()
+	preSummary := b.stateSummaryLocked()
+	desiredPlayerBuffer := audioDurationForByteCount(int64(b.desiredPlayerBufferSizeLocked()))
+	outputBuffer := b.effectiveOutputBufferLocked()
 	b.streamCond.Broadcast()
 	b.mutex.Unlock()
+
+	logAudioEvent(
+		"Play request reset=%t requestedAt=%s desiredPlayerBuffer=%s outputBuffer=%s buffers=%s state=%s",
+		shouldReset,
+		resumeRequestedAt.Format(time.RFC3339Nano),
+		desiredPlayerBuffer,
+		outputBuffer,
+		bufferSummary,
+		preSummary,
+	)
 
 	if shouldReset {
 		if err := b.flushPlayerBuffer(player); err != nil {
@@ -530,9 +601,10 @@ func (b *AudioBackend) Play() (AudioPlaybackState, error) {
 
 	b.mutex.Lock()
 	state := b.snapshotLocked()
+	bufferSummary = b.bufferSummaryLocked()
 	summary := b.stateSummaryLocked()
 	b.mutex.Unlock()
-	logAudioEvent("Play state=%s", summary)
+	logAudioEvent("Play state=%s buffers=%s", summary, bufferSummary)
 	return state, nil
 }
 
@@ -550,22 +622,54 @@ func (b *AudioBackend) Pause() (AudioPlaybackState, error) {
 	}
 
 	b.syncPlaybackLocked()
+	pausedGlobalBytes := b.currentPlayedGlobalBytesLocked()
+	pausedLocalBytes := pausedGlobalBytes - b.streamDroppedBytes
+	if pausedLocalBytes < 0 {
+		pausedLocalBytes = 0
+	}
+	if totalTimelineBytes := b.totalTimelineBytesLocked(); pausedLocalBytes > totalTimelineBytes {
+		pausedLocalBytes = totalTimelineBytes
+	}
 	outputContext := b.context
 	player := b.player
+	currentReadOffset := b.streamReadOffset
+	b.playbackBaseBytes = pausedGlobalBytes
 	b.playing = false
 	b.playStarted = time.Time{}
 	b.clearPendingPlayResumeLocked()
+	bufferSummary := b.bufferSummaryLocked()
+	preSummary := b.stateSummaryLocked()
 	state := b.snapshotLocked()
-	summary := b.stateSummaryLocked()
 	b.mutex.Unlock()
 
+	logAudioEvent(
+		"Pause request pausedGlobal=%s pausedLocal=%s rewind=%s buffers=%s state=%s",
+		audioDurationForByteCount(pausedGlobalBytes),
+		audioDurationForByteCount(pausedLocalBytes),
+		audioDurationForByteCount(pausedLocalBytes-currentReadOffset),
+		bufferSummary,
+		preSummary,
+	)
+
 	player.Pause()
+	if _, err := player.Seek(pausedLocalBytes-currentReadOffset, io.SeekCurrent); err != nil {
+		return state, fmt.Errorf("failed to resync audio buffer: %w", err)
+	}
 	if outputContext != nil {
 		if err := outputContext.Suspend(); err != nil {
 			return state, fmt.Errorf("audio playback suspend failed: %w", err)
 		}
 	}
-	logAudioEvent("Pause state=%s", summary)
+
+	b.mutex.Lock()
+	b.streamReadOffset = pausedLocalBytes
+	b.playbackBaseBytes = pausedGlobalBytes
+	b.streamCond.Broadcast()
+	bufferSummary = b.bufferSummaryLocked()
+	state = b.snapshotLocked()
+	summary := b.stateSummaryLocked()
+	b.mutex.Unlock()
+	logAudioEvent("Pause state=%s buffers=%s", summary, bufferSummary)
 
 	return state, nil
 }

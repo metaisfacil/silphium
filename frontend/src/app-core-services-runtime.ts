@@ -359,11 +359,13 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         canvas: context.playerVisualizerCanvas,
         getPlaybackState: () => playbackStateService.getPlaybackState(),
         fetchVisualizationFrame: async (frameCount: number): Promise<AudioVisualizationFrame> => (
-            await measureBridgeCall('AudioGetVisualizationFrame', 40, async () => await AudioGetVisualizationFrame(frameCount) as AudioVisualizationFrame, {
-                cooldownOnSlowMs: 300,
-            })
+            await measureBridgeCall('AudioGetVisualizationFrame', 40, async () => await AudioGetVisualizationFrame(frameCount) as AudioVisualizationFrame)
         ),
         getCoverArtImageSource: () => context.getCoverArtImageSource?.(),
+        logDebug: (message: string): void => {
+            console.debug(message);
+            void LogFrontendMessage(message).catch(() => undefined);
+        },
     });
     visualizerController.setMode(context.currentSettings.visualizerMode);
     visualizerController.setEqualizerPosition(context.currentSettings.equalizerPosition);

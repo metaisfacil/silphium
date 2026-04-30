@@ -7,6 +7,7 @@ type VisualizerControllerOptions = {
     getPlaybackState: () => AudioPlaybackState;
     fetchVisualizationFrame: (frameCount: number) => Promise<AudioVisualizationFrame>;
     getCoverArtImageSource?: () => CanvasImageSource | undefined;
+    logDebug?: (message: string) => void;
 };
 
 type RgbColor = {
@@ -31,6 +32,8 @@ const equalizerTargetFrameCount = 320;
 const equalizerFallbackBandCount = 40;
 const visualizationFetchIntervalMs = 75;
 const visualizationStartupQuietMs = 500;
+const visualizationTraceWindowMs = 1500;
+const visualizationTraceIntervalMs = 120;
 const maxCanvasDevicePixelRatio = 1.5;
 const pointSmoothingTimeMs = 72;
 const equalizerRiseSmoothingTimeMs = 70;
@@ -193,7 +196,12 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
     let priorityFetchPending = false;
     let playbackActive = false;
     let activePlaybackSourcePath = '';
+    let lastSuspendedSourcePath = '';
     let playbackActivatedAtMs = -1;
+    let traceWindowUntilMs = 0;
+    let traceFetchCount = 0;
+    let lastDeferredFetchTraceAtMs = -1;
+    let lastDrawSuppressedTraceAtMs = -1;
     let targetPoints: Float32Array | null = null;
     let renderedPoints: Float32Array | null = null;
     let targetBands: Float32Array | null = null;
@@ -209,6 +217,22 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
     let resizeObserver: ResizeObserver | null = null;
     let cachedCoverKey = '';
     let cachedLissajousColor: RgbColor | null = null;
+
+    const logDebug = (message: string): void => {
+        options.logDebug?.(`[VISUALIZER] ${message}`);
+    };
+
+    const isTraceActive = (nowMs = performance.now()): boolean => traceWindowUntilMs > 0 && nowMs <= traceWindowUntilMs;
+
+    const traceDebug = (message: string, nowMs = performance.now()): void => {
+        if (!isTraceActive(nowMs)) {
+            return;
+        }
+
+        logDebug(`Trace ${message}`);
+    };
+
+    const formatNumber = (value: number, digits: number): string => (Number.isFinite(value) ? value.toFixed(digits) : '0');
 
     const syncCanvasSize = (): boolean => {
         const bounds = canvas.getBoundingClientRect();
@@ -300,6 +324,30 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         lastRenderAtMs = 0;
     };
 
+    const hasProjectedCurrentTrack = (sourcePath: string): boolean => {
+        if (projectedSourcePath !== sourcePath) {
+            return false;
+        }
+
+        return mode === 'equalizer'
+            ? !!targetBands && targetBands.length > 0
+            : !!targetPoints && targetPoints.length >= 4;
+    };
+
+    const startTraceWindow = (reason: string, playbackState: AudioPlaybackState): void => {
+        const nowMs = performance.now();
+        traceWindowUntilMs = nowMs + visualizationTraceWindowMs;
+        traceFetchCount = 0;
+        lastDeferredFetchTraceAtMs = -1;
+        lastDrawSuppressedTraceAtMs = -1;
+        logDebug(
+            `TraceStart reason=${reason} source="${playbackState.sourcePath || ''}" `
+            + `time=${formatNumber(playbackState.currentTime, 2)}/${formatNumber(playbackState.duration, 2)} `
+            + `latestFrameSource="${latestFrame?.sourcePath || ''}" latestFrameCount=${latestFrame?.frameCount || 0} `
+            + `projectedSource="${projectedSourcePath}" projected=${hasProjectedCurrentTrack(playbackState.sourcePath || '')}`,
+        );
+    };
+
     const writeFrameSamplesToWasm = (wasm: VisualizerWasmExports, frame: AudioVisualizationFrame): number => {
         const maxFrames = wasm.max_frames();
         const safeCount = Math.min(frame.frameCount, maxFrames);
@@ -341,6 +389,11 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         projectedWidth = width;
         projectedHeight = height;
 
+        traceDebug(
+            `projection updated mode=lissajous source="${frame.sourcePath}" points=${Math.floor(points.length / 2)} `
+            + `peak=${formatNumber(frame.peak, 3)} sourceChanged=${sourceChanged} sizeChanged=${sizeChanged}`,
+        );
+
         if (!renderedPoints || renderedPoints.length !== points.length || sourceChanged || sizeChanged) {
             renderedPoints = points.slice();
             renderedPeak = frame.peak;
@@ -380,6 +433,11 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         projectedWidth = canvas.width;
         projectedHeight = canvas.height;
 
+        traceDebug(
+            `projection updated mode=equalizer source="${frame.sourcePath}" bands=${bands.length} `
+            + `peak=${formatNumber(frame.peak, 3)} sourceChanged=${sourceChanged} sizeChanged=${sizeChanged}`,
+        );
+
         if (
             !renderedBands
             || renderedBands.length !== bands.length
@@ -396,12 +454,28 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
 
     const updateTargetProjection = async (): Promise<void> => {
         if (!enabled) {
+            traceDebug('projection reset reason=disabled');
             resetProjectionState();
             return;
         }
 
         const frame = latestFrame;
         if (!frame || !frame.loaded || frame.frameCount < 2 || frame.samples.length < frame.frameCount * 2) {
+            const preserveCurrentProjection = !!frame?.loaded
+                && projectedSourcePath === frame.sourcePath
+                && (mode === 'equalizer'
+                    ? !!targetBands && targetBands.length > 0
+                    : !!targetPoints && targetPoints.length >= 4);
+            if (preserveCurrentProjection) {
+                traceDebug(
+                    `projection preserve-empty source="${frame.sourcePath}" frameCount=${frame.frameCount} samples=${frame.samples.length}`,
+                );
+                return;
+            }
+            traceDebug(
+                `projection reset reason=${frame ? 'empty-frame' : 'missing-frame'} `
+                + `source="${frame?.sourcePath || ''}" frameCount=${frame?.frameCount || 0} samples=${frame?.samples.length || 0}`,
+            );
             resetProjectionState();
             return;
         }
@@ -595,20 +669,33 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
         }
     };
 
-    const clearVisualizer = (): void => {
+    const suspendVisualizer = (reason: string): void => {
+        if (activePlaybackSourcePath !== '') {
+            lastSuspendedSourcePath = activePlaybackSourcePath;
+        }
+        traceDebug(
+            `suspend reason=${reason} source="${activePlaybackSourcePath}" latestFrameSource="${latestFrame?.sourcePath || ''}" `
+            + `latestFrameCount=${latestFrame?.frameCount || 0} projectedSource="${projectedSourcePath}"`,
+        );
         activeFetchRequestId += 1;
         frameRequestVersion += 1;
         fetchInFlight = false;
         lastFetchAtMs = 0;
-        latestFrame = null;
         priorityFetchPending = false;
         playbackActive = false;
         activePlaybackSourcePath = '';
         playbackActivatedAtMs = -1;
-        resetProjectionState();
+        lastRenderAtMs = 0;
         canvas.classList.remove(activeVisualizerClass);
         clear();
         stopLoop();
+    };
+
+    const clearVisualizer = (reason: string): void => {
+        suspendVisualizer(reason);
+        latestFrame = null;
+        lastSuspendedSourcePath = '';
+        resetProjectionState();
     };
 
     const tick = (): void => {
@@ -618,20 +705,43 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
 
         const playbackState = options.getPlaybackState();
         if (!playbackState.playing) {
-            clearVisualizer();
+            if (!playbackState.loaded) {
+                clearVisualizer('tick-unloaded');
+            } else {
+                suspendVisualizer('tick-paused');
+            }
             return;
         }
 
         const nowMs = performance.now();
         const startupQuietActive = playbackActivatedAtMs >= 0 && (nowMs - playbackActivatedAtMs) < visualizationStartupQuietMs;
         const prioritizeFetch = priorityFetchPending;
+        const hasProjectedFrameForCurrentTrack = hasProjectedCurrentTrack(playbackState.sourcePath);
+        const startupProjectionPending = startupQuietActive && !hasProjectedFrameForCurrentTrack;
         const shouldFetch = enabled
             && playbackState.loaded
             && !fetchInFlight
-            && !startupQuietActive
-            && (prioritizeFetch || !shouldDeferBackgroundBridgeCall())
+            && (prioritizeFetch || startupProjectionPending || !shouldDeferBackgroundBridgeCall())
             && (playbackState.playing || latestFrame === null || latestFrame.sourcePath !== playbackState.sourcePath)
-            && (prioritizeFetch || (nowMs - lastFetchAtMs >= visualizationFetchIntervalMs));
+            && (prioritizeFetch || startupProjectionPending || (nowMs - lastFetchAtMs >= visualizationFetchIntervalMs));
+
+        if (
+            isTraceActive(nowMs)
+            && !shouldFetch
+            && !fetchInFlight
+            && !prioritizeFetch
+            && !startupProjectionPending
+            && shouldDeferBackgroundBridgeCall()
+            && (lastDeferredFetchTraceAtMs < 0 || nowMs - lastDeferredFetchTraceAtMs >= visualizationTraceIntervalMs)
+        ) {
+            lastDeferredFetchTraceAtMs = nowMs;
+            traceDebug(
+                `fetch deferred quiet=${startupQuietActive} projected=${hasProjectedFrameForCurrentTrack} `
+                + `latestFrameSource="${latestFrame?.sourcePath || ''}" latestFrameCount=${latestFrame?.frameCount || 0} `
+                + `elapsedSinceActivation=${formatNumber((nowMs - playbackActivatedAtMs) / 1000, 3)}s`,
+                nowMs,
+            );
+        }
 
         if (shouldFetch) {
             fetchInFlight = true;
@@ -641,7 +751,15 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
             const requestVersion = frameRequestVersion;
             activeFetchRequestId = requestId;
             const targetFrameCount = mode === 'equalizer' ? equalizerTargetFrameCount : lissajousTargetFrameCount;
-            const fetchFramePromise = prioritizeFetch
+            const urgentStartupFetch = prioritizeFetch || startupProjectionPending;
+            traceFetchCount += 1;
+            traceDebug(
+                `fetch start id=${requestId} count=${traceFetchCount} urgent=${urgentStartupFetch} `
+                + `quiet=${startupQuietActive} startupPending=${startupProjectionPending} prioritize=${prioritizeFetch} `
+                + `targetFrames=${targetFrameCount} source="${playbackState.sourcePath}"`,
+                nowMs,
+            );
+            const fetchFramePromise = urgentStartupFetch
                 ? runBackgroundBridgeCall(async () => await options.fetchVisualizationFrame(targetFrameCount), {
                     maxWaitMs: 0,
                     onTimeout: async () => await options.fetchVisualizationFrame(targetFrameCount),
@@ -652,7 +770,9 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
                 });
             fetchFramePromise
                 .then((frame) => {
+                    const resolvedAtMs = performance.now();
                     if (frame === null) {
+                        traceDebug(`fetch result id=${requestId} frame=null`, resolvedAtMs);
                         return;
                     }
 
@@ -666,14 +786,27 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
 
                     const latestPlaybackState = options.getPlaybackState();
                     if (!latestPlaybackState.loaded || !latestPlaybackState.playing) {
+                        traceDebug(
+                            `fetch result id=${requestId} ignored reason=playback-inactive frameSource="${frame.sourcePath}" `
+                            + `frameCount=${frame.frameCount}`,
+                            resolvedAtMs,
+                        );
                         return;
                     }
+
+                    traceDebug(
+                        `fetch result id=${requestId} frameSource="${frame.sourcePath}" frameCount=${frame.frameCount} `
+                        + `samples=${frame.samples.length} peak=${formatNumber(frame.peak, 3)} `
+                        + `sampleStride=${formatNumber(frame.sampleStride, 2)} playbackSource="${latestPlaybackState.sourcePath || ''}"`,
+                        resolvedAtMs,
+                    );
 
                     latestFrame = frame;
                     void updateTargetProjection();
                 })
                 .catch((error) => {
                     console.debug(error);
+                    traceDebug(`fetch error id=${requestId} error=${error instanceof Error ? error.message : String(error)}`);
                 })
                 .finally(() => {
                     if (requestId === activeFetchRequestId) {
@@ -682,12 +815,15 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
                 });
         }
 
-        const hasProjectedCurrentTrack = projectedSourcePath === playbackState.sourcePath
-            && (mode === 'equalizer'
-                ? !!targetBands && targetBands.length > 0
-                : !!targetPoints && targetPoints.length >= 4);
-        if (!startupQuietActive || hasProjectedCurrentTrack) {
+        if (!startupQuietActive || hasProjectedFrameForCurrentTrack) {
             draw(nowMs);
+        } else if (lastDrawSuppressedTraceAtMs < 0 || nowMs - lastDrawSuppressedTraceAtMs >= visualizationTraceIntervalMs) {
+            lastDrawSuppressedTraceAtMs = nowMs;
+            traceDebug(
+                `draw suppressed quiet=${startupQuietActive} projected=${hasProjectedFrameForCurrentTrack} `
+                + `latestFrameSource="${latestFrame?.sourcePath || ''}" latestFrameCount=${latestFrame?.frameCount || 0}`,
+                nowMs,
+            );
         }
 
         animationFrameId = window.requestAnimationFrame(tick);
@@ -702,12 +838,17 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
 
     const setPlaybackState = (playbackState: AudioPlaybackState): void => {
         if (!enabled) {
-            clearVisualizer();
+            clearVisualizer('set-state-disabled');
             return;
         }
 
-        if (!playbackState.loaded || !playbackState.playing) {
-            clearVisualizer();
+        if (!playbackState.loaded) {
+            clearVisualizer('set-state-unloaded');
+            return;
+        }
+
+        if (!playbackState.playing) {
+            suspendVisualizer('set-state-paused');
             return;
         }
 
@@ -719,6 +860,12 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
             playbackActivatedAtMs = performance.now();
             priorityFetchPending = true;
             lastFetchAtMs = 0;
+            startTraceWindow(lastSuspendedSourcePath === sourcePath ? 'resume' : 'start', playbackState);
+        } else {
+            traceDebug(
+                `state update source="${sourcePath}" time=${formatNumber(playbackState.currentTime, 2)}/${formatNumber(playbackState.duration, 2)} `
+                + `latestFrameSource="${latestFrame?.sourcePath || ''}" latestFrameCount=${latestFrame?.frameCount || 0}`,
+            );
         }
 
         startLoop();
@@ -727,7 +874,7 @@ export const createVisualizerController = (options: VisualizerControllerOptions)
     const setEnabled = (nextEnabled: boolean): void => {
         enabled = nextEnabled;
         if (!enabled) {
-            clearVisualizer();
+            clearVisualizer('set-enabled-disabled');
             return;
         }
 

@@ -134,6 +134,7 @@ func (p *fakeAudioPlayer) Seek(offset int64, _ int) (int64, error) {
 	if p.seekErr != nil {
 		return 0, p.seekErr
 	}
+	p.buffered = 0
 
 	return offset, nil
 }
@@ -544,10 +545,23 @@ func TestCurrentPlayedGlobalBytesSubtractsPlayerBufferedBytes(t *testing.T) {
 	backend.streamSegments = []audioTrackSegment{{SourcePath: "track.flac", PCMData: make([]byte, 3*audioBytesPerSecond)}}
 	backend.player = &fakeAudioPlayer{buffered: audioBytesPerSecond}
 	backend.streamReadOffset = int64(3 * audioBytesPerSecond)
+	backend.playing = true
 	backend.playbackBaseBytes = int64(3 * audioBytesPerSecond)
 
 	if got, want := backend.currentPlayedGlobalBytesLocked(), int64(2*audioBytesPerSecond); got != want {
 		t.Fatalf("currentPlayedGlobalBytesLocked(buffered clamp) = %d, want %d", got, want)
+	}
+}
+
+func TestCurrentPlayedGlobalBytesDoesNotSubtractBufferedBytesWhilePaused(t *testing.T) {
+	backend := NewAudioBackend()
+	backend.streamSegments = []audioTrackSegment{{SourcePath: "track.flac", PCMData: make([]byte, 3*audioBytesPerSecond)}}
+	backend.player = &fakeAudioPlayer{buffered: audioBytesPerSecond}
+	backend.streamReadOffset = int64(3 * audioBytesPerSecond)
+	backend.playbackBaseBytes = int64(3 * audioBytesPerSecond)
+
+	if got, want := backend.currentPlayedGlobalBytesLocked(), int64(3*audioBytesPerSecond); got != want {
+		t.Fatalf("currentPlayedGlobalBytesLocked(paused buffered clamp) = %d, want %d", got, want)
 	}
 }
 

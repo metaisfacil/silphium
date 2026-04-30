@@ -359,6 +359,25 @@ func (b *AudioBackend) stateSummaryLocked() string {
 	)
 }
 
+func (b *AudioBackend) bufferSummaryLocked() string {
+	playedGlobalBytes := b.currentPlayedGlobalBytesLocked()
+	playedLocalBytes := playedGlobalBytes - b.streamDroppedBytes
+	if playedLocalBytes < 0 {
+		playedLocalBytes = 0
+	}
+
+	return fmt.Sprintf(
+		"played=%s local=%s buffered=%s read=%s base=%s dropped=%s total=%s",
+		audioDurationForByteCount(playedGlobalBytes),
+		audioDurationForByteCount(playedLocalBytes),
+		audioDurationForByteCount(b.playerBufferedBytesLocked()),
+		audioDurationForByteCount(b.streamReadOffset),
+		audioDurationForByteCount(b.playbackBaseBytes),
+		audioDurationForByteCount(b.streamDroppedBytes),
+		audioDurationForByteCount(b.totalTimelineBytesLocked()),
+	)
+}
+
 func normalizeReplayGainScale(scale float64) float64 {
 	if math.IsNaN(scale) || math.IsInf(scale, 0) || scale <= 0 {
 		return 1
@@ -863,7 +882,10 @@ func (b *AudioBackend) currentPlayedGlobalBytesLocked() int64 {
 		return 0
 	}
 
-	maxReadableGlobalBytes := b.streamDroppedBytes + b.streamReadOffset - b.playerBufferedBytesLocked()
+	maxReadableGlobalBytes := b.streamDroppedBytes + b.streamReadOffset
+	if b.playing {
+		maxReadableGlobalBytes -= b.playerBufferedBytesLocked()
+	}
 	if maxReadableGlobalBytes < b.streamDroppedBytes {
 		maxReadableGlobalBytes = b.streamDroppedBytes
 	}

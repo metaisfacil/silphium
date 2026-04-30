@@ -57,7 +57,7 @@ vi.mock('./utils/bridge-load-gate', async () => {
 });
 
 import { createAppNowPlayingRuntime } from './app-now-playing-runtime';
-import { AudioGetState, AudioQueueNextTrack, InitializeAudioBackend } from '../wailsjs/go/main/App';
+import { AudioGetState, AudioQueueNextTrack, InitializeAudioBackend, LogFrontendMessage } from '../wailsjs/go/main/App';
 import type { AppNowPlayingRuntimeContext } from './app-runtime-setup';
 import { createPlaybackStateService } from './services/playback-state-service';
 import { playbackReconcileMaxPollIntervalMs } from './utils/playback-reconcile-delay';
@@ -687,6 +687,43 @@ describe('createAppNowPlayingRuntime', () => {
 
         expect(AudioQueueNextTrack).toHaveBeenCalledWith('/music/track.flac', '/music/next.flac');
         expect(context.resolveCoverForTrack).toHaveBeenCalledWith(context.tracks[1]);
+        expect(vi.mocked(LogFrontendMessage)).toHaveBeenCalledWith(expect.stringContaining('[PLAYBACK] Trace NextTrackPrep dispatch action=queue'));
+        expect(vi.mocked(LogFrontendMessage)).toHaveBeenCalledWith(expect.stringContaining('[PLAYBACK] Trace NextTrackPrep success action=queue'));
+
+        vi.useRealTimers();
+    });
+
+    it('logs when next-track prep is skipped because playback has not reached the preload threshold', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentSettings.audio.gaplessPlayback = true;
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 0.4,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 0.4,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+
+        await vi.runAllTimersAsync();
+
+        expect(AudioQueueNextTrack).not.toHaveBeenCalled();
+        expect(vi.mocked(LogFrontendMessage)).toHaveBeenCalledWith(expect.stringContaining('[PLAYBACK] Trace NextTrackPrep skip reason=below-threshold'));
 
         vi.useRealTimers();
     });

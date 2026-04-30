@@ -57,6 +57,9 @@ func TestAudioBackendPlaybackMethods(t *testing.T) {
 	if pauseState, err := backend.Pause(); err != nil || pauseState.Playing || fakeContext.player.pauseCalls == 0 {
 		t.Fatalf("Pause() = (%#v, %v), want paused state and pause call", pauseState, err)
 	}
+	if fakeContext.player.seekCalls == 0 {
+		t.Fatal("Pause() should flush the queued player buffer before suspending audio output")
+	}
 	if fakeContext.suspendCalls == 0 {
 		t.Fatal("Pause() should suspend the audio output context")
 	}
@@ -397,6 +400,49 @@ func TestAudioBackendPlayResetAndReinitializeBranches(t *testing.T) {
 	}
 	if resumeErrorBackend.playing {
 		t.Fatal("Reinitialize(playback resume error) should clear the playing state")
+	}
+}
+
+func TestAudioBackendPauseRewindsBufferedPlaybackToThePausedPlayhead(t *testing.T) {
+	helperPath := copyCurrentTestBinary(t, t.TempDir(), "ffmpeg.exe")
+	fakeContext := &fakeAudioContext{}
+	useFakeAudioContext(t, fakeContext, nil)
+
+	backend := NewAudioBackend()
+	backend.ffmpegPath = helperPath
+	if err := backend.Initialize(); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+
+	backend.mutex.Lock()
+	backend.streamSegments = []audioTrackSegment{{SourcePath: "track.flac", PCMData: make([]byte, 3*audioBytesPerSecond)}}
+	backend.streamReadOffset = int64(3 * audioBytesPerSecond)
+	backend.playbackBaseBytes = int64(3 * audioBytesPerSecond)
+	backend.playing = true
+	backend.player.(*fakeAudioPlayer).buffered = audioBytesPerSecond
+	backend.mutex.Unlock()
+
+	pauseState, err := backend.Pause()
+	if err != nil || pauseState.Playing || !pauseState.Loaded {
+		t.Fatalf("Pause(buffered) = (%#v, %v), want loaded paused state", pauseState, err)
+	}
+	if got, want := pauseState.CurrentTime, 2.0; got != want {
+		t.Fatalf("Pause(buffered) currentTime = %.2f, want %.2f", got, want)
+	}
+	if fakeContext.player.seekCalls == 0 {
+		t.Fatal("Pause(buffered) should flush the queued player buffer")
+	}
+	if got := fakeContext.player.buffered; got != 0 {
+		t.Fatalf("Pause(buffered) player buffered = %d, want 0 after flush", got)
+	}
+	if got, want := backend.streamReadOffset, int64(2*audioBytesPerSecond); got != want {
+		t.Fatalf("Pause(buffered) streamReadOffset = %d, want %d", got, want)
+	}
+	if got, want := backend.playbackBaseBytes, int64(2*audioBytesPerSecond); got != want {
+		t.Fatalf("Pause(buffered) playbackBaseBytes = %d, want %d", got, want)
+	}
+	if fakeContext.suspendCalls == 0 {
+		t.Fatal("Pause(buffered) should suspend the audio output context")
 	}
 }
 

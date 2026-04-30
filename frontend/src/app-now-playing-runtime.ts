@@ -220,6 +220,10 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
         deferredPlaybackEffectsHandle = window.setTimeout(() => {
             deferredPlaybackEffectsHandle = undefined;
+            logPlaybackDebug(
+                `Trace DeferredPlaybackEffects source="${nextState.sourcePath || ''}" `
+                + `playing=${nextState.playing} time=${nextState.currentTime.toFixed(2)}/${nextState.duration.toFixed(2)}`,
+            );
             maybeSubmitListenBrainz(nextState);
             context.updateMediaSessionMetadata();
             context.updateMediaSessionPlaybackState();
@@ -787,21 +791,33 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
     const queueGaplessNextTrack = async (stateOverride?: AudioPlaybackState, sequenceOverrideIndexes?: number[]): Promise<void> => {
         if (!context.playbackStateService.isBackendReady()) {
+            logPlaybackDebug('Trace NextTrackPrep skip reason=backend-not-ready');
             return;
         }
 
         if (context.fullLibraryScanLoadActive) {
+            logPlaybackDebug('Trace NextTrackPrep skip reason=full-library-scan');
             return;
         }
 
         const playbackState = stateOverride || context.playbackStateService.getPlaybackState();
         const activeTrack = currentTrackForPlaybackState(playbackState);
+        logPlaybackDebug(
+            `Trace NextTrackPrep evaluate override=${stateOverride !== undefined} source="${playbackState.sourcePath || ''}" `
+            + `playing=${playbackState.playing} time=${playbackState.currentTime.toFixed(2)}/${playbackState.duration.toFixed(2)} `
+            + `active="${activeTrack?.path || ''}" queued="${context.queuedGaplessTrackPath}" requestVersion=${context.gaplessQueueRequestVersion}`,
+        );
         if (!playbackState.loaded || !activeTrack) {
+            logPlaybackDebug('Trace NextTrackPrep skip reason=no-active-track');
             return;
         }
 
         if (stateOverride !== undefined && sequenceOverrideIndexes === undefined) {
             if (!playbackState.playing || playbackState.currentTime < nextTrackPreloadStartSeconds) {
+                logPlaybackDebug(
+                    `Trace NextTrackPrep skip reason=below-threshold currentTime=${playbackState.currentTime.toFixed(2)} `
+                    + `threshold=${nextTrackPreloadStartSeconds.toFixed(2)}`,
+                );
                 return;
             }
 
@@ -811,36 +827,50 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 && queuedGaplessEvaluationRequestVersion === context.gaplessQueueRequestVersion
                 && queuedGaplessEvaluationTrackPath === activeTrackPath
             ) {
+                logPlaybackDebug(
+                    `Trace NextTrackPrep skip reason=already-evaluated active="${activeTrack.path}" requestVersion=${context.gaplessQueueRequestVersion}`,
+                );
                 return;
             }
         }
 
         if (shouldDeferBackgroundBridgeCall()) {
+            logPlaybackDebug('Trace NextTrackPrep skip reason=bridge-deferred');
             return;
         }
 
         const nextIndex = peekNextTrackIndexForDirection(1);
         const nextPath = nextIndex !== undefined ? context.tracks[nextIndex]?.path || '' : '';
         const requestVersion = ++context.gaplessQueueRequestVersion;
+        logPlaybackDebug(
+            `Trace NextTrackPrep candidate nextIndex=${nextIndex ?? -1} next="${nextPath}" `
+            + `after="${activeTrack.path}" requestVersion=${requestVersion}`,
+        );
 
         if (nextPath === '') {
             queuedTrackCoverPrefetchPath = '';
         } else if (nextIndex !== undefined && nextPath !== queuedTrackCoverPrefetchPath) {
             queuedTrackCoverPrefetchPath = nextPath;
             const nextTrack = context.tracks[nextIndex];
-            void context.resolveCoverForTrack(nextTrack).catch((error: unknown) => {
+            logPlaybackDebug(`Trace NextTrackPrep cover-prefetch start next="${nextPath}"`);
+            void context.resolveCoverForTrack(nextTrack).then(() => {
+                logPlaybackDebug(`Trace NextTrackPrep cover-prefetch success next="${nextPath}"`);
+            }).catch((error: unknown) => {
                 console.debug(error);
+                logPlaybackDebug(`Trace NextTrackPrep cover-prefetch failed next="${nextPath}" error=${describeErrorForLog(error)}`);
             });
         }
 
         if (nextPath === '') {
             if (context.queuedGaplessTrackPath === '') {
                 markQueuedGaplessEvaluation(activeTrack.path);
+                logPlaybackDebug(`Trace NextTrackPrep skip reason=no-next-track after="${activeTrack.path}"`);
                 return;
             }
 
             context.queuedGaplessTrackPath = '';
             logPlaybackDebug(`NextTrackPrep clear after="${activeTrack.path}"`);
+            logPlaybackDebug(`Trace NextTrackPrep dispatch action=clear after="${activeTrack.path}" requestVersion=${requestVersion}`);
             try {
                 await runBackgroundBridgeCall(async () => {
                     await AudioQueueNextTrack(activeTrack.path, '');
@@ -849,9 +879,11 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                     onTimeout: () => undefined,
                 });
                 if (requestVersion !== context.gaplessQueueRequestVersion) {
+                    logPlaybackDebug(`Trace NextTrackPrep stale action=clear after="${activeTrack.path}" requestVersion=${requestVersion}`);
                     return;
                 }
                 markQueuedGaplessEvaluation(activeTrack.path);
+                logPlaybackDebug(`Trace NextTrackPrep success action=clear after="${activeTrack.path}" requestVersion=${requestVersion}`);
             } catch (error) {
                 console.debug(error);
                 logPlaybackDebug(`NextTrackPrep clear failed after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
@@ -861,6 +893,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
         if (nextPath === context.queuedGaplessTrackPath) {
             markQueuedGaplessEvaluation(activeTrack.path);
+            logPlaybackDebug(`Trace NextTrackPrep skip reason=already-queued next="${nextPath}" after="${activeTrack.path}"`);
             return;
         }
 
@@ -872,6 +905,13 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 && currentReleaseTrackPaths.some((path) => trackPathKey(path) === trackPathKey(nextPath))
                 ? currentReleaseTrackPaths
                 : collectReplayGainReleaseTrackPathsForIndex(nextIndex as number, sequenceOverrideIndexes);
+            const method = replayGainReleaseTrackPaths.length > 1
+                ? 'AudioQueueNextTrackWithReplayGainContext'
+                : 'AudioQueueNextTrack';
+            logPlaybackDebug(
+                `Trace NextTrackPrep dispatch action=queue method=${method} after="${activeTrack.path}" `
+                + `next="${nextPath}" requestVersion=${requestVersion} releasePaths=${replayGainReleaseTrackPaths.length}`,
+            );
             if (replayGainReleaseTrackPaths.length > 1) {
                 await runBackgroundBridgeCall(async () => {
                     await AudioQueueNextTrackWithReplayGainContext(activeTrack.path, nextPath, replayGainReleaseTrackPaths);
@@ -888,9 +928,15 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 });
             }
             if (requestVersion !== context.gaplessQueueRequestVersion) {
+                logPlaybackDebug(
+                    `Trace NextTrackPrep stale action=queue after="${activeTrack.path}" next="${nextPath}" requestVersion=${requestVersion}`,
+                );
                 return;
             }
             markQueuedGaplessEvaluation(activeTrack.path);
+            logPlaybackDebug(
+                `Trace NextTrackPrep success action=queue after="${activeTrack.path}" next="${nextPath}" requestVersion=${requestVersion}`,
+            );
         } catch (error) {
             console.debug(error);
             logPlaybackDebug(`NextTrackPrep failed next="${nextPath}" after="${activeTrack.path}" error=${describeErrorForLog(error)}`);
@@ -969,7 +1015,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     const logPlaybackDebug = (message: string): void => {
         const formatted = `[PLAYBACK] ${message}`;
         console.debug(formatted);
-        if (!message.startsWith('AudioError')) {
+        if (!message.startsWith('AudioError') && !message.startsWith('Trace ')) {
             return;
         }
 
