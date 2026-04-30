@@ -245,6 +245,30 @@ describe('createAppPlaybackControlsRuntime', () => {
         coverDeferred.resolve();
     });
 
+    it('does not schedule deferred hydration on same-track resume when metadata is already resolved', async () => {
+        vi.useFakeTimers();
+
+        const coverDeferred = createDeferred();
+        const context = createContext(coverDeferred.promise);
+        context.currentTrackIndex = 0;
+        context.tracks[0] = {
+            ...context.tracks[0],
+            tagsResolved: true,
+            mbMetadataResolved: true,
+        };
+
+        const runtime = createAppPlaybackControlsRuntime(context);
+
+        await runtime.playCurrentTrack();
+        await vi.advanceTimersByTimeAsync(1200);
+
+        expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
+        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
+        expect(context.hydrateCurrentArtistInfo).not.toHaveBeenCalled();
+
+        coverDeferred.resolve();
+    });
+
     it('updates the play button optimistically before AudioPlay resolves', async () => {
         const coverDeferred = createDeferred();
         const playDeferred = createDeferred<{

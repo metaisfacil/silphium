@@ -71,6 +71,19 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         }, delayMs);
     };
 
+    const shouldSchedulePostPlayHydration = (): boolean => {
+        const track = context.tracks[context.currentTrackIndex];
+        if (!track) {
+            return false;
+        }
+
+        if (!track.tagsResolved) {
+            return true;
+        }
+
+        return context.currentSettings.preferMusicBrainzMetadata && !track.mbMetadataResolved;
+    };
+
     const applyOptimisticPlayingState = (playing: boolean): void => {
         if (!context.playbackStateService.setPlaying(playing)) {
             return;
@@ -250,7 +263,9 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
             const applyStartedAtMs = performance.now();
             context.applyPlaybackState(nextState);
             logTransportStep('AudioPlay applyPlaybackState', performance.now() - applyStartedAtMs);
-            scheduleTrackHydration(context.currentTrackIndex, postPlayTrackHydrationDelayMs);
+            if (shouldSchedulePostPlayHydration()) {
+                scheduleTrackHydration(context.currentTrackIndex, postPlayTrackHydrationDelayMs);
+            }
         } catch (error) {
             applyOptimisticPlayingState(previousPlaying);
             context.handleAudioError(error);
