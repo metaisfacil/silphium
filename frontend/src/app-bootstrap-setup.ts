@@ -337,6 +337,7 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
     saveSettings: async (settings: AppSettings) => await scope.saveSettingsBackend(settings),
     selectLibraryFolder: scope.selectLibraryFolder,
     selectPlaylistFile: scope.selectPlaylistFile,
+    playbackSequencingService: scope.playbackSequencingService,
     getPlaybackOrderMode: () => scope.playbackSequencingService.getPlaybackOrderMode(),
     setLissajousEnabled: (enabled: boolean) => {
         scope.visualizerController.setEnabled(enabled);

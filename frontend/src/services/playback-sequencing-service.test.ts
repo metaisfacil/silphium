@@ -99,6 +99,86 @@ describe('createPlaybackSequencingService', () => {
         expect(service.peekNextTrackIndexForDirection(-1)).toBe(2);
     });
 
+    it('keeps playlist sources in their supplied order for ordered-library mode', () => {
+        const tracks = [
+            createTrack('01 Alpha', 'Library/Album A'),
+            createTrack('02 Beta', 'Library/Album B'),
+            createTrack('03 Gamma', 'Library/Album C'),
+        ];
+        let currentTrackIndex = 2;
+
+        const service = createPlaybackSequencingService({
+            getTracks: () => tracks,
+            getCurrentTrackIndex: () => currentTrackIndex,
+            getReleaseDepthForTrack: () => 0,
+            initialPlaybackOrderMode: 'ordered-library',
+        });
+
+        const playlistSource = { key: 'playlist::demo', indexes: [2, 0] };
+
+        expect(service.baseSequenceIndexes(playlistSource)).toEqual({
+            indexes: [2, 0],
+            currentPosition: 0,
+        });
+        expect(service.nextTrackIndexForDirection(1, playlistSource)).toBe(0);
+
+        currentTrackIndex = 0;
+        expect(service.nextTrackIndexForDirection(1, playlistSource)).toBe(2);
+    });
+
+    it('keeps playlist album sequencing scoped to the filtered playlist order', () => {
+        const tracks = [
+            createTrack('01 Intro', 'Library/Artist/Album One/Disc 1'),
+            createTrack('01 Elsewhere', 'Library/Artist/Album Two'),
+            createTrack('02 Song', 'Library/Artist/Album One/Disc 1'),
+        ];
+        let currentTrackIndex = 2;
+
+        const service = createPlaybackSequencingService({
+            getTracks: () => tracks,
+            getCurrentTrackIndex: () => currentTrackIndex,
+            getReleaseDepthForTrack: () => 2,
+            initialPlaybackOrderMode: 'ordered-album',
+        });
+
+        const playlistSource = { key: 'playlist::demo', indexes: [1, 2, 0] };
+
+        expect(service.baseSequenceIndexes(playlistSource)).toEqual({
+            indexes: [2, 0],
+            currentPosition: 0,
+        });
+        expect(service.nextTrackIndexForDirection(1, playlistSource)).toBe(0);
+
+        currentTrackIndex = 0;
+        expect(service.peekNextTrackIndexForDirection(1, playlistSource)).toBe(2);
+    });
+
+    it('resets shuffle history when the active playlist source changes', () => {
+        const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+        const tracks = [
+            createTrack('01 Alpha', 'Library/Album A'),
+            createTrack('02 Beta', 'Library/Album B'),
+            createTrack('03 Gamma', 'Library/Album C'),
+        ];
+        let currentTrackIndex = 0;
+        const state = createPlaybackSequencingState('shuffle-library');
+
+        const service = createPlaybackSequencingService({
+            getTracks: () => tracks,
+            getCurrentTrackIndex: () => currentTrackIndex,
+            getReleaseDepthForTrack: () => 0,
+            initialPlaybackOrderMode: 'shuffle-library',
+        }, state);
+
+        expect(service.peekNextTrackIndexForDirection(1, { key: 'playlist::first', indexes: [0, 1, 2] })).toBe(1);
+        expect(state.shuffleScopeKey).toBe('source::playlist::first');
+
+        expect(service.peekNextTrackIndexForDirection(1, { key: 'playlist::second', indexes: [0, 2] })).toBe(2);
+        expect(state.shuffleHistory[0]).toBe(0);
+        expect(state.shuffleScopeKey).toBe('source::playlist::second');
+        expect(randomSpy).toHaveBeenCalled();
+    });
+
     it('preserves shuffle history without immediately repeating the current track', () => {
         const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
         const tracks = [

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getPlaylistMenuElements, renderPlaylistMenu } from '../components/overlays/playlist-menu';
 import { getPlaylistModalElements, renderPlaylistModal } from '../components/overlays/playlist-modal';
+import type { PlaybackSequencingService } from '../services/playback-sequencing-service';
 import type { LoadedPlaylistData, PlaylistTrackView } from './playlist-controller';
 import { createPlaylistController } from './playlist-controller';
 import { createPlaylistControllerState, type PlaylistControllerState } from './playlist-controller-state';
@@ -44,7 +45,11 @@ const createTrackView = (index: number): PlaylistTrackView => ({
     tagsResolved: true,
 });
 
-const mountPlaylistController = (options: { state?: PlaylistControllerState; shouldAutoSavePlaylistsOnAddRemove?: boolean } = {}) => {
+const mountPlaylistController = (options: {
+    state?: PlaylistControllerState;
+    shouldAutoSavePlaylistsOnAddRemove?: boolean;
+    playbackSequencingService?: Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection'>;
+} = {}) => {
     document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
     const trigger = document.createElement('button');
     document.body.append(trigger);
@@ -105,6 +110,7 @@ const mountPlaylistController = (options: { state?: PlaylistControllerState; sho
             indexes: [0, 1, 2],
             currentPosition: Math.max(0, [0, 1, 2].indexOf(currentTrackIndex)),
         }),
+        playbackSequencingService: options.playbackSequencingService,
         ensureTrackTagsResolvedBatch,
         selectPlaylistFile: vi.fn(async () => selectedPlaylistPath),
         selectPlaylistSaveFile: vi.fn(async () => selectedPlaylistSavePath),
@@ -165,7 +171,7 @@ describe('createPlaylistController', () => {
         document.body.innerHTML = '';
     });
 
-    it('loads an external playlist and commits it into the queue view when a track is chosen', async () => {
+    it('keeps the active playlist override after switching the visible source back to queue', async () => {
         const { controller, elements, onTrackChosen, savePlaylistTrackMetadataCache } = mountPlaylistController();
 
         const loaded = await controller.loadPlaylistByPath('/playlists/demo.m3u8');
@@ -194,6 +200,69 @@ describe('createPlaylistController', () => {
             userInitiated: true,
         });
         expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 1], currentPosition: 1 });
+    });
+
+    it('uses the shared playback sequencing service for active playlist playback', async () => {
+        const playbackSequencingService = {
+            baseSequenceIndexes: vi.fn(() => ({ indexes: [1, 2], currentPosition: 0 })),
+            nextTrackIndexForDirection: vi.fn(() => 2),
+            peekNextTrackIndexForDirection: vi.fn(() => 1),
+        } satisfies Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection'>;
+        const { controller, elements } = mountPlaylistController({ playbackSequencingService });
+
+        await controller.loadPlaylistByPath('/playlists/demo.m3u8');
+        await flushPromises();
+
+        const playlistTrackButton = elements.playlistList.querySelector('[data-playlist-track-index="1"]') as HTMLButtonElement | null;
+        expect(playlistTrackButton).not.toBeNull();
+        playlistTrackButton?.click();
+        await flushPromises();
+
+        expect(controller.getSequenceOverride()).toEqual({ indexes: [1, 2], currentPosition: 0 });
+        expect(playbackSequencingService.baseSequenceIndexes).toHaveBeenCalledWith({
+            key: 'playlist::/playlists/demo.m3u8',
+            indexes: [2, 1],
+        });
+        expect(controller.getNextTrackIndex(1)).toBe(2);
+        expect(playbackSequencingService.nextTrackIndexForDirection).toHaveBeenCalledWith(1, {
+            key: 'playlist::/playlists/demo.m3u8',
+            indexes: [2, 1],
+        });
+        expect(controller.peekNextTrackIndex(1)).toBe(1);
+        expect(playbackSequencingService.peekNextTrackIndexForDirection).toHaveBeenCalledWith(1, {
+            key: 'playlist::/playlists/demo.m3u8',
+            indexes: [2, 1],
+        });
+    });
+
+    it('reports the active playback-order scope label for library, queue, playlist, and listen history playback', async () => {
+        const library = mountPlaylistController();
+        expect(library.controller.getPlaybackOrderScopeLabel()).toBe('Library');
+
+        library.controller.addToQueueEnd([2]);
+        expect(library.controller.getPlaybackOrderScopeLabel()).toBe('Queue');
+
+        const playlist = mountPlaylistController();
+        await playlist.controller.loadPlaylistByPath('/playlists/demo.m3u8');
+        await flushPromises();
+
+        const playlistTrackButton = playlist.elements.playlistList.querySelector('[data-playlist-track-index="1"]') as HTMLButtonElement | null;
+        expect(playlistTrackButton).not.toBeNull();
+        playlistTrackButton?.click();
+        await flushPromises();
+
+        expect(playlist.controller.getPlaybackOrderScopeLabel()).toBe('Playlist');
+
+        const history = mountPlaylistController();
+        history.controller.openModal();
+        await selectCustomPlaylistSource(history.elements, 'history');
+
+        const historyTrackButton = history.elements.playlistList.querySelector('[data-playlist-track-index="2"]') as HTMLButtonElement | null;
+        expect(historyTrackButton).not.toBeNull();
+        historyTrackButton?.click();
+        await flushPromises();
+
+        expect(history.controller.getPlaybackOrderScopeLabel()).toBe('Listen History');
     });
 
     it('filters silence-titled tracks out of loaded playlists before they enter the queue state', async () => {

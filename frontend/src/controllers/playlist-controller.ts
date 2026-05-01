@@ -1,6 +1,7 @@
 import type { PlaylistMenuElements } from '../components/overlays/playlist-menu';
 import type { PlaylistModalElements } from '../components/overlays/playlist-modal';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
+import type { PlaybackSequenceSource, PlaybackSequencingService } from '../services/playback-sequencing-service';
 import { isPlaybackQueueEligibleTrack } from '../utils/display-helpers';
 import { createPlaylistControllerState, type LoadedListenHistoryItem, type LoadedPlaylistCachedItem, type PlaylistControllerState, type PlaylistSource } from './playlist-controller-state';
 
@@ -80,6 +81,7 @@ type PlaylistControllerOptions = {
     getCurrentTrackIndex: () => number;
     getPlaybackOrderLabel: () => string;
     getBaseSequence: () => PlaylistSequence;
+    playbackSequencingService?: Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection'>;
     ensureTrackTagsResolvedBatch: (indexes: number[]) => Promise<void>;
     selectPlaylistFile: () => Promise<string>;
     selectPlaylistSaveFile: () => Promise<string>;
@@ -448,6 +450,19 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const hasLoadedPlaylist = (): boolean => controllerState.loadedPlaylistTrackIndexes !== null;
 
     const normalizePlaylistPath = (playlistPath: string): string => playlistPath.trim().toLowerCase();
+
+    const loadedPlaylistPlaybackSequenceSource = (): PlaybackSequenceSource | null => {
+        if (!controllerState.loadedPlaylistTrackIndexes) {
+            return null;
+        }
+
+        const normalizedPath = normalizePlaylistPath(controllerState.loadedPlaylistPath);
+        const sourceKind = normalizedPath === '__listen_history__' ? 'history' : 'playlist';
+        return {
+            key: normalizedPath !== '' ? `${sourceKind}::${normalizedPath}` : sourceKind,
+            indexes: controllerState.loadedPlaylistTrackIndexes,
+        };
+    };
 
     const isQueueEligibleTrackIndex = (trackIndex: number): boolean => {
         if (!Number.isInteger(trackIndex) || trackIndex < 0 || trackIndex >= options.getTrackCount()) {
@@ -899,6 +914,33 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         };
     };
 
+    const playbackOverrideSequence = (): PlaylistSequence | null => {
+        const playbackSource = loadedPlaylistPlaybackSequenceSource();
+        if (!playbackSource) {
+            return null;
+        }
+
+        if (!options.playbackSequencingService) {
+            return loadedPlaylistSequence();
+        }
+
+        return options.playbackSequencingService.baseSequenceIndexes(playbackSource);
+    };
+
+    const playbackOrderScopeLabel = (): string => {
+        if (controllerState.playbackSource === 'playlist' && controllerState.loadedPlaylistTrackIndexes) {
+            return normalizePlaylistPath(controllerState.loadedPlaylistPath) === '__listen_history__'
+                ? 'Listen History'
+                : 'Playlist';
+        }
+
+        if (controllerState.editableQueueTrackIndexes && controllerState.editableQueueTrackIndexes.length > 0) {
+            return 'Queue';
+        }
+
+        return 'Library';
+    };
+
     const queueSequence = (): PlaylistSequence => {
         if (controllerState.editableQueueTrackIndexes && controllerState.editableQueueTrackIndexes.length > 0) {
             const currentPosition = resolveEditableQueueCurrentPosition(controllerState.editableQueueTrackIndexes);
@@ -1176,7 +1218,6 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         if (selectedValue === 'queue') {
             controllerState.selectedSource = 'queue';
             controllerState.selectedFavoriteIndex = null;
-            controllerState.playbackSource = 'queue';
             hydrateCurrentViewTracks();
             renderPlaylist(true);
             return;
@@ -1844,16 +1885,25 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         const currentTrackIndex = options.getCurrentTrackIndex();
 
         if (controllerState.playbackSource === 'playlist') {
-            const playlistSequence = loadedPlaylistSequence();
-            if (playlistSequence) {
-                const { indexes } = playlistSequence;
-                const currentPosition = indexes.indexOf(currentTrackIndex);
-                if (currentPosition < 0) {
-                    return indexes[0];
+            const playbackSource = loadedPlaylistPlaybackSequenceSource();
+            if (playbackSource) {
+                if (options.playbackSequencingService) {
+                    return mutateState
+                        ? options.playbackSequencingService.nextTrackIndexForDirection(direction, playbackSource)
+                        : options.playbackSequencingService.peekNextTrackIndexForDirection(direction, playbackSource);
                 }
 
-                const nextPosition = (currentPosition + direction + indexes.length) % indexes.length;
-                return indexes[nextPosition];
+                const playlistSequence = loadedPlaylistSequence();
+                if (playlistSequence) {
+                    const { indexes } = playlistSequence;
+                    const currentPosition = indexes.indexOf(currentTrackIndex);
+                    if (currentPosition < 0) {
+                        return indexes[0];
+                    }
+
+                    const nextPosition = (currentPosition + direction + indexes.length) % indexes.length;
+                    return indexes[nextPosition];
+                }
             }
         }
 
@@ -2109,11 +2159,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const commitPlaybackSourceFromCurrentView = (): void => {
         if (controllerState.selectedSource !== 'queue' && hasLoadedPlaylist()) {
-            const playlistSequence = loadedPlaylistSequence();
-            if (playlistSequence) {
-                setEditableQueueState(playlistSequence.indexes.slice(), playlistSequence.currentPosition);
-            }
-            controllerState.playbackSource = 'queue';
+            controllerState.playbackSource = 'playlist';
             return;
         }
 
@@ -2513,11 +2559,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         clearEditableQueue,
         closeMenu,
         closeModal,
+        getPlaybackOrderScopeLabel: (): string => playbackOrderScopeLabel(),
         getNextTrackIndex,
         peekNextTrackIndex,
         getSequenceOverride: (): PlaylistSequence | null => {
             if (controllerState.playbackSource === 'playlist') {
-                return loadedPlaylistSequence();
+                return playbackOverrideSequence();
             }
 
             if (controllerState.editableQueueTrackIndexes && controllerState.editableQueueTrackIndexes.length > 0) {

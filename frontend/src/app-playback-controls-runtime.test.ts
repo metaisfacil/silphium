@@ -167,6 +167,7 @@ const createContext = (coverPromise: Promise<void>): AppPlaybackControlsRuntimeC
         applyCoverArtForTrack: vi.fn(async () => {
             await coverPromise;
         }),
+        resetShuffleHistory: vi.fn(),
         hydrateCurrentTrackTag: vi.fn(async () => undefined),
         artistInfoRequestVersion: 0,
         hydrateCurrentArtistInfo: vi.fn(async () => undefined),
@@ -345,6 +346,28 @@ describe('createAppPlaybackControlsRuntime', () => {
 
         expect(getSequenceOverride).toHaveBeenCalled();
         expect(context.collectReplayGainReleaseTrackPathsForIndex).toHaveBeenCalledWith(1, [0, 1]);
+
+        coverDeferred.resolve();
+    });
+
+    it('keeps playlist shuffle selections attached to the playlist source instead of forcing queue mode', async () => {
+        const coverDeferred = createDeferred();
+        const context = createContext(coverDeferred.promise);
+        const activatePlaybackQueueSource = vi.fn();
+        const getSequenceOverride = vi.fn(() => ({ indexes: [0], currentPosition: 0 }));
+        context.playbackSequencingService.getPlaybackOrderMode = vi.fn(() => 'shuffle-library') as never;
+        context.playlistController = () => ({
+            activatePlaybackQueueSource,
+            getSequenceOverride,
+            scheduleRender: vi.fn(),
+        }) as never;
+
+        const runtime = createAppPlaybackControlsRuntime(context);
+        await runtime.loadTrack(0, true, undefined, true);
+
+        expect(getSequenceOverride).toHaveBeenCalled();
+        expect(activatePlaybackQueueSource).not.toHaveBeenCalled();
+        expect(context.resetShuffleHistory).toHaveBeenCalled();
 
         coverDeferred.resolve();
     });

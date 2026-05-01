@@ -16,6 +16,18 @@ vi.mock('../wailsjs/go/main/App', () => ({
 
 import { createAppQueueMenuRuntime } from './app-queue-menu-runtime';
 
+const createPlayOrderMenu = (): HTMLDivElement => {
+    const menu = document.createElement('div');
+    for (const mode of ['ordered-album', 'ordered-library', 'shuffle-album', 'shuffle-library']) {
+        const item = document.createElement('button');
+        item.className = 'play-order-item';
+        item.dataset.playOrder = mode;
+        menu.append(item);
+    }
+
+    return menu;
+};
+
 const createContext = ({ sidebarOpen }: { sidebarOpen: boolean }) => {
     const libraryController = {
         setSidebarAutoFolderPath: vi.fn(),
@@ -200,6 +212,9 @@ describe('createAppQueueMenuRuntime menu positioning', () => {
             trackMetaMenuActionScope: null,
             trackMetaMenuActionPath: '',
             closeListenBrainzFeedbackMenu: vi.fn(),
+            playlistController: {
+                getPlaybackOrderScopeLabel: () => 'Library',
+            },
             playbackSequencingService: {
                 getPlaybackOrderMode: vi.fn(() => 'ordered-library'),
                 getPlaybackOrderLabel: vi.fn(() => 'Ordered'),
@@ -220,6 +235,43 @@ describe('createAppQueueMenuRuntime menu positioning', () => {
         expect(playOrderMenu.style.left).toBe('300px');
         expect(playOrderMenu.style.top).toBe('200px');
         expect(playOrderMenu.style.visibility).toBe('');
+    });
+
+    it('relabels source-wide playback-order menu items for playlist playback', () => {
+        const playOrderMenu = createPlayOrderMenu();
+        const playPause = document.createElement('button');
+        const context = {
+            currentTrackIndex: 0,
+            tracks: [{ folderPath: 'Library/Artist/Album', path: 'Library/Artist/Album/track.flac' }],
+            playOrderMenu,
+            playPause,
+            trackMetaMenu: document.createElement('div'),
+            trackMetaSendToList: document.createElement('div'),
+            trackMetaSendToDivider: document.createElement('div'),
+            trackMetaMenuTarget: null,
+            trackMetaMenuActionScope: null,
+            trackMetaMenuActionPath: '',
+            closeListenBrainzFeedbackMenu: vi.fn(),
+            playlistController: {
+                getPlaybackOrderScopeLabel: () => 'Playlist',
+            },
+            playbackSequencingService: {
+                getPlaybackOrderMode: vi.fn(() => 'shuffle-library'),
+            },
+        } as unknown as Parameters<typeof createAppQueueMenuRuntime>[0];
+
+        const runtime = createAppQueueMenuRuntime(context);
+        runtime.updatePlayOrderMenuState();
+
+        const labels = Array.from(playOrderMenu.querySelectorAll<HTMLButtonElement>('.play-order-item')).map((item) => item.textContent);
+        expect(labels).toEqual([
+            'Ordered: Album',
+            'Ordered: Playlist',
+            'Shuffle: Album',
+            'Shuffle: Playlist',
+        ]);
+        expect(playPause.title).toBe('Playback order: Shuffle: Playlist (right-click to change)');
+        expect(playOrderMenu.querySelector<HTMLButtonElement>('[data-play-order="shuffle-library"]')?.dataset.selected).toBe('true');
     });
 });
 

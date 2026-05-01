@@ -130,6 +130,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         getCurrentTrackIndex: () => context.currentTrackIndex,
         getPlaybackOrderLabel: context.getPlaybackOrderLabel,
         getBaseSequence: context.getBaseSequence,
+        playbackSequencingService: context.playbackSequencingService,
         ensureTrackTagsResolvedBatch: async (indexes: number[]) => {
             await context.ensureTrackTagsResolvedBatch(indexes);
         },

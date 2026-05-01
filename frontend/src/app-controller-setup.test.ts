@@ -149,6 +149,11 @@ const createContext = () => {
         saveSettings: vi.fn(async (settings) => settings),
         selectLibraryFolder: vi.fn(async () => '/music/library'),
         selectPlaylistFile: vi.fn(async () => '/playlists/favorites.m3u'),
+        playbackSequencingService: {
+            baseSequenceIndexes: vi.fn(() => ({ indexes: [0, 1], currentPosition: 0 })),
+            nextTrackIndexForDirection: vi.fn(() => 1),
+            peekNextTrackIndexForDirection: vi.fn(() => 1),
+        },
         getPlaybackOrderMode: vi.fn(() => 'shuffle-library'),
         setLissajousEnabled: vi.fn(),
         setLissajousScale: vi.fn(),
@@ -303,6 +308,7 @@ describe('app-controller-setup', () => {
         expect(libraryConfig.state).toBe(context.libraryControllerState);
         expect(playlistConfig.state).toBe(context.playlistControllerState);
         expect(playlistConfig.backgroundHydrationEnabled).toBe(false);
+        expect(playlistConfig.playbackSequencingService).toBe(context.playbackSequencingService);
 
         const saveValues = {
             libraryFolders: [{ path: '/music/library', label: 'Library', releaseDepth: 1 }],
