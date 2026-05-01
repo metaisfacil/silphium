@@ -105,6 +105,38 @@ func TestReadTrackTechnicalMetadataAndTagsWithTaglibSeams(t *testing.T) {
 	}
 }
 
+func TestReadTrackTagsForPathFallsBackToFFProbeTextTags(t *testing.T) {
+	originalReadTaglibTags := readTaglibTags
+	t.Cleanup(func() {
+		readTaglibTags = originalReadTaglibTags
+	})
+
+	helperDir := t.TempDir()
+	ffprobePath := copyCurrentTestBinary(t, helperDir, "ffprobe.exe")
+	trackPath := filepath.Join(helperDir, "track.mka")
+	writeTestFile(t, trackPath, "fake-track")
+
+	readTaglibTags = func(_ string) (map[string][]string, error) {
+		return nil, errors.New("tag read failed")
+	}
+
+	t.Setenv("SILPHIUM_TEST_FFPROBE_JSON", `{"streams":[{"codec_name":"atrac1","codec_long_name":"ATRAC1 (Adaptive TRansform Acoustic Coding)","sample_rate":"44100","channels":2,"tags":{"TITLE":"Stream Title"}}],"format":{"format_name":"matroska","bit_rate":"292000","duration":"123.4","tags":{"TITLE":"Format Title","ARTIST":"Format Artist","ALBUM":"Format Album","GENRE":"Rock","LABEL":"Example Label","MUSICBRAINZ_TRACKID":"46e11e07-af14-4b61-9239-f063e06ed2a8"}}}`)
+
+	tags, ok := readTrackTagsForPath(trackPath, ffprobePath)
+	if !ok {
+		t.Fatal("readTrackTagsForPath(ffprobe fallback) = false, want true")
+	}
+	if tags.Title != "Format Title" || tags.Artist != "Format Artist" || tags.Album != "Format Album" {
+		t.Fatalf("readTrackTagsForPath(ffprobe fallback basic fields) = %#v, want ffprobe textual tags", tags)
+	}
+	if tags.Genre != "Rock" || tags.RecordLabel != "Example Label" || tags.RecordingID != "46e11e07-af14-4b61-9239-f063e06ed2a8" {
+		t.Fatalf("readTrackTagsForPath(ffprobe fallback extra fields) = %#v, want ffprobe custom tags", tags)
+	}
+	if tags.Codec != "ATRAC1" || tags.Container != "matroska" || tags.DurationSecs != 123.4 {
+		t.Fatalf("readTrackTagsForPath(ffprobe fallback technical metadata) = %#v, want ffprobe technical metadata", tags)
+	}
+}
+
 func TestReadTrackTagsFromBlobsWithTaglibSeams(t *testing.T) {
 	originalReadTaglibTags := readTaglibTags
 	originalReadTaglibProperties := readTaglibProperties

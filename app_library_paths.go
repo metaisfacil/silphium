@@ -25,6 +25,7 @@ var audioExtensions = map[string]struct{}{
 	".flac": {},
 	".ogg":  {},
 	".opus": {},
+	".mka":  {},
 }
 
 var textExtensions = map[string]struct{}{

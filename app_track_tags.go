@@ -102,23 +102,25 @@ type trackTagsInflightEntry struct {
 }
 
 type ffprobeAudioStream struct {
-	CodecName        string `json:"codec_name"`
-	CodecLongName    string `json:"codec_long_name"`
-	Profile          string `json:"profile"`
-	SampleRate       string `json:"sample_rate"`
-	BitsPerRawSample string `json:"bits_per_raw_sample"`
-	BitsPerSample    int    `json:"bits_per_sample"`
-	SampleFmt        string `json:"sample_fmt"`
-	Channels         int    `json:"channels"`
-	ChannelLayout    string `json:"channel_layout"`
-	BitRate          string `json:"bit_rate"`
-	Duration         string `json:"duration"`
+	CodecName        string            `json:"codec_name"`
+	CodecLongName    string            `json:"codec_long_name"`
+	Profile          string            `json:"profile"`
+	SampleRate       string            `json:"sample_rate"`
+	BitsPerRawSample string            `json:"bits_per_raw_sample"`
+	BitsPerSample    int               `json:"bits_per_sample"`
+	SampleFmt        string            `json:"sample_fmt"`
+	Channels         int               `json:"channels"`
+	ChannelLayout    string            `json:"channel_layout"`
+	BitRate          string            `json:"bit_rate"`
+	Duration         string            `json:"duration"`
+	Tags             map[string]string `json:"tags"`
 }
 
 type ffprobeFormatOutput struct {
-	FormatName string `json:"format_name"`
-	BitRate    string `json:"bit_rate"`
-	Duration   string `json:"duration"`
+	FormatName string            `json:"format_name"`
+	BitRate    string            `json:"bit_rate"`
+	Duration   string            `json:"duration"`
+	Tags       map[string]string `json:"tags"`
 }
 
 type ffprobeAudioOutput struct {
@@ -462,6 +464,129 @@ func readTrackTechnicalMetadataFromFFProbe(path string, ffprobePath string) (Tra
 	}
 
 	return metadata, true
+}
+
+func appendFFProbeTags(dst map[string][]string, raw map[string]string) map[string][]string {
+	if len(raw) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[string][]string, len(raw))
+	}
+
+	for rawKey, rawValue := range raw {
+		key := strings.TrimSpace(rawKey)
+		value := strings.TrimSpace(rawValue)
+		if key == "" || value == "" {
+			continue
+		}
+
+		existingKey := key
+		for candidate := range dst {
+			if strings.EqualFold(candidate, key) {
+				existingKey = candidate
+				break
+			}
+		}
+
+		duplicate := false
+		for _, existingValue := range dst[existingKey] {
+			if strings.EqualFold(strings.TrimSpace(existingValue), value) {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			continue
+		}
+
+		dst[existingKey] = append(dst[existingKey], value)
+	}
+
+	if len(dst) == 0 {
+		return nil
+	}
+
+	return dst
+}
+
+func mergeTrackTagMaps(primary map[string][]string, fallback map[string][]string) map[string][]string {
+	if len(fallback) == 0 {
+		return primary
+	}
+
+	merged := make(map[string][]string, len(primary)+len(fallback))
+	for key, values := range primary {
+		merged[key] = append([]string(nil), values...)
+	}
+
+	for fallbackKey, fallbackValues := range fallback {
+		key := fallbackKey
+		hasPrimaryValues := false
+		for existingKey, existingValues := range merged {
+			if !strings.EqualFold(existingKey, fallbackKey) {
+				continue
+			}
+			key = existingKey
+			for _, existingValue := range existingValues {
+				if strings.TrimSpace(existingValue) != "" {
+					hasPrimaryValues = true
+					break
+				}
+			}
+			break
+		}
+		if hasPrimaryValues {
+			continue
+		}
+
+		merged[key] = append([]string(nil), fallbackValues...)
+	}
+
+	return merged
+}
+
+func trackTagsNeedFFProbeTextFallback(tags map[string][]string) bool {
+	if len(tags) == 0 {
+		return true
+	}
+
+	title := firstTagValue(tags, "TITLE")
+	artist := firstTagValue(tags, "TRACKARTIST", "TRACK_ARTIST", "ARTIST", "ALBUMARTIST", "ALBUM_ARTIST")
+	album := firstTagValue(tags, "ALBUM")
+	albumArtist := firstTagValue(tags, "ALBUMARTIST", "ALBUM_ARTIST", "ARTIST")
+	return title == "" && artist == "" && album == "" && albumArtist == ""
+}
+
+func readTrackTextTagsFromFFProbe(path string, ffprobePath string) map[string][]string {
+	if ffprobePath == "" {
+		return nil
+	}
+
+	command := exec.Command(
+		ffprobePath,
+		"-v", "error",
+		"-show_entries", "stream_tags:format_tags",
+		"-of", "json",
+		path,
+	)
+	configureHiddenUtilityCommand(command)
+
+	rawOutput, err := command.Output()
+	if err != nil {
+		return nil
+	}
+
+	var parsed ffprobeAudioOutput
+	if err := json.Unmarshal(rawOutput, &parsed); err != nil {
+		return nil
+	}
+
+	tags := appendFFProbeTags(nil, parsed.Format.Tags)
+	for _, stream := range parsed.Streams {
+		tags = appendFFProbeTags(tags, stream.Tags)
+	}
+	return tags
 }
 
 func readTrackTechnicalMetadata(path string, tags map[string][]string, ffprobePath string) TrackTechnicalMetadata {
@@ -937,7 +1062,12 @@ func (a *App) putTrackTagsCache(path string, signature trackTagsFileSignature, t
 func readTrackTagsForPath(path string, ffprobePath string) (TrackTags, bool) {
 	tags, err := readTaglibTags(path)
 	if err != nil {
-		return TrackTags{}, false
+		tags = readTrackTextTagsFromFFProbe(path, ffprobePath)
+		if len(tags) == 0 {
+			return TrackTags{}, false
+		}
+	} else if trackTagsNeedFFProbeTextFallback(tags) {
+		tags = mergeTrackTagMaps(tags, readTrackTextTagsFromFFProbe(path, ffprobePath))
 	}
 
 	trackTags := buildTrackTags(tags, readTrackTechnicalMetadata(path, tags, ffprobePath))

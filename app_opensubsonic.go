@@ -2078,6 +2078,7 @@ var openSubsonicKnownContentTypes = map[string]string{
 	".ogg":  "audio/ogg",
 	".opus": "audio/ogg",
 	".wav":  "audio/wav",
+	".mka":  "audio/x-matroska",
 }
 
 func openSubsonicTrackRelativePath(root libraryRootConfig, virtualTrackPath string) string {

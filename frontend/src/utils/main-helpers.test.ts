@@ -98,6 +98,7 @@ describe('main helpers', () => {
     it('formats technical metadata for lossless and lossy codecs', () => {
         expect(formatTechnicalMetadata(24, 48_000, 'flac', 0)).toBe('24/48 • FLAC');
         expect(formatTechnicalMetadata(24, 44_100, 'mp3', 320_000)).toBe('320k/44.1 • MP3');
+        expect(formatTechnicalMetadata(16, 44_100, 'atrac1', 292_000)).toBe('292k/44.1 • ATRAC1');
     });
 
     it('prefers effective remote stream metadata for transcoded playback captions', () => {
@@ -300,5 +301,24 @@ describe('main helpers', () => {
                 });
             }
         }
+    });
+
+    it('hides bit depth and keeps bitrate for ATRAC1 technical info', () => {
+        const container = document.createElement('div');
+        renderTechnicalInfoContent(container, createTrack({
+            name: '01 Track.mka',
+            path: 'H:/Music/Artist/Album/01 Track.mka',
+            technicalDetails: {
+                codec: 'ATRAC1',
+                bitDepth: 16,
+                sampleRate: 44_100,
+                bitRate: 292_000,
+            },
+        }));
+
+        expect(container.textContent).toContain('Audio bitrate');
+        expect(container.textContent).toContain('292 kbps');
+        expect(container.textContent).not.toContain('Bit depth');
+        expect(container.textContent).not.toContain('16-bit');
     });
 });

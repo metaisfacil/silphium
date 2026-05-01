@@ -355,7 +355,7 @@ export const hasExternalFileDragPayload = (dataTransfer: { types?: ArrayLike<str
     return Array.from(dataTransfer.types).some((type) => String(type).toLowerCase() === 'files');
 };
 
-const supportedAudioFileExtensions = new Set(['.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.opus']);
+const supportedAudioFileExtensions = new Set(['.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.opus', '.mka']);
 
 export const isSupportedAudioFilePath = (path: string): boolean => {
     const trimmed = path.trim();
@@ -872,17 +872,18 @@ export const taggedTrackPosition = (track: Track): string => {
     return `(${number}/${total})`;
 };
 
-export const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, codec?: string, bitRate?: number): string => {
-    const isKnownLossyCodec = (codecLabel: string): boolean => {
-        return codecLabel === 'MP3'
-            || codecLabel === 'AAC'
-            || codecLabel === 'HE-AAC'
-            || codecLabel === 'OPUS'
-            || codecLabel === 'VORBIS'
-            || codecLabel === 'OGG'
-            || codecLabel === 'WMA';
-    };
+const isKnownLossyCodec = (codecLabel: string): boolean => {
+    return codecLabel === 'MP3'
+        || codecLabel === 'AAC'
+        || codecLabel === 'HE-AAC'
+        || codecLabel === 'OPUS'
+        || codecLabel === 'VORBIS'
+        || codecLabel === 'OGG'
+        || codecLabel === 'WMA'
+        || codecLabel === 'ATRAC1';
+};
 
+export const formatTechnicalMetadata = (bitDepth?: number, sampleRate?: number, codec?: string, bitRate?: number): string => {
     const hasBitDepth = Number.isFinite(bitDepth) && (bitDepth as number) > 0;
     const hasSampleRate = Number.isFinite(sampleRate) && (sampleRate as number) > 0;
     const hasBitRate = Number.isFinite(bitRate) && (bitRate as number) > 0;
@@ -1041,6 +1042,8 @@ const formatFileSizeValue = (fileSizeBytes: number): string => {
 
 const buildTechnicalInfoRows = (track: Track): Array<{ label: string; value: string }> => {
     const details = track.technicalDetails;
+    const codecLabel = (details.codec || '').trim().toUpperCase();
+    const shouldShowBitDepth = Boolean(details.bitDepth) && !isKnownLossyCodec(codecLabel);
     const rows: Array<{ label: string; value: string }> = [
         { label: 'File name', value: track.name },
         { label: 'Full path', value: track.path },
@@ -1066,7 +1069,7 @@ const buildTechnicalInfoRows = (track: Track): Array<{ label: string; value: str
         rows.push({ label: 'Sample format', value: details.sampleFormat });
     }
 
-    if (details.bitDepth) {
+    if (shouldShowBitDepth) {
         rows.push({ label: 'Bit depth', value: `${details.bitDepth}-bit` });
     }
 
