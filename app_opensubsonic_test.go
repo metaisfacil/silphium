@@ -357,6 +357,64 @@ func TestOpenSubsonicAuthErrors(t *testing.T) {
 		}
 	})
 
+	t.Run("username password auth falls back to stored hash when plaintext drifts", func(t *testing.T) {
+		originalPlaintext := app.settings.OpenSubsonicAPIKey
+		originalHash := app.settings.OpenSubsonicAPIKeyHash
+		app.settings.OpenSubsonicAPIKey = "stale-api-key"
+		app.settings.OpenSubsonicAPIKeyHash = hashNetworkPassword(apiKey)
+		defer func() {
+			app.settings.OpenSubsonicAPIKey = originalPlaintext
+			app.settings.OpenSubsonicAPIKeyHash = originalHash
+		}()
+
+		request := newOpenSubsonicRequest(t, server.URL, "/rest/ping.view", "")
+		query := request.URL.Query()
+		query.Set("u", "admin")
+		query.Set("p", apiKey)
+		query.Set("v", openSubsonicAPIVersion)
+		query.Set("c", "SilphiumTests")
+		query.Set("f", "json")
+		request.URL.RawQuery = query.Encode()
+
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("GET(ping username password stale plaintext) error = %v", err)
+		}
+		payload := decodeOpenSubsonicResponse(t, response)
+		if payload.Response.Status != "ok" {
+			t.Fatalf("status = %q, want ok", payload.Response.Status)
+		}
+	})
+
+	t.Run("username enc password auth falls back to stored hash when plaintext drifts", func(t *testing.T) {
+		originalPlaintext := app.settings.OpenSubsonicAPIKey
+		originalHash := app.settings.OpenSubsonicAPIKeyHash
+		app.settings.OpenSubsonicAPIKey = "stale-api-key"
+		app.settings.OpenSubsonicAPIKeyHash = hashNetworkPassword(apiKey)
+		defer func() {
+			app.settings.OpenSubsonicAPIKey = originalPlaintext
+			app.settings.OpenSubsonicAPIKeyHash = originalHash
+		}()
+
+		request := newOpenSubsonicRequest(t, server.URL, "/rest/ping.view", "")
+		query := request.URL.Query()
+		query.Set("u", "admin")
+		query.Set("p", "enc:"+hex.EncodeToString([]byte(apiKey)))
+		query.Set("v", openSubsonicAPIVersion)
+		query.Set("c", "SilphiumTests")
+		query.Set("f", "json")
+		request.URL.RawQuery = query.Encode()
+
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("GET(ping username enc password stale plaintext) error = %v", err)
+		}
+		payload := decodeOpenSubsonicResponse(t, response)
+		if payload.Response.Status != "ok" {
+			t.Fatalf("status = %q, want ok", payload.Response.Status)
+		}
+	})
+
 	t.Run("username password auth rejected when password invalid", func(t *testing.T) {
 		request := newOpenSubsonicRequest(t, server.URL, "/rest/ping.view", "")
 		query := request.URL.Query()

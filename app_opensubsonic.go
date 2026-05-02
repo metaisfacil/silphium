@@ -709,6 +709,24 @@ func (a *App) openSubsonicAuthSecret() string {
 	return strings.TrimSpace(a.settings.OpenSubsonicAPIKeyHash)
 }
 
+func (a *App) openSubsonicPasswordMatches(candidate string) bool {
+	a.ensureSettingsLoaded()
+
+	if expectedPlaintext := strings.TrimSpace(a.settings.OpenSubsonicAPIKey); expectedPlaintext != "" {
+		if subtle.ConstantTimeCompare([]byte(expectedPlaintext), []byte(candidate)) == 1 {
+			return true
+		}
+	}
+
+	expectedHash := a.openSubsonicAPIKeyHash()
+	if expectedHash == "" {
+		return false
+	}
+
+	providedHash := hashNetworkPassword(candidate)
+	return subtle.ConstantTimeCompare([]byte(expectedHash), []byte(providedHash)) == 1
+}
+
 func (a *App) authenticateOpenSubsonic(values url.Values) *openSubsonicError {
 	apiKey := strings.TrimSpace(values.Get("apiKey"))
 	username := strings.TrimSpace(values.Get("u"))
@@ -771,14 +789,7 @@ func (a *App) authenticateOpenSubsonic(values url.Values) *openSubsonicError {
 		if !ok {
 			return &openSubsonicError{Code: openSubsonicErrorWrongUsernamePassword, Message: "wrong username or password"}
 		}
-		if expectedPlaintext := strings.TrimSpace(a.settings.OpenSubsonicAPIKey); expectedPlaintext != "" {
-			if subtle.ConstantTimeCompare([]byte(expectedPlaintext), []byte(decodedPassword)) != 1 {
-				return &openSubsonicError{Code: openSubsonicErrorWrongUsernamePassword, Message: "wrong username or password"}
-			}
-			return nil
-		}
-		providedHash := hashNetworkPassword(decodedPassword)
-		if subtle.ConstantTimeCompare([]byte(expectedHash), []byte(providedHash)) != 1 {
+		if !a.openSubsonicPasswordMatches(decodedPassword) {
 			return &openSubsonicError{Code: openSubsonicErrorWrongUsernamePassword, Message: "wrong username or password"}
 		}
 		return nil
