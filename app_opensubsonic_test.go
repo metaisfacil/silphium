@@ -436,6 +436,70 @@ func TestOpenSubsonicAuthErrors(t *testing.T) {
 	})
 }
 
+func TestOpenSubsonicDefaultsMissingCommonParams(t *testing.T) {
+	app, _, apiKey := newOpenSubsonicTestApp(t)
+	server := httptest.NewServer(app.newOpenSubsonicServeMux())
+	defer server.Close()
+
+	t.Run("ping accepts missing version and client", func(t *testing.T) {
+		request := newOpenSubsonicRequest(t, server.URL, "/rest/ping.view", apiKey)
+		query := request.URL.Query()
+		query.Del("v")
+		query.Del("c")
+		request.URL.RawQuery = query.Encode()
+		request.Header.Set("User-Agent", "Submariner/3.4 CFNetwork/3860.500.112 Darwin/25.4.0")
+
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("GET(ping missing common params) error = %v", err)
+		}
+		payload := decodeOpenSubsonicResponse(t, response)
+		if payload.Response.Status != "ok" {
+			t.Fatalf("status = %q, want ok", payload.Response.Status)
+		}
+	})
+
+	t.Run("getArtist accepts missing version and client", func(t *testing.T) {
+		request := newOpenSubsonicRequest(t, server.URL, "/rest/getMusicFolders.view", apiKey)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("GET(getMusicFolders) error = %v", err)
+		}
+		folders := decodeOpenSubsonicResponse(t, response)
+
+		request = newOpenSubsonicRequest(t, server.URL, "/rest/getIndexes.view", apiKey)
+		query := request.URL.Query()
+		query.Set("musicFolderId", folders.Response.MusicFolders.MusicFolder[0].ID)
+		request.URL.RawQuery = query.Encode()
+		response, err = http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("GET(getIndexes) error = %v", err)
+		}
+		indexes := decodeOpenSubsonicResponse(t, response)
+		artistID := indexes.Response.Indexes.Index[0].Artist[0].ID
+
+		request = newOpenSubsonicRequest(t, server.URL, "/rest/getArtist.view", apiKey)
+		query = request.URL.Query()
+		query.Del("v")
+		query.Del("c")
+		query.Set("id", artistID)
+		request.URL.RawQuery = query.Encode()
+		request.Header.Set("User-Agent", "Submariner/3.4 CFNetwork/3860.500.112 Darwin/25.4.0")
+
+		response, err = http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("GET(getArtist missing common params) error = %v", err)
+		}
+		payload := decodeOpenSubsonicResponse(t, response)
+		if payload.Response.Artist == nil {
+			t.Fatal("artist = nil, want populated artist")
+		}
+		if payload.Response.Artist.ID != artistID {
+			t.Fatalf("artist id = %q, want %q", payload.Response.Artist.ID, artistID)
+		}
+	})
+}
+
 func TestOpenSubsonicBrowseAndMediaEndpoints(t *testing.T) {
 	app, fixture, apiKey := newOpenSubsonicTestApp(t)
 	server := httptest.NewServer(app.newOpenSubsonicServeMux())

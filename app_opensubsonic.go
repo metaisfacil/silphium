@@ -660,6 +660,37 @@ func openSubsonicVersionCompare(left string, right string) int {
 	return 0
 }
 
+func openSubsonicClientNameFromUserAgent(userAgent string) string {
+	trimmed := strings.TrimSpace(userAgent)
+	if trimmed == "" {
+		return "UnknownClient"
+	}
+
+	fields := strings.Fields(trimmed)
+	client := trimmed
+	if len(fields) > 0 {
+		client = strings.TrimSpace(fields[0])
+	}
+	if slashIndex := strings.Index(client, "/"); slashIndex > 0 {
+		client = client[:slashIndex]
+	}
+	client = strings.TrimSpace(client)
+	if client == "" {
+		return "UnknownClient"
+	}
+
+	return client
+}
+
+func normalizeOpenSubsonicCommonParams(values url.Values, userAgent string) {
+	if strings.TrimSpace(values.Get("v")) == "" {
+		values.Set("v", openSubsonicAPIVersion)
+	}
+	if strings.TrimSpace(values.Get("c")) == "" {
+		values.Set("c", openSubsonicClientNameFromUserAgent(userAgent))
+	}
+}
+
 func validateOpenSubsonicCommonParams(values url.Values) *openSubsonicError {
 	version := strings.TrimSpace(values.Get("v"))
 	if version == "" {
@@ -3215,6 +3246,7 @@ func (a *App) handleOpenSubsonicREST(w http.ResponseWriter, r *http.Request) {
 		writeOpenSubsonicError(loggedWriter, r, openSubsonicErrorGeneric, err.Error(), "")
 		return
 	}
+	normalizeOpenSubsonicCommonParams(values, r.UserAgent())
 
 	if endpoint != "getOpenSubsonicExtensions" {
 		if validationErr := validateOpenSubsonicCommonParams(values); validationErr != nil {
