@@ -501,6 +501,59 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         context.librarySearch.select();
     };
 
+    const normalizeSocialProviderWarning = (providerLabel: string, error: unknown): string => {
+        const rawMessage = error instanceof Error
+            ? error.message.trim()
+            : typeof error === 'string'
+                ? error.trim()
+                : '';
+        const normalizedMessage = rawMessage.toLowerCase();
+
+        if (normalizedMessage.includes('context deadline exceeded') || normalizedMessage.includes('client.timeout exceeded')) {
+            return `${providerLabel} request timed out.`;
+        }
+
+        if (normalizedMessage.includes('forcibly closed by the remote host')) {
+            return `${providerLabel} connection was closed by the remote host.`;
+        }
+
+        if (normalizedMessage.includes('no such host')) {
+            return `${providerLabel} host could not be reached.`;
+        }
+
+        if (rawMessage !== '') {
+            return `${providerLabel}: ${rawMessage}`;
+        }
+
+        return `${providerLabel} request failed.`;
+    };
+
+    const collectSocialProviderResults = async <T>(
+        providers: Array<{ label: string; request: () => Promise<T> }>,
+    ): Promise<{ data: T[]; warnings: string[] }> => {
+        if (providers.length === 0) {
+            return {
+                data: [],
+                warnings: [],
+            };
+        }
+
+        const settledResults = await Promise.allSettled(providers.map(async ({ request }) => await request()));
+        const data: T[] = [];
+        const warnings: string[] = [];
+
+        settledResults.forEach((result, index) => {
+            if (result.status === 'fulfilled') {
+                data.push(result.value);
+                return;
+            }
+
+            warnings.push(normalizeSocialProviderWarning(providers[index].label, result.reason));
+        });
+
+        return { data, warnings };
+    };
+
     const socialController = createListenBrainzSocialController({
         elements: {
             sidebarToggle: context.sidebarToggle,
@@ -517,52 +570,72 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         },
         hasAnyProviderConfigured: () => hasListenBrainzScrobbling() || hasLastFmScrobbling(),
         isSidebarVisible: () => context.app.classList.contains('sidebar-open'),
-        fetchFollowingUsers: async (): Promise<string[]> => {
-            const providers: Array<Promise<string[]>> = [];
+        fetchFollowingUsers: async () => {
+            const providers: Array<{ label: string; request: () => Promise<string[]> }> = [];
 
             if (hasListenBrainzScrobbling()) {
-                providers.push(scheduleListenBrainzRequest(async () => (
-                    await GetListenBrainzFollowing() as string[]
-                ), {
-                    server: context.currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
-                    path: '/1/user/{user}/following',
-                }));
+                providers.push({
+                    label: 'ListenBrainz following',
+                    request: async () => await scheduleListenBrainzRequest(async () => (
+                        await GetListenBrainzFollowing() as string[]
+                    ), {
+                        server: context.currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
+                        path: '/1/user/{user}/following',
+                    }),
+                });
             }
 
             if (hasLastFmScrobbling()) {
-                providers.push(scheduleLastFmRequest(async () => (
-                    await GetLastFmFollowing() as string[]
-                ), {
-                    server: defaultLastFmServerUrl,
-                    path: 'user.getFriends',
-                }));
+                providers.push({
+                    label: 'Last.fm following',
+                    request: async () => await scheduleLastFmRequest(async () => (
+                        await GetLastFmFollowing() as string[]
+                    ), {
+                        server: defaultLastFmServerUrl,
+                        path: 'user.getFriends',
+                    }),
+                });
             }
 
-            const merged = (await Promise.all(providers)).flat();
-            return [...new Set(merged.map((name) => name.trim()).filter((name) => name !== ''))].sort((left, right) => left.localeCompare(right));
+            const { data, warnings } = await collectSocialProviderResults(providers);
+            const merged = data.flat();
+            return {
+                data: [...new Set(merged.map((name) => name.trim()).filter((name) => name !== ''))].sort((left, right) => left.localeCompare(right)),
+                warnings,
+            };
         },
-        fetchFollowingFeed: async (count: number): Promise<ListenBrainzSocialEvent[]> => {
-            const providers: Array<Promise<ListenBrainzSocialEvent[]>> = [];
+        fetchFollowingFeed: async (count: number) => {
+            const providers: Array<{ label: string; request: () => Promise<ListenBrainzSocialEvent[]> }> = [];
 
             if (hasListenBrainzScrobbling()) {
-                providers.push(scheduleListenBrainzRequest(async () => (
-                    await GetListenBrainzFollowingFeed(count) as ListenBrainzSocialEvent[]
-                ), {
-                    server: context.currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
-                    path: '/1/user/{user}/feed/events/listens/following',
-                }));
+                providers.push({
+                    label: 'ListenBrainz feed',
+                    request: async () => await scheduleListenBrainzRequest(async () => (
+                        await GetListenBrainzFollowingFeed(count) as ListenBrainzSocialEvent[]
+                    ), {
+                        server: context.currentSettings.listenBrainzServerUrl || defaultListenBrainzServerUrl,
+                        path: '/1/user/{user}/feed/events/listens/following',
+                    }),
+                });
             }
 
             if (hasLastFmScrobbling()) {
-                providers.push(scheduleLastFmRequest(async () => (
-                    await GetLastFmFollowingFeed(count) as ListenBrainzSocialEvent[]
-                ), {
-                    server: defaultLastFmServerUrl,
-                    path: 'user.getRecentTracks',
-                }));
+                providers.push({
+                    label: 'Last.fm feed',
+                    request: async () => await scheduleLastFmRequest(async () => (
+                        await GetLastFmFollowingFeed(count) as ListenBrainzSocialEvent[]
+                    ), {
+                        server: defaultLastFmServerUrl,
+                        path: 'user.getRecentTracks',
+                    }),
+                });
             }
 
-            return await withResolvedLocalReleaseFolders((await Promise.all(providers)).flat());
+            const { data, warnings } = await collectSocialProviderResults(providers);
+            return {
+                data: await withResolvedLocalReleaseFolders(data.flat()),
+                warnings,
+            };
         },
         openUserProfile: (provider, userName): void => {
             const encodedUserName = encodeURIComponent(userName);

@@ -3,12 +3,17 @@ import type { ListenBrainzSocialEvent } from '../types/app-types';
 
 type SidebarSection = 'library' | 'social';
 
-type ListenBrainzSocialControllerOptions = {
+type SocialFetchResponse<T extends unknown[]> = T | {
+    data: T;
+    warnings?: string[];
+};
+
+export type ListenBrainzSocialControllerOptions = {
     elements: Pick<SidebarElements, 'sidebarToggle' | 'libraryExpandToggle' | 'sidebarSectionTrigger' | 'sidebarSectionTriggerLabel' | 'sidebarSectionMenu' | 'sidebarSectionOptionLibrary' | 'sidebarSectionOptionSocial' | 'sidebarPaneLibrary' | 'sidebarPaneSocial' | 'socialFeedStatus' | 'socialFeedList'>;
     hasAnyProviderConfigured: () => boolean;
     isSidebarVisible: () => boolean;
-    fetchFollowingUsers: () => Promise<string[]>;
-    fetchFollowingFeed: (count: number) => Promise<ListenBrainzSocialEvent[]>;
+    fetchFollowingUsers: () => Promise<SocialFetchResponse<string[]>>;
+    fetchFollowingFeed: (count: number) => Promise<SocialFetchResponse<ListenBrainzSocialEvent[]>>;
     openUserProfile: (provider: 'listenbrainz' | 'lastfm', userName: string) => void | Promise<void>;
     openLocalReleaseFolder: (folderPath: string) => void | Promise<void>;
     openLibrarySearch: (query: string) => void | Promise<void>;
@@ -100,6 +105,29 @@ const normalizeErrorMessage = (error: unknown): string => {
 
     return 'ListenBrainz social feed request failed.';
 };
+
+const isStructuredSocialFetchResponse = <T extends unknown[]>(
+    response: SocialFetchResponse<T>,
+): response is { data: T; warnings?: string[] } => typeof response === 'object' && response !== null && 'data' in response;
+
+const normalizeSocialFetchResponse = <T extends unknown[]>(response: SocialFetchResponse<T>): { data: T; warnings: string[] } => {
+    if (!isStructuredSocialFetchResponse(response)) {
+        return {
+            data: response,
+            warnings: [],
+        };
+    }
+
+    return {
+        data: response.data,
+        warnings: (response.warnings || []).map((warning: string) => warning.trim()).filter((warning: string) => warning !== ''),
+    };
+};
+
+const formatSocialWarnings = (warnings: string[]): string => warnings
+    .map((warning) => warning.trim())
+    .filter((warning) => warning !== '')
+    .join('\n');
 
 const normalizedEventTimestamp = (event: ListenBrainzSocialEvent): number => {
     if (Number.isFinite(event.listenedAt || 0) && (event.listenedAt || 0) > 0) {
@@ -302,6 +330,13 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
     `;
 
     const renderEvents = (): string => {
+        if (lastErrorMessage !== '' && socialEvents.length === 0) {
+            return renderEmptyState(
+                'Social feed unavailable',
+                lastErrorMessage,
+            );
+        }
+
         if (socialEvents.length === 0) {
             if (refreshInFlight) {
                 return '';
@@ -386,7 +421,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         sidebarPaneSocial.hidden = showingLibrary;
 
         if (lastErrorMessage !== '') {
-            socialFeedStatus.textContent = socialEvents.length > 0 ? `Showing cached results. ${lastErrorMessage}` : lastErrorMessage;
+            socialFeedStatus.textContent = socialEvents.length > 0 ? `Showing available results.\n${lastErrorMessage}` : '';
         } else if (refreshInFlight && socialEvents.length === 0) {
             socialFeedStatus.textContent = 'Loading...';
         } else {
@@ -443,16 +478,20 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         render();
 
         try {
-            const [rawFollowingUsers, rawEvents] = await Promise.all([
+            const [followingUsersResult, followingFeedResult] = await Promise.all([
                 options.fetchFollowingUsers(),
                 options.fetchFollowingFeed(socialFeedItemCount),
             ]);
-            const nextEvents = dedupeAndSortEvents(rawEvents || []);
+            const normalizedFollowingUsers = normalizeSocialFetchResponse(followingUsersResult);
+            const normalizedFollowingFeed = normalizeSocialFetchResponse(followingFeedResult);
+            const warnings = [...normalizedFollowingUsers.warnings, ...normalizedFollowingFeed.warnings];
+            const nextEvents = dedupeAndSortEvents(normalizedFollowingFeed.data || []);
 
-            followingUsers = [...new Set((rawFollowingUsers || []).map((userName) => userName.trim()).filter((userName) => userName !== ''))]
+            followingUsers = [...new Set((normalizedFollowingUsers.data || []).map((userName) => userName.trim()).filter((userName) => userName !== ''))]
                 .sort((left, right) => left.localeCompare(right));
             animateNextRender = nextEvents.length > 0 && socialFeedEventSignature(nextEvents) !== socialFeedEventSignature(socialEvents);
             socialEvents = nextEvents;
+            lastErrorMessage = formatSocialWarnings(warnings);
         } catch (error) {
             lastErrorMessage = normalizeErrorMessage(error);
             animateNextRender = false;

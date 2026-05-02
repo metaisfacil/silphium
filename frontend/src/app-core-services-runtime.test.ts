@@ -143,9 +143,11 @@ vi.mock('./utils/musicbrainz-request-scheduler', () => ({
     scheduleListenBrainzRequest: vi.fn(async (callback: () => Promise<unknown> | unknown) => await callback()),
 }));
 
+import type { ListenBrainzSocialControllerOptions } from './controllers/listenbrainz-social-controller';
 import { createAppCoreServicesRuntime } from './app-core-services-runtime';
 import type { AppCoreServicesRuntimeContext } from './app-runtime-setup';
 import { resetBridgeLoadGateForTests, shouldDeferBackgroundBridgeCall } from './utils/bridge-load-gate';
+import { GetLastFmFollowing, GetLastFmFollowingFeed, GetListenBrainzFollowing, GetListenBrainzFollowingFeed } from '../wailsjs/go/main/App';
 
 const createTrack = () => ({
     title: 'Track',
@@ -293,5 +295,74 @@ describe('createAppCoreServicesRuntime', () => {
 
         expect(audioGetVisualizationFrameMock).toHaveBeenCalledWith(192);
         expect(shouldDeferBackgroundBridgeCall()).toBe(false);
+    });
+
+    it('keeps social results from successful providers when ListenBrainz requests fail', async () => {
+        const context = createContext();
+        context.currentSettings.listenBrainzUserToken = 'lb-token';
+        context.currentSettings.lastFmApiKey = 'lfm-key';
+        context.currentSettings.lastFmApiSecret = 'lfm-secret';
+        context.currentSettings.lastFmSessionKey = 'lfm-session';
+        createListenBrainzControllerMock.mockReturnValueOnce({
+            canScrobble: vi.fn(() => true),
+            closeMenu: vi.fn(),
+            resetFeedbackState: vi.fn(),
+            refreshFeedbackForCurrentTrack: vi.fn(async () => undefined),
+            submitFeedbackForTrack: vi.fn(async () => undefined),
+        });
+
+        vi.mocked(GetListenBrainzFollowing).mockRejectedValueOnce(new Error('context deadline exceeded'));
+        vi.mocked(GetLastFmFollowing).mockResolvedValueOnce(['lastfm-user']);
+        vi.mocked(GetListenBrainzFollowingFeed).mockRejectedValueOnce(new Error('wsarecv: An existing connection was forcibly closed by the remote host.'));
+        vi.mocked(GetLastFmFollowingFeed).mockResolvedValueOnce([{
+            id: 1,
+            created: 1710000100,
+            eventType: 'listen',
+            hidden: false,
+            userName: 'lastfm-user',
+            listenedAt: 1710000000,
+            listenedAtIso: '2024-03-09T16:00:00Z',
+            playingNow: false,
+            trackMetadata: {
+                artistName: 'Artist',
+                trackName: 'Track',
+                releaseName: 'Album',
+                additionalInfo: {
+                    musicServiceName: 'Last.fm',
+                },
+            },
+        }] as never);
+
+        createAppCoreServicesRuntime(context);
+
+        const socialCalls = createListenBrainzSocialControllerMock.mock.calls as unknown as Array<[ListenBrainzSocialControllerOptions]>;
+        const socialOptions = socialCalls[0]?.[0];
+        expect(socialOptions).toBeDefined();
+
+        await expect(socialOptions?.fetchFollowingUsers()).resolves.toEqual({
+            data: ['lastfm-user'],
+            warnings: ['ListenBrainz following request timed out.'],
+        });
+        await expect(socialOptions?.fetchFollowingFeed(40)).resolves.toEqual({
+            data: [{
+                id: 1,
+                created: 1710000100,
+                eventType: 'listen',
+                hidden: false,
+                userName: 'lastfm-user',
+                listenedAt: 1710000000,
+                listenedAtIso: '2024-03-09T16:00:00Z',
+                playingNow: false,
+                trackMetadata: {
+                    artistName: 'Artist',
+                    trackName: 'Track',
+                    releaseName: 'Album',
+                    additionalInfo: {
+                        musicServiceName: 'Last.fm',
+                    },
+                },
+            }],
+            warnings: ['ListenBrainz feed connection was closed by the remote host.'],
+        });
     });
 });

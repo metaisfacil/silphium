@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ListenBrainzSocialEvent } from '../types/app-types';
+import type { ListenBrainzSocialControllerOptions } from './listenbrainz-social-controller';
 import { createListenBrainzSocialController } from './listenbrainz-social-controller';
 
 const createEvent = (overrides: Partial<ListenBrainzSocialEvent> = {}): ListenBrainzSocialEvent => ({
@@ -32,8 +33,8 @@ const mountController = (options?: {
     token?: string;
     hasAnyProviderConfigured?: boolean;
     isSidebarVisible?: () => boolean;
-    fetchFollowingUsers?: () => Promise<string[]>;
-    fetchFollowingFeed?: (count: number) => Promise<ListenBrainzSocialEvent[]>;
+    fetchFollowingUsers?: ListenBrainzSocialControllerOptions['fetchFollowingUsers'];
+    fetchFollowingFeed?: ListenBrainzSocialControllerOptions['fetchFollowingFeed'];
     openUserProfile?: (provider: 'listenbrainz' | 'lastfm', userName: string) => void | Promise<void>;
     openLocalReleaseFolder?: (folderPath: string) => void | Promise<void>;
     openLibrarySearch?: (query: string) => void | Promise<void>;
@@ -470,5 +471,61 @@ describe('createListenBrainzSocialController', () => {
 
         expect(openLibrarySearch).toHaveBeenCalledWith('Track One');
         expect(contextMenu?.hidden).toBe(true);
+    });
+
+    it('keeps partial social results visible when one provider reports warnings', async () => {
+        const { sidebarSectionOptionSocial, socialFeedList, socialFeedStatus } = mountController({
+            fetchFollowingUsers: vi.fn(async () => ({
+                data: ['alice'],
+                warnings: ['ListenBrainz following request timed out.'],
+            })),
+            fetchFollowingFeed: vi.fn(async () => ({
+                data: [createEvent({
+                    userName: 'lastfm-user',
+                    trackMetadata: {
+                        artistName: 'Artist One',
+                        trackName: 'Track One',
+                        releaseName: 'Album One',
+                        additionalInfo: {
+                            musicServiceName: 'Last.fm',
+                        },
+                    },
+                })],
+                warnings: [],
+            })),
+        });
+
+        sidebarSectionOptionSocial.click();
+        await flushPromises();
+
+        await vi.waitFor(() => {
+            expect(socialFeedList.textContent).toContain('Track One');
+        });
+
+        expect(socialFeedStatus.textContent).toBe('Showing available results.\nListenBrainz following request timed out.');
+        expect(socialFeedList.textContent).toContain('lastfm-user');
+    });
+
+    it('renders an unavailable state when the social feed has warnings and no results', async () => {
+        const { sidebarSectionOptionSocial, socialFeedList, socialFeedStatus } = mountController({
+            fetchFollowingUsers: vi.fn(async () => ({
+                data: [],
+                warnings: ['ListenBrainz following request timed out.'],
+            })),
+            fetchFollowingFeed: vi.fn(async () => ({
+                data: [],
+                warnings: ['ListenBrainz feed connection was closed by the remote host.'],
+            })),
+        });
+
+        sidebarSectionOptionSocial.click();
+        await flushPromises();
+
+        await vi.waitFor(() => {
+            expect(socialFeedList.textContent).toContain('Social feed unavailable');
+        });
+
+        expect(socialFeedStatus.textContent).toBe('');
+        expect(socialFeedList.textContent).toContain('ListenBrainz feed connection was closed by the remote host.');
     });
 });

@@ -766,6 +766,9 @@
     font-size: 0.77rem;
     line-height: 1.3;
     color: rgba(255, 255, 255, 0.68);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .social-feed-status:empty {
@@ -1046,6 +1049,9 @@
     font-size: 0.8rem;
     line-height: 1.45;
     color: rgba(255, 255, 255, 0.7);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 @keyframes social-feed-card-update {
