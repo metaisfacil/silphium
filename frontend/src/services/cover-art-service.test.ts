@@ -347,6 +347,55 @@ describe('createCoverArtService', () => {
         expect(readImageThumbnail).toHaveBeenCalledTimes(3);
     });
 
+    it('falls back to bridge thumbnails when the internal loopback fetch hangs', async () => {
+        vi.useFakeTimers();
+
+        const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+            void input;
+            return new Promise<Response>((_resolve, reject) => {
+                init?.signal?.addEventListener('abort', () => {
+                    reject(new Error('loopback fetch aborted'));
+                }, { once: true });
+            });
+        });
+        vi.stubGlobal('fetch', fetchMock as typeof fetch);
+
+        const readImageThumbnail = vi.fn(async () => ({
+            base64: 'ZmFrZS10aHVtYm5haWw=',
+            mimeType: 'image/png',
+        }));
+
+        const service = createCoverArtService({
+            getCoverArtPriority: () => ['file'],
+            getInternalCoverArtConfig: async () => ({
+                baseUrl: 'http://127.0.0.1:4041',
+                token: 'secret-token',
+            }),
+            getIndexedFolderCoverPath: () => '/music/library/cover.jpg',
+            getLibraryFolderCoverPath: async () => '/music/library/cover.jpg',
+            readImageThumbnail,
+            readFileBase64: vi.fn(async () => 'ZmFrZS1mdWxsLWltYWdl'),
+            readTrackEmbeddedCover: vi.fn(async () => ({})),
+            registerObjectUrl: vi.fn(),
+        });
+
+        const track = {
+            path: '/music/library/Artist/Album/01 Track.flac',
+            relativePath: 'Library/Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            mbIds: {},
+        } as Track;
+
+        const coverUrlPromise = service.resolveForTrack(track);
+        await vi.advanceTimersByTimeAsync(3000);
+
+        await expect(coverUrlPromise).resolves.toBe('blob:test-cover-art');
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(readImageThumbnail).toHaveBeenCalledWith('/music/library/cover.jpg', 512);
+
+        vi.useRealTimers();
+    });
+
     it('does not disable internal loopback after repeated cover misses', async () => {
         const fetchMock = vi
             .fn()

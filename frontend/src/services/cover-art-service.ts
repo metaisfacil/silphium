@@ -51,6 +51,7 @@ const nowPlayingCoverThumbnailMaxEdgePx = 512;
 const internalCoverArtFolderIDKind = 'cover-folder';
 const internalCoverArtTrackIDKind = 'cover-track';
 const maxInternalCoverArtFailuresBeforeDisable = 2;
+const internalCoverArtFetchTimeoutMs = 2500;
 
 const base64UrlEncodeUtf8 = (value: string): string => {
     const bytes = new TextEncoder().encode(value);
@@ -198,8 +199,20 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
 
     const fetchBinaryImageObjectUrl = async (src: string): Promise<BinaryImageObjectUrlResult> => {
         let objectUrl = '';
+        let abortController: AbortController | undefined;
+        let fetchTimeoutHandle: ReturnType<typeof globalThis.setTimeout> | undefined;
         try {
-            const response = await fetch(src, { cache: 'force-cache' });
+            if (typeof AbortController === 'function') {
+                abortController = new AbortController();
+                fetchTimeoutHandle = globalThis.setTimeout(() => {
+                    abortController?.abort();
+                }, internalCoverArtFetchTimeoutMs);
+            }
+
+            const response = await fetch(src, {
+                cache: 'force-cache',
+                signal: abortController?.signal,
+            });
             if (!response.ok) {
                 return { kind: 'miss' };
             }
@@ -236,6 +249,10 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
                 URL.revokeObjectURL(objectUrl);
             }
             return { kind: 'transport-failure' };
+        } finally {
+            if (fetchTimeoutHandle !== undefined) {
+                globalThis.clearTimeout(fetchTimeoutHandle);
+            }
         }
     };
 
