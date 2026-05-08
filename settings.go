@@ -1009,6 +1009,22 @@ func (a *App) GetSettings() AppSettings {
 	})
 }
 
+func musicBrainzTagRequestStaggeringEnabledForSettings(settings AppSettings) bool {
+	return settings.MusicBrainzTagRequestStaggeringEnabled && normalizeMusicBrainzTagStaleDays(settings.MusicBrainzTagStaleDays) > 0
+}
+
+func shouldNotifyMusicBrainzTagWorkerForSettingsChange(previous AppSettings, next AppSettings) bool {
+	if previous.MusicBrainzTagDatabaseEnabled != next.MusicBrainzTagDatabaseEnabled {
+		return true
+	}
+
+	if normalizeMusicBrainzTagStaleDays(previous.MusicBrainzTagStaleDays) != normalizeMusicBrainzTagStaleDays(next.MusicBrainzTagStaleDays) {
+		return true
+	}
+
+	return musicBrainzTagRequestStaggeringEnabledForSettings(previous) != musicBrainzTagRequestStaggeringEnabledForSettings(next)
+}
+
 // SaveSettings validates, persists, and returns normalized application settings.
 func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 	return profiledResult(a, "SaveSettings", func() (AppSettings, error) {
@@ -1021,6 +1037,7 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 			settings.OpenSubsonicAPIKeyHash = settingsState.settings.OpenSubsonicAPIKeyHash
 		}
 
+		previousSettings := settingsState.settings
 		normalized := normalizeAppSettings(settings)
 		if err := writeAppSettings(a.ensureSettingsPath(), normalized); err != nil {
 			return AppSettings{}, err
@@ -1034,7 +1051,9 @@ func (a *App) SaveSettings(settings AppSettings) (AppSettings, error) {
 			a.stopLibraryFilesDatabaseWorker()
 		}
 		a.trimLocalLibraryListenHistory()
-		a.notifyMusicBrainzTagWorker()
+		if shouldNotifyMusicBrainzTagWorkerForSettingsChange(previousSettings, normalized) {
+			a.notifyMusicBrainzTagWorker()
+		}
 		a.refreshSystemTrayForSettings()
 		return normalized, nil
 	})

@@ -405,3 +405,51 @@ func TestSettingsAdditionalWriteAndPathBranches(t *testing.T) {
 		t.Fatalf("normalizeScrobbleRuleValue(path abs error) = %q, want %q", got, want)
 	}
 }
+
+func TestSaveSettingsOnlyNotifiesMusicBrainzWorkerForMusicBrainzSettingChanges(t *testing.T) {
+	t.Run("visualizer change does not wake worker", func(t *testing.T) {
+		app := newTestAppWithLoadedSettings(normalizeAppSettings(AppSettings{
+			MusicBrainzTagDatabaseEnabled:          true,
+			MusicBrainzTagStaleDays:                intPointer(30),
+			MusicBrainzTagRequestStaggeringEnabled: true,
+			VisualizerMode:                         "lissajous",
+		}))
+		app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)
+
+		workerState := app.musicBrainzTagWorkerState()
+		initialGeneration := workerState.generation.Load()
+
+		if _, err := app.SaveSettings(AppSettings{
+			MusicBrainzTagDatabaseEnabled:          true,
+			MusicBrainzTagStaleDays:                intPointer(30),
+			MusicBrainzTagRequestStaggeringEnabled: true,
+			VisualizerMode:                         "equalizer",
+		}); err != nil {
+			t.Fatalf("SaveSettings(visualizer change) error = %v", err)
+		}
+
+		if got := workerState.generation.Load(); got != initialGeneration {
+			t.Fatalf("SaveSettings(visualizer change) generation = %d, want %d", got, initialGeneration)
+		}
+	})
+
+	t.Run("musicbrainz change wakes worker", func(t *testing.T) {
+		app := newTestAppWithLoadedSettings(normalizeAppSettings(AppSettings{
+			MusicBrainzTagDatabaseEnabled: false,
+		}))
+		app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)
+
+		workerState := app.musicBrainzTagWorkerState()
+		initialGeneration := workerState.generation.Load()
+
+		if _, err := app.SaveSettings(AppSettings{
+			MusicBrainzTagDatabaseEnabled: true,
+		}); err != nil {
+			t.Fatalf("SaveSettings(musicbrainz toggle) error = %v", err)
+		}
+
+		if got := workerState.generation.Load(); got != initialGeneration+1 {
+			t.Fatalf("SaveSettings(musicbrainz toggle) generation = %d, want %d", got, initialGeneration+1)
+		}
+	})
+}

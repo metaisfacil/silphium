@@ -118,6 +118,14 @@ export interface AppSettingsControllerSetupContext {
 }
 
 export const setupSettingsController = (context: AppSettingsControllerSetupContext): SettingsController => {
+    const applyLiveVisualizerSettings = (settings: AppSettings): void => {
+        context.setVisualizerMode(settings.visualizerMode);
+        context.setEqualizerPosition(settings.equalizerPosition);
+        context.setLissajousScale(settings.lissajousScale);
+        context.setLissajousEnabled(settings.lissajousEnabled);
+        context.applyUiDitheringSetting();
+    };
+
     const saveNormalizedSettings = async (values: {
         libraryFolders: AppLibraryFolder[];
         localLibraryFilesDatabaseEnabled: boolean;
@@ -165,15 +173,10 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         customSendToActions: AppSettings['customSendToActions'];
         keyboardShortcuts: AppSettings['keyboardShortcuts'];
     }): Promise<void> => {
-        const ffmpegStatus = await context.validateConfiguredFFmpegPath(values.ffmpegPath);
-        if (!ffmpegStatus.available) {
-            throw new Error(context.missingFFmpegMessage(ffmpegStatus));
-        }
-
-        const shouldRescanLibrary = libraryFoldersChanged(context.currentSettings.libraryFolders, values.libraryFolders);
+        const previousSettings = context.currentSettings;
         const normalizedLibraryFolders = normalizeLibraryFolders(values.libraryFolders);
         const primaryLibraryFolder = normalizedLibraryFolders[0];
-        const savedSettings = await context.saveSettings({
+        const pendingSettings = normalizeAppSettings({
             libraryFolders: normalizedLibraryFolders,
             libraryPath: primaryLibraryFolder?.path || '',
             localLibraryFilesDatabaseEnabled: values.localLibraryFilesDatabaseEnabled,
@@ -230,12 +233,25 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
             keyboardShortcuts: values.keyboardShortcuts,
         });
 
+        applyLiveVisualizerSettings(pendingSettings);
+
+        const ffmpegStatus = await context.validateConfiguredFFmpegPath(values.ffmpegPath);
+        if (!ffmpegStatus.available) {
+            applyLiveVisualizerSettings(previousSettings);
+            throw new Error(context.missingFFmpegMessage(ffmpegStatus));
+        }
+
+        const shouldRescanLibrary = libraryFoldersChanged(previousSettings.libraryFolders, values.libraryFolders);
+        let savedSettings: AppSettings;
+        try {
+            savedSettings = await context.saveSettings(pendingSettings);
+        } catch (error) {
+            applyLiveVisualizerSettings(previousSettings);
+            throw error;
+        }
+
         context.currentSettings = normalizeAppSettings(savedSettings);
-        context.setVisualizerMode(context.currentSettings.visualizerMode);
-        context.setEqualizerPosition(context.currentSettings.equalizerPosition);
-        context.setLissajousScale(context.currentSettings.lissajousScale);
-        context.setLissajousEnabled(context.currentSettings.lissajousEnabled);
-        context.applyUiDitheringSetting();
+        applyLiveVisualizerSettings(context.currentSettings);
         context.handleSocialSettingsChanged();
         context.setPlaybackOrderMode(context.currentSettings.playbackOrder);
         if (context.currentTrackIndex >= 0 && context.currentTrackIndex < context.tracks.length) {

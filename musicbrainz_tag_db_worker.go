@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -42,6 +43,19 @@ func musicBrainzTagSameDay(left time.Time, right time.Time) bool {
 	rightYear, rightMonth, rightDay := rightLocal.Date()
 
 	return leftYear == rightYear && leftMonth == rightMonth && leftDay == rightDay
+}
+
+func musicBrainzTagTrackPathKey(path string) string {
+	normalizedPath := normalizePath(path)
+	if normalizedPath == "" {
+		return ""
+	}
+
+	if runtime.GOOS == "windows" && !isRemoteLibraryPath(normalizedPath) {
+		return strings.ToLower(normalizedPath)
+	}
+
+	return normalizedPath
 }
 
 func (a *App) musicBrainzTagDatabaseEnabled() bool {
@@ -173,39 +187,78 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 	for path, record := range a.musicBrainzTagStore.Tracks {
 		storedTracks[path] = record
 	}
+	storedTrackRecordsByKey := make(map[string]musicBrainzTagStoredTrackRecord, len(storedTracks))
+	for path, record := range storedTracks {
+		pathKey := musicBrainzTagTrackPathKey(path)
+		if pathKey == "" {
+			continue
+		}
+
+		existing, exists := storedTrackRecordsByKey[pathKey]
+		if exists && !musicBrainzTagPathLessCaseInsensitive(path, existing.path) {
+			continue
+		}
+
+		storedTrackRecordsByKey[pathKey] = musicBrainzTagStoredTrackRecord{
+			path:   path,
+			record: record,
+		}
+	}
 	storedEntities := make(map[string]musicBrainzTagEntityRecord, len(a.musicBrainzTagStore.Entities))
 	for entityKey, record := range a.musicBrainzTagStore.Entities {
 		storedEntities[entityKey] = record
 	}
 	a.musicBrainzTagMu.Unlock()
 
-	activePaths := make(map[string]struct{}, len(paths))
+	activePathsByKey := make(map[string]string, len(paths))
 	actualTrackPaths := 0
 	trackUpdates := make(map[string]musicBrainzTagTrackRecord)
 	trackRemovals := make([]string, 0)
 	for _, path := range paths {
-		activePaths[path] = struct{}{}
+		pathKey := musicBrainzTagTrackPathKey(path)
+		if pathKey == "" {
+			continue
+		}
+		activePathsByKey[pathKey] = path
 		indexed := snapshot[path]
 		releaseDepth := releaseDepthByRootPath[strings.ToLower(normalizePath(indexed.RootPath))]
 		releaseFolderPath := releaseFolderPathForIndexedTrack(indexed, releaseDepth)
 		artistFolderPaths := artistFolderPathsForIndexedTrack(indexed, releaseDepth)
+		matchingStoredTrack, matchExists := storedTrackRecordsByKey[pathKey]
+		if exactRecord, exactExists := storedTracks[path]; exactExists {
+			matchingStoredTrack = musicBrainzTagStoredTrackRecord{
+				path:   path,
+				record: exactRecord,
+			}
+			matchExists = true
+		}
 		signature, ok := trackTagsFileSignatureForPath(path)
 		if !ok {
-			if _, exists := storedTracks[path]; exists {
-				delete(storedTracks, path)
-				trackRemovals = append(trackRemovals, path)
+			if matchExists {
+				delete(storedTracks, matchingStoredTrack.path)
+				delete(storedTrackRecordsByKey, pathKey)
+				trackRemovals = append(trackRemovals, matchingStoredTrack.path)
 			}
 			continue
 		}
 		actualTrackPaths++
 
-		existingRecord, exists := storedTracks[path]
-		if exists && existingRecord.Signature == signature {
-			if existingRecord.ReleaseFolderPath != releaseFolderPath || !stringSlicesEqual(existingRecord.ArtistFolderPaths, artistFolderPaths) {
+		if matchExists && matchingStoredTrack.path != path {
+			delete(storedTracks, matchingStoredTrack.path)
+			trackRemovals = append(trackRemovals, matchingStoredTrack.path)
+		}
+
+		existingRecord := matchingStoredTrack.record
+		if matchExists && existingRecord.Signature == signature {
+			if matchingStoredTrack.path != path || existingRecord.ReleaseFolderPath != releaseFolderPath || !stringSlicesEqual(existingRecord.ArtistFolderPaths, artistFolderPaths) {
 				existingRecord.ReleaseFolderPath = releaseFolderPath
 				existingRecord.ArtistFolderPaths = artistFolderPaths
-				storedTracks[path] = existingRecord
 				trackUpdates[path] = existingRecord
+			}
+			storedTracks[path] = existingRecord
+			storedTrackRecordsByKey[pathKey] = musicBrainzTagStoredTrackRecord{
+				path:   path,
+				record: existingRecord,
 			}
 			state.completedTrackPaths++
 			continue
@@ -215,7 +268,8 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 	}
 
 	for path := range storedTracks {
-		if _, exists := activePaths[path]; exists {
+		pathKey := musicBrainzTagTrackPathKey(path)
+		if activePath, exists := activePathsByKey[pathKey]; exists && activePath == path {
 			continue
 		}
 

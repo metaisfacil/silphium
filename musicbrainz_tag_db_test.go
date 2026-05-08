@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -708,6 +709,41 @@ func TestSearchLibraryMusicBrainzArtistTagIncludesReleaseFolders(t *testing.T) {
 	}
 	if !hasBrowserEntry(page.Entries, "track", indexedTracks[1].Path) {
 		t.Fatalf("SearchLibrary() entries missing album track %q: %#v", indexedTracks[1].Path, page.Entries)
+	}
+}
+
+func TestBuildMusicBrainzTagWorkerStateMatchesStoredTrackPathsCaseInsensitivelyOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("requires Windows path case-insensitive matching")
+	}
+
+	fixture := createLibraryTestFixture(t)
+	indexed := indexedTrackForTest(fixture.rootOne, fixture.trackOne)
+	signature, ok := trackTagsFileSignatureForPath(indexed.Path)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = not ok, want ok", indexed.Path)
+	}
+
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne, indexed)
+	storedPath := strings.ToUpper(indexed.Path)
+	app.musicBrainzTagStore.Tracks[storedPath] = musicBrainzTagTrackRecord{
+		Signature:         signature,
+		ReleaseFolderPath: releaseFolderPathForIndexedTrack(indexed, 2),
+		ArtistFolderPaths: artistFolderPathsForIndexedTrack(indexed, 2),
+	}
+
+	state := app.buildMusicBrainzTagWorkerState(1)
+	if state.completedTrackPaths != 1 {
+		t.Fatalf("buildMusicBrainzTagWorkerState().completedTrackPaths = %d, want 1", state.completedTrackPaths)
+	}
+	if len(state.pendingTrackPaths) != 0 {
+		t.Fatalf("buildMusicBrainzTagWorkerState().pendingTrackPaths = %#v, want none", state.pendingTrackPaths)
+	}
+	if _, exists := app.musicBrainzTagStore.Tracks[storedPath]; exists {
+		t.Fatalf("musicBrainzTagStore.Tracks retained stale case-only path %q", storedPath)
+	}
+	if _, exists := app.musicBrainzTagStore.Tracks[indexed.Path]; !exists {
+		t.Fatalf("musicBrainzTagStore.Tracks[%q] missing after canonicalization", indexed.Path)
 	}
 }
 

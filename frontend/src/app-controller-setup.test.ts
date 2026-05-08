@@ -57,6 +57,17 @@ const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
 };
 
+const createDeferred = <T>() => {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((innerResolve, innerReject) => {
+        resolve = innerResolve;
+        reject = innerReject;
+    });
+
+    return { promise, resolve, reject };
+};
+
 const createTrack = (path: string, title: string) => ({
     title,
     name: title,
@@ -489,6 +500,161 @@ describe('app-controller-setup', () => {
         expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(30, 40, [0], undefined, false, '', '/music/library', 'Library', true, true, undefined);
         expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(50, 60, [], undefined, false, '', '/music/library', 'Library', true, false, undefined);
         expect(context.closeSidebarQueueMenu).toHaveBeenCalled();
+    });
+
+    it('applies visualizer settings before settings persistence resolves', async () => {
+        createSettingsControllerMock.mockImplementation((config) => ({ config }));
+        createPlaylistControllerMock.mockReturnValue({
+            refreshFavorites: vi.fn(),
+            activatePlaybackQueueSource: vi.fn(),
+        });
+        createPlaylistTargetModalControllerMock.mockReturnValue({ modal: true });
+        createShareControllerMock.mockReturnValue({ share: true });
+        createImageModalControllerMock.mockReturnValue({ openImageFile: vi.fn() });
+        createArtistInfoControllerMock.mockReturnValue({ artist: true });
+        createLibraryControllerMock.mockReturnValue({ library: true });
+
+        const context = createContext();
+        const saveDeferred = createDeferred<typeof context.currentSettings>();
+        context.saveSettings.mockImplementationOnce(async () => await saveDeferred.promise);
+
+        setupAppControllers(context as unknown as AppControllerSetupContext);
+        const settingsConfig = createSettingsControllerMock.mock.calls.at(-1)?.[0];
+
+        const savePromise = settingsConfig.save({
+            libraryFolders: [{ path: '/music/library', label: 'Library', releaseDepth: 1 }],
+            localLibraryFilesDatabaseEnabled: true,
+            localLibraryFilesDatabaseLoadOnStartup: true,
+            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryLimit: 0,
+            localLibraryFilesDatabaseListenHistoryThresholdSeconds: 30,
+            ffmpegPath: 'ffmpeg',
+            librarySharingEnabled: false,
+            librarySharingPort: 41637,
+            listenBrainzUserToken: '',
+            lastFmApiKey: '',
+            lastFmApiSecret: '',
+            lastFmSessionKey: '',
+            scrobblingEnabled: true,
+            scrobbleFilterMode: 'blacklist',
+            scrobbleRules: [],
+            musicBrainzServerUrl: '',
+            musicBrainzRequestRateMs: 1000,
+            listenBrainzServerUrl: '',
+            listenBrainzRequestRateMs: 1000,
+            favoritePlaylists: [],
+            savePlaylistsOnAddRemove: false,
+            coverArtPriority: ['file', 'embedded'],
+            audioOutputDevice: 'default',
+            audioOutputBufferMs: 0,
+            gaplessPlayback: false,
+            replayGainEnabled: false,
+            preferMusicBrainzMetadata: false,
+            musicBrainzTagDatabaseEnabled: false,
+            highlightMusicBrainzTaggedAlbumFolders: false,
+            musicBrainzTagStaleDays: 30,
+            musicBrainzTagRequestStaggeringEnabled: false,
+            musicBrainzTagWorkerCores: 1,
+            lissajousEnabled: false,
+            lissajousScale: 0.55,
+            visualizerMode: 'equalizer',
+            equalizerPosition: 'top',
+            uiDitheringEnabled: false,
+            minimizeToTrayOnClose: false,
+            customSendToActions: [],
+            keyboardShortcuts: defaultAppSettings.keyboardShortcuts,
+        });
+
+        await flushPromises();
+
+        expect(context.setVisualizerMode).toHaveBeenCalledWith('equalizer');
+        expect(context.setEqualizerPosition).toHaveBeenCalledWith('top');
+        expect(context.setLissajousScale).toHaveBeenCalledWith(0.55);
+        expect(context.setLissajousEnabled).toHaveBeenCalledWith(false);
+        expect(context.applyUiDitheringSetting).toHaveBeenCalled();
+
+        saveDeferred.resolve({
+            ...context.currentSettings,
+            visualizerMode: 'equalizer',
+            equalizerPosition: 'top',
+            lissajousScale: 0.55,
+            lissajousEnabled: false,
+            uiDitheringEnabled: false,
+        });
+
+        await savePromise;
+    });
+
+    it('rolls back visualizer settings when settings persistence fails', async () => {
+        createSettingsControllerMock.mockImplementation((config) => ({ config }));
+        createPlaylistControllerMock.mockReturnValue({
+            refreshFavorites: vi.fn(),
+            activatePlaybackQueueSource: vi.fn(),
+        });
+        createPlaylistTargetModalControllerMock.mockReturnValue({ modal: true });
+        createShareControllerMock.mockReturnValue({ share: true });
+        createImageModalControllerMock.mockReturnValue({ openImageFile: vi.fn() });
+        createArtistInfoControllerMock.mockReturnValue({ artist: true });
+        createLibraryControllerMock.mockReturnValue({ library: true });
+
+        const context = createContext();
+        context.saveSettings.mockRejectedValueOnce(new Error('save failed'));
+
+        setupAppControllers(context as unknown as AppControllerSetupContext);
+        const settingsConfig = createSettingsControllerMock.mock.calls.at(-1)?.[0];
+
+        await expect(settingsConfig.save({
+            libraryFolders: [{ path: '/music/library', label: 'Library', releaseDepth: 1 }],
+            localLibraryFilesDatabaseEnabled: true,
+            localLibraryFilesDatabaseLoadOnStartup: true,
+            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryLimit: 0,
+            localLibraryFilesDatabaseListenHistoryThresholdSeconds: 30,
+            ffmpegPath: 'ffmpeg',
+            librarySharingEnabled: false,
+            librarySharingPort: 41637,
+            listenBrainzUserToken: '',
+            lastFmApiKey: '',
+            lastFmApiSecret: '',
+            lastFmSessionKey: '',
+            scrobblingEnabled: true,
+            scrobbleFilterMode: 'blacklist',
+            scrobbleRules: [],
+            musicBrainzServerUrl: '',
+            musicBrainzRequestRateMs: 1000,
+            listenBrainzServerUrl: '',
+            listenBrainzRequestRateMs: 1000,
+            favoritePlaylists: [],
+            savePlaylistsOnAddRemove: false,
+            coverArtPriority: ['file', 'embedded'],
+            audioOutputDevice: 'default',
+            audioOutputBufferMs: 0,
+            gaplessPlayback: false,
+            replayGainEnabled: false,
+            preferMusicBrainzMetadata: false,
+            musicBrainzTagDatabaseEnabled: false,
+            highlightMusicBrainzTaggedAlbumFolders: false,
+            musicBrainzTagStaleDays: 30,
+            musicBrainzTagRequestStaggeringEnabled: false,
+            musicBrainzTagWorkerCores: 1,
+            lissajousEnabled: false,
+            lissajousScale: 0.55,
+            visualizerMode: 'equalizer',
+            equalizerPosition: 'top',
+            uiDitheringEnabled: false,
+            minimizeToTrayOnClose: false,
+            customSendToActions: [],
+            keyboardShortcuts: defaultAppSettings.keyboardShortcuts,
+        })).rejects.toThrow('save failed');
+
+        expect(context.setVisualizerMode).toHaveBeenNthCalledWith(1, 'equalizer');
+        expect(context.setEqualizerPosition).toHaveBeenNthCalledWith(1, 'top');
+        expect(context.setLissajousScale).toHaveBeenNthCalledWith(1, 0.55);
+        expect(context.setLissajousEnabled).toHaveBeenNthCalledWith(1, false);
+        expect(context.setVisualizerMode).toHaveBeenLastCalledWith('lissajous');
+        expect(context.setEqualizerPosition).toHaveBeenLastCalledWith('bottom');
+        expect(context.setLissajousScale).toHaveBeenLastCalledWith(defaultAppSettings.lissajousScale);
+        expect(context.setLissajousEnabled).toHaveBeenLastCalledWith(true);
     });
 
     it('falls back to the default output device when the refreshed list no longer contains the saved device', async () => {
