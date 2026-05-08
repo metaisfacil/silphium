@@ -11,7 +11,7 @@ import type {
     Track,
 } from './types/app-types';
 import type { SettingsControllerState } from './controllers/settings-controller-types';
-import { normalizeLibraryFolderKind, normalizeLibraryFolders } from './utils/main-helpers';
+import { libraryFolderMusicBrainzTagWorkerScansEnabled, normalizeLibraryFolderKind, normalizeLibraryFolders } from './utils/main-helpers';
 import { normalizeAppSettings } from './utils/settings-normalization';
 
 const defaultOpenSubsonicPort = 4040;
@@ -20,6 +20,7 @@ const sameLibraryFolder = (left: AppLibraryFolder, right: AppLibraryFolder): boo
     (left.path || '') === (right.path || '')
     && (left.label || '') === (right.label || '')
     && (left.releaseDepth || 0) === (right.releaseDepth || 0)
+    && libraryFolderMusicBrainzTagWorkerScansEnabled(left) === libraryFolderMusicBrainzTagWorkerScansEnabled(right)
     && (left.kind || 'local') === (right.kind || 'local')
     && (left.host || '') === (right.host || '')
     && (left.port || 0) === (right.port || 0)

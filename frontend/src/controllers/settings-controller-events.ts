@@ -184,6 +184,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsLibraryDepthForm,
         settingsLibraryDepthLabelInput,
         settingsLibraryDepthInput,
+        settingsLibraryDepthMusicBrainzTagWorkerScansEnabled,
         settingsLibraryDepthCancel,
         settingsScrobbleRuleBackdrop,
         settingsScrobbleRuleForm,
@@ -346,7 +347,11 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         const normalizedLabel = normalizeLibraryFolderLabel(settingsLibraryDepthLabelInput.value);
         const trimmed = settingsLibraryDepthInput.value.trim();
         if (trimmed === '') {
-            doCloseLibraryDepthDialog({ label: normalizedLabel, releaseDepth: 0 }, false);
+            doCloseLibraryDepthDialog({
+                label: normalizedLabel,
+                releaseDepth: 0,
+                musicBrainzTagWorkerScansEnabled: settingsLibraryDepthMusicBrainzTagWorkerScansEnabled.checked,
+            }, false);
             return;
         }
 
@@ -360,6 +365,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         doCloseLibraryDepthDialog({
             label: normalizedLabel,
             releaseDepth: asReleaseDepth(Number.parseInt(trimmed, 10)),
+            musicBrainzTagWorkerScansEnabled: settingsLibraryDepthMusicBrainzTagWorkerScansEnabled.checked,
         }, false);
     });
 
@@ -773,6 +779,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
                 {
                     label: existingFolder?.label || '',
                     releaseDepth: existingFolder?.releaseDepth || 0,
+                    musicBrainzTagWorkerScansEnabled: existingFolder?.musicBrainzTagWorkerScansEnabled !== false,
                 },
                 existingFolder ? 'Save' : 'Add folder',
                 existingFolder ? 'Library folder settings' : 'Add library folder',
@@ -786,6 +793,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
                     ...context.libraryFolders[existingIndex],
                     label: nextValues.label,
                     releaseDepth: nextValues.releaseDepth,
+                    ...(nextValues.musicBrainzTagWorkerScansEnabled ? {} : { musicBrainzTagWorkerScansEnabled: false }),
                 };
                 setSelectedLibraryFolderIndex(existingIndex);
                 settingsLibraryFolderList.focus();
@@ -796,6 +804,7 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
                 path: selectedFolder,
                 label: nextValues.label,
                 releaseDepth: nextValues.releaseDepth,
+                musicBrainzTagWorkerScansEnabled: nextValues.musicBrainzTagWorkerScansEnabled,
             }]);
             setSelectedLibraryFolderIndex(context.libraryFolders.findIndex((folder) => libraryFolderPathKey(folder.path) === selectedFolderKey));
             settingsLibraryFolderList.focus();

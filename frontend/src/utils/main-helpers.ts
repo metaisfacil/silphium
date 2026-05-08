@@ -555,6 +555,10 @@ const libraryFolderBaseName = (path: string): string => {
 const libraryFolderDisplayBase = (folder: AppLibraryFolder): string => normalizeLibraryFolderLabel(folder.label)
     || (normalizeLibraryFolderKind(folder.kind) === 'remote' ? describeLibraryFolderConnection(folder) : libraryFolderBaseName(folder.path));
 
+export const libraryFolderMusicBrainzTagWorkerScansEnabled = (folder: AppLibraryFolder): boolean => (
+    folder.musicBrainzTagWorkerScansEnabled !== false
+);
+
 export const normalizeLibraryFolders = (
     folders: AppLibraryFolder[] | undefined,
     legacyPath?: string,
@@ -610,6 +614,7 @@ export const normalizeLibraryFolders = (
                 ...(password !== '' ? { password } : {}),
                 ...(passwordHash !== '' ? { passwordHash } : {}),
                 releaseDepth: asReleaseDepth(candidate?.releaseDepth),
+                ...(candidate?.musicBrainzTagWorkerScansEnabled === false ? { musicBrainzTagWorkerScansEnabled: false } : {}),
             });
             continue;
         }
@@ -629,6 +634,7 @@ export const normalizeLibraryFolders = (
             path,
             label: normalizeLibraryFolderLabel(candidate?.label),
             releaseDepth: asReleaseDepth(candidate?.releaseDepth),
+            ...(candidate?.musicBrainzTagWorkerScansEnabled === false ? { musicBrainzTagWorkerScansEnabled: false } : {}),
         });
     }
 

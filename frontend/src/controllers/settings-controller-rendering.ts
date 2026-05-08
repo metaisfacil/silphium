@@ -1,5 +1,5 @@
 import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, MusicBrainzTagWorkerProgress, ScrobbleRule } from '../types/app-types';
-import { describeLibraryFolderConnection, describeScrobbleRule, normalizeLibraryFolderKind } from '../utils/main-helpers';
+import { describeLibraryFolderConnection, describeScrobbleRule, libraryFolderMusicBrainzTagWorkerScansEnabled, normalizeLibraryFolderKind } from '../utils/main-helpers';
 import { formatCustomActionScopeLabel, formatEtaLabel, labelForCoverArtPriority, normalizeMusicBrainzTagWorkerProgress } from './settings-controller-utils';
 
 export const renderFavoritePlaylistList = (
@@ -124,9 +124,12 @@ export const renderLibraryFolderList = (
         button.title = [
             folder.label ? `Label: ${folder.label}` : '',
             folderKind === 'remote' ? `Remote: ${describeLibraryFolderConnection(folder)}` : folder.path,
+            folderKind === 'remote' || libraryFolderMusicBrainzTagWorkerScansEnabled(folder)
+                ? ''
+                : 'MusicBrainz worker scans disabled',
             folderKind === 'remote'
                 ? 'Double-click to change host, port, and label'
-                : 'Double-click to change label and release depth',
+                : 'Double-click to change label, release depth, and MusicBrainz worker scans',
         ].filter((line) => line !== '').join('\n');
 
         const pathLabel = document.createElement('span');
@@ -152,6 +155,13 @@ export const renderLibraryFolderList = (
                 : 'Whole folder';
 
         meta.append(depthBadge);
+
+        if (folderKind !== 'remote' && !libraryFolderMusicBrainzTagWorkerScansEnabled(folder)) {
+            const workerBadge = document.createElement('span');
+            workerBadge.className = 'settings-library-folder-label-badge';
+            workerBadge.textContent = 'MB scans off';
+            meta.append(workerBadge);
+        }
 
         button.append(pathLabel, meta);
         item.append(button);

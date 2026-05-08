@@ -32,14 +32,15 @@ type FocusedKeyboardShortcuts struct {
 
 // AppLibraryFolder describes one configured library root and its optional metadata.
 type AppLibraryFolder struct {
-	Path         string `json:"path"`
-	Kind         string `json:"kind,omitempty"`
-	Host         string `json:"host,omitempty"`
-	Port         int    `json:"port,omitempty"`
-	Label        string `json:"label,omitempty"`
-	Password     string `json:"password,omitempty"`
-	PasswordHash string `json:"passwordHash,omitempty"`
-	ReleaseDepth int    `json:"releaseDepth,omitempty"`
+	Path                             string `json:"path"`
+	Kind                             string `json:"kind,omitempty"`
+	Host                             string `json:"host,omitempty"`
+	Port                             int    `json:"port,omitempty"`
+	Label                            string `json:"label,omitempty"`
+	Password                         string `json:"password,omitempty"`
+	PasswordHash                     string `json:"passwordHash,omitempty"`
+	ReleaseDepth                     int    `json:"releaseDepth,omitempty"`
+	MusicBrainzTagWorkerScansEnabled *bool  `json:"musicBrainzTagWorkerScansEnabled,omitempty"`
 }
 
 // AudioSettings stores persisted audio output and playback behavior preferences.
@@ -725,6 +726,22 @@ func normalizeLibraryFolderLabel(value string) string {
 	return strings.Join(strings.Fields(normalized), " ")
 }
 
+func libraryFolderMusicBrainzTagWorkerScansEnabled(folder AppLibraryFolder) bool {
+	if folder.MusicBrainzTagWorkerScansEnabled == nil {
+		return true
+	}
+
+	return *folder.MusicBrainzTagWorkerScansEnabled
+}
+
+func normalizeLibraryFolderMusicBrainzTagWorkerScansEnabled(value *bool) *bool {
+	if value != nil && !*value {
+		return boolPointer(false)
+	}
+
+	return nil
+}
+
 func normalizeLibraryFolders(folders []AppLibraryFolder, legacyPath string, legacyReleaseDepth int) []AppLibraryFolder {
 	candidates := make([]AppLibraryFolder, 0, len(folders)+1)
 	if len(folders) > 0 {
@@ -767,10 +784,11 @@ func normalizeLibraryFolders(folders []AppLibraryFolder, legacyPath string, lega
 
 		seenPaths[lookupKey] = struct{}{}
 		normalizedFolders = append(normalizedFolders, AppLibraryFolder{
-			Path:         normalizedPath,
-			Kind:         librarySourceKindLocal,
-			Label:        normalizeLibraryFolderLabel(candidate.Label),
-			ReleaseDepth: normalizeReleaseDepth(candidate.ReleaseDepth),
+			Path:                             normalizedPath,
+			Kind:                             librarySourceKindLocal,
+			Label:                            normalizeLibraryFolderLabel(candidate.Label),
+			ReleaseDepth:                     normalizeReleaseDepth(candidate.ReleaseDepth),
+			MusicBrainzTagWorkerScansEnabled: normalizeLibraryFolderMusicBrainzTagWorkerScansEnabled(candidate.MusicBrainzTagWorkerScansEnabled),
 		})
 	}
 

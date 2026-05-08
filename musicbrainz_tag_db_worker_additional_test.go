@@ -509,9 +509,81 @@ func TestMusicBrainzTagWorkerStateCleanupSnapshotAndRetryBranches(t *testing.T) 
 		t.Fatalf("musicBrainzTagReleaseDepthByRootPath() = %#v, want one normalized root entry", depthByRoot)
 	}
 
-	if snapshot := app.musicBrainzTagLibraryTrackSnapshot(); snapshot != nil {
+	if snapshot := app.musicBrainzTagLibraryTrackSnapshot(app.musicBrainzTagWorkerConfiguredRootPaths(), nil); snapshot != nil {
 		t.Fatalf("musicBrainzTagLibraryTrackSnapshot() = %#v, want nil for an empty index", snapshot)
 	}
+
+	disabledTrack := indexedTrackForTest(fixture.rootTwo, fixture.trackTwo)
+	app.trackByPath = map[string]LibraryIndexedFile{
+		disabledTrack.Path: disabledTrack,
+	}
+	app.settings.LibraryFolders = []AppLibraryFolder{{
+		Path:                             fixture.rootTwo,
+		ReleaseDepth:                     2,
+		MusicBrainzTagWorkerScansEnabled: boolPointer(false),
+	}}
+	if snapshot := app.musicBrainzTagLibraryTrackSnapshot(app.musicBrainzTagWorkerConfiguredRootPaths(), app.musicBrainzTagWorkerDisabledRootPaths()); snapshot != nil {
+		t.Fatalf("musicBrainzTagLibraryTrackSnapshot(disabled root) = %#v, want nil", snapshot)
+	}
+	signature, ok := trackTagsFileSignatureForPath(disabledTrack.Path)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) failed", disabledTrack.Path)
+	}
+	app.musicBrainzTagStore.Tracks[disabledTrack.Path] = musicBrainzTagTrackRecord{
+		Signature:         signature,
+		ReleaseID:         "44444444-4444-4444-8444-444444444444",
+		ReleaseFolderPath: releaseFolderPathForIndexedTrack(disabledTrack, 2),
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("release", "44444444-4444-4444-8444-444444444444")] = musicBrainzTagEntityRecord{
+		EntityType: "release",
+		MBID:       "44444444-4444-4444-8444-444444444444",
+	}
+	state := app.buildMusicBrainzTagWorkerState(8)
+	if state.totalTrackPaths != 0 || len(state.pendingTrackPaths) != 0 {
+		t.Fatalf("buildMusicBrainzTagWorkerState(disabled root) = %#v, want no worker track state", state)
+	}
+	if len(app.musicBrainzTagStore.Tracks) != 0 {
+		t.Fatalf("expected disabled root cleanup to remove stored tracks, got %#v", app.musicBrainzTagStore.Tracks)
+	}
+	if len(app.musicBrainzTagStore.Entities) != 0 {
+		t.Fatalf("expected disabled root cleanup to remove stored entities, got %#v", app.musicBrainzTagStore.Entities)
+	}
+
+	app.trackByPath = map[string]LibraryIndexedFile{
+		disabledTrack.Path: disabledTrack,
+	}
+	app.settings.LibraryFolders = []AppLibraryFolder{{
+		Path:         fixture.rootOne,
+		ReleaseDepth: 2,
+	}}
+	app.musicBrainzTagStore.Tracks[disabledTrack.Path] = musicBrainzTagTrackRecord{
+		Signature:         signature,
+		ReleaseID:         "55555555-5555-4555-8555-555555555555",
+		ReleaseFolderPath: releaseFolderPathForIndexedTrack(disabledTrack, 2),
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("release", "55555555-5555-4555-8555-555555555555")] = musicBrainzTagEntityRecord{
+		EntityType: "release",
+		MBID:       "55555555-5555-4555-8555-555555555555",
+	}
+	if snapshot := app.musicBrainzTagLibraryTrackSnapshot(app.musicBrainzTagWorkerConfiguredRootPaths(), app.musicBrainzTagWorkerDisabledRootPaths()); snapshot != nil {
+		t.Fatalf("musicBrainzTagLibraryTrackSnapshot(removed root) = %#v, want nil", snapshot)
+	}
+	state = app.buildMusicBrainzTagWorkerState(8)
+	if state.totalTrackPaths != 0 || len(state.pendingTrackPaths) != 0 {
+		t.Fatalf("buildMusicBrainzTagWorkerState(removed root) = %#v, want no worker track state", state)
+	}
+	if len(app.musicBrainzTagStore.Tracks) != 0 {
+		t.Fatalf("expected removed root cleanup to remove stored tracks, got %#v", app.musicBrainzTagStore.Tracks)
+	}
+	if len(app.musicBrainzTagStore.Entities) != 0 {
+		t.Fatalf("expected removed root cleanup to remove stored entities, got %#v", app.musicBrainzTagStore.Entities)
+	}
+
+	app.trackByPath = nil
+	app.settings.LibraryFolders = append(app.settings.LibraryFolders, AppLibraryFolder{
+		Path:         "   ",
+		ReleaseDepth: 5,
+	})
 
 	emptyState := app.buildMusicBrainzTagWorkerState(9)
 	if emptyState.generation != 9 || emptyState.indexedByPath != nil || emptyState.totalTrackPaths != 0 || emptyState.completedTrackPaths != 0 {
@@ -529,7 +601,7 @@ func TestMusicBrainzTagWorkerStateCleanupSnapshotAndRetryBranches(t *testing.T) 
 		MBID:       "22222222-2222-4222-8222-222222222222",
 	}
 
-	state := app.buildMusicBrainzTagWorkerState(10)
+	state = app.buildMusicBrainzTagWorkerState(10)
 	if state.totalTrackPaths != 0 || len(state.pendingTrackPaths) != 0 {
 		t.Fatalf("buildMusicBrainzTagWorkerState(missing representative) = %#v, want no track work", state)
 	}

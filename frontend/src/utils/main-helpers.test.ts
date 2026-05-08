@@ -67,6 +67,12 @@ describe('main helpers', () => {
         ])).toEqual([
             { path: 'silphium-remote://example.com:5005', kind: 'remote', host: 'example.com', port: 5005, label: 'Friend', releaseDepth: 7 },
         ]);
+
+        expect(normalizeLibraryFolders([
+            { path: '/music/archive', label: 'Archive', releaseDepth: 1, musicBrainzTagWorkerScansEnabled: false },
+        ])).toEqual([
+            { path: '/music/archive', label: 'Archive', releaseDepth: 1, musicBrainzTagWorkerScansEnabled: false },
+        ]);
     });
 
     it('creates stable root names and prefers the deepest folder match', () => {

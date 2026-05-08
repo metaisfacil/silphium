@@ -67,6 +67,9 @@ func TestNormalizeAppSettingsLibraryFoldersAndFavorites(t *testing.T) {
 	if settings.LibraryFolders[0].ReleaseDepth != maxReleaseDepth {
 		t.Fatalf("library folder release depth = %d, want %d", settings.LibraryFolders[0].ReleaseDepth, maxReleaseDepth)
 	}
+	if !libraryFolderMusicBrainzTagWorkerScansEnabled(settings.LibraryFolders[0]) {
+		t.Fatal("library folder MusicBrainz worker scans = false, want enabled by default")
+	}
 	if settings.LibraryPath != expectedLibraryPath {
 		t.Fatalf("legacy library path = %q, want %q", settings.LibraryPath, expectedLibraryPath)
 	}
@@ -164,6 +167,11 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 	settingsPath := filepath.Join(tempDir, appSettingsFileName)
 	configuredFFmpegPath := filepath.Join(tempDir, "bin", "ffmpeg.exe")
 	rawSettings := AppSettings{
+		LibraryFolders: []AppLibraryFolder{{
+			Path:                             filepath.Join(tempDir, "Library"),
+			ReleaseDepth:                     3,
+			MusicBrainzTagWorkerScansEnabled: boolPointer(false),
+		}},
 		LibraryPath:                            filepath.Join(tempDir, "Library"),
 		ReleaseDepth:                           3,
 		FFmpegPath:                             "\"" + configuredFFmpegPath + "\"",
@@ -212,6 +220,12 @@ func TestReadAndWriteAppSettingsRoundTrip(t *testing.T) {
 	}
 	if settings.ReleaseDepth != 3 {
 		t.Fatalf("ReleaseDepth = %d, want %d", settings.ReleaseDepth, 3)
+	}
+	if len(settings.LibraryFolders) != 1 {
+		t.Fatalf("len(LibraryFolders) = %d, want 1", len(settings.LibraryFolders))
+	}
+	if libraryFolderMusicBrainzTagWorkerScansEnabled(settings.LibraryFolders[0]) {
+		t.Fatal("library folder MusicBrainz worker scans = true, want persisted disabled state")
 	}
 	if !reflect.DeepEqual(settings.CoverArtPriority, []string{"musicbrainz", "file"}) {
 		t.Fatalf("CoverArtPriority = %#v, want %#v", settings.CoverArtPriority, []string{"musicbrainz", "file"})

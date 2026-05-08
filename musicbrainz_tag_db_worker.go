@@ -75,7 +75,47 @@ func (a *App) musicBrainzTagReleaseDepthByRootPath() map[string]int {
 	return releaseDepthByRootPath
 }
 
-func (a *App) musicBrainzTagLibraryTrackSnapshot() map[string]LibraryIndexedFile {
+func (a *App) musicBrainzTagWorkerConfiguredRootPaths() map[string]struct{} {
+	a.ensureSettingsLoaded()
+	settings := a.settingsState().settings
+	configuredRootPaths := make(map[string]struct{}, len(settings.LibraryFolders))
+	for _, folder := range settings.LibraryFolders {
+		normalizedPath, ok := absoluteNormalizedPath(folder.Path)
+		if !ok {
+			continue
+		}
+
+		configuredRootPaths[strings.ToLower(normalizedPath)] = struct{}{}
+	}
+
+	return configuredRootPaths
+}
+
+func (a *App) musicBrainzTagWorkerDisabledRootPaths() map[string]struct{} {
+	a.ensureSettingsLoaded()
+	settings := a.settingsState().settings
+	disabledRootPaths := make(map[string]struct{})
+	for _, folder := range settings.LibraryFolders {
+		if libraryFolderMusicBrainzTagWorkerScansEnabled(folder) {
+			continue
+		}
+
+		normalizedPath, ok := absoluteNormalizedPath(folder.Path)
+		if !ok {
+			continue
+		}
+
+		disabledRootPaths[strings.ToLower(normalizedPath)] = struct{}{}
+	}
+
+	if len(disabledRootPaths) == 0 {
+		return nil
+	}
+
+	return disabledRootPaths
+}
+
+func (a *App) musicBrainzTagLibraryTrackSnapshot(configuredRootPaths map[string]struct{}, disabledRootPaths map[string]struct{}) map[string]LibraryIndexedFile {
 	contentState := a.libraryContentState()
 	contentState.indexMu.Lock()
 	defer contentState.indexMu.Unlock()
@@ -86,23 +126,36 @@ func (a *App) musicBrainzTagLibraryTrackSnapshot() map[string]LibraryIndexedFile
 
 	snapshot := make(map[string]LibraryIndexedFile, len(contentState.trackByPath))
 	for path, indexed := range contentState.trackByPath {
+		rootKey := strings.ToLower(normalizePath(indexed.RootPath))
+		if _, configured := configuredRootPaths[rootKey]; !configured {
+			continue
+		}
+
+		if len(disabledRootPaths) > 0 {
+			if _, disabled := disabledRootPaths[rootKey]; disabled {
+				continue
+			}
+		}
+
 		snapshot[path] = indexed
+	}
+
+	if len(snapshot) == 0 {
+		return nil
 	}
 
 	return snapshot
 }
 
 func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWorkerState {
-	snapshot := a.musicBrainzTagLibraryTrackSnapshot()
+	configuredRootPaths := a.musicBrainzTagWorkerConfiguredRootPaths()
+	disabledRootPaths := a.musicBrainzTagWorkerDisabledRootPaths()
+	snapshot := a.musicBrainzTagLibraryTrackSnapshot(configuredRootPaths, disabledRootPaths)
 	state := musicBrainzTagWorkerState{
 		generation:           generation,
 		indexedByPath:        snapshot,
 		referencedEntityKeys: make(map[string]struct{}),
 		pendingEntityKeys:    make(map[string]struct{}),
-	}
-
-	if len(snapshot) == 0 {
-		return state
 	}
 
 	paths := make([]string, 0, len(snapshot))

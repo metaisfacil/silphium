@@ -343,6 +343,7 @@ export type AppLibraryFolder = {
     path: string;
     label: string;
     releaseDepth: number;
+    musicBrainzTagWorkerScansEnabled?: boolean;
     kind?: 'local' | 'remote';
     host?: string;
     port?: number;

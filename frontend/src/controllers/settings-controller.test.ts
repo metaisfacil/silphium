@@ -96,6 +96,7 @@ const mountSettingsController = (options: {
     save?: (values: SettingsFormValues) => Promise<void>;
     forceReload?: (values: SettingsFormValues) => Promise<void>;
     fetchLastFmSessionKey?: (apiKey: string, apiSecret: string) => Promise<string>;
+    selectLibraryFolder?: () => Promise<string>;
     state?: SettingsControllerState;
 } = {}) => {
     document.body.innerHTML = renderSettingsModal();
@@ -115,7 +116,7 @@ const mountSettingsController = (options: {
         state: options.state,
         getValues: options.getValues ?? createSettingsViewValues,
         getMusicBrainzTagWorkerProgress: options.getMusicBrainzTagWorkerProgress,
-        selectLibraryFolder: vi.fn(async () => ''),
+        selectLibraryFolder: options.selectLibraryFolder ?? vi.fn(async () => ''),
         selectPlaylistFile: vi.fn(async () => ''),
         save,
         fetchLastFmSessionKey,
@@ -202,6 +203,7 @@ describe('createSettingsController', () => {
         expect(document.querySelector('#settings-library-depth-title')?.textContent).toBe('Library folder settings');
         expect(document.querySelector('label[for="settings-library-depth-label-input"]')?.textContent).toBe('Custom label');
         expect(document.querySelector('label[for="settings-library-depth-input"]')?.textContent).toBe('Release folder depth');
+        expect(document.querySelector('label[for="settings-library-depth-musicbrainz-tag-worker-scans-enabled"]')?.textContent?.trim()).toBe('Enable MusicBrainz tag worker scans for this folder');
     });
 
     it('renders OpenSubsonic network help as tooltips', () => {
@@ -463,6 +465,49 @@ describe('createSettingsController', () => {
         expect(save).toHaveBeenCalledWith(expect.objectContaining({
             scrobbleRules: [{ field: 'trackTitle', operator: 'regex', value: '/live/i' }],
         }));
+    });
+
+    it('persists an added library folder when saving immediately after the folder dialog closes', async () => {
+        let savedValues: SettingsViewValues = {
+            ...createSettingsViewValues(),
+            libraryFolders: [],
+        };
+        const save = vi.fn(async (values: SettingsFormValues) => {
+            savedValues = {
+                ...savedValues,
+                libraryFolders: values.libraryFolders.map((folder) => ({ ...folder })),
+            };
+        });
+        const { controller, elements } = mountSettingsController({
+            getValues: () => savedValues,
+            save,
+            selectLibraryFolder: async () => '/music/new-folder',
+        });
+
+        controller.open();
+
+        elements.settingsAddLibraryFolder.click();
+        await flushPromises();
+
+        expect(elements.settingsLibraryDepthModal.hidden).toBe(false);
+
+        elements.settingsLibraryDepthLabelInput.value = 'New Folder';
+        elements.settingsLibraryDepthInput.value = '1';
+        elements.settingsLibraryDepthForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        await flushPromises();
+
+        elements.settingsSave.click();
+        await flushPromises();
+
+        expect(save).toHaveBeenCalledWith(expect.objectContaining({
+            libraryFolders: [{ path: '/music/new-folder', label: 'New Folder', releaseDepth: 1 }],
+        }));
+
+        vi.runAllTimers();
+        controller.open();
+
+        expect(elements.settingsLibraryFolderList.querySelectorAll('[data-library-folder-index]')).toHaveLength(1);
+        expect(elements.settingsLibraryFolderList.textContent).toContain('/music/new-folder');
     });
 
     it('saves automatic scrobbling when toggled off', async () => {

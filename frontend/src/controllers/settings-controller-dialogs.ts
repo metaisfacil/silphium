@@ -16,6 +16,7 @@ export type LibraryDepthDialogElements = {
     title: HTMLParagraphElement;
     labelInput: HTMLInputElement;
     depthInput: HTMLInputElement;
+    musicBrainzTagWorkerScansEnabledInput: HTMLInputElement;
     status: HTMLParagraphElement;
     cancel: HTMLButtonElement;
     confirm: HTMLButtonElement;
@@ -142,16 +143,17 @@ export const closeLibraryDepthDialog = (
     const focusTarget = state.returnFocusTarget;
     state.returnFocusTarget = null;
 
+    resolve?.(value);
+
     const finalizeDialogClose = (): void => {
         elements.modal.hidden = true;
         elements.modal.classList.remove('is-visible');
         elements.title.textContent = 'Library folder settings';
         elements.labelInput.value = '';
         elements.depthInput.value = '';
+        elements.musicBrainzTagWorkerScansEnabledInput.checked = true;
         setLibraryDepthStatusMessage('');
         elements.confirm.textContent = 'Apply';
-
-        resolve?.(value);
 
         if (restoreFocus && focusTarget) {
             window.requestAnimationFrame(() => {
@@ -187,6 +189,7 @@ export const openLibraryDepthDialog = (
     elements.title.textContent = title;
     elements.labelInput.value = initialValues.label;
     elements.depthInput.value = initialValues.releaseDepth > 0 ? String(initialValues.releaseDepth) : '';
+    elements.musicBrainzTagWorkerScansEnabledInput.checked = initialValues.musicBrainzTagWorkerScansEnabled !== false;
     setLibraryDepthStatusMessage('');
     elements.confirm.textContent = confirmLabel;
     state.returnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;

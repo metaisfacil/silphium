@@ -97,6 +97,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsLibraryDepthTitle,
         settingsLibraryDepthLabelInput,
         settingsLibraryDepthInput,
+        settingsLibraryDepthMusicBrainzTagWorkerScansEnabled,
         settingsLibraryDepthStatus,
         settingsLibraryDepthCancel,
         settingsLibraryDepthConfirm,
@@ -216,6 +217,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         title: settingsLibraryDepthTitle,
         labelInput: settingsLibraryDepthLabelInput,
         depthInput: settingsLibraryDepthInput,
+        musicBrainzTagWorkerScansEnabledInput: settingsLibraryDepthMusicBrainzTagWorkerScansEnabled,
         status: settingsLibraryDepthStatus,
         cancel: settingsLibraryDepthCancel,
         confirm: settingsLibraryDepthConfirm,
@@ -725,13 +727,22 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return false;
         }
 
-        const nextValues = await doOpenLibraryDepthDialog({ label: folder.label, releaseDepth: folder.releaseDepth }, 'Save', 'Library folder settings');
+        const nextValues = await doOpenLibraryDepthDialog({
+            label: folder.label,
+            releaseDepth: folder.releaseDepth,
+            musicBrainzTagWorkerScansEnabled: folder.musicBrainzTagWorkerScansEnabled !== false,
+        }, 'Save', 'Library folder settings');
         if (nextValues === null) {
             return false;
         }
 
         folder.label = nextValues.label;
         folder.releaseDepth = nextValues.releaseDepth;
+        if (nextValues.musicBrainzTagWorkerScansEnabled) {
+            delete folder.musicBrainzTagWorkerScansEnabled;
+        } else {
+            folder.musicBrainzTagWorkerScansEnabled = false;
+        }
         setSelectedLibraryFolderIndex(index);
         settingsLibraryFolderList.focus();
         return true;

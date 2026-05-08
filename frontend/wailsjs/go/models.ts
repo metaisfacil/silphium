@@ -9,6 +9,7 @@ export namespace main {
 	    password?: string;
 	    passwordHash?: string;
 	    releaseDepth?: number;
+	    musicBrainzTagWorkerScansEnabled?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppLibraryFolder(source);
@@ -24,6 +25,7 @@ export namespace main {
 	        this.password = source["password"];
 	        this.passwordHash = source["passwordHash"];
 	        this.releaseDepth = source["releaseDepth"];
+	        this.musicBrainzTagWorkerScansEnabled = source["musicBrainzTagWorkerScansEnabled"];
 	    }
 	}
 	export class FocusedKeyboardShortcuts {

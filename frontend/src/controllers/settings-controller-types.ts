@@ -4,6 +4,7 @@ import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, Custo
 export type LibraryFolderDialogValues = {
     label: string;
     releaseDepth: number;
+    musicBrainzTagWorkerScansEnabled: boolean;
 };
 
 export type ScrobbleRuleDialogValues = {

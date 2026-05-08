@@ -46,6 +46,7 @@ export type SettingsModalElements = {
     settingsLibraryDepthTitle: HTMLParagraphElement;
     settingsLibraryDepthLabelInput: HTMLInputElement;
     settingsLibraryDepthInput: HTMLInputElement;
+    settingsLibraryDepthMusicBrainzTagWorkerScansEnabled: HTMLInputElement;
     settingsLibraryDepthStatus: HTMLParagraphElement;
     settingsLibraryDepthCancel: HTMLButtonElement;
     settingsLibraryDepthConfirm: HTMLButtonElement;
@@ -217,7 +218,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-general" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-general">
                     <div class="settings-field">
-						${renderSettingsLabel('settings-library-folder-list', 'Library folders', 'Add local folders. A folder settings dialog opens after adding a folder, and you can double-click an existing entry to change its label or release depth.')}
+                        ${renderSettingsLabel('settings-library-folder-list', 'Library folders', 'Add local folders. A folder settings dialog opens after adding a folder, and you can double-click an existing entry to change its label, release depth, or MusicBrainz worker scan toggle.')}
                         <ul id="settings-library-folder-list" class="settings-library-folder-list" role="listbox" aria-label="Library folders" tabindex="0"></ul>
                         <div class="settings-list-actions">
                             <button id="settings-add-library-folder" class="settings-list-btn" type="button" title="Add library folder" aria-label="Add library folder">+</button>
@@ -504,6 +505,9 @@ export const renderSettingsModal = (): string => `
                     ${renderSettingsLabel('settings-library-depth-input', 'Release folder depth', 'Enter how many folder levels below this library root a release begins.<br>Use 0 to treat the whole folder as one release.')}
                     <input id="settings-library-depth-input" class="settings-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
                 </div>
+                <div class="settings-field">
+                    ${renderSettingsCheckboxLabel('settings-library-depth-musicbrainz-tag-worker-scans-enabled', 'Enable MusicBrainz tag worker scans for this folder', 'Turn this off for large folders that do not use MusicBrainz file tags so the background worker skips those files.')}
+                </div>
                 <p id="settings-library-depth-status" class="settings-subdialog-status" aria-live="polite"></p>
                 <div class="settings-subdialog-actions">
                     <button id="settings-library-depth-cancel" class="settings-secondary-btn" type="button">Cancel</button>
@@ -640,6 +644,7 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsLibraryDepthTitle: root.querySelector('#settings-library-depth-title') as HTMLParagraphElement,
     settingsLibraryDepthLabelInput: root.querySelector('#settings-library-depth-label-input') as HTMLInputElement,
     settingsLibraryDepthInput: root.querySelector('#settings-library-depth-input') as HTMLInputElement,
+    settingsLibraryDepthMusicBrainzTagWorkerScansEnabled: root.querySelector('#settings-library-depth-musicbrainz-tag-worker-scans-enabled') as HTMLInputElement,
     settingsLibraryDepthStatus: root.querySelector('#settings-library-depth-status') as HTMLParagraphElement,
     settingsLibraryDepthCancel: root.querySelector('#settings-library-depth-cancel') as HTMLButtonElement,
     settingsLibraryDepthConfirm: root.querySelector('#settings-library-depth-confirm') as HTMLButtonElement,
