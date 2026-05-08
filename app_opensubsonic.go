@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	pathpkg "path"
 	"path/filepath"
 	"regexp"
@@ -3159,7 +3158,7 @@ func (a *App) openSubsonicServeTrack(w http.ResponseWriter, r *http.Request, abs
 		"pipe:1",
 	)
 
-	command := exec.CommandContext(r.Context(), resolvedFFmpegPath, commandArgs...)
+	command := newHiddenUtilityCommandContext(r.Context(), resolvedFFmpegPath, commandArgs...)
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		logOpenSubsonicEvent("transcode stdout pipe failed path=%q err=%v", absoluteTrackPath, err)

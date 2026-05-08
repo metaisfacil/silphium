@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -411,7 +410,7 @@ func readTrackTechnicalMetadataFromFFProbe(path string, ffprobePath string) (Tra
 		return TrackTechnicalMetadata{}, false
 	}
 
-	command := exec.Command(
+	command := newHiddenUtilityCommand(
 		ffprobePath,
 		"-v", "error",
 		"-select_streams", "a:0",
@@ -419,7 +418,6 @@ func readTrackTechnicalMetadataFromFFProbe(path string, ffprobePath string) (Tra
 		"-of", "json",
 		path,
 	)
-	configureHiddenUtilityCommand(command)
 
 	rawOutput, err := command.Output()
 	if err != nil {
@@ -563,14 +561,13 @@ func readTrackTextTagsFromFFProbe(path string, ffprobePath string) map[string][]
 		return nil
 	}
 
-	command := exec.Command(
+	command := newHiddenUtilityCommand(
 		ffprobePath,
 		"-v", "error",
 		"-show_entries", "stream_tags:format_tags",
 		"-of", "json",
 		path,
 	)
-	configureHiddenUtilityCommand(command)
 
 	rawOutput, err := command.Output()
 	if err != nil {

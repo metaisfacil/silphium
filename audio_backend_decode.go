@@ -205,8 +205,7 @@ func decodeTrackCommandArgs(path string, volumeScale float64) []string {
 }
 
 func (b *AudioBackend) decodeTrack(path string, volumeScale float64) ([]byte, error) {
-	command := exec.Command(b.ffmpegPath, decodeTrackCommandArgs(path, volumeScale)...)
-	configureHiddenUtilityCommand(command)
+	command := newHiddenUtilityCommand(b.ffmpegPath, decodeTrackCommandArgs(path, volumeScale)...)
 
 	output, err := command.Output()
 	if err != nil {
@@ -225,8 +224,7 @@ func (b *AudioBackend) decodeTrack(path string, volumeScale float64) ([]byte, er
 }
 
 func (b *AudioBackend) decodeTrackStream(ctx context.Context, path string, volumeScale float64, onChunk func([]byte) error) error {
-	command := exec.CommandContext(ctx, b.ffmpegPath, decodeTrackCommandArgs(path, volumeScale)...)
-	configureHiddenUtilityCommand(command)
+	command := newHiddenUtilityCommandContext(ctx, b.ffmpegPath, decodeTrackCommandArgs(path, volumeScale)...)
 
 	stdout, err := command.StdoutPipe()
 	if err != nil {
