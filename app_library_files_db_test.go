@@ -185,6 +185,86 @@ func TestWriteLibraryFilesDatabaseSnapshotToSQLiteWaitsForMetadataDatabasePathLo
 	}
 }
 
+func TestLoadLibraryFilesDatabaseSnapshotReturnsFalseQuicklyWhenMetadataPathLockBusy(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library One", ReleaseDepth: 0}}
+	snapshot := libraryFilesDatabaseSnapshot{
+		Roots:        roots,
+		TotalEntries: 1,
+		TrackFiles: []LibraryIndexedFile{{
+			Name:         "01 Intro.flac",
+			Path:         fixture.trackOne,
+			RelativePath: "Library One/Artist One/Album One/01 Intro.flac",
+			FolderPath:   "Library One/Artist One/Album One",
+			RootPath:     fixture.rootOne,
+			RootName:     "Library One",
+		}},
+	}
+
+	databasePath := filepath.Join(t.TempDir(), metadataDatabaseFileName)
+	if err := writeLibraryFilesDatabaseSnapshotToSQLite(databasePath, snapshot); err != nil {
+		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite() error = %v", err)
+	}
+
+	unlock := lockMetadataDatabasePath(databasePath)
+	defer unlock()
+
+	startedAt := time.Now()
+	loaded, ok := loadLibraryFilesDatabaseSnapshot(databasePath, roots)
+	if ok {
+		t.Fatalf("loadLibraryFilesDatabaseSnapshot() = (%#v, true), want false while metadata path lock is busy", loaded)
+	}
+	if elapsed := time.Since(startedAt); elapsed > 500*time.Millisecond {
+		t.Fatalf("loadLibraryFilesDatabaseSnapshot() took %v with a busy metadata path lock, want fast fallback", elapsed)
+	}
+}
+
+func TestScanLibraryFoldersDeferredFallsBackToFilesystemQuickScanWhenMetadataPathLockBusy(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	app.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	app.settingsLoaded = true
+	app.settings = normalizeAppSettings(AppSettings{})
+	t.Cleanup(func() {
+		app.stopLibraryFilesDatabaseWorker()
+	})
+
+	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
+	snapshot := libraryFilesDatabaseSnapshot{
+		Roots:        roots,
+		TotalEntries: 6,
+		TrackFiles:   []LibraryIndexedFile{{Name: "01 Intro.flac", Path: fixture.trackOne, RelativePath: "Library/Artist One/Album One/01 Intro.flac", FolderPath: "Library/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library"}},
+		TextFiles:    []LibraryIndexedFile{{Name: "notes.txt", Path: fixture.noteOne, RelativePath: "Library/Artist One/Album One/notes.txt", FolderPath: "Library/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library"}},
+		ImageFiles: []LibraryIndexedFile{
+			{Name: "cover.jpg", Path: fixture.coverOne, RelativePath: "Library/Artist One/Album One/cover.jpg", FolderPath: "Library/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library"},
+			{Name: "folder.jpg", Path: fixture.folderCoverOne, RelativePath: "Library/Artist One/Album One/folder.jpg", FolderPath: "Library/Artist One/Album One", RootPath: fixture.rootOne, RootName: "Library"},
+		},
+	}
+
+	if err := writeLibraryFilesDatabaseSnapshotToSQLite(app.libraryFilesDatabasePath(), snapshot); err != nil {
+		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite() error = %v", err)
+	}
+
+	unlock := lockMetadataDatabasePath(app.libraryFilesDatabasePath())
+	defer unlock()
+
+	result := app.scanLibraryFoldersDeferred([]AppLibraryFolder{{Path: fixture.rootOne, Label: "Library", ReleaseDepth: 0}}, false)
+	if !result.DeferredFiles {
+		t.Fatal("scanLibraryFoldersDeferred(lock busy) deferredFiles = false, want true from filesystem quick scan fallback")
+	}
+	if result.TotalEntries != 6 {
+		t.Fatalf("scanLibraryFoldersDeferred(lock busy) totalEntries = %d, want 6", result.TotalEntries)
+	}
+	if result.TrackCount != 1 || result.TextFileCount != 1 || result.ImageFileCount != 2 {
+		t.Fatalf(
+			"scanLibraryFoldersDeferred(lock busy) counts = tracks:%d text:%d images:%d, want 1/1/2",
+			result.TrackCount,
+			result.TextFileCount,
+			result.ImageFileCount,
+		)
+	}
+}
+
 func TestScanLibraryFoldersDeferredLoadsFromDatabaseBeforeFilesystemRefresh(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	app := NewApp()

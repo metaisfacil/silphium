@@ -231,15 +231,15 @@ describe('createAppModalRuntime', () => {
         expect(context.libraryController.renderFolder).not.toHaveBeenCalled();
     });
 
-    it('force-refreshes local current-track metadata when hydrating the now-playing track', async () => {
+    it('hydrates local current-track metadata without forcing a file-tag refresh', async () => {
         const context = createContext();
-        context.trackMetadataService.refreshTrack.mockResolvedValue({ updatedTags: true, updatedMusicBrainz: false });
+        context.trackMetadataService.hydrateTrack.mockResolvedValue({ updatedTags: true, updatedMusicBrainz: false });
         const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
 
         await runtime.hydrateCurrentTrackTag(0, 1);
 
-        expect(context.trackMetadataService.refreshTrack).toHaveBeenCalledWith(0, 1);
-        expect(context.trackMetadataService.hydrateTrack).not.toHaveBeenCalled();
+        expect(context.trackMetadataService.hydrateTrack).toHaveBeenCalledWith(0, 1);
+        expect(context.trackMetadataService.refreshTrack).not.toHaveBeenCalled();
         expect(context.refreshNowPlayingLabel).toHaveBeenCalledTimes(1);
         expect(context.libraryController.renderFolder).toHaveBeenCalledWith('none');
         expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);

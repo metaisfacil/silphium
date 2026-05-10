@@ -136,9 +136,7 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
             return;
         }
 
-        const result = isRemoteTrackPath(track.path)
-            ? await context.trackMetadataService.hydrateTrack(index, version)
-            : await context.trackMetadataService.refreshTrack(index, version);
+        const result = await context.trackMetadataService.hydrateTrack(index, version);
         if (index !== context.currentTrackIndex) {
             return;
         }

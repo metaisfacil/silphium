@@ -194,7 +194,43 @@ describe('app-library-load-runtime', () => {
         await scanPromise;
     });
 
-    it('replaces a finalizing 1s scan ETA with an explicit status label', () => {
+    it('clears the historical ETA instead of pinning at 1s when the scan outlives the learned estimate', async () => {
+        vi.useFakeTimers();
+        let nowMs = 0;
+        vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+
+        const quickScanResult = createScanResult();
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        let resolveScan!: (value: LibraryScanResult) => void;
+        context.libraryTotalLoadEstimateMs = 1_000;
+        context.scanConfiguredLibraryFoldersBackend = vi.fn(() => new Promise<LibraryScanResult>((resolve) => {
+            resolveScan = resolve;
+        }));
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+        const scanPromise = runtime.scanConfiguredLibraryFolders();
+
+        expect(context.setLibraryLoadingEtaSeconds).toHaveBeenLastCalledWith(1);
+
+        nowMs = 1_200;
+        await vi.advanceTimersByTimeAsync(1_200);
+
+        expect(context.setLibraryLoadingEtaSeconds).toHaveBeenLastCalledWith(null);
+        expect(context.setForceReloadEtaSeconds).toHaveBeenLastCalledWith(null);
+
+        resolveScan(quickScanResult);
+        await scanPromise;
+    });
+
+    it('keeps a finalizing 1s scan ETA visible until it reaches zero', () => {
         const quickScanResult = createScanResult();
         const trackEntry: LibraryIndexedFile = {
             name: '01 Track.flac',
@@ -214,6 +250,35 @@ describe('app-library-load-runtime', () => {
             totalEntries: 100,
             elapsedMs: 1500,
             etaSeconds: 1,
+            phase: 'finalizing',
+        });
+
+        expect(context.setLibraryLoadingStatusLabel).toHaveBeenLastCalledWith('');
+        expect(context.setLibraryLoadingEtaSeconds).toHaveBeenLastCalledWith(3);
+        expect(context.setForceReloadEtaSeconds).toHaveBeenLastCalledWith(3);
+    });
+
+    it('replaces an exhausted finalizing scan ETA with an explicit status label', () => {
+        const quickScanResult = createScanResult();
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        context.libraryClientFinalizeEstimateMs = 0;
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+
+        runtime.updateLibraryLoadingEtaFromProgress({
+            rootPath: 'C:/Library',
+            entriesScanned: 100,
+            totalEntries: 100,
+            elapsedMs: 2500,
+            etaSeconds: 0,
             phase: 'finalizing',
         });
 
@@ -246,20 +311,58 @@ describe('app-library-load-runtime', () => {
 
         await runtime.scanConfiguredLibraryFolders();
 
+        expect(context.markLibraryScanResolved).not.toHaveBeenCalled();
         expect(context.fullLibraryScanLoadActive).toBe(true);
         expect(context.finishLibraryLoadTracking).not.toHaveBeenCalled();
         expect(context.setLibraryLoading).toHaveBeenCalledWith(true);
         expect(context.setLibraryLoading).not.toHaveBeenCalledWith(false);
         expect(context.tracks).toHaveLength(0);
+        expect(context.setLibraryLoadingEtaSeconds).not.toHaveBeenCalledWith(2);
 
         await runtime.handleLibraryScanUpdatedEvent(hydratedScanResult);
 
+        expect(context.markLibraryScanResolved).toHaveBeenCalledTimes(1);
         expect(context.loadIndexedFilePage).toHaveBeenCalledWith('track', 0, 1000);
         expect(context.tracks).toHaveLength(1);
         expect(context.loadTrack).toHaveBeenCalledWith(0);
         expect(context.finishLibraryLoadTracking).toHaveBeenCalledTimes(1);
         expect(context.setLibraryLoading).toHaveBeenLastCalledWith(false);
         expect(context.fullLibraryScanLoadActive).toBe(false);
+    });
+
+    it('keeps the historical ETA running for deferred scans until hydration completes', async () => {
+        vi.useFakeTimers();
+        let nowMs = 0;
+        vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+
+        const quickScanResult = createScanResult({
+            deferredFiles: true,
+            totalEntries: 42,
+            trackCount: 1,
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        context.libraryTotalLoadEstimateMs = 90_000;
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+
+        await runtime.scanConfiguredLibraryFolders();
+
+        expect(context.setLibraryLoadingEtaSeconds).toHaveBeenCalledWith(90);
+        expect(context.setLibraryLoadingEtaSeconds).not.toHaveBeenCalledWith(2);
+
+        nowMs = 10_000;
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect(context.setLibraryLoadingEtaSeconds).toHaveBeenLastCalledWith(80);
+        expect(context.setForceReloadEtaSeconds).toHaveBeenLastCalledWith(80);
     });
 
     it('resolves preserved playback by falling back to the previous relative path', async () => {

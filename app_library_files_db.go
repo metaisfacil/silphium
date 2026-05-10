@@ -10,6 +10,7 @@ import (
 )
 
 const libraryFilesDatabaseFileName = legacyLibraryFilesDatabaseFileName
+const libraryFilesDatabaseStartupSnapshotLockTimeout = 100 * time.Millisecond
 
 type libraryFilesDatabaseSnapshot struct {
 	Roots        []libraryRootConfig
@@ -360,7 +361,11 @@ func indexedFileFromDatabaseRecord(root libraryRootConfig, record libraryFilesDa
 }
 
 func loadLibraryFilesDatabaseSnapshot(databasePath string, roots []libraryRootConfig) (libraryFilesDatabaseSnapshot, bool) {
-	records, totalEntries, ok := loadLibraryFilesDatabaseRecordsFromSQLite(databasePath, roots)
+	records, totalEntries, ok := loadLibraryFilesDatabaseRecordsFromSQLiteWithLockTimeout(
+		databasePath,
+		roots,
+		libraryFilesDatabaseStartupSnapshotLockTimeout,
+	)
 	if !ok {
 		return libraryFilesDatabaseSnapshot{}, false
 	}

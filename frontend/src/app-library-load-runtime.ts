@@ -154,6 +154,10 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
 
         const elapsedMs = Math.max(0, performance.now() - historicalTotalLoadEtaStartedAtMs);
         const remainingMs = Math.max(0, context.libraryTotalLoadEstimateMs - elapsedMs);
+        if (remainingMs <= 0) {
+            return null;
+        }
+
         return Math.max(1, Math.ceil(remainingMs / 1000));
     };
 
@@ -323,7 +327,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         }
 
         const normalizedPhase = String(progress.phase || '').trim().toLowerCase();
-        if (normalizedPhase === 'finalizing' && progress.etaSeconds <= 1) {
+        if (normalizedPhase === 'finalizing' && progress.etaSeconds <= 0 && clientTailSeconds <= 0) {
             stopHistoricalTotalLoadEtaCountdown();
             setFinalizingLibraryStatus();
             return;
@@ -383,7 +387,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
 
             const remainingMs = Math.max(measuredRemainingMs, historicalRemainingMs);
             if (remainingMs > 0) {
-                if (remainingMs < 1000) {
+                if (remainingMs <= 0) {
                     setFinalizingLibraryStatus();
                     return;
                 }
@@ -641,12 +645,14 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         try {
             context.setLibraryPathMessage(context.currentSettings.libraryFolders.length > 1 ? 'Scanning library folders…' : 'Scanning folder…');
             const scanResult = await context.scanConfiguredLibraryFoldersBackend();
-            context.markLibraryScanResolved();
-            stopHistoricalTotalLoadEtaCountdown();
-            if (context.libraryClientFinalizeEstimateMs > 0) {
-                const finalizeEtaSeconds = Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000));
-                context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
-                context.setForceReloadEtaSeconds(finalizeEtaSeconds);
+            if (!scanResult.deferredFiles) {
+                context.markLibraryScanResolved();
+                stopHistoricalTotalLoadEtaCountdown();
+                if (context.libraryClientFinalizeEstimateMs > 0) {
+                    const finalizeEtaSeconds = Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000));
+                    context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
+                    context.setForceReloadEtaSeconds(finalizeEtaSeconds);
+                }
             }
             keepLoadingForDeferredHydration = hasDeferredHydrationWork(scanResult);
             deferredHydrationPending = keepLoadingForDeferredHydration;

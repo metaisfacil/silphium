@@ -145,8 +145,11 @@ func initializeLibraryFilesSQLite(database *sql.DB) error {
 	return nil
 }
 
-func loadLibraryFilesDatabaseRecordsFromSQLite(databasePath string, roots []libraryRootConfig) ([]libraryFilesDatabaseRecord, int, bool) {
-	unlock := lockMetadataDatabasePath(databasePath)
+func loadLibraryFilesDatabaseRecordsFromSQLiteWithLockTimeout(databasePath string, roots []libraryRootConfig, lockTimeout time.Duration) ([]libraryFilesDatabaseRecord, int, bool) {
+	unlock, locked := tryLockMetadataDatabasePath(databasePath, lockTimeout)
+	if !locked {
+		return nil, 0, false
+	}
 	defer unlock()
 
 	if err := ensureMetadataDatabaseMigratedLocked(databasePath); err != nil {

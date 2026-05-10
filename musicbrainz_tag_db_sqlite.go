@@ -35,6 +35,39 @@ func lockMetadataDatabasePath(path string) func() {
 	}
 }
 
+func tryLockMetadataDatabasePath(path string, timeout time.Duration) (func(), bool) {
+	normalizedPath := normalizePath(path)
+	if normalizedPath == "" {
+		return func() {}, true
+	}
+
+	value, _ := metadataDatabasePathLocks.LoadOrStore(normalizedPath, &sync.Mutex{})
+	pathMu := value.(*sync.Mutex)
+	if timeout <= 0 {
+		if !pathMu.TryLock() {
+			return nil, false
+		}
+
+		return func() {
+			pathMu.Unlock()
+		}, true
+	}
+
+	deadline := time.Now().Add(timeout)
+	for {
+		if pathMu.TryLock() {
+			return func() {
+				pathMu.Unlock()
+			}, true
+		}
+		if time.Now().After(deadline) {
+			return nil, false
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 var musicBrainzTagSQLiteSchemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS meta (
 		key TEXT PRIMARY KEY,
