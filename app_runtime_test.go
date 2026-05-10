@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"testing"
 	"time"
@@ -74,6 +75,34 @@ func TestAppRuntimeHelpers(t *testing.T) {
 	}
 
 	app.LogFrontendMessage("hello from frontend")
+}
+
+func TestFormatFrontendLogLine(t *testing.T) {
+	now := time.Date(2026, time.April, 16, 18, 56, 29, 944_000_000, time.UTC)
+
+	t.Run("adds backend timestamp for plain frontend messages", func(t *testing.T) {
+		got := formatFrontendLogLine("hello from frontend", now)
+		wantPattern := `^\[2026-04-16 18:56:29\.944\] \[FRONTEND\] hello from frontend$`
+		if !regexp.MustCompile(wantPattern).MatchString(got) {
+			t.Fatalf("formatFrontendLogLine() = %q, want pattern %q", got, wantPattern)
+		}
+	})
+
+	t.Run("reuses existing timestamped frontend messages without duplication", func(t *testing.T) {
+		got := formatFrontendLogLine("[2026-04-16 18:56:29.944] [PERF] slow bridge", now)
+		want := "[2026-04-16 18:56:29.944] [FRONTEND] [PERF] slow bridge"
+		if got != want {
+			t.Fatalf("formatFrontendLogLine(timestamped) = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("does not duplicate frontend prefix when already present", func(t *testing.T) {
+		got := formatFrontendLogLine("[2026-04-16 18:56:29.944] [FRONTEND] existing", now)
+		want := "[2026-04-16 18:56:29.944] [FRONTEND] existing"
+		if got != want {
+			t.Fatalf("formatFrontendLogLine(existing prefix) = %q, want %q", got, want)
+		}
+	})
 }
 
 func TestAppStartupAndShutdown(t *testing.T) {

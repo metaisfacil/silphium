@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,6 +27,9 @@ const libraryScanProgressEvent = "silphium:library:scan-progress"
 const libraryRescanLogEvent = "silphium:library:rescan-log"
 const musicBrainzTagWorkerProgressEvent = "silphium:musicbrainz:tag-worker-progress"
 const mediaKeyEvent = "silphium:media:key"
+const backendLogTimestampLayout = "2006-01-02 15:04:05.000"
+
+var backendTimestampPrefixPattern = regexp.MustCompile(`^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\](?:\s+|$)`)
 
 // AppVersion is set at build time via -ldflags "-X main.AppVersion=...".
 var AppVersion = "dev"
@@ -230,12 +235,42 @@ func NewApp() *App {
 	}
 }
 
+func formatBackendLogTimestamp(now time.Time) string {
+	return now.Format(backendLogTimestampLayout)
+}
+
+func formatBackendLogLine(message string, now time.Time) string {
+	return fmt.Sprintf("[%s] %s", formatBackendLogTimestamp(now), strings.TrimSpace(message))
+}
+
+func formatFrontendLogLine(message string, now time.Time) string {
+	trimmedMessage := strings.TrimSpace(message)
+	if trimmedMessage == "" {
+		return formatBackendLogLine("[FRONTEND]", now)
+	}
+
+	timestampPrefix := backendTimestampPrefixPattern.FindString(trimmedMessage)
+	if timestampPrefix == "" {
+		return formatBackendLogLine("[FRONTEND] "+trimmedMessage, now)
+	}
+
+	trimmedTimestamp := strings.TrimSpace(timestampPrefix)
+	remainder := strings.TrimSpace(strings.TrimPrefix(trimmedMessage, timestampPrefix))
+	if remainder == "" {
+		return fmt.Sprintf("%s [FRONTEND]", trimmedTimestamp)
+	}
+	if strings.HasPrefix(remainder, "[FRONTEND]") {
+		return fmt.Sprintf("%s %s", trimmedTimestamp, remainder)
+	}
+
+	return fmt.Sprintf("%s [FRONTEND] %s", trimmedTimestamp, remainder)
+}
+
 // logRescanEvent logs a rescan-related event with precise timestamp to both console and frontend
 func (a *App) logRescanEvent(message string, args ...interface{}) {
 	runtimeState := a.runtimeState()
-	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
 	formattedMessage := fmt.Sprintf(message, args...)
-	logLine := fmt.Sprintf("[%s] %s", timestamp, formattedMessage)
+	logLine := formatBackendLogLine(formattedMessage, time.Now())
 	log.Println(logLine)
 	if runtimeState.ctx != nil {
 		runtimeEventsEmit(runtimeState.ctx, libraryRescanLogEvent, logLine)
@@ -381,7 +416,7 @@ func (a *App) beforeClose(context.Context) bool {
 // LogFrontendMessage logs a message from the frontend to the backend console
 func (a *App) LogFrontendMessage(message string) {
 	profiledVoid(a, "LogFrontendMessage", func() {
-		log.Println("[FRONTEND] " + message)
+		log.Println(formatFrontendLogLine(message, time.Now()))
 	})
 }
 
