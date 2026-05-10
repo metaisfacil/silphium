@@ -28,9 +28,13 @@ const sameLibraryFolder = (left: AppLibraryFolder, right: AppLibraryFolder): boo
     && (left.passwordHash || '') === (right.passwordHash || '')
 );
 
+const filterLocalLibraryFolders = (folders: AppLibraryFolder[]): AppLibraryFolder[] => (
+    folders.filter((folder) => normalizeLibraryFolderKind(folder.kind) !== 'remote')
+);
+
 const libraryFoldersChanged = (left: AppLibraryFolder[], right: AppLibraryFolder[]): boolean => {
-    const normalizedLeft = normalizeLibraryFolders(left);
-    const normalizedRight = normalizeLibraryFolders(right);
+    const normalizedLeft = normalizeLibraryFolders(filterLocalLibraryFolders(left));
+    const normalizedRight = normalizeLibraryFolders(filterLocalLibraryFolders(right));
     if (normalizedLeft.length !== normalizedRight.length) {
         return true;
     }
@@ -39,10 +43,6 @@ const libraryFoldersChanged = (left: AppLibraryFolder[], right: AppLibraryFolder
 };
 
 const defaultAudioOutputDeviceId = 'default';
-
-const filterLocalLibraryFolders = (folders: AppLibraryFolder[]): AppLibraryFolder[] => (
-    folders.filter((folder) => normalizeLibraryFolderKind(folder.kind) !== 'remote')
-);
 
 const resolveAvailableAudioOutputDevice = (
     requestedDevice: string,

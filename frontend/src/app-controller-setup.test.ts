@@ -585,6 +585,78 @@ describe('app-controller-setup', () => {
         await savePromise;
     });
 
+    it('does not trigger a local rescan when saving unchanged local folders alongside existing remote folders', async () => {
+        createSettingsControllerMock.mockImplementation((config) => ({ config }));
+        createPlaylistControllerMock.mockReturnValue({
+            refreshFavorites: vi.fn(),
+            activatePlaybackQueueSource: vi.fn(),
+        });
+        createPlaylistTargetModalControllerMock.mockReturnValue({ modal: true });
+        createShareControllerMock.mockReturnValue({ share: true });
+        createImageModalControllerMock.mockReturnValue({ openImageFile: vi.fn() });
+        createArtistInfoControllerMock.mockReturnValue({ artist: true });
+        createLibraryControllerMock.mockReturnValue({ library: true });
+
+        const context = createContext();
+        context.currentSettings = {
+            ...context.currentSettings,
+            libraryFolders: [
+                { path: '/music/library', label: 'Library', releaseDepth: 1 },
+                { path: 'silphium-remote://192.168.2.10:41637', kind: 'remote', host: '192.168.2.10', port: 41637, label: 'Laptop', releaseDepth: 0 },
+            ] as typeof context.currentSettings.libraryFolders,
+        };
+
+        setupAppControllers(context as unknown as AppControllerSetupContext);
+        const settingsConfig = createSettingsControllerMock.mock.calls.at(-1)?.[0];
+
+        await settingsConfig.save({
+            libraryFolders: [{ path: '/music/library', label: 'Library', releaseDepth: 1 }],
+            localLibraryFilesDatabaseEnabled: true,
+            localLibraryFilesDatabaseLoadOnStartup: true,
+            localLibraryFilesDatabaseListenHistoryEnabled: false,
+            localLibraryFilesDatabaseListenHistoryLimit: 0,
+            localLibraryFilesDatabaseListenHistoryThresholdSeconds: 30,
+            ffmpegPath: 'ffmpeg',
+            librarySharingEnabled: false,
+            librarySharingPort: 41637,
+            listenBrainzUserToken: '',
+            lastFmApiKey: '',
+            lastFmApiSecret: '',
+            lastFmSessionKey: '',
+            scrobblingEnabled: true,
+            scrobbleFilterMode: 'blacklist',
+            scrobbleRules: [],
+            musicBrainzServerUrl: '',
+            musicBrainzRequestRateMs: 1000,
+            listenBrainzServerUrl: '',
+            listenBrainzRequestRateMs: 1000,
+            favoritePlaylists: ['favorites.m3u'],
+            savePlaylistsOnAddRemove: false,
+            coverArtPriority: ['file', 'embedded'],
+            audioOutputDevice: 'default',
+            audioOutputBufferMs: 0,
+            gaplessPlayback: false,
+            replayGainEnabled: false,
+            preferMusicBrainzMetadata: false,
+            musicBrainzTagDatabaseEnabled: false,
+            highlightMusicBrainzTaggedAlbumFolders: false,
+            musicBrainzTagStaleDays: 30,
+            musicBrainzTagRequestStaggeringEnabled: false,
+            musicBrainzTagWorkerCores: 1,
+            lissajousEnabled: true,
+            lissajousScale: defaultAppSettings.lissajousScale,
+            visualizerMode: 'lissajous',
+            equalizerPosition: 'bottom',
+            uiDitheringEnabled: true,
+            minimizeToTrayOnClose: false,
+            customSendToActions: [],
+            keyboardShortcuts: defaultAppSettings.keyboardShortcuts,
+        });
+        await flushPromises();
+
+        expect(context.scanConfiguredLibraryFolders).not.toHaveBeenCalled();
+    });
+
     it('rolls back visualizer settings when settings persistence fails', async () => {
         createSettingsControllerMock.mockImplementation((config) => ({ config }));
         createPlaylistControllerMock.mockReturnValue({
