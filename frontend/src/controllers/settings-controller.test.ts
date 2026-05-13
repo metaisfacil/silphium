@@ -680,7 +680,7 @@ describe('createSettingsController', () => {
         expect(elements.settingsPanelLibrary.hidden).toBe(false);
 
         expect(elements.settingsMusicBrainzTagWorkerProgressValue.textContent).toBe('25%');
-        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('5 tracks scanned • 3 tracks still to scan • 8 entities processed • 12 entities still to look up.');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('5 tracks scanned • 3 tracks queued • 8 entities processed • 12 entities still to look up.');
 
         controller.setMusicBrainzTagWorkerProgress({
             enabled: true,
@@ -734,7 +734,7 @@ describe('createSettingsController', () => {
 
         expect(getMusicBrainzTagWorkerProgress).toHaveBeenCalledTimes(1);
         expect(elements.settingsMusicBrainzTagWorkerProgressValue.textContent).toBe('60%');
-        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('6 tracks scanned • 4 tracks still to scan.');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('6 tracks scanned • 4 tracks queued.');
         expect(elements.settingsMusicBrainzTagWorkerProgressStatus.textContent).toBe('Scanning local track metadata to build the lookup queue.');
     });
 
@@ -812,7 +812,7 @@ describe('createSettingsController', () => {
 
         controller.open('database');
 
-        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('6 tracks scanned • 4 tracks still to scan.');
+        expect(elements.settingsMusicBrainzTagWorkerProgressRemaining.textContent).toBe('6 tracks scanned • 4 tracks queued.');
         expect(elements.settingsMusicBrainzTagWorkerProgressStatus.textContent).toBe('Scanning local track metadata to build the lookup queue.');
     });
 

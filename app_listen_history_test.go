@@ -217,3 +217,43 @@ func TestAddListenHistoryEntryWaitsForMetadataDatabasePathLock(t *testing.T) {
 		t.Fatalf("stored history path = %q, want %q", got, fixture.trackOne)
 	}
 }
+
+func TestLoadListenHistoryPlaylistReturnsQuicklyWhileMetadataPathLockBusy(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := NewApp()
+	app.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	app.settingsLoaded = true
+	app.settings = normalizeAppSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled:              boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryEnabled: boolPointer(true),
+		LocalLibraryFilesDatabaseListenHistoryLimit:   10,
+	})
+
+	if ok := app.AddListenHistoryEntry(fixture.trackOne, "Intro", "Artist One", "Album One", 100, 100); !ok {
+		t.Fatal("AddListenHistoryEntry() = false, want true")
+	}
+
+	unlock := lockMetadataDatabasePath(app.libraryFilesDatabasePath())
+	defer unlock()
+
+	start := time.Now()
+	done := make(chan PlaylistLoadResult, 1)
+	go func() {
+		done <- app.LoadListenHistoryPlaylist()
+	}()
+
+	select {
+	case loaded := <-done:
+		if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+			t.Fatalf("LoadListenHistoryPlaylist() took %v with a busy metadata path lock, want a quick snapshot read", elapsed)
+		}
+		if len(loaded.TrackFiles) != 1 {
+			t.Fatalf("len(LoadListenHistoryPlaylist().TrackFiles) = %d, want 1", len(loaded.TrackFiles))
+		}
+		if got := loaded.TrackFiles[0].Path; got != fixture.trackOne {
+			t.Fatalf("stored history path = %q, want %q", got, fixture.trackOne)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("LoadListenHistoryPlaylist() did not complete while the metadata path lock was busy")
+	}
+}

@@ -352,7 +352,7 @@ export const renderMusicBrainzTagWorkerProgressUI = (
     if (completedTrackScans > 0 || pendingTrackScans > 0 || (nextProgress.totalTrackScans > 0 && nextProgress.totalEntityLookups <= 0)) {
         summaryParts.push(`${completedTrackScans} ${completedTrackScans === 1 ? 'track' : 'tracks'} scanned`);
         if (pendingTrackScans > 0) {
-            summaryParts.push(`${pendingTrackScans} ${pendingTrackScans === 1 ? 'track' : 'tracks'} still to scan`);
+            summaryParts.push(`${pendingTrackScans} ${pendingTrackScans === 1 ? 'track' : 'tracks'} queued`);
         }
     }
 

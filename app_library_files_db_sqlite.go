@@ -495,7 +495,47 @@ func appendLibraryListenHistoryRecordToSQLite(path string, record libraryListenH
 	return nil
 }
 
+func queryLibraryListenHistoryRecords(database *sql.DB) ([]libraryListenHistoryRecord, bool) {
+	rows, err := database.Query(`SELECT track_path, track_name, artist_name, release_name, listened_at, played_percent FROM listen_history ORDER BY listened_at DESC, id DESC`)
+	if err != nil {
+		return nil, false
+	}
+	defer rows.Close()
+
+	records := make([]libraryListenHistoryRecord, 0)
+	for rows.Next() {
+		var record libraryListenHistoryRecord
+		if err := rows.Scan(&record.TrackPath, &record.TrackName, &record.ArtistName, &record.ReleaseName, &record.ListenedAt, &record.PlayedPercent); err != nil {
+			return nil, false
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false
+	}
+
+	return records, true
+}
+
+func loadLibraryListenHistoryRecordsFromSQLiteSnapshot(databasePath string) ([]libraryListenHistoryRecord, bool) {
+	if !libraryFilesDatabaseFileExists(databasePath) {
+		return nil, false
+	}
+
+	database, err := openLibraryFilesSQLite(databasePath)
+	if err != nil {
+		return nil, false
+	}
+	defer database.Close()
+
+	return queryLibraryListenHistoryRecords(database)
+}
+
 func loadLibraryListenHistoryRecordsFromSQLite(databasePath string) ([]libraryListenHistoryRecord, bool) {
+	if records, ok := loadLibraryListenHistoryRecordsFromSQLiteSnapshot(databasePath); ok {
+		return records, true
+	}
+
 	unlock := lockMetadataDatabasePath(databasePath)
 	defer unlock()
 
@@ -517,25 +557,7 @@ func loadLibraryListenHistoryRecordsFromSQLite(databasePath string) ([]libraryLi
 		return nil, false
 	}
 
-	rows, err := database.Query(`SELECT track_path, track_name, artist_name, release_name, listened_at, played_percent FROM listen_history ORDER BY listened_at DESC, id DESC`)
-	if err != nil {
-		return nil, false
-	}
-	defer rows.Close()
-
-	records := make([]libraryListenHistoryRecord, 0)
-	for rows.Next() {
-		var record libraryListenHistoryRecord
-		if err := rows.Scan(&record.TrackPath, &record.TrackName, &record.ArtistName, &record.ReleaseName, &record.ListenedAt, &record.PlayedPercent); err != nil {
-			return nil, false
-		}
-		records = append(records, record)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, false
-	}
-
-	return records, true
+	return queryLibraryListenHistoryRecords(database)
 }
 
 func trimLibraryListenHistoryToLimitInSQLite(path string, limit int) error {

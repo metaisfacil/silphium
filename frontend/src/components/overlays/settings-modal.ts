@@ -246,16 +246,18 @@ export const renderSettingsModal = (): string => `
                     <div class="settings-field settings-toggle-field">
                         ${renderSettingsCheckboxLabel('settings-local-library-files-database-listen-history-enabled', 'Store listen history in the local database', 'Keeps a local history once playback reaches the configured threshold and exposes it as a read-only playlist view. [silence] and (silence) are never stored.')}
                     </div>
-                    <div class="settings-field">
-                        ${renderSettingsLabel('settings-local-library-files-database-listen-history-threshold-seconds', 'Skipped-track history threshold', 'Listen history is recorded once playback reaches the later of 10% of track duration or this many seconds. Tracks shorter than this threshold must finish completely.')}
-                        <div class="settings-server-rate-group">
-                            <input id="settings-local-library-files-database-listen-history-threshold-seconds" class="settings-input settings-server-rate-input" type="number" min="1" step="1" inputmode="numeric" placeholder="30">
-                            <span class="settings-server-rate-unit">sec</span>
+                    <div class="settings-field settings-field-compact-grid">
+                        <div class="settings-subfield">
+                            ${renderSettingsLabel('settings-local-library-files-database-listen-history-threshold-seconds', 'Skipped-track history threshold', 'Listen history is recorded once playback reaches the later of 10% of track duration or this many seconds. Tracks shorter than this threshold must finish completely.')}
+                            <div class="settings-server-rate-group">
+                                <input id="settings-local-library-files-database-listen-history-threshold-seconds" class="settings-input settings-server-rate-input" type="number" min="1" step="1" inputmode="numeric" placeholder="30">
+                                <span class="settings-server-rate-unit">sec</span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="settings-field">
-                        ${renderSettingsLabel('settings-local-library-files-database-listen-history-limit', 'Stored listen history limit', 'Set 0 to keep all stored listens. Positive values discard the oldest listens once the limit is reached.')}
-                        <input id="settings-local-library-files-database-listen-history-limit" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
+                        <div class="settings-subfield">
+                            ${renderSettingsLabel('settings-local-library-files-database-listen-history-limit', 'Stored listen history limit', 'Set 0 to keep all stored listens. Positive values discard the oldest listens once the limit is reached.')}
+                            <input id="settings-local-library-files-database-listen-history-limit" class="settings-input settings-server-rate-input" type="number" min="0" step="1" inputmode="numeric" placeholder="0">
+                        </div>
                     </div>
                     <hr class="settings-section-divider" aria-hidden="true">
                     <div class="settings-field settings-toggle-field">
