@@ -989,8 +989,9 @@ describe('createAppNowPlayingRuntime', () => {
 
         expect(AudioQueueNextTrack).toHaveBeenCalledWith('/music/track.flac', '/music/next.flac');
         expect(context.resolveCoverForTrack).toHaveBeenCalledWith(context.tracks[1]);
+        expect(vi.mocked(LogFrontendMessage)).toHaveBeenCalledWith(expect.stringContaining('[PLAYBACK] Trace NextTrackPrep plan action=queue'));
         expect(vi.mocked(LogFrontendMessage)).toHaveBeenCalledWith(expect.stringContaining('[PLAYBACK] Trace NextTrackPrep dispatch action=queue'));
-        expect(vi.mocked(LogFrontendMessage)).toHaveBeenCalledWith(expect.stringContaining('[PLAYBACK] Trace NextTrackPrep success action=queue'));
+        expect(vi.mocked(LogFrontendMessage)).toHaveBeenCalledWith(expect.stringContaining('[PLAYBACK] Trace NextTrackPrep result action=queue outcome=success'));
 
         vi.useRealTimers();
     });
