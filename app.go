@@ -419,7 +419,7 @@ func (trace bridgeTraceHandle) finish(detail string, err error) {
 	if err != nil {
 		parts = append(parts, bridgeTraceErrorForLog(err))
 	}
-	parts = append(parts, fmt.Sprintf("elapsed=%.2fms", time.Since(trace.started).Seconds()*1000))
+	parts = append(parts, fmt.Sprintf("backendElapsed=%.2fms", time.Since(trace.started).Seconds()*1000))
 	trace.app.logRescanEvent("%s END %s", prefix, strings.Join(parts, " "))
 }
 

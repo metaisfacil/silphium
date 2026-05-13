@@ -105,6 +105,38 @@ func TestFormatFrontendLogLine(t *testing.T) {
 	})
 }
 
+func TestBridgeTraceFinishUsesBackendElapsedLabel(t *testing.T) {
+	originalRuntimeEventsEmit := runtimeEventsEmit
+	var emittedLogLine string
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
+		if eventName != libraryRescanLogEvent || len(optionalData) == 0 {
+			return
+		}
+		if message, ok := optionalData[0].(string); ok {
+			emittedLogLine = message
+		}
+	}
+	t.Cleanup(func() {
+		runtimeEventsEmit = originalRuntimeEventsEmit
+	})
+
+	app := &App{}
+	app.ctx = context.Background()
+
+	trace := app.beginBridgeTrace("transport", "AudioPlay", "")
+	trace.finish("loaded=true", nil)
+
+	wantPattern := `\[BRIDGE\] BE #1 transport AudioPlay END loaded=true backendElapsed=\d+\.\d{2}ms$`
+	if !regexp.MustCompile(wantPattern).MatchString(emittedLogLine) {
+		t.Fatalf("bridge trace finish log = %q, want pattern %q", emittedLogLine, wantPattern)
+	}
+
+	legacyPattern := `\[BRIDGE\] BE #1 transport AudioPlay END loaded=true elapsed=`
+	if regexp.MustCompile(legacyPattern).MatchString(emittedLogLine) {
+		t.Fatalf("bridge trace finish log = %q, unexpectedly matched legacy pattern %q", emittedLogLine, legacyPattern)
+	}
+}
+
 func TestAppStartupAndShutdown(t *testing.T) {
 	app := NewApp()
 	app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)

@@ -138,7 +138,7 @@ export const traceBridgeCall = async <T>(
         const resultDetails = formatBridgeTraceDetails(options.summarizeResult?.(result));
         emitBridgeTraceLine(
             formatPerfLogMessage(
-                `[BRIDGE] FE #${sequence} ${scope} ${name} END elapsed=${(performance.now() - startedAtMs).toFixed(1)}ms`
+                `[BRIDGE] FE #${sequence} ${scope} ${name} END bridgeElapsed=${(performance.now() - startedAtMs).toFixed(1)}ms`
                 + `${resultDetails ? ` ${resultDetails}` : ''}`,
             ),
             options.sink,
@@ -151,7 +151,7 @@ export const traceBridgeCall = async <T>(
         });
         emitBridgeTraceLine(
             formatPerfLogMessage(
-                `[BRIDGE] FE #${sequence} ${scope} ${name} ERROR elapsed=${(performance.now() - startedAtMs).toFixed(1)}ms`
+                `[BRIDGE] FE #${sequence} ${scope} ${name} ERROR bridgeElapsed=${(performance.now() - startedAtMs).toFixed(1)}ms`
                 + `${errorDetails ? ` ${errorDetails}` : ''}`,
             ),
             options.sink,
