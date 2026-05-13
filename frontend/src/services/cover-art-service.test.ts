@@ -97,6 +97,62 @@ describe('createCoverArtService', () => {
         expect(readImageThumbnail).toHaveBeenCalledTimes(1);
     });
 
+    it('deduplicates repeated exact-folder cover misses', async () => {
+        const getLibraryFolderCoverPath = vi.fn(async () => '');
+
+        const service = createCoverArtService({
+            getCoverArtPriority: () => ['file'],
+            getIndexedFolderCoverPath: () => undefined,
+            getLibraryFolderCoverPath,
+            readImageThumbnail: vi.fn(async () => ({
+                base64: 'ZmFrZS10aHVtYm5haWw=',
+                mimeType: 'image/png',
+            })),
+            readFileBase64: vi.fn(async () => 'ZmFrZS1mdWxsLWltYWdl'),
+            readTrackEmbeddedCover: async () => ({}),
+            registerObjectUrl: vi.fn(),
+        });
+
+        expect(await service.resolveFolderCoverPath('Library/Artist/Album')).toBeUndefined();
+        expect(await service.resolveFolderCoverPath('Library/Artist/Album')).toBeUndefined();
+
+        expect(getLibraryFolderCoverPath).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechecks a folder cover miss after invalidation', async () => {
+        let lookupCount = 0;
+        const getLibraryFolderCoverPath = vi.fn(async () => {
+            lookupCount += 1;
+            return lookupCount === 1 ? '' : '/music/library/cover.jpg';
+        });
+
+        const service = createCoverArtService({
+            getCoverArtPriority: () => ['file'],
+            getIndexedFolderCoverPath: () => undefined,
+            getLibraryFolderCoverPath,
+            readImageThumbnail: vi.fn(async () => ({
+                base64: 'ZmFrZS10aHVtYm5haWw=',
+                mimeType: 'image/png',
+            })),
+            readFileBase64: vi.fn(async () => 'ZmFrZS1mdWxsLWltYWdl'),
+            readTrackEmbeddedCover: async () => ({}),
+            registerObjectUrl: vi.fn(),
+        });
+
+        const track = {
+            path: '/music/library/Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            mbIds: {},
+        } as Track;
+
+        await expect(service.resolveForTrack(track)).resolves.toBeUndefined();
+
+        service.invalidateResolvedForTrack(track);
+
+        await expect(service.resolveForTrack(track)).resolves.toBe('blob:test-cover-art');
+        expect(getLibraryFolderCoverPath).toHaveBeenCalledTimes(2);
+    });
+
     it('resolves a subtree cover path when the exact release folder has no direct cover', async () => {
         const getLibraryFolderImageFiles = vi.fn(async (): Promise<LibraryIndexedFile[]> => [
             {
@@ -136,6 +192,31 @@ describe('createCoverArtService', () => {
         expect(coverPath).toBe('/music/library/Artist/Album/Disc 1/cover.jpg');
         expect(getLibraryFolderImageFiles).toHaveBeenCalledWith('Library/Artist/Album');
         expect(service.getFolderCoverPath('Library/Artist/Album/Disc 1')).toBe('/music/library/Artist/Album/Disc 1/cover.jpg');
+    });
+
+    it('deduplicates repeated subtree cover misses', async () => {
+        const getLibraryFolderCoverPath = vi.fn(async () => '');
+        const getLibraryFolderImageFiles = vi.fn(async (): Promise<LibraryIndexedFile[]> => []);
+
+        const service = createCoverArtService({
+            getCoverArtPriority: () => ['file'],
+            getIndexedFolderCoverPath: () => undefined,
+            getLibraryFolderCoverPath,
+            getLibraryFolderImageFiles,
+            readImageThumbnail: vi.fn(async () => ({
+                base64: 'ZmFrZS10aHVtYm5haWw=',
+                mimeType: 'image/png',
+            })),
+            readFileBase64: vi.fn(async () => 'ZmFrZS1mdWxsLWltYWdl'),
+            readTrackEmbeddedCover: async () => ({}),
+            registerObjectUrl: vi.fn(),
+        });
+
+        expect(await service.resolveFolderCoverPath('Library/Artist/Album')).toBeUndefined();
+        expect(await service.resolveFolderCoverPath('Library/Artist/Album')).toBeUndefined();
+
+        expect(getLibraryFolderCoverPath).toHaveBeenCalledTimes(1);
+        expect(getLibraryFolderImageFiles).toHaveBeenCalledTimes(1);
     });
 
     it('preserves folder cover paths when clearing resolved cover-art cache', async () => {

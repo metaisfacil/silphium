@@ -211,6 +211,9 @@ export type CoverArtService = ReturnType<typeof createCoverArtService>;
 
 export const createCoverArtService = (options: CoverArtServiceOptions) => {
     const coverPathByFolder = new Map<string, string>();
+    const missingCoverPathByFolder = new Set<string>();
+    const resolvedSubtreeCoverPathByFolder = new Map<string, string>();
+    const missingSubtreeCoverPathByFolder = new Set<string>();
     const coverUrlByFolder = new Map<string, string>();
     const coverMediaArtworkByFolder = new Map<string, MediaArtwork>();
     const folderCoverPathInFlightByFolder = new Map<string, Promise<string | undefined>>();
@@ -239,6 +242,11 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
         if (internalCoverArtFailureCount >= maxInternalCoverArtFailuresBeforeDisable) {
             internalCoverArtDisabled = true;
         }
+    };
+
+    const clearSubtreeCoverPathCache = (): void => {
+        resolvedSubtreeCoverPathByFolder.clear();
+        missingSubtreeCoverPathByFolder.clear();
     };
 
     const fetchBinaryImageObjectUrl = async (src: string): Promise<BinaryImageObjectUrlResult> => {
@@ -390,6 +398,8 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
 
         if (folderKey) {
             folderCoverRevisionByFolder.set(folderKey, (folderCoverRevisionByFolder.get(folderKey) || 0) + 1);
+            missingCoverPathByFolder.delete(folderKey);
+            clearSubtreeCoverPathCache();
             folderCoverPathInFlightByFolder.delete(folderKey);
             folderTreeCoverPathInFlightByFolder.delete(folderKey);
             folderCoverInFlightByFolder.delete(folderKey);
@@ -409,6 +419,9 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
         if (!isPreferredCoverImageName(candidateName)) {
             return;
         }
+
+        missingCoverPathByFolder.delete(folderKey);
+        clearSubtreeCoverPathCache();
 
         const currentCoverPath = coverPathByFolder.get(folderKey);
         if (!currentCoverPath) {
@@ -491,6 +504,10 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
             return cachedCoverPath;
         }
 
+        if (missingCoverPathByFolder.has(folderKey)) {
+            return undefined;
+        }
+
         return await resolveInFlight(folderKey, folderCoverPathInFlightByFolder, async () => {
             let coverPath = coverPathByFolder.get(folderKey);
             if (!coverPath) {
@@ -509,6 +526,12 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
                 }
             }
 
+            if (!coverPath) {
+                missingCoverPathByFolder.add(folderKey);
+                return undefined;
+            }
+
+            missingCoverPathByFolder.delete(folderKey);
             return coverPath || undefined;
         });
     };
@@ -524,12 +547,23 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
             return undefined;
         }
 
+        const cachedResolvedSubtreeCoverPath = resolvedSubtreeCoverPathByFolder.get(folderKey);
+        if (cachedResolvedSubtreeCoverPath) {
+            return cachedResolvedSubtreeCoverPath;
+        }
+
+        if (missingSubtreeCoverPathByFolder.has(folderKey)) {
+            return undefined;
+        }
+
         const cachedSubtreeCoverPath = selectBestSubtreeCoverPath(folderPath);
         if (cachedSubtreeCoverPath) {
+            resolvedSubtreeCoverPathByFolder.set(folderKey, cachedSubtreeCoverPath);
             return cachedSubtreeCoverPath;
         }
 
         if (!options.getLibraryFolderImageFiles) {
+            missingSubtreeCoverPathByFolder.add(folderKey);
             return undefined;
         }
 
@@ -539,7 +573,15 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
                 setPreferredFolderCoverPath(imageFile.folderPath || '', imageFile.path || '', imageFile.name || '');
             }
 
-            return selectBestSubtreeCoverPath(folderPath);
+            const resolvedSubtreeCoverPath = selectBestSubtreeCoverPath(folderPath);
+            if (resolvedSubtreeCoverPath) {
+                resolvedSubtreeCoverPathByFolder.set(folderKey, resolvedSubtreeCoverPath);
+                missingSubtreeCoverPathByFolder.delete(folderKey);
+                return resolvedSubtreeCoverPath;
+            }
+
+            missingSubtreeCoverPathByFolder.add(folderKey);
+            return undefined;
         });
     };
 
@@ -699,6 +741,8 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
     return {
         clearCache: (): void => {
             coverPathByFolder.clear();
+            missingCoverPathByFolder.clear();
+            clearSubtreeCoverPathCache();
             folderCoverRevisionByFolder.clear();
             embeddedCoverRevisionByTrackPath.clear();
             clearResolvedCache();
@@ -736,6 +780,8 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
 
             if (folderKey) {
                 coverPathByFolder.delete(folderKey);
+                missingCoverPathByFolder.delete(folderKey);
+                clearSubtreeCoverPathCache();
                 folderCoverPathInFlightByFolder.delete(folderKey);
                 folderTreeCoverPathInFlightByFolder.delete(folderKey);
                 folderCoverInFlightByFolder.delete(folderKey);
@@ -773,7 +819,7 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
                 return;
             }
 
-            coverPathByFolder.set(folderKeyForPath(folderPath), coverPath);
+            setPreferredFolderCoverPath(folderPath, coverPath);
         },
     };
 };
