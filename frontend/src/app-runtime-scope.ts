@@ -122,6 +122,7 @@ type ReturnedRuntimeMethods = {
     baseSequenceIndexes: () => { indexes: number[]; currentPosition: number };
     clearReplayGainReleaseDynamicRangeCache: () => void;
     collectReleaseImageFiles: (track: Track) => ImageLibraryFile[];
+    ensureReleaseImageFilesLoaded: (track: Track) => Promise<ImageLibraryFile[]>;
     collectReplayGainReleaseTrackPathsForIndex: (trackIndex: number, sequenceOverrideIndexes?: number[]) => string[];
     replayGainReleaseTrackPathsForIndex: (trackIndex: number) => string[];
     ensureTrackIndexForPath: (path: string) => number;

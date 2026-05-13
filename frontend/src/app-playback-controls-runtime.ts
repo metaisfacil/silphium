@@ -7,6 +7,7 @@ import {
     AudioSeek,
     AudioStop,
     GetAppVersion,
+    LogFrontendMessage,
     ScanConfiguredLibraryFolders,
 } from '../wailsjs/go/main/App';
 import { WindowHide, WindowIsMinimised } from '../wailsjs/runtime/runtime';
@@ -24,6 +25,12 @@ import {
     formatShortcutBindingFromKeyboardEvent,
     shortcutBindingUsesCode,
 } from './utils/shortcut-bindings';
+import {
+    summarizeAudioOutputDevicesForBridge,
+    summarizeAudioPlaybackStateForBridge,
+    summarizeLibraryScanResultForBridge,
+    traceBridgeCall,
+} from './utils/bridge-trace';
 import { formatPerfLogMessage } from './utils/perf-log';
 
 export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRuntimeContext) => {
@@ -33,6 +40,10 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
     let lastTransportPerfLogAtMs = 0;
     let pendingTrackHydrationHandle: number | undefined;
     let pendingTrackHydrationToken = 0;
+
+    const bridgeTraceSink = async (message: string): Promise<void> => {
+        await LogFrontendMessage(message);
+    };
 
     const clearPendingTrackHydration = (): void => {
         pendingTrackHydrationToken += 1;
@@ -120,7 +131,12 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
     };
 
     const refreshAvailableAudioOutputDevices = async (): Promise<AudioOutputDevice[]> => {
-        const outputDevices = await AudioListOutputDevices() as AudioOutputDevice[];
+        const outputDevices = await traceBridgeCall('transport', 'AudioListOutputDevices', async () => (
+            await AudioListOutputDevices() as AudioOutputDevice[]
+        ), {
+            sink: bridgeTraceSink,
+            summarizeResult: summarizeAudioOutputDevicesForBridge,
+        });
         context.availableAudioOutputDevices = Array.isArray(outputDevices) ? outputDevices : [];
         return context.availableAudioOutputDevices;
     };
@@ -177,9 +193,24 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
 
         try {
             const replayGainReleaseTrackPaths = context.collectReplayGainReleaseTrackPathsForIndex(index, replayGainSequenceOverrideIndexes);
-            const nextState = replayGainReleaseTrackPaths.length > 1
-                ? await runInteractiveBridgeCall(async () => await AudioLoadTrackWithReplayGainContext(track.path, replayGainReleaseTrackPaths) as AudioPlaybackState)
-                : await runInteractiveBridgeCall(async () => await AudioLoadTrack(track.path) as AudioPlaybackState);
+            const methodName = replayGainReleaseTrackPaths.length > 1
+                ? 'AudioLoadTrackWithReplayGainContext'
+                : 'AudioLoadTrack';
+            const nextState = await traceBridgeCall('transport', methodName, async () => (
+                replayGainReleaseTrackPaths.length > 1
+                    ? await runInteractiveBridgeCall(async () => await AudioLoadTrackWithReplayGainContext(track.path, replayGainReleaseTrackPaths) as AudioPlaybackState)
+                    : await runInteractiveBridgeCall(async () => await AudioLoadTrack(track.path) as AudioPlaybackState)
+            ), {
+                sink: bridgeTraceSink,
+                details: {
+                    index,
+                    manualTrackSelection,
+                    path: track.path,
+                    recovery: allowMissingTrackRecovery,
+                    replayGainReleasePaths: replayGainReleaseTrackPaths.length,
+                },
+                summarizeResult: summarizeAudioPlaybackStateForBridge,
+            });
             context.setActiveReplayGainReleaseTrackPaths(replayGainReleaseTrackPaths);
             context.logPlaybackDebug(`LoadTrack success ${formatPlaybackStateForLog(nextState)}`);
             context.applyPlaybackState(nextState);
@@ -196,7 +227,18 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
                 context.libraryController().setLibraryLoadingStatusLabel('');
                 try {
                     context.libraryController().setLibraryPathMessage('Track missing. Rescanning library…');
-                    const scanResult = await ScanConfiguredLibraryFolders() as LibraryScanResult;
+                    const scanResult = await traceBridgeCall('library', 'ScanConfiguredLibraryFolders', async () => (
+                        await ScanConfiguredLibraryFolders() as LibraryScanResult
+                    ), {
+                        sink: bridgeTraceSink,
+                        details: {
+                            failedName,
+                            failedRelativePath,
+                            failedTrackPath,
+                            reason: 'missing-track-recovery',
+                        },
+                        summarizeResult: summarizeLibraryScanResultForBridge,
+                    });
                     context.markLibraryScanResolved();
                     if (context.libraryClientFinalizeEstimateMs > 0) {
                         context.libraryController().setLibraryLoadingEtaSeconds(Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000)));
@@ -261,7 +303,16 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         try {
             logTransportMarker('AudioPlay dispatch');
             const bridgeStartedAtMs = performance.now();
-            const nextState = await runInteractiveBridgeCall(async () => await AudioPlay() as AudioPlaybackState);
+            const nextState = await traceBridgeCall('transport', 'AudioPlay', async () => (
+                await runInteractiveBridgeCall(async () => await AudioPlay() as AudioPlaybackState)
+            ), {
+                sink: bridgeTraceSink,
+                details: {
+                    currentTrackIndex: context.currentTrackIndex,
+                    path: context.tracks[context.currentTrackIndex]?.path || '',
+                },
+                summarizeResult: summarizeAudioPlaybackStateForBridge,
+            });
             logTransportStep('AudioPlay bridge', performance.now() - bridgeStartedAtMs);
             context.logPlaybackDebug(`Play success ${formatPlaybackStateForLog(nextState)}`);
             const applyStartedAtMs = performance.now();
@@ -290,7 +341,16 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         try {
             logTransportMarker('AudioPause dispatch');
             const bridgeStartedAtMs = performance.now();
-            const nextState = await runInteractiveBridgeCall(async () => await AudioPause() as AudioPlaybackState);
+            const nextState = await traceBridgeCall('transport', 'AudioPause', async () => (
+                await runInteractiveBridgeCall(async () => await AudioPause() as AudioPlaybackState)
+            ), {
+                sink: bridgeTraceSink,
+                details: {
+                    currentTrackIndex: context.currentTrackIndex,
+                    path: context.tracks[context.currentTrackIndex]?.path || '',
+                },
+                summarizeResult: summarizeAudioPlaybackStateForBridge,
+            });
             logTransportStep('AudioPause bridge', performance.now() - bridgeStartedAtMs);
             context.logPlaybackDebug(`Pause success ${formatPlaybackStateForLog(nextState)}`);
             const applyStartedAtMs = performance.now();
@@ -372,7 +432,16 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         context.gaplessQueueRequestVersion += 1;
         context.queuedGaplessTrackPath = '';
         try {
-            const nextState = await runInteractiveBridgeCall(async () => await AudioStop() as AudioPlaybackState);
+            const nextState = await traceBridgeCall('transport', 'AudioStop', async () => (
+                await runInteractiveBridgeCall(async () => await AudioStop() as AudioPlaybackState)
+            ), {
+                sink: bridgeTraceSink,
+                details: {
+                    currentTrackIndex: context.currentTrackIndex,
+                    path: context.tracks[context.currentTrackIndex]?.path || '',
+                },
+                summarizeResult: summarizeAudioPlaybackStateForBridge,
+            });
             context.applyPlaybackState(nextState);
         } catch (error) {
             context.handleAudioError(error);
@@ -398,7 +467,13 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
             }
 
             try {
-                const nextState = await runInteractiveBridgeCall(async () => await AudioSeek(targetSeconds) as AudioPlaybackState);
+                const nextState = await traceBridgeCall('transport', 'AudioSeek', async () => (
+                    await runInteractiveBridgeCall(async () => await AudioSeek(targetSeconds) as AudioPlaybackState)
+                ), {
+                    sink: bridgeTraceSink,
+                    details: { targetSeconds: Number(targetSeconds.toFixed(3)) },
+                    summarizeResult: summarizeAudioPlaybackStateForBridge,
+                });
                 context.applyPlaybackState(nextState);
             } catch (error) {
                 context.handleAudioError(error);

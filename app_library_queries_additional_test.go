@@ -123,6 +123,9 @@ func TestLibraryIndexAndQueryHelpers(t *testing.T) {
 	if got := app.getFolderTrackCountFromMapsLocked(""); got != 2 {
 		t.Fatalf("getFolderTrackCountFromMapsLocked(root) = %d, want 2", got)
 	}
+	if got, want := app.getFolderImageFilesFromMapsLocked("Library One/Artist One"), []string{fixture.coverOne, fixture.folderCoverOne}; len(got) != len(want) || got[0].Path != want[0] || got[1].Path != want[1] {
+		t.Fatalf("getFolderImageFilesFromMapsLocked() = %#v, want paths %#v", got, want)
+	}
 	if got := app.getFolderTrackPathsFromDerivedIndexLocked("missing"); len(got) != 0 {
 		t.Fatalf("getFolderTrackPathsFromDerivedIndexLocked(missing) = %#v, want empty", got)
 	}
@@ -221,6 +224,15 @@ func TestLibraryIndexAndQueryHelpers(t *testing.T) {
 	}
 	if got := app.GetLibraryFolderTrackCount("../escape"); got != 0 {
 		t.Fatalf("GetLibraryFolderTrackCount(invalid) = %d, want 0", got)
+	}
+	if got, want := app.GetLibraryFolderImageFiles("Library One/Artist One"), []string{fixture.coverOne, fixture.folderCoverOne}; len(got) != len(want) || got[0].Path != want[0] || got[1].Path != want[1] {
+		t.Fatalf("GetLibraryFolderImageFiles() = %#v, want paths %#v", got, want)
+	}
+	if got, want := app.GetLibraryFolderImageFiles(""), []string{fixture.coverOne, fixture.folderCoverOne, fixture.imageTwo}; len(got) != len(want) || got[0].Path != want[0] || got[1].Path != want[1] || got[2].Path != want[2] {
+		t.Fatalf("GetLibraryFolderImageFiles(root) = %#v, want paths %#v", got, want)
+	}
+	if got := app.GetLibraryFolderImageFiles("../escape"); len(got) != 0 {
+		t.Fatalf("GetLibraryFolderImageFiles(invalid) = %#v, want empty", got)
 	}
 }
 
@@ -520,6 +532,9 @@ func TestLibraryQueryAdditionalFallbackAndPathBranches(t *testing.T) {
 	}
 	if got := app.GetLibraryFolderTrackCount("Library One/Artist One"); got != 1 {
 		t.Fatalf("GetLibraryFolderTrackCount(fallback map) = %d, want 1", got)
+	}
+	if got, want := app.GetLibraryFolderImageFiles("Library One/Artist One"), []string{fixture.coverOne, fixture.folderCoverOne}; len(got) != len(want) || got[0].Path != want[0] || got[1].Path != want[1] {
+		t.Fatalf("GetLibraryFolderImageFiles(fallback map) = %#v, want paths %#v", got, want)
 	}
 }
 

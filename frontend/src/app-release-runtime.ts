@@ -1,6 +1,17 @@
 import { AudioGetReplayGainReleaseDynamicRange } from '../wailsjs/go/main/App';
-import type { AppSettings, ImageLibraryFile, Track } from './types/app-types';
+import { mapIndexedFileToImageFile } from './services/library-data-service';
+import type { AppSettings, ImageLibraryFile, LibraryIndexedFile, Track } from './types/app-types';
 import { libraryFolderPathKey, releaseFolderPathForTrackAtDepth } from './utils/main-helpers';
+
+type WindowWithOptionalFolderImageFilesBridge = Window & {
+    go?: {
+        main?: {
+            App?: {
+                GetLibraryFolderImageFiles?: (folderPath: string) => Promise<LibraryIndexedFile[]> | LibraryIndexedFile[];
+            };
+        };
+    };
+};
 
 type AppReleaseRuntimeContext = {
     tracks: Track[];
@@ -291,6 +302,54 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
             }));
     };
 
+    const ensureReleaseImageFilesLoaded = async (track: Track): Promise<ImageLibraryFile[]> => {
+        const existingGallery = collectReleaseImageFiles(track);
+        if (existingGallery.length > 0) {
+            return existingGallery;
+        }
+
+        const releaseRootPath = releaseRootPathForTrack(track);
+        if (!releaseRootPath) {
+            return existingGallery;
+        }
+
+        const runtimeBridge = (window as WindowWithOptionalFolderImageFilesBridge).go?.main?.App?.GetLibraryFolderImageFiles;
+        if (typeof runtimeBridge !== 'function') {
+            return existingGallery;
+        }
+
+        try {
+            const indexedFiles = await runtimeBridge(releaseRootPath);
+            if (!Array.isArray(indexedFiles) || indexedFiles.length === 0) {
+                return collectReleaseImageFiles(track);
+            }
+
+            const existingPaths = new Set(context.imageFiles.map((candidate) => context.trackPathKey(candidate.path)));
+            const nextImageFiles = [...context.imageFiles];
+            let appended = false;
+
+            for (const indexedFile of indexedFiles) {
+                const imageFile = mapIndexedFileToImageFile(indexedFile);
+                const imagePathKey = context.trackPathKey(imageFile.path);
+                if (!imagePathKey || existingPaths.has(imagePathKey)) {
+                    continue;
+                }
+
+                existingPaths.add(imagePathKey);
+                nextImageFiles.push(imageFile);
+                appended = true;
+            }
+
+            if (appended) {
+                context.imageFiles = nextImageFiles;
+            }
+        } catch (error) {
+            console.debug(error);
+        }
+
+        return collectReleaseImageFiles(track);
+    };
+
     const indexOfImageByPath = (gallery: ImageLibraryFile[], candidatePath?: string): number => {
         if (!candidatePath) {
             return -1;
@@ -306,6 +365,7 @@ export const createAppReleaseRuntime = (context: AppReleaseRuntimeContext) => {
         collectReleaseImageFiles,
         collectReplayGainReleaseTrackPathsForIndex,
         currentReplayGainReleaseTrackPaths,
+        ensureReleaseImageFilesLoaded,
         indexOfImageByPath,
         refreshReplayGainReleaseDynamicRangeIndicator,
         releaseRootPathForTrack,

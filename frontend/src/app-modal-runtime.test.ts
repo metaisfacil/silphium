@@ -70,6 +70,7 @@ const createContext = () => ({
         openGallery: vi.fn(async () => undefined),
     },
     collectReleaseImageFiles: vi.fn(() => [{ path: '/music/Artist/Album/front.jpg' }]),
+    ensureReleaseImageFilesLoaded: vi.fn(async () => [{ path: '/music/Artist/Album/front.jpg' }]),
     indexOfImageByPath: vi.fn(() => 0),
     replayGainReleaseTrackPathsForIndex: vi.fn(() => [
         '/music/Artist/Album/track.flac',
@@ -171,12 +172,12 @@ describe('createAppModalRuntime', () => {
         expect(context.textFileCode.textContent).toBe('Unable to read this file.');
     });
 
-    it('opens the release gallery when cover art comes from a release image file', () => {
+    it('opens the release gallery when cover art comes from a release image file', async () => {
         const context = createContext();
         context.coverArt.classList.add('is-visible');
         const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
 
-        runtime.openCoverImageModal();
+        await runtime.openCoverImageModal();
 
         expect(context.imageModalController.openGallery).toHaveBeenCalledWith([
             { path: '/music/Artist/Album/front.jpg' },
@@ -184,13 +185,13 @@ describe('createAppModalRuntime', () => {
         expect(context.imageModalController.openPreview).not.toHaveBeenCalled();
     });
 
-    it('opens a direct preview when the resolved cover source is embedded artwork', () => {
+    it('opens a direct preview when the resolved cover source is embedded artwork', async () => {
         const context = createContext();
         context.coverArt.classList.add('is-visible');
         context.coverArtService.getResolvedSourceForTrack.mockReturnValue('embedded');
         const runtime = createAppModalRuntime(context as unknown as AppModalRuntimeContext);
 
-        runtime.openCoverImageModal();
+        await runtime.openCoverImageModal();
 
         expect(context.imageModalController.openPreview).toHaveBeenCalledWith(
             context.coverArt.src,

@@ -89,6 +89,7 @@ type appSettingsStorageState struct {
 
 type appRuntimeState struct {
 	ctx           context.Context
+	bridgeTraceID atomic.Uint64
 	quitRequested atomic.Bool
 }
 
@@ -275,6 +276,151 @@ func (a *App) logRescanEvent(message string, args ...interface{}) {
 	if runtimeState.ctx != nil {
 		runtimeEventsEmit(runtimeState.ctx, libraryRescanLogEvent, logLine)
 	}
+}
+
+const maxBridgeTraceLogStringLength = 120
+const maxBridgeTraceLogSliceSample = 4
+
+type bridgeTraceHandle struct {
+	app      *App
+	sequence uint64
+	scope    string
+	name     string
+	started  time.Time
+}
+
+func truncateBridgeTraceLogString(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) <= maxBridgeTraceLogStringLength {
+		return trimmed
+	}
+
+	return trimmed[:maxBridgeTraceLogStringLength-3] + "..."
+}
+
+func bridgeTraceLogString(value string) string {
+	return fmt.Sprintf("%q", truncateBridgeTraceLogString(value))
+}
+
+func bridgeTraceLogStringSlice(values []string) string {
+	if len(values) == 0 {
+		return "0[]"
+	}
+
+	sample := make([]string, 0, min(len(values), maxBridgeTraceLogSliceSample))
+	for index, value := range values {
+		if index >= maxBridgeTraceLogSliceSample {
+			break
+		}
+		sample = append(sample, bridgeTraceLogString(value))
+	}
+
+	suffix := ""
+	if len(values) > maxBridgeTraceLogSliceSample {
+		suffix = ", ..."
+	}
+
+	return fmt.Sprintf("%d[%s%s]", len(values), strings.Join(sample, ", "), suffix)
+}
+
+func audioPlaybackStateForLog(state AudioPlaybackState) string {
+	return fmt.Sprintf(
+		"loaded=%t playing=%t currentTime=%.3f duration=%.3f sourcePath=%s volume=%.3f endEventId=%d",
+		state.Loaded,
+		state.Playing,
+		state.CurrentTime,
+		state.Duration,
+		bridgeTraceLogString(state.SourcePath),
+		state.Volume,
+		state.EndEventID,
+	)
+}
+
+func libraryScanResultForLog(scan LibraryScanResult) string {
+	return fmt.Sprintf(
+		"rootPath=%s rootName=%s totalEntries=%d trackCount=%d textFileCount=%d imageFileCount=%d deferredFiles=%t truncated=%t entryLimit=%d",
+		bridgeTraceLogString(scan.RootPath),
+		bridgeTraceLogString(scan.RootName),
+		scan.TotalEntries,
+		scan.TrackCount,
+		scan.TextFileCount,
+		scan.ImageFileCount,
+		scan.DeferredFiles,
+		scan.Truncated,
+		scan.EntryLimit,
+	)
+}
+
+func libraryIndexedFilePageForLog(page LibraryIndexedFilePage) string {
+	return fmt.Sprintf(
+		"kind=%s offset=%d limit=%d totalEntries=%d entries=%d",
+		bridgeTraceLogString(page.Kind),
+		page.Offset,
+		page.Limit,
+		page.TotalEntries,
+		len(page.Entries),
+	)
+}
+
+func libraryFolderPageForLog(page LibraryFolderPage) string {
+	return fmt.Sprintf(
+		"folderPath=%s offset=%d limit=%d totalEntries=%d entries=%d",
+		bridgeTraceLogString(page.FolderPath),
+		page.Offset,
+		page.Limit,
+		page.TotalEntries,
+		len(page.Entries),
+	)
+}
+
+func librarySearchPageForLog(page LibrarySearchPage) string {
+	return fmt.Sprintf(
+		"query=%s offset=%d limit=%d totalEntries=%d entries=%d",
+		bridgeTraceLogString(page.Query),
+		page.Offset,
+		page.Limit,
+		page.TotalEntries,
+		len(page.Entries),
+	)
+}
+
+func bridgeTraceErrorForLog(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	return fmt.Sprintf("error=%q", truncateBridgeTraceLogString(err.Error()))
+}
+
+func (a *App) beginBridgeTrace(scope string, name string, detail string) bridgeTraceHandle {
+	sequence := a.runtimeState().bridgeTraceID.Add(1)
+	prefix := fmt.Sprintf("[BRIDGE] BE #%d %s %s", sequence, scope, name)
+	if strings.TrimSpace(detail) == "" {
+		a.logRescanEvent("%s START", prefix)
+	} else {
+		a.logRescanEvent("%s START %s", prefix, strings.TrimSpace(detail))
+	}
+
+	return bridgeTraceHandle{
+		app:      a,
+		sequence: sequence,
+		scope:    scope,
+		name:     name,
+		started:  time.Now(),
+	}
+}
+
+func (trace bridgeTraceHandle) finish(detail string, err error) {
+	prefix := fmt.Sprintf("[BRIDGE] BE #%d %s %s", trace.sequence, trace.scope, trace.name)
+	parts := make([]string, 0, 3)
+	if strings.TrimSpace(detail) != "" {
+		parts = append(parts, strings.TrimSpace(detail))
+	}
+	if err != nil {
+		parts = append(parts, bridgeTraceErrorForLog(err))
+	}
+	parts = append(parts, fmt.Sprintf("elapsed=%.2fms", time.Since(trace.started).Seconds()*1000))
+	trace.app.logRescanEvent("%s END %s", prefix, strings.Join(parts, " "))
 }
 
 // startup is called when the app starts. The context is saved

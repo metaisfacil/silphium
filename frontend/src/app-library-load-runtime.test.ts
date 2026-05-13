@@ -541,4 +541,32 @@ describe('app-library-load-runtime', () => {
         expect(context.scheduleLibraryIncrementalFolderRefresh).not.toHaveBeenCalled();
         expect(context.scheduleNowPlayingCoverRefresh).toHaveBeenCalledTimes(1);
     });
+
+    it('does not hydrate image-file pages during the initial library load', async () => {
+        const quickScanResult = createScanResult({
+            trackCount: 1,
+            imageFileCount: 3,
+            totalEntries: 4,
+            coverPathByFolder: {
+                'Library/Artist/Album': 'C:/Library/Artist/Album/cover.jpg',
+            },
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+        const runtime = createAppLibraryLoadRuntime(context as never);
+
+        await runtime.scanConfiguredLibraryFolders();
+
+        expect(context.loadIndexedFilePage).toHaveBeenCalledWith('track', 0, 1000);
+        expect(context.loadIndexedFilePage).not.toHaveBeenCalledWith('image-file', 0, 1000);
+        expect(context.imageFiles).toEqual([]);
+        expect(context.setFolderCoverPath).toHaveBeenCalledWith('Library/Artist/Album', 'C:/Library/Artist/Album/cover.jpg');
+    });
 });

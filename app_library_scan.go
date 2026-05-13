@@ -678,16 +678,22 @@ func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWat
 // ScanLibraryFolder indexes audio, text, and image files under the selected root folder.
 func (a *App) ScanLibraryFolder(path string) LibraryScanResult {
 	return profiledValue(a, "ScanLibraryFolder", func() LibraryScanResult {
-		return a.scanLibraryFolder(path, true)
+		trace := a.beginBridgeTrace("library", "ScanLibraryFolder", "path="+bridgeTraceLogString(path))
+		result := a.scanLibraryFolder(path, true)
+		trace.finish(libraryScanResultForLog(result), nil)
+		return result
 	})
 }
 
 // ScanConfiguredLibraryFolders indexes all configured library folders from settings as one aggregated library.
 func (a *App) ScanConfiguredLibraryFolders() LibraryScanResult {
 	return profiledValue(a, "ScanConfiguredLibraryFolders", func() LibraryScanResult {
+		trace := a.beginBridgeTrace("library", "ScanConfiguredLibraryFolders", "")
 		a.ensureSettingsLoaded()
 		localFolders, _ := partitionConfiguredLibraryFolders(a.settings.LibraryFolders)
-		return a.scanLibraryFoldersWithDeferredOption(localFolders, true, true)
+		result := a.scanLibraryFoldersWithDeferredOption(localFolders, true, true)
+		trace.finish(libraryScanResultForLog(result), nil)
+		return result
 	})
 }
 

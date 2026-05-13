@@ -68,6 +68,15 @@ import {
     normalizeMusicBrainzTagWorkerProgress,
     normalizeAppSettings,
 } from './utils/settings-normalization';
+import {
+    summarizeAudioOutputDevicesForBridge,
+    summarizeAudioPlaybackStateForBridge,
+    summarizeLibraryFolderPageForBridge,
+    summarizeLibraryIndexedFilePageForBridge,
+    summarizeLibraryScanResultForBridge,
+    summarizeLibrarySearchPageForBridge,
+    traceBridgeCall,
+} from './utils/bridge-trace';
 import { bindEventHandlersFromScope, setupControllersFromScope } from './app-bootstrap-setup';
 import { createCoverFlipRuntime } from './app-cover-flip-runtime';
 import { getAppShellElements, renderAppShell } from './app-shell';
@@ -316,21 +325,54 @@ const runtimePorts = {
     finishLibraryLoadTracking,
     scheduleLibraryIncrementalFolderRefresh,
     saveSettingsBackend: async (settings: unknown): Promise<AppSettings> => await SaveSettings(settings as Parameters<typeof SaveSettings>[0]) as unknown as AppSettings,
-    scanConfiguredLibraryFoldersBackend: async (): Promise<LibraryScanResult> => await ScanConfiguredLibraryFolders() as LibraryScanResult,
-    audioStop: async (): Promise<AudioPlaybackState> => await AudioStop() as AudioPlaybackState,
-    listAudioOutputDevices: async (): Promise<AudioOutputDevice[]> => await AudioListOutputDevices() as AudioOutputDevice[],
-    audioReinitializeBackend: async (): Promise<AudioPlaybackState> => await AudioReinitializeBackend() as AudioPlaybackState,
+    scanConfiguredLibraryFoldersBackend: async (): Promise<LibraryScanResult> => await traceBridgeCall('library', 'ScanConfiguredLibraryFolders', async () => (
+        await ScanConfiguredLibraryFolders() as LibraryScanResult
+    ), {
+        sink: LogFrontendMessage,
+        summarizeResult: summarizeLibraryScanResultForBridge,
+    }),
+    audioStop: async (): Promise<AudioPlaybackState> => await traceBridgeCall('transport', 'AudioStop', async () => await AudioStop() as AudioPlaybackState, {
+        sink: LogFrontendMessage,
+        summarizeResult: summarizeAudioPlaybackStateForBridge,
+    }),
+    listAudioOutputDevices: async (): Promise<AudioOutputDevice[]> => await traceBridgeCall('transport', 'AudioListOutputDevices', async () => (
+        await AudioListOutputDevices() as AudioOutputDevice[]
+    ), {
+        sink: LogFrontendMessage,
+        summarizeResult: summarizeAudioOutputDevicesForBridge,
+    }),
+    audioReinitializeBackend: async (): Promise<AudioPlaybackState> => await traceBridgeCall('transport', 'AudioReinitializeBackend', async () => (
+        await AudioReinitializeBackend() as AudioPlaybackState
+    ), {
+        sink: LogFrontendMessage,
+        summarizeResult: summarizeAudioPlaybackStateForBridge,
+    }),
     getSettings: async (): Promise<AppSettings> => await GetSettings() as unknown as AppSettings,
     getMusicBrainzTagWorkerProgress: async (): Promise<MusicBrainzTagWorkerProgress> => await GetMusicBrainzTagWorkerProgress() as MusicBrainzTagWorkerProgress,
     getAppVersion: async (): Promise<string> => await GetAppVersion(),
-    loadIndexedFilePage: async (kind: string, offset: number, limit: number): Promise<LibraryIndexedFilePage> => await GetLibraryIndexedFilePage(kind, offset, limit) as LibraryIndexedFilePage,
+    loadIndexedFilePage: async (kind: string, offset: number, limit: number): Promise<LibraryIndexedFilePage> => await traceBridgeCall('library', 'GetLibraryIndexedFilePage', async () => (
+        await GetLibraryIndexedFilePage(kind, offset, limit) as LibraryIndexedFilePage
+    ), {
+        sink: LogFrontendMessage,
+        details: { kind, offset, limit },
+        summarizeResult: summarizeLibraryIndexedFilePageForBridge,
+    }),
     savePlaylistData: (playlistPath: string, trackPaths: string[]) => SavePlaylistFile(playlistPath, trackPaths),
     appendTracksToPlaylistData: (playlistPath: string, trackPaths: string[]) => AppendTracksToPlaylistFile(playlistPath, trackPaths),
-    audioQueueNextTrack: async (currentPath: string, nextPath: string) => await AudioQueueNextTrack(currentPath, nextPath),
+    audioQueueNextTrack: async (currentPath: string, nextPath: string) => await traceBridgeCall('transport', 'AudioQueueNextTrack', async () => (
+        await AudioQueueNextTrack(currentPath, nextPath)
+    ), {
+        sink: LogFrontendMessage,
+        details: { currentPath, nextPath },
+        summarizeResult: summarizeAudioPlaybackStateForBridge,
+    }),
     getLastFmRequestToken: async (apiKey: string, apiSecret: string): Promise<string> => await GetLastFmRequestToken(apiKey, apiSecret) as string,
     getLastFmSessionKey: async (apiKey: string, apiSecret: string, requestToken: string): Promise<string> => await GetLastFmSessionKey(apiKey, apiSecret, requestToken) as string,
     browserOpenUrl: BrowserOpenURL,
-    selectLibraryFolder: SelectLibraryFolder,
+    selectLibraryFolder: async (): Promise<string> => await traceBridgeCall('library', 'SelectLibraryFolder', async () => await SelectLibraryFolder(), {
+        sink: LogFrontendMessage,
+        summarizeResult: (selectedPath) => ({ selectedPath }),
+    }),
     selectPlaylistFile: SelectPlaylistFile,
     selectPlaylistSaveFile: SelectPlaylistSaveFile,
     selectShareImageSaveFile: SelectShareImageSaveFile,
@@ -338,14 +380,44 @@ const runtimePorts = {
     copyShareImageToClipboard: CopyShareImageToClipboard,
     readFileBase64: ReadFileBase64,
     readImageThumbnail: ReadImageThumbnail,
-    loadFolderPage: async (folderPath: string, sortMode: import('./types/app-types').LibraryBrowserSortMode, offset: number, limit: number): Promise<LibraryFolderPage> => await GetLibraryFolderPageSorted(folderPath, sortMode, offset, limit) as LibraryFolderPage,
-    resolveLibraryFolderForAbsolutePath: async (path: string): Promise<string> => await ResolveLibraryFolderForPath(path),
-    isFolderImmediateDescendantsEnumerated: async (folderPath: string): Promise<boolean> => await IsLibraryFolderImmediateDescendantsEnumerated(folderPath),
-    searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => await SearchLibrary(query, offset, limit) as LibrarySearchPage,
+    loadFolderPage: async (folderPath: string, sortMode: import('./types/app-types').LibraryBrowserSortMode, offset: number, limit: number): Promise<LibraryFolderPage> => await traceBridgeCall('library', 'GetLibraryFolderPageSorted', async () => (
+        await GetLibraryFolderPageSorted(folderPath, sortMode, offset, limit) as LibraryFolderPage
+    ), {
+        sink: LogFrontendMessage,
+        details: { folderPath, sortMode, offset, limit },
+        summarizeResult: summarizeLibraryFolderPageForBridge,
+    }),
+    resolveLibraryFolderForAbsolutePath: async (path: string): Promise<string> => await traceBridgeCall('library', 'ResolveLibraryFolderForPath', async () => await ResolveLibraryFolderForPath(path), {
+        sink: LogFrontendMessage,
+        details: { path },
+        summarizeResult: (folderPath) => ({ folderPath }),
+    }),
+    isFolderImmediateDescendantsEnumerated: async (folderPath: string): Promise<boolean> => await traceBridgeCall('library', 'IsLibraryFolderImmediateDescendantsEnumerated', async () => (
+        await IsLibraryFolderImmediateDescendantsEnumerated(folderPath)
+    ), {
+        sink: LogFrontendMessage,
+        details: { folderPath },
+        summarizeResult: (enumerated) => ({ enumerated }),
+    }),
+    searchLibrary: async (query: string, offset: number, limit: number): Promise<LibrarySearchPage> => await traceBridgeCall('library', 'SearchLibrary', async () => (
+        await SearchLibrary(query, offset, limit) as LibrarySearchPage
+    ), {
+        sink: LogFrontendMessage,
+        details: { query, offset, limit },
+        summarizeResult: summarizeLibrarySearchPageForBridge,
+    }),
     fetchVisualizationFrame: async (frameCount: number) => await AudioGetVisualizationFrame(frameCount),
     logFrontendMessage: LogFrontendMessage,
-    audioSeek: async (seconds: number) => await AudioSeek(seconds) as AudioPlaybackState,
-    audioSetVolume: async (volumeValue: number) => await AudioSetVolume(volumeValue) as AudioPlaybackState,
+    audioSeek: async (seconds: number) => await traceBridgeCall('transport', 'AudioSeek', async () => await AudioSeek(seconds) as AudioPlaybackState, {
+        sink: LogFrontendMessage,
+        details: { seconds: Number(seconds.toFixed(3)) },
+        summarizeResult: summarizeAudioPlaybackStateForBridge,
+    }),
+    audioSetVolume: async (volumeValue: number) => await traceBridgeCall('transport', 'AudioSetVolume', async () => await AudioSetVolume(volumeValue) as AudioPlaybackState, {
+        sink: LogFrontendMessage,
+        details: { volumeValue: Number(volumeValue.toFixed(3)) },
+        summarizeResult: summarizeAudioPlaybackStateForBridge,
+    }),
     formatTime,
 };
 

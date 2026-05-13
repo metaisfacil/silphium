@@ -215,6 +215,7 @@ type AppModalRuntimeScope = RuntimeScope<
     | 'coverArtService'
     | 'imageModalControllerRef'
     | 'collectReleaseImageFiles'
+    | 'ensureReleaseImageFilesLoaded'
     | 'indexOfImageByPath'
     | 'replayGainReleaseTrackPathsForIndex'
     | 'aboutModal'
@@ -835,6 +836,9 @@ const createModalRuntimeContext = (scope: AppModalRuntimeScope) => ({
         return scope.imageModalControllerRef;
     },
     collectReleaseImageFiles: scope.collectReleaseImageFiles,
+    ensureReleaseImageFilesLoaded: async (track: Track) => {
+        return await scope.ensureReleaseImageFilesLoaded(track);
+    },
     indexOfImageByPath: scope.indexOfImageByPath,
     replayGainReleaseTrackPathsForIndex: scope.replayGainReleaseTrackPathsForIndex,
     aboutModal: scope.aboutModal,

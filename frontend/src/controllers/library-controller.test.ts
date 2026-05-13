@@ -82,6 +82,8 @@ const mountLibraryController = (overrides?: {
     imageFiles?: ImageLibraryFile[];
     readImageThumbnail?: LibraryControllerOptions['readImageThumbnail'];
     getFolderCoverPath?: (folderPath: string) => string;
+    resolveFolderCoverPath?: (folderPath: string) => Promise<string | undefined>;
+    getKnownFolderCoverPaths?: () => Array<[string, string]>;
     getReleaseDepthForTrack?: (track: Track) => number;
 }) => {
     document.body.innerHTML = `
@@ -212,6 +214,8 @@ const mountLibraryController = (overrides?: {
         searchLibrary,
         getReleaseDepthForTrack: overrides?.getReleaseDepthForTrack || (() => 2),
         getFolderCoverPath: overrides?.getFolderCoverPath || ((folderPath: string) => folderPath === 'Library/Artist One/Album One' ? '/music/library/artist-one/album-one/cover.jpg' : ''),
+        resolveFolderCoverPath: overrides?.resolveFolderCoverPath,
+        getKnownFolderCoverPaths: overrides?.getKnownFolderCoverPaths,
         readImageThumbnail: async (path: string, maxEdge: number) => await readImageThumbnailMock(path, maxEdge),
         getHighlightMusicBrainzTaggedAlbumFolders: () => false,
         resolveTrackIndex: (path: string) => tracks.findIndex((track) => track.path === path),
@@ -954,7 +958,7 @@ describe('createLibraryController', () => {
         expect(albumButton?.title).toBe('Library/Artist One/Album One');
     });
 
-    it('recursively finds a cover image inside a grouped multi-disc album subtree', async () => {
+    it('recursively finds a cover image inside a grouped multi-disc album subtree from known folder cover paths', async () => {
         const tracks = [
             createTrack({
                 path: '/music/library/artist-one/album-one/disc-1/01 Intro.flac',
@@ -971,24 +975,19 @@ describe('createLibraryController', () => {
                 displayAlbum: 'Disc 2',
             }),
         ];
-        const imageFiles: ImageLibraryFile[] = [{
-            name: 'cover.jpg',
-            path: '/music/library/artist-one/album-one/disc-1/cover.jpg',
-            relativePath: 'Library/Artist One/Album One/Disc 1/cover.jpg',
-            folderPath: 'Library/Artist One/Album One/Disc 1',
-            rootPath: '/music/library',
-            rootName: 'Library',
-        }];
         const readImageThumbnail = vi.fn(async (_path: string, _maxEdge: number) => ({
             base64: 'thumb',
             mimeType: 'image/jpeg',
         }));
         const { controller, libraryBrowser } = mountLibraryController({
             tracks,
-            imageFiles,
             readImageThumbnail,
             getReleaseDepthForTrack: () => 2,
             getFolderCoverPath: () => '',
+            getKnownFolderCoverPaths: () => [[
+                'library/artist one/album one/disc 1',
+                '/music/library/artist-one/album-one/disc-1/cover.jpg',
+            ]],
         });
 
         controller.setLibraryRootName('Library');
@@ -1004,6 +1003,39 @@ describe('createLibraryController', () => {
         });
 
         expect(libraryBrowser.querySelector('[data-folder-path="Library/Artist One/Album One"]')).not.toBeNull();
+    });
+
+    it('hydrates album covers from the async folder cover resolver when the startup map misses', async () => {
+        const readImageThumbnail = vi.fn(async (_path: string, _maxEdge: number) => ({
+            base64: 'thumb',
+            mimeType: 'image/jpeg',
+        }));
+        const resolveFolderCoverPath = vi.fn(async (folderPath: string) => (
+            folderPath === 'Library/Artist One/Album One'
+                ? '/music/library/artist-one/album-one/disc-1/cover.jpg'
+                : undefined
+        ));
+        const { controller, libraryBrowser } = mountLibraryController({
+            readImageThumbnail,
+            getFolderCoverPath: () => '',
+            resolveFolderCoverPath,
+        });
+
+        controller.setLibraryRootName('Library');
+        controller.setSidebarAutoFolderPath('Library/Artist One');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        controller.setSidebarExpanded(true);
+        await flushPromises();
+
+        await waitForCondition(() => {
+            expect(resolveFolderCoverPath).toHaveBeenCalledWith('Library/Artist One/Album One');
+            expect(readImageThumbnail).toHaveBeenCalledWith('/music/library/artist-one/album-one/disc-1/cover.jpg', 420);
+        });
+
+        const albumImage = libraryBrowser.querySelector('[data-folder-path="Library/Artist One/Album One"] .library-album-cover-image') as HTMLImageElement | null;
+        expect(albumImage?.getAttribute('src')).toBe('data:image/jpeg;base64,thumb');
     });
 
     it('reloads the current folder when the browser sort mode changes', async () => {

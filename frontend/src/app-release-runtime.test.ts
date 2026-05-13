@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { ImageLibraryFile, Track } from './types/app-types';
+import type { ImageLibraryFile, LibraryIndexedFile, Track } from './types/app-types';
 import { createAppReleaseRuntime } from './app-release-runtime';
 
 const { audioGetReplayGainReleaseDynamicRangeMock } = vi.hoisted(() => ({
@@ -231,5 +231,66 @@ describe('createAppReleaseRuntime', () => {
             '/music/library/artist/album/disc-1/booklet.jpg',
         ]);
         expect(runtime.indexOfImageByPath(runtime.collectReleaseImageFiles(track), '/music/library/artist/album/disc-1/booklet.jpg')).toBe(1);
+    });
+
+    it('lazily loads release images from the backend bridge when startup skipped image hydration', async () => {
+        const track = createTrack();
+        (window as typeof window & {
+            go?: {
+                main?: {
+                    App?: {
+                        GetLibraryFolderImageFiles?: (folderPath: string) => Promise<LibraryIndexedFile[]>;
+                    };
+                };
+            };
+        }).go = {
+            main: {
+                App: {
+                    GetLibraryFolderImageFiles: vi.fn(async () => [
+                        {
+                            name: 'cover.jpg',
+                            path: '/music/library/artist/album/cover.jpg',
+                            relativePath: 'Library/Artist/Album/cover.jpg',
+                            folderPath: 'Library/Artist/Album',
+                            rootPath: '/music/library',
+                            rootName: 'Library',
+                        },
+                        {
+                            name: 'booklet.jpg',
+                            path: '/music/library/artist/album/disc-1/booklet.jpg',
+                            relativePath: 'Library/Artist/Album/Disc 1/booklet.jpg',
+                            folderPath: 'Library/Artist/Album/Disc 1',
+                            rootPath: '/music/library',
+                            rootName: 'Library',
+                        },
+                    ]),
+                },
+            },
+        };
+
+        const runtime = createAppReleaseRuntime({
+            tracks: [track],
+            imageFiles: [],
+            currentTrackIndex: 0,
+            currentSettings: { audio: { replayGainEnabled: true } },
+            activeReplayGainReleaseTrackPaths: [],
+            replayGainReleaseDynamicRangeLabelByKey: new Map(),
+            replayGainReleaseDynamicRangePendingByKey: new Map(),
+            replayGainReleaseDynamicRangeRequestVersion: 0,
+            releaseDepthForTrack: vi.fn(() => 2),
+            playlistController: { getSequenceOverride: vi.fn(() => null) },
+            baseSequenceIndexes: () => ({ indexes: [0], currentPosition: 0 }),
+            trackPathKey: (path: string) => path.trim().toLowerCase(),
+            updateNowPlayingTechnicalLabels: vi.fn(),
+        });
+
+        const gallery = await runtime.ensureReleaseImageFilesLoaded(track);
+
+        expect(gallery.map((image) => image.path)).toEqual([
+            '/music/library/artist/album/cover.jpg',
+            '/music/library/artist/album/disc-1/booklet.jpg',
+        ]);
+
+        delete (window as typeof window & { go?: unknown }).go;
     });
 });

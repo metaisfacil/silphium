@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -128,8 +129,10 @@ func (a *App) resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPat
 // ResolveLibraryFolderForPath resolves an absolute filesystem path to the currently available virtual library folder path.
 func (a *App) ResolveLibraryFolderForPath(path string) string {
 	return profiledValue(a, "ResolveLibraryFolderForPath", func() string {
+		trace := a.beginBridgeTrace("library", "ResolveLibraryFolderForPath", "path="+bridgeTraceLogString(path))
 		absolutePath, ok := absoluteNormalizedPath(path)
 		if !ok {
+			trace.finish("folderPath=\"\"", nil)
 			return ""
 		}
 		contentState := a.libraryContentState()
@@ -138,22 +141,27 @@ func (a *App) ResolveLibraryFolderForPath(path string) string {
 		defer contentState.indexMu.RUnlock()
 
 		if indexed, exists := contentState.trackByPath[absolutePath]; exists {
+			trace.finish("folderPath="+bridgeTraceLogString(indexed.FolderPath), nil)
 			return indexed.FolderPath
 		}
 		if indexed, exists := contentState.textByPath[absolutePath]; exists {
+			trace.finish("folderPath="+bridgeTraceLogString(indexed.FolderPath), nil)
 			return indexed.FolderPath
 		}
 		if indexed, exists := contentState.imageByPath[absolutePath]; exists {
+			trace.finish("folderPath="+bridgeTraceLogString(indexed.FolderPath), nil)
 			return indexed.FolderPath
 		}
 
 		root, ok := a.activeLibraryRootForPath(absolutePath)
 		if !ok {
+			trace.finish("folderPath=\"\"", nil)
 			return ""
 		}
 
 		relativePath, err := filepath.Rel(root.Path, absolutePath)
 		if err != nil {
+			trace.finish("folderPath=\"\"", nil)
 			return ""
 		}
 
@@ -161,15 +169,19 @@ func (a *App) ResolveLibraryFolderForPath(path string) string {
 		if info, statErr := os.Stat(absolutePath); statErr == nil && !info.IsDir() {
 			virtualFolderPath = buildVirtualLibraryPath(root.Name, filepath.ToSlash(filepath.Dir(relativePath)))
 		}
-		return a.resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPath)
+		resolved := a.resolveAvailableLibraryFolderForVirtualPathLocked(virtualFolderPath)
+		trace.finish("folderPath="+bridgeTraceLogString(resolved), nil)
+		return resolved
 	})
 }
 
 // ResolveLibraryFolderForReleaseMBID resolves a MusicBrainz release MBID to one available virtual library folder path.
 func (a *App) ResolveLibraryFolderForReleaseMBID(releaseMBID string) string {
 	return profiledValue(a, "ResolveLibraryFolderForReleaseMBID", func() string {
+		trace := a.beginBridgeTrace("library", "ResolveLibraryFolderForReleaseMBID", "releaseMBID="+bridgeTraceLogString(releaseMBID))
 		cleanReleaseMBID := sanitizeMusicBrainzID(releaseMBID)
 		if cleanReleaseMBID == "" || !a.musicBrainzTagDatabaseEnabled() {
+			trace.finish("folderPath=\"\"", nil)
 			return ""
 		}
 
@@ -179,6 +191,7 @@ func (a *App) ResolveLibraryFolderForReleaseMBID(releaseMBID string) string {
 
 		folderPathsByID := a.musicBrainzTagReleaseFoldersByID[cleanReleaseMBID]
 		if len(folderPathsByID) == 0 {
+			trace.finish("folderPath=\"\"", nil)
 			return ""
 		}
 
@@ -190,10 +203,12 @@ func (a *App) ResolveLibraryFolderForReleaseMBID(releaseMBID string) string {
 
 		for _, folderPath := range folderPaths {
 			if resolved := a.resolveAvailableLibraryFolderForVirtualPathLocked(folderPath); resolved != "" {
+				trace.finish("folderPath="+bridgeTraceLogString(resolved), nil)
 				return resolved
 			}
 		}
 
+		trace.finish("folderPath=\"\"", nil)
 		return ""
 	})
 }
@@ -201,6 +216,11 @@ func (a *App) ResolveLibraryFolderForReleaseMBID(releaseMBID string) string {
 // GetLibraryIndexedFilePage returns a paginated slice of indexed files for initial frontend hydration.
 func (a *App) GetLibraryIndexedFilePage(kind string, offset int, limit int) LibraryIndexedFilePage {
 	return profiledValue(a, "GetLibraryIndexedFilePage", func() LibraryIndexedFilePage {
+		trace := a.beginBridgeTrace(
+			"library",
+			"GetLibraryIndexedFilePage",
+			"kind="+bridgeTraceLogString(kind)+fmt.Sprintf(" offset=%d limit=%d", offset, limit),
+		)
 		normalizedKind := strings.ToLower(strings.TrimSpace(kind))
 		contentState := a.libraryContentState()
 
@@ -220,27 +240,41 @@ func (a *App) GetLibraryIndexedFilePage(kind string, offset int, limit int) Libr
 		switch normalizedKind {
 		case "track":
 			if contentState.libraryScan.DeferredFiles && len(contentState.libraryScan.TrackFiles) == 0 {
-				return emptyDeferredPage("track", contentState.libraryScan.TrackCount)
+				page := emptyDeferredPage("track", contentState.libraryScan.TrackCount)
+				trace.finish(libraryIndexedFilePageForLog(page), nil)
+				return page
 			}
-			return pagedIndexedFiles("track", contentState.libraryScan.TrackFiles, offset, limit)
+			page := pagedIndexedFiles("track", contentState.libraryScan.TrackFiles, offset, limit)
+			trace.finish(libraryIndexedFilePageForLog(page), nil)
+			return page
 		case "text-file":
 			if contentState.libraryScan.DeferredFiles && len(contentState.libraryScan.TextFiles) == 0 {
-				return emptyDeferredPage("text-file", contentState.libraryScan.TextFileCount)
+				page := emptyDeferredPage("text-file", contentState.libraryScan.TextFileCount)
+				trace.finish(libraryIndexedFilePageForLog(page), nil)
+				return page
 			}
-			return pagedIndexedFiles("text-file", contentState.libraryScan.TextFiles, offset, limit)
+			page := pagedIndexedFiles("text-file", contentState.libraryScan.TextFiles, offset, limit)
+			trace.finish(libraryIndexedFilePageForLog(page), nil)
+			return page
 		case "image-file":
 			if contentState.libraryScan.DeferredFiles && len(contentState.libraryScan.ImageFiles) == 0 {
-				return emptyDeferredPage("image-file", contentState.libraryScan.ImageFileCount)
+				page := emptyDeferredPage("image-file", contentState.libraryScan.ImageFileCount)
+				trace.finish(libraryIndexedFilePageForLog(page), nil)
+				return page
 			}
-			return pagedIndexedFiles("image-file", contentState.libraryScan.ImageFiles, offset, limit)
+			page := pagedIndexedFiles("image-file", contentState.libraryScan.ImageFiles, offset, limit)
+			trace.finish(libraryIndexedFilePageForLog(page), nil)
+			return page
 		default:
-			return LibraryIndexedFilePage{
+			page := LibraryIndexedFilePage{
 				Kind:         normalizedKind,
 				Offset:       offset,
 				Limit:        limit,
 				TotalEntries: 0,
 				Entries:      []LibraryIndexedFile{},
 			}
+			trace.finish(libraryIndexedFilePageForLog(page), nil)
+			return page
 		}
 	})
 }
@@ -255,16 +289,23 @@ func (a *App) GetLibraryFolderPage(folderPath string, offset int, limit int) Lib
 // GetLibraryFolderPageSorted returns a paginated folder listing from the current backend index.
 func (a *App) GetLibraryFolderPageSorted(folderPath string, sortMode string, offset int, limit int) LibraryFolderPage {
 	return profiledValue(a, "GetLibraryFolderPageSorted", func() LibraryFolderPage {
+		trace := a.beginBridgeTrace(
+			"library",
+			"GetLibraryFolderPageSorted",
+			"folderPath="+bridgeTraceLogString(folderPath)+" sortMode="+bridgeTraceLogString(sortMode)+fmt.Sprintf(" offset=%d limit=%d", offset, limit),
+		)
 		queryStartTime := time.Now()
 		normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
 		normalizedSortMode := normalizeLibraryBrowserSortMode(sortMode)
 		if !ok {
-			return LibraryFolderPage{
+			page := LibraryFolderPage{
 				FolderPath: normalizedFolderPath,
 				Offset:     offset,
 				Limit:      limit,
 				Entries:    []LibraryBrowserEntry{},
 			}
+			trace.finish(libraryFolderPageForLog(page), nil)
+			return page
 		}
 
 		if limit <= 0 {
@@ -347,6 +388,7 @@ func (a *App) GetLibraryFolderPageSorted(folderPath string, sortMode string, off
 			limit,
 			time.Since(queryStartTime).Seconds()*1000,
 		)
+		trace.finish(libraryFolderPageForLog(result), nil)
 		return result
 	})
 }
@@ -354,6 +396,11 @@ func (a *App) GetLibraryFolderPageSorted(folderPath string, sortMode string, off
 // SearchLibrary returns paginated server-side search results across folders and indexed files.
 func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPage {
 	return profiledValue(a, "SearchLibrary", func() LibrarySearchPage {
+		trace := a.beginBridgeTrace(
+			"library",
+			"SearchLibrary",
+			"query="+bridgeTraceLogString(query)+fmt.Sprintf(" offset=%d limit=%d", offset, limit),
+		)
 		queryStartTime := time.Now()
 		normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 		logQuery := searchQueryForLog(query)
@@ -372,12 +419,14 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 		}
 
 		if normalizedQuery == "" {
-			return LibrarySearchPage{
+			page := LibrarySearchPage{
 				Query:   query,
 				Offset:  offset,
 				Limit:   limit,
 				Entries: []LibraryBrowserEntry{},
 			}
+			trace.finish(librarySearchPageForLog(page), nil)
+			return page
 		}
 
 		musicBrainzTagQuery, hasMusicBrainzTagQuery := parseMusicBrainzTagSearchQuery(query)
@@ -385,12 +434,14 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 
 		if searchCanceled() {
 			a.logRescanEvent("SearchLibrary CANCELED before lock: query=%q offset=%d", logQuery, offset)
-			return LibrarySearchPage{
+			page := LibrarySearchPage{
 				Query:   query,
 				Offset:  offset,
 				Limit:   limit,
 				Entries: []LibraryBrowserEntry{},
 			}
+			trace.finish(librarySearchPageForLog(page), nil)
+			return page
 		}
 
 		lockWaitStart := time.Now()
@@ -401,12 +452,14 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 
 		if searchCanceled() {
 			a.logRescanEvent("SearchLibrary CANCELED after lock: query=%q offset=%d", logQuery, offset)
-			return LibrarySearchPage{
+			page := LibrarySearchPage{
 				Query:   query,
 				Offset:  offset,
 				Limit:   limit,
 				Entries: []LibraryBrowserEntry{},
 			}
+			trace.finish(librarySearchPageForLog(page), nil)
+			return page
 		}
 
 		var entries []LibraryBrowserEntry
@@ -439,12 +492,14 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 				limit,
 				time.Since(queryStartTime).Seconds()*1000,
 			)
-			return LibrarySearchPage{
+			page := LibrarySearchPage{
 				Query:   query,
 				Offset:  offset,
 				Limit:   limit,
 				Entries: []LibraryBrowserEntry{},
 			}
+			trace.finish(librarySearchPageForLog(page), nil)
+			return page
 		}
 
 		pagedEntries := copyPagedLibraryEntries(entries, offset, limit)
@@ -468,6 +523,7 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 			limit,
 			time.Since(queryStartTime).Seconds()*1000,
 		)
+		trace.finish(librarySearchPageForLog(result), nil)
 
 		return result
 	})
@@ -477,8 +533,10 @@ func (a *App) SearchLibrary(query string, offset int, limit int) LibrarySearchPa
 // direct children are fully enumerated during the active scan.
 func (a *App) IsLibraryFolderImmediateDescendantsEnumerated(folderPath string) bool {
 	return profiledValue(a, "IsLibraryFolderImmediateDescendantsEnumerated", func() bool {
+		trace := a.beginBridgeTrace("library", "IsLibraryFolderImmediateDescendantsEnumerated", "folderPath="+bridgeTraceLogString(folderPath))
 		normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
 		if !ok {
+			trace.finish("enumerated=false", nil)
 			return false
 		}
 		contentState := a.libraryContentState()
@@ -488,23 +546,29 @@ func (a *App) IsLibraryFolderImmediateDescendantsEnumerated(folderPath string) b
 		defer contentState.indexMu.RUnlock()
 
 		if !scanState.scanInProgress {
+			trace.finish("enumerated=true", nil)
 			return true
 		}
 
 		remainingChildren, exists := scanState.scanRemainingImmediateChildrenByFolder[normalizedFolderPath]
 		if !exists {
+			trace.finish("enumerated=true", nil)
 			return true
 		}
 
-		return remainingChildren <= 0
+		enumerated := remainingChildren <= 0
+		trace.finish(fmt.Sprintf("enumerated=%t", enumerated), nil)
+		return enumerated
 	})
 }
 
 // GetLibraryFolderCoverPath returns the current best cover image path for a folder.
 func (a *App) GetLibraryFolderCoverPath(folderPath string) string {
 	return profiledValue(a, "GetLibraryFolderCoverPath", func() string {
+		trace := a.beginBridgeTrace("library", "GetLibraryFolderCoverPath", "folderPath="+bridgeTraceLogString(folderPath))
 		normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
 		if !ok {
+			trace.finish("coverPath=\"\"", nil)
 			return ""
 		}
 		contentState := a.libraryContentState()
@@ -514,20 +578,60 @@ func (a *App) GetLibraryFolderCoverPath(folderPath string) string {
 		if contentState.libraryScan.CoverPathByFolder != nil {
 			if coverPath, exists := contentState.libraryScan.CoverPathByFolder[folderKey]; exists {
 				contentState.indexMu.RUnlock()
+				trace.finish("coverPath="+bridgeTraceLogString(coverPath), nil)
 				return coverPath
 			}
 		}
 		contentState.indexMu.RUnlock()
+		trace.finish("coverPath=\"\"", nil)
 		return ""
 	})
+}
+
+func sortedIndexedFilesWithinFolder(normalizedFolderPath string, files []LibraryIndexedFile) []LibraryIndexedFile {
+	if len(files) == 0 {
+		return []LibraryIndexedFile{}
+	}
+
+	prefix := ""
+	if normalizedFolderPath != "" {
+		prefix = normalizedFolderPath + "/"
+	}
+
+	filteredFiles := make([]LibraryIndexedFile, 0)
+	for _, indexed := range files {
+		if normalizedFolderPath == "" || indexed.FolderPath == normalizedFolderPath || strings.HasPrefix(indexed.FolderPath, prefix) {
+			filteredFiles = append(filteredFiles, indexed)
+		}
+	}
+
+	sort.SliceStable(filteredFiles, func(i int, j int) bool {
+		left := strings.ToLower(relativePathWithinFolder(normalizedFolderPath, filteredFiles[i].RelativePath))
+		right := strings.ToLower(relativePathWithinFolder(normalizedFolderPath, filteredFiles[j].RelativePath))
+		return left < right
+	})
+
+	return filteredFiles
+}
+
+func (a *App) getFolderImageFilesFromMapsLocked(normalizedFolderPath string) []LibraryIndexedFile {
+	contentState := a.libraryContentState()
+	imageFiles := make([]LibraryIndexedFile, 0, len(contentState.imageByPath))
+	for _, indexed := range contentState.imageByPath {
+		imageFiles = append(imageFiles, indexed)
+	}
+
+	return sortedIndexedFilesWithinFolder(normalizedFolderPath, imageFiles)
 }
 
 // GetLibraryFolderTrackPaths resolves all audio tracks under a folder subtree for queue actions.
 func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 	return profiledValue(a, "GetLibraryFolderTrackPaths", func() []string {
+		trace := a.beginBridgeTrace("library", "GetLibraryFolderTrackPaths", "folderPath="+bridgeTraceLogString(folderPath))
 		queryStartTime := time.Now()
 		normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
 		if !ok {
+			trace.finish("tracks=0", nil)
 			return []string{}
 		}
 		contentState := a.libraryContentState()
@@ -548,6 +652,7 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 				len(paths),
 				time.Since(queryStartTime).Seconds()*1000,
 			)
+			trace.finish(fmt.Sprintf("tracks=%d mode=%s", len(paths), mode), nil)
 			return paths
 		} else if contentState.libraryScan.DeferredFiles && len(contentState.trackByPath) == 0 {
 			rootsSnapshot = append([]libraryRootConfig(nil), contentState.activeLibraryRoots...)
@@ -568,6 +673,7 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 				len(paths),
 				time.Since(queryStartTime).Seconds()*1000,
 			)
+			trace.finish(fmt.Sprintf("tracks=%d mode=%s", len(paths), mode), nil)
 			return paths
 		}
 
@@ -580,16 +686,86 @@ func (a *App) GetLibraryFolderTrackPaths(folderPath string) []string {
 			len(paths),
 			time.Since(queryStartTime).Seconds()*1000,
 		)
+		trace.finish(fmt.Sprintf("tracks=%d mode=%s", len(paths), mode), nil)
 		return paths
+	})
+}
+
+// GetLibraryFolderImageFiles resolves image files under a folder subtree for on-demand gallery hydration.
+func (a *App) GetLibraryFolderImageFiles(folderPath string) []LibraryIndexedFile {
+	return profiledValue(a, "GetLibraryFolderImageFiles", func() []LibraryIndexedFile {
+		trace := a.beginBridgeTrace("library", "GetLibraryFolderImageFiles", "folderPath="+bridgeTraceLogString(folderPath))
+		queryStartTime := time.Now()
+		normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
+		if !ok {
+			trace.finish("images=0", nil)
+			return []LibraryIndexedFile{}
+		}
+
+		contentState := a.libraryContentState()
+		contentState.indexMu.RLock()
+
+		mode := "fallback-map"
+		useFilesystemFallback := false
+		var rootsSnapshot []libraryRootConfig
+		if len(contentState.libraryScan.ImageFiles) > 0 {
+			mode = "scan-slice"
+			imageFiles := sortedIndexedFilesWithinFolder(normalizedFolderPath, contentState.libraryScan.ImageFiles)
+			contentState.indexMu.RUnlock()
+			a.logRescanEvent(
+				"GetLibraryFolderImageFiles END: folder=%s mode=%s images=%d took %.2fms",
+				folderPathForLog(normalizedFolderPath),
+				mode,
+				len(imageFiles),
+				time.Since(queryStartTime).Seconds()*1000,
+			)
+			trace.finish(fmt.Sprintf("images=%d mode=%s", len(imageFiles), mode), nil)
+			return imageFiles
+		} else if contentState.libraryScan.DeferredFiles && len(contentState.imageByPath) == 0 {
+			rootsSnapshot = append([]libraryRootConfig(nil), contentState.activeLibraryRoots...)
+			useFilesystemFallback = true
+			mode = "lazy-filesystem"
+		}
+
+		if useFilesystemFallback {
+			contentState.indexMu.RUnlock()
+			imageFiles, err := collectLibraryFolderImageFilesFromFilesystem(rootsSnapshot, normalizedFolderPath)
+			if err != nil {
+				imageFiles = []LibraryIndexedFile{}
+			}
+			a.logRescanEvent(
+				"GetLibraryFolderImageFiles END: folder=%s mode=%s images=%d took %.2fms",
+				folderPathForLog(normalizedFolderPath),
+				mode,
+				len(imageFiles),
+				time.Since(queryStartTime).Seconds()*1000,
+			)
+			trace.finish(fmt.Sprintf("images=%d mode=%s", len(imageFiles), mode), nil)
+			return imageFiles
+		}
+
+		imageFiles := a.getFolderImageFilesFromMapsLocked(normalizedFolderPath)
+		contentState.indexMu.RUnlock()
+		a.logRescanEvent(
+			"GetLibraryFolderImageFiles END: folder=%s mode=%s images=%d took %.2fms",
+			folderPathForLog(normalizedFolderPath),
+			mode,
+			len(imageFiles),
+			time.Since(queryStartTime).Seconds()*1000,
+		)
+		trace.finish(fmt.Sprintf("images=%d mode=%s", len(imageFiles), mode), nil)
+		return imageFiles
 	})
 }
 
 // GetLibraryFolderTrackCount returns the number of audio tracks under a folder subtree.
 func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 	return profiledValue(a, "GetLibraryFolderTrackCount", func() int {
+		trace := a.beginBridgeTrace("library", "GetLibraryFolderTrackCount", "folderPath="+bridgeTraceLogString(folderPath))
 		queryStartTime := time.Now()
 		normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
 		if !ok {
+			trace.finish("tracks=0", nil)
 			return 0
 		}
 		contentState := a.libraryContentState()
@@ -610,6 +786,7 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 				count,
 				time.Since(queryStartTime).Seconds()*1000,
 			)
+			trace.finish(fmt.Sprintf("tracks=%d mode=%s", count, mode), nil)
 			return count
 		} else if contentState.libraryScan.DeferredFiles && len(contentState.trackByPath) == 0 {
 			rootsSnapshot = append([]libraryRootConfig(nil), contentState.activeLibraryRoots...)
@@ -630,6 +807,7 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 				count,
 				time.Since(queryStartTime).Seconds()*1000,
 			)
+			trace.finish(fmt.Sprintf("tracks=%d mode=%s", count, mode), nil)
 			return count
 		}
 
@@ -642,6 +820,7 @@ func (a *App) GetLibraryFolderTrackCount(folderPath string) int {
 			count,
 			time.Since(queryStartTime).Seconds()*1000,
 		)
+		trace.finish(fmt.Sprintf("tracks=%d mode=%s", count, mode), nil)
 		return count
 	})
 }

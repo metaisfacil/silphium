@@ -246,6 +246,8 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         },
         getReleaseDepthForTrack: (track: Track) => context.getReleaseDepthForTrack(track),
         getFolderCoverPath: (folderPath: string) => context.getFolderCoverPath(folderPath),
+        resolveFolderCoverPath: async (folderPath: string) => await context.resolveFolderCoverPath(folderPath),
+        getKnownFolderCoverPaths: () => context.getKnownFolderCoverPaths(),
         readImageThumbnail: async (path: string, maxEdge: number) => {
             return await context.readImageThumbnail(path, maxEdge);
         },

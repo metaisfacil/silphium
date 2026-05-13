@@ -33,6 +33,10 @@ import {
     setTechnicalLabel,
 } from './utils/display-helpers';
 import { runBackgroundBridgeCall, shouldDeferBackgroundBridgeCall } from './utils/bridge-load-gate';
+import {
+    summarizeAudioPlaybackStateForBridge,
+    traceBridgeCall,
+} from './utils/bridge-trace';
 import { formatPerfLogMessage } from './utils/perf-log';
 import { createPlaybackProgressEstimator } from './utils/playback-progress-estimator';
 import { playbackReconcileDelayMs } from './utils/playback-reconcile-delay';
@@ -68,6 +72,10 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let playerCardTrackTransitionSettleHandle: number | undefined;
     let playerCardTrackTransitionFrameHandle = 0;
     let playerCardTrackTransitionVersion = 0;
+
+    const bridgeTraceSink = async (message: string): Promise<void> => {
+        await LogFrontendMessage(message);
+    };
 
     const clearQueuedGaplessEvaluation = (): void => {
         queuedGaplessEvaluationTrackPath = '';
@@ -407,6 +415,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         collectReleaseImageFiles,
         collectReplayGainReleaseTrackPathsForIndex,
         currentReplayGainReleaseTrackPaths,
+        ensureReleaseImageFilesLoaded,
         indexOfImageByPath,
         refreshReplayGainReleaseDynamicRangeIndicator,
         releaseRootPathForTrack,
@@ -922,11 +931,19 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             logPlaybackDebug(`NextTrackPrep clear after="${activeTrack.path}"`);
             logPlaybackDebug(`Trace NextTrackPrep dispatch action=clear after="${activeTrack.path}" requestVersion=${requestVersion}`);
             try {
-                await runBackgroundBridgeCall(async () => {
+                await traceBridgeCall('transport', 'AudioQueueNextTrack', async () => await runBackgroundBridgeCall(async () => {
                     await AudioQueueNextTrack(activeTrack.path, '');
                 }, {
                     maxWaitMs: 180,
                     onTimeout: () => undefined,
+                }), {
+                    sink: bridgeTraceSink,
+                    details: {
+                        currentPath: activeTrack.path,
+                        nextPath: '',
+                        requestVersion,
+                        reason: 'gapless-clear',
+                    },
                 });
                 if (requestVersion !== context.gaplessQueueRequestVersion) {
                     logPlaybackDebug(`Trace NextTrackPrep stale action=clear after="${activeTrack.path}" requestVersion=${requestVersion}`);
@@ -963,18 +980,34 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 + `next="${nextPath}" requestVersion=${requestVersion} releasePaths=${replayGainReleaseTrackPaths.length}`,
             );
             if (replayGainReleaseTrackPaths.length > 1) {
-                await runBackgroundBridgeCall(async () => {
+                await traceBridgeCall('transport', 'AudioQueueNextTrackWithReplayGainContext', async () => await runBackgroundBridgeCall(async () => {
                     await AudioQueueNextTrackWithReplayGainContext(activeTrack.path, nextPath, replayGainReleaseTrackPaths);
                 }, {
                     maxWaitMs: 180,
                     onTimeout: () => undefined,
+                }), {
+                    sink: bridgeTraceSink,
+                    details: {
+                        currentPath: activeTrack.path,
+                        nextPath,
+                        releasePaths: replayGainReleaseTrackPaths,
+                        requestVersion,
+                    },
                 });
             } else {
-                await runBackgroundBridgeCall(async () => {
+                await traceBridgeCall('transport', 'AudioQueueNextTrack', async () => await runBackgroundBridgeCall(async () => {
                     await AudioQueueNextTrack(activeTrack.path, nextPath);
                 }, {
                     maxWaitMs: 180,
                     onTimeout: () => undefined,
+                }), {
+                    sink: bridgeTraceSink,
+                    details: {
+                        currentPath: activeTrack.path,
+                        nextPath,
+                        requestVersion,
+                        reason: 'gapless-queue',
+                    },
                 });
             }
             if (requestVersion !== context.gaplessQueueRequestVersion) {
@@ -1148,9 +1181,16 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         const requestVersion = context.playbackMutationVersion;
         const startedAtMs = performance.now();
         try {
-            const nextState = await runBackgroundBridgeCall(async () => await AudioGetState() as AudioPlaybackState, {
+            const nextState = await traceBridgeCall('transport', 'AudioGetState', async () => await runBackgroundBridgeCall(async () => await AudioGetState() as AudioPlaybackState, {
                 maxWaitMs: 120,
                 onTimeout: async () => await AudioGetState() as AudioPlaybackState,
+            }), {
+                details: {
+                    currentTrackIndex: context.currentTrackIndex,
+                    poll: true,
+                    requestVersion,
+                },
+                summarizeResult: summarizeAudioPlaybackStateForBridge,
             });
 
             const elapsedMs = performance.now() - startedAtMs;
@@ -1183,7 +1223,12 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
     const initializeBackendPlayback = async (): Promise<void> => {
         try {
-            const initialState = await InitializeAudioBackend() as AudioPlaybackState;
+            const initialState = await traceBridgeCall('transport', 'InitializeAudioBackend', async () => (
+                await InitializeAudioBackend() as AudioPlaybackState
+            ), {
+                sink: bridgeTraceSink,
+                summarizeResult: summarizeAudioPlaybackStateForBridge,
+            });
             context.playbackStateService.setBackendReady(true);
             applyPlaybackState(initialState);
             context.volume.value = String(initialState.volume);
@@ -1471,6 +1516,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         collectReplayGainReleaseTrackPathsForIndex,
         currentReplayGainReleaseTrackPaths,
         currentTrackForPlaybackState,
+        ensureReleaseImageFilesLoaded,
         ensureImageFileIndexForPath,
         ensureTrackIndexForPath,
         ensureTextFileIndexForPath,

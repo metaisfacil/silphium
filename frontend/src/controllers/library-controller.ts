@@ -274,6 +274,40 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         }
 
         const bestCoverCandidateByFolder = new Map<string, RecursiveAlbumCoverCandidate>();
+        for (const [folderPath, coverPath] of options.getKnownFolderCoverPaths?.() || []) {
+            if (!isPreferredAlbumCoverImagePath(coverPath || '')) {
+                continue;
+            }
+
+            const imageFolderSegments = folderPathSegments(folderPath || '');
+            if (imageFolderSegments.length === 0) {
+                continue;
+            }
+
+            const candidatePath = (coverPath || '').trim();
+            if (candidatePath === '') {
+                continue;
+            }
+
+            const fileName = candidatePath.includes('/') ? candidatePath.slice(candidatePath.lastIndexOf('/') + 1) : candidatePath;
+            const priority = albumCoverPriority(fileName);
+            const sortKey = candidatePath;
+            for (let ancestorLength = 1; ancestorLength <= imageFolderSegments.length; ancestorLength += 1) {
+                const ancestorFolderPath = imageFolderSegments.slice(0, ancestorLength).join('/');
+                const ancestorFolderKey = normalizedFolderKey(ancestorFolderPath);
+                const nextCandidate: RecursiveAlbumCoverCandidate = {
+                    path: candidatePath,
+                    descendantDistance: imageFolderSegments.length - ancestorLength,
+                    priority,
+                    sortKey,
+                };
+                const existingCandidate = bestCoverCandidateByFolder.get(ancestorFolderKey);
+                if (shouldReplaceRecursiveAlbumCoverCandidate(nextCandidate, existingCandidate)) {
+                    bestCoverCandidateByFolder.set(ancestorFolderKey, nextCandidate);
+                }
+            }
+        }
+
         for (const imageFile of options.getImageFiles()) {
             if (!isPreferredAlbumCoverImagePath(imageFile.path || imageFile.name || '')) {
                 continue;
@@ -668,20 +702,13 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         });
     };
 
-    const resolveAlbumCardCover = (cardElements: AlbumGridCardElements): HTMLImageElement | null => {
-        const { album, cover, image } = cardElements;
+    const applyResolvedAlbumCardCover = (
+        cardElements: AlbumGridCardElements,
+        resolvedCoverPath: string,
+        pane?: HTMLElement,
+    ): HTMLImageElement | null => {
+        const { cover, image } = cardElements;
         if (!cover.isConnected || !image.isConnected) {
-            return null;
-        }
-
-        const resolvedCoverPath = resolveAlbumCoverPath(album.folderPath, album.coverFolderCandidates);
-        if (!cover.isConnected || !image.isConnected) {
-            return null;
-        }
-
-        if (!resolvedCoverPath) {
-            cover.classList.remove('is-loading');
-            cover.classList.add('is-unavailable');
             return null;
         }
 
@@ -702,7 +729,68 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         cover.classList.add('is-loading');
         cover.classList.remove('is-unavailable');
+        if (pane) {
+            queueAlbumGridThumbnailImages(pane, [image]);
+            return null;
+        }
+
         return image;
+    };
+
+    const resolveAlbumCardCover = (
+        cardElements: AlbumGridCardElements,
+        pane?: HTMLElement,
+        renderVersion?: number,
+    ): HTMLImageElement | null => {
+        const { album, cover, image } = cardElements;
+        if (!cover.isConnected || !image.isConnected) {
+            return null;
+        }
+
+        const resolvedCoverPath = resolveAlbumCoverPath(album.folderPath, album.coverFolderCandidates);
+        if (!cover.isConnected || !image.isConnected) {
+            return null;
+        }
+
+        if (!resolvedCoverPath) {
+            if (pane && renderVersion !== undefined && options.resolveFolderCoverPath && image.dataset.coverResolving !== 'true') {
+                image.dataset.coverResolving = 'true';
+                cover.classList.add('is-loading');
+                cover.classList.remove('is-unavailable');
+                void options.resolveFolderCoverPath(album.folderPath)
+                    .then((asyncCoverPath) => {
+                        delete image.dataset.coverResolving;
+                        if (!isAlbumGridRenderCurrent(renderVersion, pane) || !cover.isConnected || !image.isConnected) {
+                            return;
+                        }
+
+                        if (!asyncCoverPath) {
+                            cover.classList.remove('is-loading');
+                            cover.classList.add('is-unavailable');
+                            return;
+                        }
+
+                        resolvedAlbumCoverPathByFolder.set(normalizedFolderKey(album.folderPath), asyncCoverPath);
+                        applyResolvedAlbumCardCover(cardElements, asyncCoverPath, pane);
+                    })
+                    .catch(() => {
+                        delete image.dataset.coverResolving;
+                        if (!isAlbumGridRenderCurrent(renderVersion, pane) || !cover.isConnected) {
+                            return;
+                        }
+
+                        cover.classList.remove('is-loading');
+                        cover.classList.add('is-unavailable');
+                    });
+                return null;
+            }
+
+            cover.classList.remove('is-loading');
+            cover.classList.add('is-unavailable');
+            return null;
+        }
+
+        return applyResolvedAlbumCardCover(cardElements, resolvedCoverPath, pane);
     };
 
     const createAlbumCard = (album: AlbumGridEntry): AlbumGridCardElements => {
@@ -748,6 +836,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         cardElements.image.removeAttribute('src');
         delete cardElements.image.dataset.coverPath;
         delete cardElements.image.dataset.coverLoaded;
+        delete cardElements.image.dataset.coverResolving;
         cardElements.cover.classList.remove('has-image');
         cardElements.cover.classList.remove('is-unavailable');
         cardElements.cover.classList.add('is-loading');
@@ -891,7 +980,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                 for (let index = 0; index < pendingCoverCards.length; index += albumGridCoverResolutionBatchSize) {
                     const batchEnd = Math.min(index + albumGridCoverResolutionBatchSize, pendingCoverCards.length);
                     for (const cardElements of pendingCoverCards.slice(index, batchEnd)) {
-                        const image = resolveAlbumCardCover(cardElements);
+                        const image = resolveAlbumCardCover(cardElements, pane, renderVersion);
                         if (image instanceof HTMLImageElement && eagerThumbnailImages.length < albumGridInitialThumbnailBatchSize) {
                             eagerThumbnailImages.push(image);
                         }

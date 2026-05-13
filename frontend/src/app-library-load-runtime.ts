@@ -344,6 +344,10 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
 
     const hasConfiguredLibraryFolders = (): boolean => context.currentSettings.libraryFolders.length > 0;
 
+    const initialScanCollectionOptions = {
+        includeImageFiles: false,
+    } as const;
+
     const loadPagedScanCollections = async (scanResult: LibraryScanResult) => {
         if (scanResult.deferredFiles) {
             return createScanCollections(scanResult);
@@ -352,21 +356,18 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         const hasCompleteLibraryPayload = (() => {
             const trackCount = Math.max(scanResult.trackCount || 0, (scanResult.trackFiles || []).length);
             const textFileCount = Math.max(scanResult.textFileCount || 0, (scanResult.textFiles || []).length);
-            const imageFileCount = Math.max(scanResult.imageFileCount || 0, (scanResult.imageFiles || []).length);
 
             return (scanResult.trackFiles || []).length >= trackCount
-                && (scanResult.textFiles || []).length >= textFileCount
-                && (scanResult.imageFiles || []).length >= imageFileCount;
+                && (scanResult.textFiles || []).length >= textFileCount;
         })();
         if (hasCompleteLibraryPayload) {
-            return await mapLibraryScanResult(scanResult);
+            return await mapLibraryScanResult(scanResult, initialScanCollectionOptions);
         }
 
         const scanCollections = createScanCollections(scanResult);
         const totalTrackCount = Math.max(scanResult.trackCount || 0, (scanResult.trackFiles || []).length);
         const totalTextFileCount = Math.max(scanResult.textFileCount || 0, (scanResult.textFiles || []).length);
-        const totalImageFileCount = Math.max(scanResult.imageFileCount || 0, (scanResult.imageFiles || []).length);
-        const totalFileCount = totalTrackCount + totalTextFileCount + totalImageFileCount;
+        const totalFileCount = totalTrackCount + totalTextFileCount;
         let loadedFileCount = 0;
         const transferStartedAtMs = performance.now();
 
@@ -400,14 +401,13 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         const pageKinds = [
             { kind: 'track' as const, totalEntries: totalTrackCount },
             { kind: 'text-file' as const, totalEntries: totalTextFileCount },
-            { kind: 'image-file' as const, totalEntries: totalImageFileCount },
         ];
 
         for (const pageKind of pageKinds) {
             for (let offset = 0; offset < pageKind.totalEntries; offset += context.libraryIndexedFilePageSize) {
                 const page = await context.loadIndexedFilePage(pageKind.kind, offset, context.libraryIndexedFilePageSize);
                 const entries = page.entries || [];
-                await appendIndexedFilesToScanCollections(scanCollections, pageKind.kind, entries);
+                await appendIndexedFilesToScanCollections(scanCollections, pageKind.kind, entries, initialScanCollectionOptions);
                 loadedFileCount += entries.length;
                 updateTransferEta();
             }

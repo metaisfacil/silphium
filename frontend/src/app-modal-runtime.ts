@@ -172,7 +172,7 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
         }
     };
 
-    const openCoverImageModal = (): void => {
+    const openCoverImageModal = async (): Promise<void> => {
         if (!context.coverArt.classList.contains('is-visible') || !context.coverArt.src) {
             return;
         }
@@ -198,7 +198,7 @@ export const createAppModalRuntime = (context: AppModalRuntimeContext) => {
             return;
         }
 
-        const gallery = context.collectReleaseImageFiles(activeTrack);
+        const gallery = await context.ensureReleaseImageFilesLoaded(activeTrack);
         if (gallery.length === 0) {
             context.imageModalController.openPreview(context.coverArt.src, context.coverArt.src, context.coverArt);
             return;

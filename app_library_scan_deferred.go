@@ -278,6 +278,60 @@ func collectLibraryFolderTrackPathsFromFilesystem(roots []libraryRootConfig, fol
 	return paths, nil
 }
 
+func collectLibraryFolderImageFilesFromFilesystem(roots []libraryRootConfig, folderPath string) ([]LibraryIndexedFile, error) {
+	normalizedFolderPath, ok := normalizeLibraryRelativePath(folderPath)
+	if !ok {
+		return []LibraryIndexedFile{}, nil
+	}
+
+	indexedImages := make([]LibraryIndexedFile, 0)
+	appendImagesUnderRoot := func(root libraryRootConfig, absoluteStartPath string) error {
+		return filepath.WalkDir(absoluteStartPath, func(currentPath string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return nil
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+			if entry.IsDir() || !isImagePath(currentPath) {
+				return nil
+			}
+
+			entryInfo, infoErr := entry.Info()
+			if infoErr != nil {
+				return nil
+			}
+
+			indexed, indexedOK := indexFileForRootWithModifiedAt(root, currentPath, entry.Name(), modifiedAtMsFromFileInfo(entryInfo))
+			if !indexedOK {
+				return nil
+			}
+
+			indexedImages = append(indexedImages, indexed)
+			return nil
+		})
+	}
+
+	if normalizedFolderPath == "" {
+		for _, root := range roots {
+			if err := appendImagesUnderRoot(root, root.Path); err != nil {
+				return []LibraryIndexedFile{}, err
+			}
+		}
+	} else {
+		root, absoluteFolderPath, resolved := resolveLibraryFolderAbsolutePath(roots, normalizedFolderPath)
+		if !resolved {
+			return []LibraryIndexedFile{}, nil
+		}
+
+		if err := appendImagesUnderRoot(root, absoluteFolderPath); err != nil {
+			return []LibraryIndexedFile{}, err
+		}
+	}
+
+	return sortedIndexedFilesWithinFolder(normalizedFolderPath, indexedImages), nil
+}
+
 func countLibraryFolderTracksFromFilesystem(roots []libraryRootConfig, folderPath string) (int, error) {
 	paths, err := collectLibraryFolderTrackPathsFromFilesystem(roots, folderPath)
 	if err != nil {

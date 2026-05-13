@@ -55,6 +55,8 @@ export function GetLastFmSessionKey(arg1:string,arg2:string,arg3:string):Promise
 
 export function GetLibraryFolderCoverPath(arg1:string):Promise<string>;
 
+export function GetLibraryFolderImageFiles(arg1:string):Promise<Array<main.LibraryIndexedFile>>;
+
 export function GetLibraryFolderPage(arg1:string,arg2:number,arg3:number):Promise<main.LibraryFolderPage>;
 
 export function GetLibraryFolderPageSorted(arg1:string,arg2:string,arg3:number,arg4:number):Promise<main.LibraryFolderPage>;

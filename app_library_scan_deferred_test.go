@@ -164,6 +164,14 @@ func TestBuildFilesystemQuickScanAndLazyFilesystemHelpers(t *testing.T) {
 		t.Fatalf("countLibraryFolderTracksFromFilesystem() = (%d, %v), want (1, nil)", count, err)
 	}
 
+	imageFiles, err := collectLibraryFolderImageFilesFromFilesystem(roots, "Library One/Artist One")
+	if err != nil {
+		t.Fatalf("collectLibraryFolderImageFilesFromFilesystem() error = %v", err)
+	}
+	if got, want := []string{imageFiles[0].Path, imageFiles[1].Path}, []string{fixture.coverOne, fixture.folderCoverOne}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("collectLibraryFolderImageFilesFromFilesystem() = %#v, want %#v", got, want)
+	}
+
 	fullScan, err := buildFilesystemFullScan(roots, func() bool { return false })
 	if err != nil {
 		t.Fatalf("buildFilesystemFullScan() error = %v", err)

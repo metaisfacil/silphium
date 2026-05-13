@@ -4,6 +4,7 @@ import {
     appendIndexedFilesToScanCollections,
     clearLibraryRuntimeData,
     createScanCollections,
+    mapIndexedFileToImageFile,
     mapLibraryScanResult,
     mergePlaylistFilesIntoTracks,
 } from './library-data-service';
@@ -131,6 +132,31 @@ describe('library data service', () => {
         expect(emptyCollections.tracks).toEqual([]);
         expect(emptyCollections.textFiles).toEqual([]);
         expect(emptyCollections.imageFiles).toEqual([]);
+    });
+
+    it('can skip image-file hydration while still preserving folder cover entries', async () => {
+        const scanCollections = await mapLibraryScanResult(createScanResult({
+            coverPathByFolder: { Library: '/music/cover.jpg' },
+            trackFiles: [createIndexedFile('/music/track.flac', 'track.flac')],
+            imageFiles: [createIndexedFile('/music/cover.jpg', 'cover.jpg')],
+        }), {
+            includeImageFiles: false,
+        });
+
+        expect(scanCollections.coverPathEntries).toEqual([['Library', '/music/cover.jpg']]);
+        expect(scanCollections.tracks).toHaveLength(1);
+        expect(scanCollections.imageFiles).toEqual([]);
+    });
+
+    it('maps indexed image metadata into image-library files', () => {
+        expect(mapIndexedFileToImageFile(createIndexedFile('/music/cover.jpg', 'cover.jpg', {
+            rootPath: undefined,
+            rootName: undefined,
+        }))).toEqual(expect.objectContaining({
+            path: '/music/cover.jpg',
+            rootPath: '',
+            rootName: '',
+        }));
     });
 
     it('merges playlist files into tracks while preserving existing indexes and yielding between batches', async () => {

@@ -20,6 +20,10 @@ export type MergePlaylistFilesResult = {
     tracks: Track[];
 };
 
+type ScanCollectionOptions = {
+    includeImageFiles?: boolean;
+};
+
 type ClearLibraryRuntimeDataOptions = {
     objectUrls: string[];
     clearCoverArtCache?: () => void;
@@ -124,18 +128,19 @@ const appendTextFiles = async (textFiles: TextLibraryFile[], files: LibraryIndex
     }
 };
 
+export const mapIndexedFileToImageFile = (file: LibraryIndexedFile): ImageLibraryFile => ({
+    name: file.name,
+    path: file.path,
+    relativePath: file.relativePath,
+    folderPath: file.folderPath,
+    rootPath: file.rootPath || '',
+    rootName: file.rootName || '',
+});
+
 const appendImageFiles = async (imageFiles: ImageLibraryFile[], files: LibraryIndexedFile[]): Promise<void> => {
     const batchSize = BATCH_SIZES.indexedFiles;
     for (let index = 0; index < files.length; index += 1) {
-        const file = files[index];
-        imageFiles.push({
-            name: file.name,
-            path: file.path,
-            relativePath: file.relativePath,
-            folderPath: file.folderPath,
-            rootPath: file.rootPath || '',
-            rootName: file.rootName || '',
-        });
+        imageFiles.push(mapIndexedFileToImageFile(files[index]));
         if ((index + 1) % batchSize === 0) {
             await yieldToUi();
         }
@@ -155,6 +160,7 @@ export const appendIndexedFilesToScanCollections = async (
     scanCollections: ScanCollections,
     kind: ScanCollectionKind,
     files: LibraryIndexedFile[],
+    options: ScanCollectionOptions = {},
 ): Promise<void> => {
     if (kind === 'track') {
         await appendTrackFiles(scanCollections.tracks, files);
@@ -166,14 +172,21 @@ export const appendIndexedFilesToScanCollections = async (
         return;
     }
 
+    if (options.includeImageFiles === false) {
+        return;
+    }
+
     await appendImageFiles(scanCollections.imageFiles, files);
 };
 
-export const mapLibraryScanResult = async (scanResult: LibraryScanResult): Promise<ScanCollections> => {
+export const mapLibraryScanResult = async (
+    scanResult: LibraryScanResult,
+    options: ScanCollectionOptions = {},
+): Promise<ScanCollections> => {
     const scanCollections = createScanCollections(scanResult);
-    await appendIndexedFilesToScanCollections(scanCollections, 'track', scanResult.trackFiles || []);
-    await appendIndexedFilesToScanCollections(scanCollections, 'text-file', scanResult.textFiles || []);
-    await appendIndexedFilesToScanCollections(scanCollections, 'image-file', scanResult.imageFiles || []);
+    await appendIndexedFilesToScanCollections(scanCollections, 'track', scanResult.trackFiles || [], options);
+    await appendIndexedFilesToScanCollections(scanCollections, 'text-file', scanResult.textFiles || [], options);
+    await appendIndexedFilesToScanCollections(scanCollections, 'image-file', scanResult.imageFiles || [], options);
     return scanCollections;
 };
 

@@ -3,6 +3,11 @@ import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-contr
 import type { AppEventBindingsContext } from './app-bootstrap-setup';
 import { openMbLink } from './musicbrainz';
 import type { AudioPlaybackState, LibraryScanProgress, LibraryScanResult, MusicBrainzTagWorkerProgress, PlaybackOrderMode } from './types/app-types';
+import {
+    logBridgeEvent,
+    summarizeLibraryScanProgressForBridge,
+    summarizeLibraryScanResultForBridge,
+} from './utils/bridge-trace';
 import { hasExternalFileDragPayload, isSupportedAudioFilePath } from './utils/main-helpers';
 import { formatPerfLogMessage } from './utils/perf-log';
 
@@ -969,13 +974,26 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     playerCardResizeObserver.observe(playerCard);
 
     EventsOn('silphium:library:rescan-log', (logLine: string) => { console.log(logLine); });
-    EventsOn('silphium:library:scan-updated', (scanResult: LibraryScanResult) => { void handleLibraryScanUpdatedEvent(scanResult); });
-    EventsOn('silphium:library:scan-progress', (scanProgress: LibraryScanProgress) => { updateLibraryLoadingEtaFromProgress(scanProgress); });
+    EventsOn('silphium:library:scan-updated', (scanResult: LibraryScanResult) => {
+        logBridgeEvent('library-event', 'scan-updated', summarizeLibraryScanResultForBridge(scanResult), {
+            sink: logFrontendMessage,
+        });
+        void handleLibraryScanUpdatedEvent(scanResult);
+    });
+    EventsOn('silphium:library:scan-progress', (scanProgress: LibraryScanProgress) => {
+        logBridgeEvent('library-event', 'scan-progress', summarizeLibraryScanProgressForBridge(scanProgress), {
+            sink: logFrontendMessage,
+        });
+        updateLibraryLoadingEtaFromProgress(scanProgress);
+    });
     EventsOn('silphium:musicbrainz:tag-worker-progress', (progress: MusicBrainzTagWorkerProgress) => {
         context.currentMusicBrainzTagWorkerProgress = normalizeMusicBrainzTagWorkerProgress(progress);
         setMusicBrainzTagWorkerProgress(context.currentMusicBrainzTagWorkerProgress);
     });
     EventsOn('silphium:media:key', (action: string) => {
+        logBridgeEvent('transport-event', 'media-key', { action }, {
+            sink: logFrontendMessage,
+        });
         if (action === 'playpause') {
             dispatchExternalPlaybackAction('playpause');
             return;

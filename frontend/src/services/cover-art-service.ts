@@ -1,4 +1,4 @@
-import type { CoverArtPrioritySource, Track } from '../types/app-types';
+import type { CoverArtPrioritySource, LibraryIndexedFile, Track } from '../types/app-types';
 import { base64ToObjectUrl, folderKeyForPath, mimeTypeForFileName } from '../utils/main-helpers';
 
 type MediaArtwork = {
@@ -26,6 +26,7 @@ type CoverArtServiceOptions = {
     getInternalCoverArtConfig?: () => Promise<InternalCoverArtConfig | undefined>;
     getIndexedFolderCoverPath?: (folderPath: string) => string | undefined;
     getLibraryFolderCoverPath: (folderPath: string) => Promise<string>;
+    getLibraryFolderImageFiles?: (folderPath: string) => Promise<LibraryIndexedFile[]>;
     readImageThumbnail: (filePath: string, maxEdge: number) => Promise<{ base64?: string; mimeType?: string }>;
     readFileBase64: (filePath: string) => Promise<string>;
     readTrackEmbeddedCover: (trackPath: string) => Promise<{ base64?: string; mimeType?: string }>;
@@ -52,6 +53,47 @@ const internalCoverArtFolderIDKind = 'cover-folder';
 const internalCoverArtTrackIDKind = 'cover-track';
 const maxInternalCoverArtFailuresBeforeDisable = 2;
 const internalCoverArtFetchTimeoutMs = 2500;
+
+const preferredCoverPriority = (name: string): number => {
+    const normalizedName = name.trim().toLowerCase();
+    if (normalizedName === 'cover.jpg') {
+        return 0;
+    }
+
+    if (normalizedName === 'folder.jpg') {
+        return 1;
+    }
+
+    if (normalizedName.startsWith('albumart') && !normalizedName.endsWith('.png')) {
+        return 2;
+    }
+
+    if (normalizedName === 'cover.png') {
+        return 3;
+    }
+
+    if (normalizedName === 'folder.png') {
+        return 4;
+    }
+
+    if (normalizedName.startsWith('albumart') && normalizedName.endsWith('.png')) {
+        return 5;
+    }
+
+    return 6;
+};
+
+const isPreferredCoverImageName = (name: string): boolean => preferredCoverPriority(name) < 6;
+
+const pathBaseName = (path: string): string => {
+    const normalizedPath = path.replace(/\\/g, '/');
+    const lastSlashIndex = normalizedPath.lastIndexOf('/');
+    return lastSlashIndex >= 0 ? normalizedPath.slice(lastSlashIndex + 1) : normalizedPath;
+};
+
+const folderPathSegments = (folderPath: string): string[] => folderKeyForPath(folderPath)
+    .split('/')
+    .filter((segment) => segment !== '');
 
 const base64UrlEncodeUtf8 = (value: string): string => {
     const bytes = new TextEncoder().encode(value);
@@ -171,6 +213,8 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
     const coverPathByFolder = new Map<string, string>();
     const coverUrlByFolder = new Map<string, string>();
     const coverMediaArtworkByFolder = new Map<string, MediaArtwork>();
+    const folderCoverPathInFlightByFolder = new Map<string, Promise<string | undefined>>();
+    const folderTreeCoverPathInFlightByFolder = new Map<string, Promise<string | undefined>>();
     const folderCoverInFlightByFolder = new Map<string, Promise<string | undefined>>();
     const coverUrlByTrackPath = new Map<string, string>();
     const coverMediaArtworkByTrackPath = new Map<string, MediaArtwork>();
@@ -320,6 +364,8 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
         resolvedCacheEpoch += 1;
         coverUrlByFolder.clear();
         coverMediaArtworkByFolder.clear();
+        folderCoverPathInFlightByFolder.clear();
+        folderTreeCoverPathInFlightByFolder.clear();
         folderCoverInFlightByFolder.clear();
         coverUrlByTrackPath.clear();
         coverMediaArtworkByTrackPath.clear();
@@ -344,10 +390,157 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
 
         if (folderKey) {
             folderCoverRevisionByFolder.set(folderKey, (folderCoverRevisionByFolder.get(folderKey) || 0) + 1);
+            folderCoverPathInFlightByFolder.delete(folderKey);
+            folderTreeCoverPathInFlightByFolder.delete(folderKey);
             folderCoverInFlightByFolder.delete(folderKey);
             coverUrlByFolder.delete(folderKey);
             coverMediaArtworkByFolder.delete(folderKey);
         }
+    };
+
+    const setPreferredFolderCoverPath = (folderPath: string, coverPath: string, coverName?: string): void => {
+        const folderKey = folderKeyForPath(folderPath || '');
+        const normalizedCoverPath = coverPath.trim();
+        if (!folderKey || normalizedCoverPath === '') {
+            return;
+        }
+
+        const candidateName = (coverName || pathBaseName(normalizedCoverPath)).trim();
+        if (!isPreferredCoverImageName(candidateName)) {
+            return;
+        }
+
+        const currentCoverPath = coverPathByFolder.get(folderKey);
+        if (!currentCoverPath) {
+            coverPathByFolder.set(folderKey, normalizedCoverPath);
+            return;
+        }
+
+        const currentName = pathBaseName(currentCoverPath);
+        const currentPriority = preferredCoverPriority(currentName);
+        const candidatePriority = preferredCoverPriority(candidateName);
+        const normalizedCurrentName = currentName.trim().toLowerCase();
+        const normalizedCandidateName = candidateName.trim().toLowerCase();
+        if (candidatePriority < currentPriority || (candidatePriority === currentPriority && normalizedCandidateName < normalizedCurrentName)) {
+            coverPathByFolder.set(folderKey, normalizedCoverPath);
+        }
+    };
+
+    const selectBestSubtreeCoverPath = (folderPath: string): string | undefined => {
+        const rootSegments = folderPathSegments(folderPath);
+        if (rootSegments.length === 0) {
+            return undefined;
+        }
+
+        let bestCandidate: { coverPath: string; descendantDistance: number; priority: number; sortKey: string } | undefined;
+        for (const [candidateFolderKey, coverPath] of coverPathByFolder.entries()) {
+            if (!coverPath) {
+                continue;
+            }
+
+            const candidateSegments = folderPathSegments(candidateFolderKey);
+            if (candidateSegments.length < rootSegments.length) {
+                continue;
+            }
+
+            let matchesRoot = true;
+            for (let index = 0; index < rootSegments.length; index += 1) {
+                if (candidateSegments[index] !== rootSegments[index]) {
+                    matchesRoot = false;
+                    break;
+                }
+            }
+            if (!matchesRoot) {
+                continue;
+            }
+
+            const priority = preferredCoverPriority(pathBaseName(coverPath));
+            if (priority >= 6) {
+                continue;
+            }
+
+            const descendantDistance = candidateSegments.length - rootSegments.length;
+            const sortKey = `${candidateFolderKey}/${coverPath}`.toLowerCase();
+            if (
+                !bestCandidate
+                || descendantDistance < bestCandidate.descendantDistance
+                || (descendantDistance === bestCandidate.descendantDistance && priority < bestCandidate.priority)
+                || (descendantDistance === bestCandidate.descendantDistance && priority === bestCandidate.priority && sortKey < bestCandidate.sortKey)
+            ) {
+                bestCandidate = {
+                    coverPath,
+                    descendantDistance,
+                    priority,
+                    sortKey,
+                };
+            }
+        }
+
+        return bestCandidate?.coverPath;
+    };
+
+    const resolveExactFolderCoverPath = async (folderPath: string): Promise<string | undefined> => {
+        const normalizedFolderPath = folderPath || '';
+        const folderKey = folderKeyForPath(normalizedFolderPath);
+        if (!folderKey) {
+            return undefined;
+        }
+
+        const cachedCoverPath = coverPathByFolder.get(folderKey);
+        if (cachedCoverPath) {
+            return cachedCoverPath;
+        }
+
+        return await resolveInFlight(folderKey, folderCoverPathInFlightByFolder, async () => {
+            let coverPath = coverPathByFolder.get(folderKey);
+            if (!coverPath) {
+                const indexedCoverPath = options.getIndexedFolderCoverPath?.(normalizedFolderPath)?.trim() || '';
+                if (indexedCoverPath !== '') {
+                    setPreferredFolderCoverPath(normalizedFolderPath, indexedCoverPath);
+                    coverPath = indexedCoverPath;
+                }
+            }
+
+            if (!coverPath) {
+                const backendCoverPath = await options.getLibraryFolderCoverPath(normalizedFolderPath);
+                if (backendCoverPath) {
+                    setPreferredFolderCoverPath(normalizedFolderPath, backendCoverPath);
+                    coverPath = backendCoverPath;
+                }
+            }
+
+            return coverPath || undefined;
+        });
+    };
+
+    const resolveFolderCoverPath = async (folderPath: string): Promise<string | undefined> => {
+        const exactCoverPath = await resolveExactFolderCoverPath(folderPath);
+        if (exactCoverPath) {
+            return exactCoverPath;
+        }
+
+        const folderKey = folderKeyForPath(folderPath || '');
+        if (!folderKey) {
+            return undefined;
+        }
+
+        const cachedSubtreeCoverPath = selectBestSubtreeCoverPath(folderPath);
+        if (cachedSubtreeCoverPath) {
+            return cachedSubtreeCoverPath;
+        }
+
+        if (!options.getLibraryFolderImageFiles) {
+            return undefined;
+        }
+
+        return await resolveInFlight(folderKey, folderTreeCoverPathInFlightByFolder, async () => {
+            const imageFiles = await options.getLibraryFolderImageFiles?.(folderPath);
+            for (const imageFile of imageFiles || []) {
+                setPreferredFolderCoverPath(imageFile.folderPath || '', imageFile.path || '', imageFile.name || '');
+            }
+
+            return selectBestSubtreeCoverPath(folderPath);
+        });
     };
 
     const resolveFolderCoverForTrack = async (track: Track): Promise<string | undefined> => {
@@ -362,22 +555,7 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
         }
 
         return await resolveInFlight(folderKey, folderCoverInFlightByFolder, async () => {
-            let coverPath = coverPathByFolder.get(folderKey);
-            if (!coverPath) {
-                const indexedCoverPath = options.getIndexedFolderCoverPath?.(track.folderPath || '')?.trim() || '';
-                if (indexedCoverPath !== '') {
-                    coverPathByFolder.set(folderKey, indexedCoverPath);
-                    coverPath = indexedCoverPath;
-                }
-            }
-
-            if (!coverPath) {
-                const backendCoverPath = await options.getLibraryFolderCoverPath(track.folderPath || '');
-                if (backendCoverPath) {
-                    coverPathByFolder.set(folderKey, backendCoverPath);
-                    coverPath = backendCoverPath;
-                }
-            }
+            const coverPath = await resolveFolderCoverPath(track.folderPath || '');
 
             if (!coverPath) {
                 return undefined;
@@ -535,6 +713,8 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
                 || coverMediaArtworkByFolder.get(folderKey);
         },
         getFolderCoverPath: (folderPath: string): string | undefined => coverPathByFolder.get(folderKeyForPath(folderPath || '')),
+        getKnownFolderCoverPaths: (): Array<[string, string]> => Array.from(coverPathByFolder.entries()),
+        resolveFolderCoverPath,
         getMusicBrainzCoverUrlForTrack: (track: Track): string | undefined => {
             const releaseId = (track.mbIds.releaseId || '').trim().toLowerCase();
             if (!releaseId) {
@@ -556,6 +736,8 @@ export const createCoverArtService = (options: CoverArtServiceOptions) => {
 
             if (folderKey) {
                 coverPathByFolder.delete(folderKey);
+                folderCoverPathInFlightByFolder.delete(folderKey);
+                folderTreeCoverPathInFlightByFolder.delete(folderKey);
                 folderCoverInFlightByFolder.delete(folderKey);
             }
         },

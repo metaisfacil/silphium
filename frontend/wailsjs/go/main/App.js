@@ -106,6 +106,10 @@ export function GetLibraryFolderCoverPath(arg1) {
   return window['go']['main']['App']['GetLibraryFolderCoverPath'](arg1);
 }
 
+export function GetLibraryFolderImageFiles(arg1) {
+  return window['go']['main']['App']['GetLibraryFolderImageFiles'](arg1);
+}
+
 export function GetLibraryFolderPage(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetLibraryFolderPage'](arg1, arg2, arg3);
 }

@@ -461,6 +461,8 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
     searchLibrary: scope.searchLibrary,
     getReleaseDepthForTrack: (track: Track) => scope.releaseDepthForTrack(track),
     getFolderCoverPath: (folderPath: string) => scope.coverArtService.getFolderCoverPath(folderPath),
+    resolveFolderCoverPath: async (folderPath: string) => await scope.coverArtService.resolveFolderCoverPath(folderPath),
+    getKnownFolderCoverPaths: () => scope.coverArtService.getKnownFolderCoverPaths(),
     fetchVisualizationFrame: scope.fetchVisualizationFrame,
     resolveTrackIndex: scope.ensureTrackIndexForPath,
     resolveTextFileIndex: scope.textFileIndexForPath,

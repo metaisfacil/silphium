@@ -255,6 +255,7 @@ const createContext = () => {
         searchLibrary: vi.fn(async () => ({ query: 'track', offset: 0, limit: 100, totalEntries: 1, entries: [] })),
         getReleaseDepthForTrack: vi.fn(() => 1),
         getFolderCoverPath: vi.fn(() => '/music/library/cover.jpg'),
+        resolveFolderCoverPath: vi.fn(async () => '/music/library/cover.jpg'),
         resolveTrackIndex: vi.fn((path: string) => tracks.findIndex((track) => track.path === path)),
         resolveTextFileIndex: vi.fn(() => 0),
         resolveImageFileIndex: vi.fn(() => 0),

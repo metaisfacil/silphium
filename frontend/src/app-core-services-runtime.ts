@@ -5,6 +5,7 @@ import {
     GetLastFmFollowing,
     GetLastFmFollowingFeed,
     GetLibraryFolderCoverPath,
+    GetLibraryFolderImageFiles,
     GetListenBrainzFollowing,
     GetListenBrainzFollowingFeed,
     GetListenBrainzRecordingFeedback,
@@ -36,7 +37,7 @@ import { formatPerfLogMessage } from './utils/perf-log';
 import { lookupMusicBrainzTrackMetadata, setMusicBrainzRequestLogServerResolver } from './utils/musicbrainz-entity-helpers';
 import { scheduleLastFmRequest } from './utils/lastfm-request-scheduler';
 import { scheduleListenBrainzRequest } from './utils/musicbrainz-request-scheduler';
-import type { AudioVisualizationFrame, ImageLibraryFile, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
+import type { AudioVisualizationFrame, ImageLibraryFile, LibraryIndexedFile, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
 import { activeSelectionTargetWithin, firstTagValue, normalizedTrackNumber } from './utils/display-helpers';
 import { folderKeyForPath } from './utils/main-helpers';
 
@@ -334,6 +335,11 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             background: true,
             maxWaitMs: 500,
             cooldownOnSlowMs: 300,
+        }),
+        getLibraryFolderImageFiles: async (folderPath: string): Promise<LibraryIndexedFile[]> => await measureBridgeCall('GetLibraryFolderImageFiles', 80, async () => await GetLibraryFolderImageFiles(folderPath) as LibraryIndexedFile[], {
+            background: true,
+            maxWaitMs: 600,
+            cooldownOnSlowMs: 350,
         }),
         readImageThumbnail: async (filePath: string, maxEdge: number): Promise<{ base64?: string; mimeType?: string }> => await measureBridgeCall('ReadImageThumbnail', 60, async () => await ReadImageThumbnail(filePath, maxEdge) as { base64?: string; mimeType?: string }, {
             background: true,
