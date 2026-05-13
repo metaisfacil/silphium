@@ -1073,10 +1073,62 @@ describe('createAppNowPlayingRuntime', () => {
             endEventId: 0,
         });
 
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(1);
 
         expect(AudioQueueNextTrack).not.toHaveBeenCalled();
         expect(vi.mocked(LogFrontendMessage)).toHaveBeenCalledWith(expect.stringContaining('[PLAYBACK] Trace NextTrackPrep skip reason=below-threshold'));
+
+        vi.useRealTimers();
+    });
+
+    it('queues the next track as soon as playback crosses the preload threshold', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentSettings.audio.gaplessPlayback = true;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+            },
+        ];
+        context.playlistController = () => ({
+            scheduleRender: vi.fn(),
+            peekNextTrackIndex: vi.fn(() => 1),
+        }) as never;
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 0.4,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 0.4,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(AudioQueueNextTrack).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(600);
+
+        expect(AudioQueueNextTrack).toHaveBeenCalledWith('/music/track.flac', '/music/next.flac');
 
         vi.useRealTimers();
     });

@@ -35,8 +35,8 @@ import { formatPerfLogMessage } from './utils/perf-log';
 
 export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRuntimeContext) => {
     const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
-    const postLoadTrackHydrationDelayMs = 1200;
-    const postPlayTrackHydrationDelayMs = 1200;
+    const postLoadTrackHydrationDelayMs = 300;
+    const postPlayTrackHydrationDelayMs = 300;
     let lastTransportPerfLogAtMs = 0;
     let pendingTrackHydrationHandle: number | undefined;
     let pendingTrackHydrationToken = 0;

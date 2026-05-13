@@ -210,7 +210,7 @@ describe('createAppPlaybackControlsRuntime', () => {
         expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
         expect(context.libraryController().renderFolder).toHaveBeenCalledWith('none');
 
-        await vi.advanceTimersByTimeAsync(1199);
+        await vi.advanceTimersByTimeAsync(299);
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
         expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
 
@@ -236,7 +236,7 @@ describe('createAppPlaybackControlsRuntime', () => {
 
         await runtime.playCurrentTrack();
 
-        await vi.advanceTimersByTimeAsync(1199);
+        await vi.advanceTimersByTimeAsync(299);
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
         expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
 
@@ -262,7 +262,7 @@ describe('createAppPlaybackControlsRuntime', () => {
         const runtime = createAppPlaybackControlsRuntime(context);
 
         await runtime.playCurrentTrack();
-        await vi.advanceTimersByTimeAsync(1200);
+        await vi.advanceTimersByTimeAsync(300);
 
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
         expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();

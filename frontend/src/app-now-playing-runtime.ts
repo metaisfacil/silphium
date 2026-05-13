@@ -60,6 +60,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let lastLyricsVisibilityState: boolean | null = null;
     let deferredPlaybackEffectsHandle: number | undefined;
     let deferredGaplessPrepHandle: number | undefined;
+    let thresholdGaplessPrepHandle: number | undefined;
     let settledTransitionMetadataRefreshHandle: number | undefined;
     let settledTransitionMetadataRefreshDeferred = false;
     let pendingSettledTransitionMetadataRefreshPath = '';
@@ -87,6 +88,35 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             window.clearTimeout(deferredGaplessPrepHandle);
             deferredGaplessPrepHandle = undefined;
         }
+
+        if (thresholdGaplessPrepHandle !== undefined) {
+            window.clearTimeout(thresholdGaplessPrepHandle);
+            thresholdGaplessPrepHandle = undefined;
+        }
+    };
+
+    const scheduleThresholdGaplessPrep = (nextState: AudioPlaybackState): void => {
+        if (!nextState.loaded || !nextState.playing || nextState.currentTime >= nextTrackPreloadStartSeconds) {
+            return;
+        }
+
+        const remainingMs = Math.ceil((nextTrackPreloadStartSeconds - nextState.currentTime) * 1000);
+        if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+            return;
+        }
+
+        thresholdGaplessPrepHandle = window.setTimeout(() => {
+            thresholdGaplessPrepHandle = undefined;
+            const estimatedState = playbackProgressEstimator.estimate();
+            if (!estimatedState.loaded || !estimatedState.playing) {
+                return;
+            }
+
+            void queueGaplessNextTrack({
+                ...estimatedState,
+                currentTime: Math.max(estimatedState.currentTime, nextTrackPreloadStartSeconds),
+            });
+        }, remainingMs);
     };
 
     const markQueuedGaplessEvaluation = (trackPath: string): void => {
@@ -255,6 +285,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             context.updateMediaSessionPositionState();
             syncPlaybackProgressLoop();
             playbackPoller.poke();
+            scheduleThresholdGaplessPrep(nextState);
 
             deferredGaplessPrepHandle = window.setTimeout(() => {
                 deferredGaplessPrepHandle = undefined;
