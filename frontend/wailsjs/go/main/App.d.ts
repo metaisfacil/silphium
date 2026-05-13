@@ -119,6 +119,8 @@ export function ReadTrackTagsFromBlobs(arg1:Array<main.TrackBlob>):Promise<Recor
 
 export function RefreshTrackMetadata(arg1:string):Promise<main.TrackTags>;
 
+export function ReserveBridgeTraceRequestID(arg1:string,arg2:string):Promise<number>;
+
 export function ResolveLibraryFolderForPath(arg1:string):Promise<string>;
 
 export function ResolveLibraryFolderForReleaseMBID(arg1:string):Promise<string>;

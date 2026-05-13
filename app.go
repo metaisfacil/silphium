@@ -88,9 +88,12 @@ type appSettingsStorageState struct {
 }
 
 type appRuntimeState struct {
-	ctx           context.Context
-	bridgeTraceID atomic.Uint64
-	quitRequested atomic.Bool
+	ctx                         context.Context
+	bridgeTraceID               atomic.Uint64
+	bridgeTraceRequestID        atomic.Uint64
+	bridgeTraceRequestMu        sync.Mutex
+	pendingBridgeTraceRequestID map[string][]uint64
+	quitRequested               atomic.Bool
 }
 
 type appWatcherState struct {
@@ -282,11 +285,16 @@ const maxBridgeTraceLogStringLength = 120
 const maxBridgeTraceLogSliceSample = 4
 
 type bridgeTraceHandle struct {
-	app      *App
-	sequence uint64
-	scope    string
-	name     string
-	started  time.Time
+	app       *App
+	sequence  uint64
+	requestID uint64
+	scope     string
+	name      string
+	started   time.Time
+}
+
+func bridgeTraceRequestKey(scope string, name string) string {
+	return strings.TrimSpace(scope) + "\x00" + strings.TrimSpace(name)
 }
 
 func truncateBridgeTraceLogString(value string) string {
@@ -394,25 +402,37 @@ func bridgeTraceErrorForLog(err error) string {
 
 func (a *App) beginBridgeTrace(scope string, name string, detail string) bridgeTraceHandle {
 	sequence := a.runtimeState().bridgeTraceID.Add(1)
+	requestID := a.takeBridgeTraceRequestID(scope, name)
 	prefix := fmt.Sprintf("[BRIDGE] BE #%d %s %s", sequence, scope, name)
-	if strings.TrimSpace(detail) == "" {
+	parts := make([]string, 0, 2)
+	if requestID != 0 {
+		parts = append(parts, fmt.Sprintf("requestId=%d", requestID))
+	}
+	if strings.TrimSpace(detail) != "" {
+		parts = append(parts, strings.TrimSpace(detail))
+	}
+	if len(parts) == 0 {
 		a.logRescanEvent("%s START", prefix)
 	} else {
-		a.logRescanEvent("%s START %s", prefix, strings.TrimSpace(detail))
+		a.logRescanEvent("%s START %s", prefix, strings.Join(parts, " "))
 	}
 
 	return bridgeTraceHandle{
-		app:      a,
-		sequence: sequence,
-		scope:    scope,
-		name:     name,
-		started:  time.Now(),
+		app:       a,
+		sequence:  sequence,
+		requestID: requestID,
+		scope:     scope,
+		name:      name,
+		started:   time.Now(),
 	}
 }
 
 func (trace bridgeTraceHandle) finish(detail string, err error) {
 	prefix := fmt.Sprintf("[BRIDGE] BE #%d %s %s", trace.sequence, trace.scope, trace.name)
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 4)
+	if trace.requestID != 0 {
+		parts = append(parts, fmt.Sprintf("requestId=%d", trace.requestID))
+	}
 	if strings.TrimSpace(detail) != "" {
 		parts = append(parts, strings.TrimSpace(detail))
 	}
@@ -421,6 +441,48 @@ func (trace bridgeTraceHandle) finish(detail string, err error) {
 	}
 	parts = append(parts, fmt.Sprintf("backendElapsed=%.2fms", time.Since(trace.started).Seconds()*1000))
 	trace.app.logRescanEvent("%s END %s", prefix, strings.Join(parts, " "))
+}
+
+func (a *App) reserveBridgeTraceRequestID(scope string, name string) uint64 {
+	trimmedScope := strings.TrimSpace(scope)
+	trimmedName := strings.TrimSpace(name)
+	if trimmedScope == "" || trimmedName == "" {
+		return 0
+	}
+
+	runtimeState := a.runtimeState()
+	requestID := runtimeState.bridgeTraceRequestID.Add(1)
+	requestKey := bridgeTraceRequestKey(trimmedScope, trimmedName)
+
+	runtimeState.bridgeTraceRequestMu.Lock()
+	defer runtimeState.bridgeTraceRequestMu.Unlock()
+
+	if runtimeState.pendingBridgeTraceRequestID == nil {
+		runtimeState.pendingBridgeTraceRequestID = make(map[string][]uint64)
+	}
+	runtimeState.pendingBridgeTraceRequestID[requestKey] = append(runtimeState.pendingBridgeTraceRequestID[requestKey], requestID)
+	return requestID
+}
+
+func (a *App) takeBridgeTraceRequestID(scope string, name string) uint64 {
+	runtimeState := a.runtimeState()
+	requestKey := bridgeTraceRequestKey(scope, name)
+
+	runtimeState.bridgeTraceRequestMu.Lock()
+	defer runtimeState.bridgeTraceRequestMu.Unlock()
+
+	pending := runtimeState.pendingBridgeTraceRequestID[requestKey]
+	if len(pending) == 0 {
+		return 0
+	}
+
+	requestID := pending[0]
+	if len(pending) == 1 {
+		delete(runtimeState.pendingBridgeTraceRequestID, requestKey)
+	} else {
+		runtimeState.pendingBridgeTraceRequestID[requestKey] = pending[1:]
+	}
+	return requestID
 }
 
 // startup is called when the app starts. The context is saved
@@ -563,6 +625,13 @@ func (a *App) beforeClose(context.Context) bool {
 func (a *App) LogFrontendMessage(message string) {
 	profiledVoid(a, "LogFrontendMessage", func() {
 		log.Println(formatFrontendLogLine(message, time.Now()))
+	})
+}
+
+// ReserveBridgeTraceRequestID reserves a shared request id for the next traced bridge call in the given scope.
+func (a *App) ReserveBridgeTraceRequestID(scope string, name string) uint64 {
+	return profiledValue(a, "ReserveBridgeTraceRequestID", func() uint64 {
+		return a.reserveBridgeTraceRequestID(scope, name)
 	})
 }
 

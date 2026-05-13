@@ -7,6 +7,7 @@ import type {
     LibraryScanResult,
     LibrarySearchPage,
 } from '../types/app-types';
+import * as appBindings from '../../wailsjs/go/main/App';
 import { formatPerfLogMessage } from './perf-log';
 
 type BridgeTraceDetails = Record<string, unknown>;
@@ -105,6 +106,30 @@ const nextBridgeTraceSequence = (): number => {
     return bridgeTraceSequence;
 };
 
+const reserveBridgeTraceRequestId = (scope: string, name: string): Promise<number | undefined> | undefined => {
+    let reserveRequestId: ((scope: string, name: string) => Promise<number> | number) | undefined;
+    try {
+        reserveRequestId = appBindings.ReserveBridgeTraceRequestID;
+    } catch {
+        return undefined;
+    }
+
+    if (typeof reserveRequestId !== 'function') {
+        return undefined;
+    }
+
+    try {
+        return Promise.resolve(reserveRequestId(scope, name)).then((requestId) => {
+            if (typeof requestId !== 'number' || !Number.isFinite(requestId) || requestId <= 0) {
+                return undefined;
+            }
+            return requestId;
+        }).catch(() => undefined);
+    } catch {
+        return Promise.resolve(undefined);
+    }
+};
+
 export const logBridgeEvent = (
     scope: string,
     name: string,
@@ -126,10 +151,16 @@ export const traceBridgeCall = async <T>(
     options: TraceBridgeCallOptions<T> = {},
 ): Promise<T> => {
     const sequence = nextBridgeTraceSequence();
+    const requestIdPromise = reserveBridgeTraceRequestId(scope, name);
+    const requestId = requestIdPromise ? await requestIdPromise : undefined;
     const startedAtMs = performance.now();
     const startDetails = formatBridgeTraceDetails(options.details);
     emitBridgeTraceLine(
-        formatPerfLogMessage(`[BRIDGE] FE #${sequence} ${scope} ${name} START${startDetails ? ` ${startDetails}` : ''}`),
+        formatPerfLogMessage(
+            `[BRIDGE] FE #${sequence} ${scope} ${name} START`
+            + `${requestId ? ` requestId=${requestId}` : ''}`
+            + `${startDetails ? ` ${startDetails}` : ''}`,
+        ),
         options.sink,
     );
 
@@ -138,7 +169,9 @@ export const traceBridgeCall = async <T>(
         const resultDetails = formatBridgeTraceDetails(options.summarizeResult?.(result));
         emitBridgeTraceLine(
             formatPerfLogMessage(
-                `[BRIDGE] FE #${sequence} ${scope} ${name} END bridgeElapsed=${(performance.now() - startedAtMs).toFixed(1)}ms`
+                `[BRIDGE] FE #${sequence} ${scope} ${name} END`
+                + `${requestId ? ` requestId=${requestId}` : ''}`
+                + ` bridgeElapsed=${(performance.now() - startedAtMs).toFixed(1)}ms`
                 + `${resultDetails ? ` ${resultDetails}` : ''}`,
             ),
             options.sink,
@@ -151,7 +184,9 @@ export const traceBridgeCall = async <T>(
         });
         emitBridgeTraceLine(
             formatPerfLogMessage(
-                `[BRIDGE] FE #${sequence} ${scope} ${name} ERROR bridgeElapsed=${(performance.now() - startedAtMs).toFixed(1)}ms`
+                `[BRIDGE] FE #${sequence} ${scope} ${name} ERROR`
+                + `${requestId ? ` requestId=${requestId}` : ''}`
+                + ` bridgeElapsed=${(performance.now() - startedAtMs).toFixed(1)}ms`
                 + `${errorDetails ? ` ${errorDetails}` : ''}`,
             ),
             options.sink,

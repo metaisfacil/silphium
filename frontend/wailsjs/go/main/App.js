@@ -234,6 +234,10 @@ export function RefreshTrackMetadata(arg1) {
   return window['go']['main']['App']['RefreshTrackMetadata'](arg1);
 }
 
+export function ReserveBridgeTraceRequestID(arg1, arg2) {
+  return window['go']['main']['App']['ReserveBridgeTraceRequestID'](arg1, arg2);
+}
+
 export function ResolveLibraryFolderForPath(arg1) {
   return window['go']['main']['App']['ResolveLibraryFolderForPath'](arg1);
 }

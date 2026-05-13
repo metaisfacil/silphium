@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -134,6 +136,50 @@ func TestBridgeTraceFinishUsesBackendElapsedLabel(t *testing.T) {
 	legacyPattern := `\[BRIDGE\] BE #1 transport AudioPlay END loaded=true elapsed=`
 	if regexp.MustCompile(legacyPattern).MatchString(emittedLogLine) {
 		t.Fatalf("bridge trace finish log = %q, unexpectedly matched legacy pattern %q", emittedLogLine, legacyPattern)
+	}
+}
+
+func TestReserveBridgeTraceRequestIDCorrelatesBridgeLogs(t *testing.T) {
+	originalRuntimeEventsEmit := runtimeEventsEmit
+	emittedLogLines := make([]string, 0, 2)
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
+		if eventName != libraryRescanLogEvent || len(optionalData) == 0 {
+			return
+		}
+		message, ok := optionalData[0].(string)
+		if !ok {
+			return
+		}
+		emittedLogLines = append(emittedLogLines, message)
+	}
+	t.Cleanup(func() {
+		runtimeEventsEmit = originalRuntimeEventsEmit
+	})
+
+	app := &App{}
+	app.ctx = context.Background()
+
+	requestID := app.ReserveBridgeTraceRequestID("transport", "AudioPlay")
+	if requestID == 0 {
+		t.Fatal("ReserveBridgeTraceRequestID() = 0, want non-zero request id")
+	}
+
+	trace := app.beginBridgeTrace("transport", "AudioPlay", "")
+	trace.finish("loaded=true", nil)
+
+	if len(emittedLogLines) != 2 {
+		t.Fatalf("emitted bridge logs = %d, want 2", len(emittedLogLines))
+	}
+
+	requestToken := "requestId=" + strconv.FormatUint(requestID, 10)
+	if !strings.Contains(emittedLogLines[0], requestToken) {
+		t.Fatalf("bridge trace start log = %q, want %q", emittedLogLines[0], requestToken)
+	}
+	if !strings.Contains(emittedLogLines[1], requestToken) {
+		t.Fatalf("bridge trace end log = %q, want %q", emittedLogLines[1], requestToken)
+	}
+	if !strings.Contains(emittedLogLines[1], "backendElapsed=") {
+		t.Fatalf("bridge trace end log = %q, want backendElapsed label", emittedLogLines[1])
 	}
 }
 

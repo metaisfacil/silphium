@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../wailsjs/go/main/App', () => ({
+    ReserveBridgeTraceRequestID: vi.fn(async () => 41),
+}));
+
 import { traceBridgeCall } from './bridge-trace';
+import * as appBindings from '../../wailsjs/go/main/App';
 
 describe('traceBridgeCall', () => {
     afterEach(() => {
@@ -18,9 +23,10 @@ describe('traceBridgeCall', () => {
             summarizeResult: (result) => ({ result }),
         })).resolves.toBe('ok');
 
+        expect(vi.mocked(appBindings.ReserveBridgeTraceRequestID)).toHaveBeenCalledWith('transport', 'AudioPlay');
         expect(warnSpy).toHaveBeenCalledTimes(2);
-        expect(warnSpy.mock.calls[0][0]).toContain('START path="/music/track.flac"');
-        expect(warnSpy.mock.calls[1][0]).toContain('END bridgeElapsed=12.3ms result="ok"');
+        expect(warnSpy.mock.calls[0][0]).toContain('START requestId=41 path="/music/track.flac"');
+        expect(warnSpy.mock.calls[1][0]).toContain('END requestId=41 bridgeElapsed=12.3ms result="ok"');
         expect(warnSpy.mock.calls[1][0]).not.toContain('END elapsed=12.3ms');
     });
 
@@ -35,7 +41,7 @@ describe('traceBridgeCall', () => {
         })).rejects.toThrow('backend unavailable');
 
         expect(warnSpy).toHaveBeenCalledTimes(2);
-        expect(warnSpy.mock.calls[1][0]).toContain('ERROR bridgeElapsed=6.8ms error="backend unavailable"');
+        expect(warnSpy.mock.calls[1][0]).toContain('ERROR requestId=41 bridgeElapsed=6.8ms error="backend unavailable"');
         expect(warnSpy.mock.calls[1][0]).not.toContain('ERROR elapsed=6.8ms');
     });
 });
