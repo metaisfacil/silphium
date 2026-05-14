@@ -94,6 +94,14 @@ type PlaylistControllerOptions = {
     getFavoritePlaylists: () => string[];
     shouldAutoSavePlaylistsOnAddRemove?: () => boolean;
     hasListenHistoryPlaylist: () => boolean;
+    onQueueRequested?: (
+        clientX: number,
+        clientY: number,
+        trackIndexes: number[],
+        feedbackTrackIndex?: number,
+        includeFileActions?: boolean,
+        fileActionPath?: string,
+    ) => void;
     onTrackChosen: (index: number, context: PlaylistTrackChosenContext) => Promise<void>;
     onExternalPlaylistLoaded: () => void;
     onPlaybackSequenceMutated?: () => void | Promise<void>;
@@ -2475,6 +2483,41 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }).then(() => {
             renderPlaylist();
         });
+    });
+
+    playlistList.addEventListener('contextmenu', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const row = target.closest('.playlist-row');
+        if (!(row instanceof HTMLElement)) {
+            return;
+        }
+
+        const button = row.querySelector<HTMLButtonElement>('[data-playlist-track-index]');
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const trackIndex = Number(button.dataset.playlistTrackIndex);
+        if (!Number.isInteger(trackIndex) || trackIndex < 0 || trackIndex >= options.getTrackCount()) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const trackPath = options.getTrackPath(trackIndex).trim();
+        options.onQueueRequested?.(
+            event.clientX,
+            event.clientY,
+            [trackIndex],
+            trackIndex,
+            trackPath !== '',
+            trackPath,
+        );
     });
 
     playlistList.addEventListener('pointerdown', (event) => {

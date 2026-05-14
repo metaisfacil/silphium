@@ -49,6 +49,7 @@ const mountPlaylistController = (options: {
     state?: PlaylistControllerState;
     shouldAutoSavePlaylistsOnAddRemove?: boolean;
     playbackSequencingService?: Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection'>;
+    onQueueRequested?: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number, includeFileActions?: boolean, fileActionPath?: string) => void;
 } = {}) => {
     document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
     const trigger = document.createElement('button');
@@ -123,6 +124,7 @@ const mountPlaylistController = (options: {
         getFavoritePlaylists: () => favoritePlaylists,
         shouldAutoSavePlaylistsOnAddRemove: () => options.shouldAutoSavePlaylistsOnAddRemove === true,
         hasListenHistoryPlaylist: () => listenHistoryEnabled,
+        onQueueRequested: options.onQueueRequested,
         onTrackChosen,
         onExternalPlaylistLoaded: vi.fn(() => undefined),
         onPlaybackSequenceMutated,
@@ -536,6 +538,45 @@ describe('createPlaylistController', () => {
         });
         expect(controller.getSequenceOverride()).toEqual({ indexes: [2, 0], currentPosition: 0 });
         vi.useRealTimers();
+    });
+
+    it('opens the queue menu when right-clicking a playback-queue row', () => {
+        const onQueueRequested = vi.fn();
+        const { controller, elements } = mountPlaylistController({ onQueueRequested });
+
+        controller.openModal();
+
+        const queueTrackButton = elements.playlistList.querySelector('[data-playlist-track-index="1"]') as HTMLButtonElement | null;
+        expect(queueTrackButton).not.toBeNull();
+
+        queueTrackButton?.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 22,
+            clientY: 33,
+        }));
+
+        expect(onQueueRequested).toHaveBeenCalledWith(22, 33, [1], 1, true, '/music/track-1.flac');
+    });
+
+    it('opens the queue menu when right-clicking a listen-history row', async () => {
+        const onQueueRequested = vi.fn();
+        const { controller, elements } = mountPlaylistController({ onQueueRequested });
+
+        controller.openModal();
+        await selectCustomPlaylistSource(elements, 'history');
+
+        const historyTrackButton = elements.playlistList.querySelector('[data-playlist-track-index="2"]') as HTMLButtonElement | null;
+        expect(historyTrackButton).not.toBeNull();
+
+        historyTrackButton?.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 44,
+            clientY: 55,
+        }));
+
+        expect(onQueueRequested).toHaveBeenCalledWith(44, 55, [2], 2, true, '/music/track-2.flac');
     });
 
     it('disables add-current and duplicate prevention while viewing the playback queue', () => {

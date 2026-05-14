@@ -410,6 +410,7 @@ describe('app-controller-setup', () => {
         await playlistConfig.savePlaylistTrackMetadataCache([{ trackPath: '/music/library/track-1.flac', trackName: 'Track 1', artistName: 'Artist' }]);
         playlistConfig.savePlaylistData('/playlists/favorites.m3u', ['/music/library/track-1.flac']);
         playlistConfig.appendTracksToPlaylistData('/playlists/favorites.m3u', ['/music/library/track-1.flac']);
+        playlistConfig.onQueueRequested(11, 22, [1], 1, true, '/music/library/track-2.flac');
         await playlistConfig.onTrackChosen(1, { userInitiated: true, source: 'library' });
         playlistConfig.onExternalPlaylistLoaded();
         await playlistConfig.onPlaybackSequenceMutated();
@@ -490,6 +491,7 @@ describe('app-controller-setup', () => {
         expect(context.setPlayerCardLayout).toHaveBeenCalledWith('cover');
         expect(context.loadTrack).toHaveBeenCalledWith(1, true, undefined, true);
         expect(context.playCurrentTrack).toHaveBeenCalled();
+        expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(11, 22, [1], 1, true, '/music/library/track-2.flac');
         expect(context.ensureTrackTagsResolved).toHaveBeenCalledWith(0);
         expect(context.lookupMusicBrainzRecordingURLs).toHaveBeenCalledWith('recording-id');
         expect(context.lookupArtistByMBID).toHaveBeenCalledWith('artist-id');

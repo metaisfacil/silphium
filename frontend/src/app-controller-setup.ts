@@ -154,6 +154,16 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
             context.currentSettings.localLibraryFilesDatabaseEnabled
             && context.currentSettings.localLibraryFilesDatabaseListenHistoryEnabled
         ),
+        onQueueRequested: (clientX, clientY, trackIndexes, feedbackTrackIndex, includeFileActions, fileActionPath) => {
+            context.openSidebarQueueMenu(
+                clientX,
+                clientY,
+                trackIndexes,
+                feedbackTrackIndex,
+                !!includeFileActions,
+                fileActionPath || '',
+            );
+        },
         onTrackChosen: async (index: number, selectionContext: PlaylistTrackChosenContext) => {
             const manualTrackSelection = selectionContext.userInitiated && selectionContext.source !== 'queue';
             await context.loadTrack(index, true, undefined, manualTrackSelection);
