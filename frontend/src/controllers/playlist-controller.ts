@@ -152,6 +152,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     let hydrationCompleted = 0;
     let hydrationHideToken = 0;
     let hydrationSignature = '';
+    let pendingSourceLoadRequestId = 0;
+    let pendingSourceLoadValue: string | null = null;
+    let pendingSourceLoadMessage = '';
     const queueMutationChunkSize = 512;
     const playlistModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     const playlistFilterTransitionMs = 170;
@@ -192,6 +195,31 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     const notifyPlaybackQueueMutated = (): void => {
         void options.onPlaybackSequenceMutated?.();
+    };
+
+    const cancelPendingSourceLoad = (): void => {
+        pendingSourceLoadRequestId += 1;
+        pendingSourceLoadValue = null;
+        pendingSourceLoadMessage = '';
+    };
+
+    const beginPendingSourceLoad = (value: string, message: string): number => {
+        pendingSourceLoadRequestId += 1;
+        pendingSourceLoadValue = value;
+        pendingSourceLoadMessage = message;
+        return pendingSourceLoadRequestId;
+    };
+
+    const isPendingSourceLoadCurrent = (requestId: number): boolean => requestId === pendingSourceLoadRequestId;
+
+    const clearPendingSourceLoad = (requestId?: number): boolean => {
+        if (requestId !== undefined && !isPendingSourceLoadCurrent(requestId)) {
+            return false;
+        }
+
+        pendingSourceLoadValue = null;
+        pendingSourceLoadMessage = '';
+        return true;
     };
 
     const hasCachedPlaylistLabels = (item?: LoadedPlaylistCachedItem): boolean => (
@@ -849,6 +877,8 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return false;
         }
 
+        cancelPendingSourceLoad();
+
         const loadedPlaylist = await options.loadPlaylistData(normalizedPath);
         if (!loadedPlaylist) {
             return false;
@@ -875,11 +905,17 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         return true;
     };
 
-    const loadListenHistoryPlaylist = async (openAfterLoad = false): Promise<boolean> => {
+    const loadListenHistoryPlaylist = async (openAfterLoad = false, sourceLoadRequestId?: number): Promise<boolean> => {
         const loadedPlaylist = await options.loadListenHistoryData();
         if (!loadedPlaylist) {
             return false;
         }
+
+        if (sourceLoadRequestId !== undefined && !isPendingSourceLoadCurrent(sourceLoadRequestId)) {
+            return false;
+        }
+
+        clearPendingSourceLoad(sourceLoadRequestId);
 
         const sanitizedPlaylist = sanitizeLoadedPlaylistData(loadedPlaylist);
 
@@ -1224,6 +1260,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         clearPlaylistFilter();
 
         if (selectedValue === 'queue') {
+            cancelPendingSourceLoad();
             controllerState.selectedSource = 'queue';
             controllerState.selectedFavoriteIndex = null;
             hydrateCurrentViewTracks();
@@ -1232,6 +1269,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         if (selectedValue === 'playlist') {
+            cancelPendingSourceLoad();
             controllerState.selectedSource = 'playlist';
             controllerState.selectedFavoriteIndex = null;
             hydrateCurrentViewTracks();
@@ -1240,8 +1278,14 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         if (selectedValue === 'history') {
-            void loadListenHistoryPlaylist(false).then((loaded) => {
+            const requestId = beginPendingSourceLoad('history', 'Loading listen history…');
+            renderPlaylist(true);
+            void loadListenHistoryPlaylist(false, requestId).then((loaded) => {
                 if (loaded) {
+                    return;
+                }
+
+                if (!clearPendingSourceLoad(requestId)) {
                     return;
                 }
 
@@ -1252,6 +1296,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 renderPlaylist(true);
             }).catch((error) => {
                 console.error(error);
+                if (!clearPendingSourceLoad(requestId)) {
+                    return;
+                }
                 controllerState.selectedSource = 'queue';
                 controllerState.selectedFavoriteIndex = null;
                 setPlaylistSourceSelection('queue');
@@ -1264,8 +1311,33 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         const favoriteMatch = /^favorite:(\d+)$/.exec(selectedValue);
         if (favoriteMatch) {
             const favoriteIndex = Number(favoriteMatch[1]);
-            void loadFavouritePlaylistByIndex(favoriteIndex).catch((error) => {
+            const requestId = beginPendingSourceLoad(selectedValue, 'Loading playlist…');
+            renderPlaylist(true);
+            void loadFavouritePlaylistByIndex(favoriteIndex, requestId).then((loaded) => {
+                if (loaded) {
+                    return;
+                }
+
+                if (!clearPendingSourceLoad(requestId)) {
+                    return;
+                }
+
+                controllerState.selectedFavoriteIndex = null;
+                controllerState.selectedSource = 'queue';
+                setPlaylistSourceSelection('queue');
+                hydrateCurrentViewTracks();
+                renderPlaylist(true);
+            }).catch((error) => {
                 console.error(error);
+                if (!clearPendingSourceLoad(requestId)) {
+                    return;
+                }
+
+                controllerState.selectedFavoriteIndex = null;
+                controllerState.selectedSource = 'queue';
+                setPlaylistSourceSelection('queue');
+                hydrateCurrentViewTracks();
+                renderPlaylist(true);
             });
         }
     };
@@ -1274,6 +1346,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         rebuildPlaylistSourceControl(getPlaylistSourceControlOptions());
         playlistTitle.hidden = true;
         playlistSourceWrap.hidden = false;
+
+        if (pendingSourceLoadValue !== null) {
+            if (setPlaylistSourceSelection(pendingSourceLoadValue)) {
+                return;
+            }
+        }
 
         if (controllerState.selectedSource === 'playlist' && hasLoadedPlaylist()) {
             if (setPlaylistSourceSelection('playlist')) {
@@ -1300,7 +1378,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const shouldDisablePlaylistMutationControls = (): boolean => {
-        return controllerState.selectedSource === 'queue' || controllerState.selectedSource === 'history';
+        return pendingSourceLoadValue !== null || controllerState.selectedSource === 'queue' || controllerState.selectedSource === 'history';
     };
 
     const updatePlaylistMutationControlsState = (): void => {
@@ -1443,6 +1521,17 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         updateHeaderSourceControl();
         updatePlaylistMutationControlsState();
+
+        if (pendingSourceLoadValue !== null) {
+            playlistList.innerHTML = `<li class="playlist-item-empty">${pendingSourceLoadMessage || 'Loading playlist…'}</li>`;
+            if (animateViewSwitch) {
+                animatePlaylistDialogResize(previousDialogHeight);
+                animatePlaylistViewSwitch();
+            } else if (animateFilterResults) {
+                animatePlaylistFilterResults();
+            }
+            return;
+        }
 
         const { indexes, currentPosition } = currentSequence();
         const currentTrackIndex = options.getCurrentTrackIndex();
@@ -1963,6 +2052,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const resetState = (): void => {
+        cancelPendingSourceLoad();
         controllerState.loadedPlaylistTrackIndexes = null;
         controllerState.loadedPlaylistName = '';
         controllerState.loadedPlaylistPath = '';
@@ -2078,6 +2168,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.loadedPlaylistReadOnly = false;
         controllerState.loadedPlaylistHistoryItems = null;
         controllerState.loadedPlaylistCachedItems = null;
+        cancelPendingSourceLoad();
         controllerState.selectedSource = 'playlist';
         controllerState.playbackSource = 'queue';
         clearEditableQueueState();
@@ -2088,15 +2179,21 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         renderPlaylist(true);
     };
 
-    const loadFavouritePlaylist = async (playlistPath: string): Promise<void> => {
+    const loadFavouritePlaylist = async (playlistPath: string, sourceLoadRequestId?: number): Promise<boolean> => {
         if (!playlistPath) {
-            return;
+            return false;
         }
 
         const loadedPlaylist = await options.loadPlaylistData(playlistPath);
         if (!loadedPlaylist) {
-            return;
+            return false;
         }
+
+        if (sourceLoadRequestId !== undefined && !isPendingSourceLoadCurrent(sourceLoadRequestId)) {
+            return false;
+        }
+
+        clearPendingSourceLoad(sourceLoadRequestId);
 
         const sanitizedPlaylist = sanitizeLoadedPlaylistData(loadedPlaylist);
 
@@ -2114,6 +2211,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         resetHydrationRequestState();
         hydrateCurrentViewTracks();
         renderPlaylist(true);
+        return true;
     };
 
     const openPlaylistTarget = async (): Promise<PlaylistTargetOption | null> => {
@@ -2174,17 +2272,22 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.playbackSource = 'queue';
     };
 
-    const loadFavouritePlaylistByIndex = async (favoriteIndex: number): Promise<void> => {
+    const loadFavouritePlaylistByIndex = async (favoriteIndex: number, sourceLoadRequestId?: number): Promise<boolean> => {
         const favoritePlaylists = options.getFavoritePlaylists().filter((playlistPath) => playlistPath.trim() !== '');
         if (!Number.isInteger(favoriteIndex) || favoriteIndex < 0 || favoriteIndex >= favoritePlaylists.length) {
-            return;
+            return false;
         }
 
         controllerState.selectedFavoriteIndex = favoriteIndex;
-        await loadFavouritePlaylist(favoritePlaylists[favoriteIndex]);
+        const loaded = await loadFavouritePlaylist(favoritePlaylists[favoriteIndex], sourceLoadRequestId);
+        if (!loaded) {
+            return false;
+        }
+
         updateHeaderSourceControl();
         const favoriteValue = `favorite:${favoriteIndex}`;
         setPlaylistSourceSelection(favoriteValue);
+        return true;
     };
 
     syncPlaylistFilterUi();

@@ -12,6 +12,21 @@ const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
 };
 
+const createDeferred = <T>() => {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+
+    return {
+        promise,
+        resolve,
+        reject,
+    };
+};
+
 const dispatchPointerEvent = (
     target: EventTarget,
     type: string,
@@ -414,6 +429,29 @@ describe('createPlaylistController', () => {
 
         expect(controller.getSequenceOverride()).toBeNull();
         expect(elements.playlistSource.value).toBe('queue');
+    });
+
+    it('shows a loading placeholder immediately while a favorite playlist is still loading', async () => {
+        const deferred = createDeferred<LoadedPlaylistData | null>();
+        const { controller, elements, loadPlaylistData } = mountPlaylistController();
+        loadPlaylistData.mockImplementationOnce(async () => await deferred.promise);
+
+        controller.openModal();
+        await selectCustomPlaylistSource(elements, 'favorite:0');
+
+        expect(elements.playlistSource.value).toBe('favorite:0');
+        expect(elements.playlistList.textContent).toContain('Loading playlist…');
+        expect(elements.playlistList.querySelector('[data-playlist-track-index="0"]')).toBeNull();
+
+        deferred.resolve({
+            name: 'favorite.m3u8',
+            trackIndexes: [1, 0],
+        });
+        await flushPromises();
+        await flushPromises();
+
+        expect(loadPlaylistData).toHaveBeenCalledWith('/playlists/favorite.m3u8');
+        expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => button.dataset.playlistTrackIndex)).toEqual(['1', '0']);
     });
 
     it('filters the current playlist view and clears the filter when the modal closes', () => {
