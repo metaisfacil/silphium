@@ -103,6 +103,7 @@ const createScope = () => {
         playlistControllerRef: {
             refreshFavorites: vi.fn(),
             closeMenu: vi.fn(),
+            handleExternalTrackDrop: vi.fn(async () => false),
             loadPlaylistByPath: vi.fn(),
         },
         resetShuffleHistory: vi.fn(),
@@ -418,6 +419,7 @@ describe('app-bootstrap-setup wrappers', () => {
 
         context.setMusicBrainzTagWorkerProgress({ progress: 1 });
         context.currentMusicBrainzTagWorkerProgress = { progress: 0.5 };
+        await context.playlistControllerHandleExternalTrackDrop(12, 24, [2]);
         context.playlistControllerLoadPlaylistByPath('/playlists/favorites.m3u');
         context.handleDocumentClickWithinSettings(document.body);
         await context.audioSeek(15);
@@ -426,6 +428,7 @@ describe('app-bootstrap-setup wrappers', () => {
 
         expect(scope.settingsControllerRef.setMusicBrainzTagWorkerProgress).toHaveBeenCalledWith({ progress: 1 });
         expect(scope.currentMusicBrainzTagWorkerProgress).toEqual({ progress: 0.5 });
+        expect(scope.playlistControllerRef.handleExternalTrackDrop).toHaveBeenCalledWith(12, 24, [2]);
         expect(scope.playlistControllerRef.loadPlaylistByPath).toHaveBeenCalledWith('/playlists/favorites.m3u');
         expect(scope.settingsControllerRef.handleDocumentClick).toHaveBeenCalledWith(document.body);
         expect(scope.audioSeek).toHaveBeenCalledWith(15);

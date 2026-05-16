@@ -33,6 +33,15 @@ type TrackNavigationBindingsContext = {
     logTransportGesture?: (name: string, target: HTMLElement) => void;
 };
 
+type ExternalFileDropContext = Pick<
+    AppEventBindingsContext,
+    | 'ensureTrackIndexForPath'
+    | 'handleDroppedFolderPath'
+    | 'playDroppedTrackPath'
+    | 'playlistControllerHandleExternalTrackDrop'
+    | 'playlistControllerLoadPlaylistByPath'
+>;
+
 const clampUnitVolume = (value: number): number => {
     if (!Number.isFinite(value)) {
         return 0;
@@ -166,6 +175,48 @@ export const setupVolumeControlBindings = (context: VolumeControlBindingsContext
     return volumeRow;
 };
 
+export const handleExternalFileDrop = async (
+    context: ExternalFileDropContext,
+    clientX: number,
+    clientY: number,
+    paths: string[],
+): Promise<void> => {
+    const droppedPaths = (paths || []).map((path) => path.trim()).filter((path) => path !== '');
+    if (droppedPaths.length === 0) {
+        return;
+    }
+
+    const droppedAudioPaths = droppedPaths.filter((path) => isSupportedAudioFilePath(path));
+    if (droppedAudioPaths.length > 0) {
+        const droppedTrackIndexes = droppedAudioPaths
+            .map((path) => context.ensureTrackIndexForPath(path))
+            .filter((trackIndex) => Number.isInteger(trackIndex) && trackIndex >= 0);
+
+        if (droppedTrackIndexes.length > 0 && await context.playlistControllerHandleExternalTrackDrop(clientX, clientY, droppedTrackIndexes)) {
+            return;
+        }
+    }
+
+    const droppedPlaylistPath = droppedPaths.find((path) => /\.(m3u8?|M3U8?)$/.test(path));
+    if (droppedPlaylistPath) {
+        await context.playlistControllerLoadPlaylistByPath(droppedPlaylistPath);
+        return;
+    }
+
+    const droppedAudioPath = droppedAudioPaths[0];
+    if (droppedAudioPath) {
+        await context.playDroppedTrackPath(droppedAudioPath);
+        return;
+    }
+
+    const droppedFolderPath = droppedPaths.find((path) => !/\.(m3u8?|M3U8?)$/.test(path) && !isSupportedAudioFilePath(path));
+    if (!droppedFolderPath) {
+        return;
+    }
+
+    await context.handleDroppedFolderPath(clientX, clientY, droppedFolderPath);
+};
+
 export const setupTrackNavigationBindings = (context: TrackNavigationBindingsContext): void => {
     const {
         back,
@@ -289,6 +340,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         trackReleaseAlbum,
         trackArtistHeader,
         handleDroppedFolderPath,
+        ensureTrackIndexForPath,
         playDroppedTrackPath,
         openCoverImageModal,
         toggleCoverFlipFromSecondaryInput,
@@ -343,6 +395,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         setMusicBrainzTagWorkerProgress,
         dispatchExternalPlaybackAction,
         logFrontendMessage,
+        playlistControllerHandleExternalTrackDrop,
         playlistControllerLoadPlaylistByPath,
         handleDocumentClickWithinSettings,
         playerCardResizeObserver,
@@ -442,33 +495,13 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     document.addEventListener('drop', preventBrowserFileDropDefault, { capture: true, passive: false });
 
     OnFileDrop((x: number, y: number, paths: string[]) => {
-        const droppedPaths = (paths || []).map((path) => path.trim()).filter((path) => path !== '');
-        if (droppedPaths.length === 0) {
-            return;
-        }
-
-        const droppedPlaylistPath = droppedPaths.find((path) => /\.(m3u8?|M3U8?)$/.test(path));
-        if (droppedPlaylistPath) {
-            void playlistControllerLoadPlaylistByPath(droppedPlaylistPath).catch((error: unknown) => {
-                console.error(error);
-            });
-            return;
-        }
-
-        const droppedAudioPath = droppedPaths.find((path) => isSupportedAudioFilePath(path));
-        if (droppedAudioPath) {
-            void playDroppedTrackPath(droppedAudioPath).catch((error: unknown) => {
-                console.error(error);
-            });
-            return;
-        }
-
-        const droppedFolderPath = droppedPaths.find((path) => !/\.(m3u8?|M3U8?)$/.test(path) && !isSupportedAudioFilePath(path));
-        if (!droppedFolderPath) {
-            return;
-        }
-
-        void handleDroppedFolderPath(x, y, droppedFolderPath).catch((error: unknown) => {
+        void handleExternalFileDrop({
+            ensureTrackIndexForPath,
+            handleDroppedFolderPath,
+            playDroppedTrackPath,
+            playlistControllerHandleExternalTrackDrop,
+            playlistControllerLoadPlaylistByPath,
+        }, x, y, paths).catch((error: unknown) => {
             console.error(error);
         });
     }, false);

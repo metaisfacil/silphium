@@ -1979,6 +1979,85 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         notifyPlaybackQueueMutated();
     };
 
+    const insertTrackIndexesIntoCurrentView = async (trackIndexes: number[], insertAt: number): Promise<boolean> => {
+        if (isViewingReadOnlyPlaylist()) {
+            return false;
+        }
+
+        const normalizedTrackIndexes = normalizeQueueEligibleTrackIndexes(trackIndexes);
+        if (normalizedTrackIndexes.length === 0) {
+            return false;
+        }
+
+        const activeQueue = mutableCurrentSequence();
+        const queueMutated = activeQueue === controllerState.editableQueueTrackIndexes;
+        const previousQueue = activeQueue.slice();
+        const boundedInsertAt = Math.min(Math.max(insertAt, 0), activeQueue.length);
+
+        insertTrackIndexes(activeQueue, boundedInsertAt, normalizedTrackIndexes);
+        if (!(await persistLoadedPlaylistSequenceIfEnabled(activeQueue))) {
+            replaceTrackIndexes(activeQueue, previousQueue);
+            options.openErrorModal(
+                'Playlist save failed',
+                'Silphium could not save the playlist after adding dropped tracks, so the change was reverted.',
+            );
+            renderPlaylist(true);
+            return false;
+        }
+
+        hydrateTrackMetadataInBackground(normalizedTrackIndexes);
+        renderPlaylist(true);
+        if (queueMutated) {
+            notifyPlaybackQueueMutated();
+        }
+
+        return true;
+    };
+
+    const resolveExternalTrackDropInsertPosition = (clientX: number, clientY: number): number | null => {
+        if (playlistModal.hidden) {
+            return null;
+        }
+
+        const ownerDocument = playlistList.ownerDocument;
+        if (typeof ownerDocument.elementFromPoint !== 'function') {
+            return null;
+        }
+
+        const dropTarget = ownerDocument.elementFromPoint(clientX, clientY);
+        if (!(dropTarget instanceof Element) || !playlistList.contains(dropTarget)) {
+            return null;
+        }
+
+        const sequenceLength = currentSequence().indexes.length;
+        const row = dropTarget.closest('.playlist-row');
+        if (!(row instanceof HTMLElement) || !playlistList.contains(row)) {
+            return sequenceLength;
+        }
+
+        const rowPosition = Number(row.dataset.playlistPosition);
+        if (!Number.isInteger(rowPosition)) {
+            return sequenceLength;
+        }
+
+        const rowRect = row.getBoundingClientRect();
+        if (rowRect.height <= 0) {
+            return Math.min(rowPosition, sequenceLength);
+        }
+
+        const insertAfterRow = clientY >= rowRect.top + (rowRect.height / 2);
+        return Math.min(rowPosition + (insertAfterRow ? 1 : 0), sequenceLength);
+    };
+
+    const handleExternalTrackDrop = async (clientX: number, clientY: number, trackIndexes: number[]): Promise<boolean> => {
+        const insertAt = resolveExternalTrackDropInsertPosition(clientX, clientY);
+        if (insertAt === null) {
+            return false;
+        }
+
+        return await insertTrackIndexesIntoCurrentView(trackIndexes, insertAt);
+    };
+
     const resolveNextTrackIndex = (direction: PlaylistDirection, mutateState: boolean): number | undefined => {
         const currentTrackIndex = options.getCurrentTrackIndex();
 
@@ -2797,6 +2876,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         appendTracksToPlaylist,
         openPlaylistTarget,
         createPlaylistTarget,
+        handleExternalTrackDrop,
         loadPlaylistByPath,
     };
 };

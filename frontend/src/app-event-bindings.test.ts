@@ -6,7 +6,7 @@ vi.mock('../wailsjs/runtime/runtime', () => ({
     OnFileDrop: vi.fn(),
 }));
 
-import { setupTrackNavigationBindings, setupVolumeControlBindings, triggerSidebarOpenInBrowserAction } from './app-event-bindings';
+import { handleExternalFileDrop, setupTrackNavigationBindings, setupVolumeControlBindings, triggerSidebarOpenInBrowserAction } from './app-event-bindings';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -199,5 +199,49 @@ describe('triggerSidebarOpenInBrowserAction', () => {
         await flushPromises();
 
         expect(callOrder).toEqual(['open', 'close']);
+    });
+});
+
+describe('handleExternalFileDrop', () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('inserts dropped audio into the playlist before falling back to the play handler', async () => {
+        const ensureTrackIndexForPath = vi.fn((path: string) => path.endsWith('drop.flac') ? 7 : -1);
+        const playlistControllerHandleExternalTrackDrop = vi.fn(async () => true);
+        const playlistControllerLoadPlaylistByPath = vi.fn(async () => true);
+        const playDroppedTrackPath = vi.fn(async () => undefined);
+        const handleDroppedFolderPath = vi.fn(async () => undefined);
+
+        await handleExternalFileDrop({
+            ensureTrackIndexForPath,
+            handleDroppedFolderPath,
+            playDroppedTrackPath,
+            playlistControllerHandleExternalTrackDrop,
+            playlistControllerLoadPlaylistByPath,
+        }, 24, 48, ['C:/music/drop.flac']);
+
+        expect(ensureTrackIndexForPath).toHaveBeenCalledWith('C:/music/drop.flac');
+        expect(playlistControllerHandleExternalTrackDrop).toHaveBeenCalledWith(24, 48, [7]);
+        expect(playDroppedTrackPath).not.toHaveBeenCalled();
+        expect(playlistControllerLoadPlaylistByPath).not.toHaveBeenCalled();
+        expect(handleDroppedFolderPath).not.toHaveBeenCalled();
+    });
+
+    it('falls back to playing dropped audio when the playlist does not handle the drop', async () => {
+        const playlistControllerHandleExternalTrackDrop = vi.fn(async () => false);
+        const playDroppedTrackPath = vi.fn(async () => undefined);
+
+        await handleExternalFileDrop({
+            ensureTrackIndexForPath: vi.fn(() => 3),
+            handleDroppedFolderPath: vi.fn(async () => undefined),
+            playDroppedTrackPath,
+            playlistControllerHandleExternalTrackDrop,
+            playlistControllerLoadPlaylistByPath: vi.fn(async () => true),
+        }, 8, 16, ['C:/music/queued.flac']);
+
+        expect(playlistControllerHandleExternalTrackDrop).toHaveBeenCalledWith(8, 16, [3]);
+        expect(playDroppedTrackPath).toHaveBeenCalledWith('C:/music/queued.flac');
     });
 });

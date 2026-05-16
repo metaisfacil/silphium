@@ -202,6 +202,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'trackArtistHeader'
     | 'playerLane'
     | 'handleDroppedFolderPath'
+    | 'ensureTrackIndexForPath'
     | 'playDroppedTrackPath'
     | 'openCoverImageModal'
     | 'toggleCoverFlipFromSecondaryInput'
@@ -578,6 +579,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         trackArtistHeader: scope.trackArtistHeader,
         playerLane: scope.playerLane,
         handleDroppedFolderPath: scope.handleDroppedFolderPath,
+        ensureTrackIndexForPath: scope.ensureTrackIndexForPath,
         playDroppedTrackPath: scope.playDroppedTrackPath,
         openCoverImageModal: scope.openCoverImageModal,
         toggleCoverFlipFromSecondaryInput: scope.toggleCoverFlipFromSecondaryInput,
@@ -646,6 +648,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         },
         dispatchExternalPlaybackAction: scope.dispatchExternalPlaybackAction,
         logFrontendMessage: scope.logFrontendMessage,
+        playlistControllerHandleExternalTrackDrop: async (clientX: number, clientY: number, trackIndexes: number[]) => await scope.playlistControllerRef.handleExternalTrackDrop(clientX, clientY, trackIndexes),
         playlistControllerLoadPlaylistByPath: (playlistPath: string) => scope.playlistControllerRef.loadPlaylistByPath(playlistPath),
         handleDocumentClickWithinSettings: (target: Node) => scope.settingsControllerRef.handleDocumentClick(target),
         playerCardResizeObserver: scope.cardResizeObserver,

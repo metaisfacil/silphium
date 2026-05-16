@@ -1067,6 +1067,51 @@ describe('createPlaylistController', () => {
         expect(state.loadedPlaylistTrackIndexes).toEqual([2, 1, 0]);
     });
 
+    it('inserts dropped tracks at the hovered playlist position when editing a loaded playlist', async () => {
+        const state = createPlaylistControllerState();
+        const { controller, elements, savePlaylistData } = mountPlaylistController({
+            state,
+            shouldAutoSavePlaylistsOnAddRemove: true,
+        });
+
+        await expect(controller.loadPlaylistByPath('/playlists/demo.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        const targetRow = elements.playlistList.querySelector('[data-playlist-position="1"]') as HTMLLIElement | null;
+        expect(targetRow).not.toBeNull();
+        const resolvedTargetRow = targetRow as HTMLLIElement;
+
+        Object.defineProperty(document, 'elementFromPoint', {
+            value: vi.fn(() => resolvedTargetRow),
+            configurable: true,
+        });
+        Object.defineProperty(resolvedTargetRow, 'getBoundingClientRect', {
+            value: () => ({
+                top: 100,
+                left: 0,
+                width: 320,
+                height: 40,
+                right: 320,
+                bottom: 140,
+                x: 0,
+                y: 100,
+                toJSON: () => ({}),
+            }),
+            configurable: true,
+        });
+
+        await expect(controller.handleExternalTrackDrop(12, 110, [0])).resolves.toBe(true);
+        await flushPromises();
+
+        expect(savePlaylistData).toHaveBeenCalledWith('/playlists/demo.m3u8', [
+            '/music/track-2.flac',
+            '/music/track-0.flac',
+            '/music/track-1.flac',
+        ]);
+        expect(state.loadedPlaylistTrackIndexes).toEqual([2, 0, 1]);
+        expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => Number(button.dataset.playlistTrackIndex))).toEqual([2, 0, 1]);
+    });
+
     it('saves the loaded playlist immediately after removing a track when enabled', async () => {
         const state = createPlaylistControllerState();
         const { controller, elements, onPlaybackSequenceMutated, savePlaylistData } = mountPlaylistController({
