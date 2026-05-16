@@ -3,6 +3,7 @@ import type { PlaylistModalElements } from '../components/overlays/playlist-moda
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
 import type { PlaybackSequenceSource, PlaybackSequencingService } from '../services/playback-sequencing-service';
 import { isPlaybackQueueEligibleTrack } from '../utils/display-helpers';
+import { hasExternalFileDragPayload } from '../utils/main-helpers';
 import { createPlaylistControllerState, type LoadedListenHistoryItem, type LoadedPlaylistCachedItem, type PlaylistControllerState, type PlaylistSource } from './playlist-controller-state';
 
 export type PlaylistDirection = -1 | 1;
@@ -52,6 +53,12 @@ type QueueDragState = {
     fromPosition: number;
     targetPosition: number;
     pointerId: number;
+};
+
+type ExternalTrackDropIndicator = {
+    insertAt: number;
+    rowPosition: number | null;
+    edge: 'before' | 'after';
 };
 
 type PlaylistVisibleWindow = {
@@ -147,6 +154,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     let hydrationRunId = 0;
     let queueDragState: QueueDragState | null = null;
+    let externalTrackDropIndicator: ExternalTrackDropIndicator | null = null;
+    let externalTrackDropIndicatorRow: HTMLElement | null = null;
+    let externalTrackDropIndicatorEdge: 'before' | 'after' | null = null;
     let deferredRenderDuringQueueDrag = false;
     let hydrationTotal = 0;
     let hydrationCompleted = 0;
@@ -646,6 +656,61 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistList.querySelectorAll('.playlist-row.is-dragging, .playlist-row.is-drop-target').forEach((row) => {
             row.classList.remove('is-dragging', 'is-drop-target');
         });
+    };
+
+    const clearExternalTrackDropIndicatorClasses = (): void => {
+        if (!externalTrackDropIndicatorRow) {
+            externalTrackDropIndicatorEdge = null;
+            return;
+        }
+
+        externalTrackDropIndicatorRow.classList.remove('is-external-drop-target-before', 'is-external-drop-target-after');
+        externalTrackDropIndicatorRow = null;
+        externalTrackDropIndicatorEdge = null;
+    };
+
+    const applyExternalTrackDropIndicatorClass = (row: HTMLElement, edge: 'before' | 'after'): void => {
+        if (externalTrackDropIndicatorRow === row && externalTrackDropIndicatorEdge === edge) {
+            return;
+        }
+
+        if (externalTrackDropIndicatorRow) {
+            externalTrackDropIndicatorRow.classList.remove('is-external-drop-target-before', 'is-external-drop-target-after');
+        }
+
+        row.classList.add(edge === 'before' ? 'is-external-drop-target-before' : 'is-external-drop-target-after');
+        externalTrackDropIndicatorRow = row;
+        externalTrackDropIndicatorEdge = edge;
+    };
+
+    const getLastPlaylistRow = (): HTMLElement | null => {
+        for (let node = playlistList.lastElementChild; node; node = node.previousElementSibling) {
+            if (node instanceof HTMLElement && node.classList.contains('playlist-row')) {
+                return node;
+            }
+        }
+
+        return null;
+    };
+
+    const syncExternalTrackDropIndicatorClasses = (): void => {
+        if (!externalTrackDropIndicator || externalTrackDropIndicator.rowPosition === null) {
+            clearExternalTrackDropIndicatorClasses();
+            return;
+        }
+
+        const indicatorRow = playlistList.querySelector<HTMLElement>(`.playlist-row[data-playlist-position="${externalTrackDropIndicator.rowPosition}"]`);
+        if (!indicatorRow) {
+            clearExternalTrackDropIndicatorClasses();
+            return;
+        }
+
+        applyExternalTrackDropIndicatorClass(indicatorRow, externalTrackDropIndicator.edge);
+    };
+
+    const clearExternalTrackDropIndicator = (): void => {
+        externalTrackDropIndicator = null;
+        clearExternalTrackDropIndicatorClasses();
     };
 
     const updateQueueDragTargetClasses = (): void => {
@@ -1411,6 +1476,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         playlistModal.classList.remove('is-visible');
         cancelHydration();
         finalizeQueueDrag(false);
+        clearExternalTrackDropIndicator();
 
         if (playlistModalHideTimer !== undefined) {
             window.clearTimeout(playlistModalHideTimer);
@@ -1650,6 +1716,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             : '';
 
         playlistList.innerHTML = `${topSpacerMarkup}${rows}${bottomSpacerMarkup}`;
+        syncExternalTrackDropIndicatorClasses();
         if (animateViewSwitch) {
             animatePlaylistDialogResize(previousDialogHeight);
             animatePlaylistViewSwitch();
@@ -2014,7 +2081,59 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         return true;
     };
 
-    const resolveExternalTrackDropInsertPosition = (clientX: number, clientY: number): number | null => {
+    const resolveExternalTrackDropTargetFromElement = (dropTarget: Element | null, clientY: number): ExternalTrackDropIndicator | null => {
+        if (!(dropTarget instanceof Element) || !playlistList.contains(dropTarget)) {
+            return null;
+        }
+
+        const row = dropTarget.closest('.playlist-row');
+        if (!(row instanceof HTMLElement) || !playlistList.contains(row)) {
+            const sequenceLength = controllerState.selectedSource === 'playlist' && controllerState.loadedPlaylistTrackIndexes
+                ? controllerState.loadedPlaylistTrackIndexes.length
+                : controllerState.editableQueueTrackIndexes
+                ? controllerState.editableQueueTrackIndexes.length
+                : currentSequence().indexes.length;
+            const lastRow = getLastPlaylistRow();
+            const lastRowPosition = lastRow ? Number(lastRow.dataset.playlistPosition) : NaN;
+            return {
+                insertAt: sequenceLength,
+                rowPosition: Number.isInteger(lastRowPosition) ? lastRowPosition : null,
+                edge: 'after',
+            };
+        }
+
+        const rowPosition = Number(row.dataset.playlistPosition);
+        if (!Number.isInteger(rowPosition)) {
+            const sequenceLength = controllerState.selectedSource === 'playlist' && controllerState.loadedPlaylistTrackIndexes
+                ? controllerState.loadedPlaylistTrackIndexes.length
+                : controllerState.editableQueueTrackIndexes
+                ? controllerState.editableQueueTrackIndexes.length
+                : currentSequence().indexes.length;
+            return {
+                insertAt: sequenceLength,
+                rowPosition: null,
+                edge: 'after',
+            };
+        }
+
+        const rowRect = row.getBoundingClientRect();
+        if (rowRect.height <= 0) {
+            return {
+                insertAt: rowPosition,
+                rowPosition,
+                edge: 'before',
+            };
+        }
+
+        const insertAfterRow = clientY >= rowRect.top + (rowRect.height / 2);
+        return {
+            insertAt: rowPosition + (insertAfterRow ? 1 : 0),
+            rowPosition,
+            edge: insertAfterRow ? 'after' : 'before',
+        };
+    };
+
+    const resolveExternalTrackDropTarget = (clientX: number, clientY: number): ExternalTrackDropIndicator | null => {
         if (playlistModal.hidden) {
             return null;
         }
@@ -2025,31 +2144,36 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         const dropTarget = ownerDocument.elementFromPoint(clientX, clientY);
-        if (!(dropTarget instanceof Element) || !playlistList.contains(dropTarget)) {
-            return null;
+        return resolveExternalTrackDropTargetFromElement(dropTarget, clientY);
+    };
+
+    const updateExternalTrackDropIndicatorFromTarget = (dropTarget: Element | null, clientY: number): void => {
+        const nextIndicator = resolveExternalTrackDropTargetFromElement(dropTarget, clientY);
+        if (!nextIndicator) {
+            clearExternalTrackDropIndicator();
+            return;
         }
 
-        const sequenceLength = currentSequence().indexes.length;
-        const row = dropTarget.closest('.playlist-row');
-        if (!(row instanceof HTMLElement) || !playlistList.contains(row)) {
-            return sequenceLength;
+        if (
+            externalTrackDropIndicator
+            && externalTrackDropIndicator.insertAt === nextIndicator.insertAt
+            && externalTrackDropIndicator.rowPosition === nextIndicator.rowPosition
+            && externalTrackDropIndicator.edge === nextIndicator.edge
+        ) {
+            return;
         }
 
-        const rowPosition = Number(row.dataset.playlistPosition);
-        if (!Number.isInteger(rowPosition)) {
-            return sequenceLength;
-        }
+        externalTrackDropIndicator = nextIndicator;
+        syncExternalTrackDropIndicatorClasses();
+    };
 
-        const rowRect = row.getBoundingClientRect();
-        if (rowRect.height <= 0) {
-            return Math.min(rowPosition, sequenceLength);
-        }
-
-        const insertAfterRow = clientY >= rowRect.top + (rowRect.height / 2);
-        return Math.min(rowPosition + (insertAfterRow ? 1 : 0), sequenceLength);
+    const resolveExternalTrackDropInsertPosition = (clientX: number, clientY: number): number | null => {
+        const indicator = resolveExternalTrackDropTarget(clientX, clientY);
+        return indicator?.insertAt ?? null;
     };
 
     const handleExternalTrackDrop = async (clientX: number, clientY: number, trackIndexes: number[]): Promise<boolean> => {
+        clearExternalTrackDropIndicator();
         const insertAt = resolveExternalTrackDropInsertPosition(clientX, clientY);
         if (insertAt === null) {
             return false;
@@ -2821,6 +2945,39 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         finalizeQueueDrag(false);
+    });
+
+    playlistList.addEventListener('dragover', (event) => {
+        if (playlistModal.hidden || isViewingReadOnlyPlaylist() || !hasExternalFileDragPayload(event.dataTransfer)) {
+            clearExternalTrackDropIndicator();
+            return;
+        }
+
+        event.preventDefault();
+        if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = 'copy';
+        }
+        updateExternalTrackDropIndicatorFromTarget(event.target instanceof Element ? event.target : null, event.clientY);
+    });
+
+    playlistList.addEventListener('dragleave', (event) => {
+        if (!hasExternalFileDragPayload(event.dataTransfer)) {
+            return;
+        }
+
+        const ownerDocument = playlistList.ownerDocument;
+        const nextTarget = typeof ownerDocument.elementFromPoint === 'function'
+            ? ownerDocument.elementFromPoint(event.clientX, event.clientY)
+            : null;
+        if (nextTarget instanceof Element && playlistList.contains(nextTarget)) {
+            return;
+        }
+
+        clearExternalTrackDropIndicator();
+    });
+
+    playlistList.addEventListener('drop', () => {
+        clearExternalTrackDropIndicator();
     });
 
     return {

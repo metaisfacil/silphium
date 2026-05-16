@@ -43,6 +43,21 @@ const dispatchPointerEvent = (
     target.dispatchEvent(event);
 };
 
+const dispatchDragEvent = (
+    target: EventTarget,
+    type: string,
+    init: Partial<{ clientX: number; clientY: number; dataTransfer: DataTransfer | null }> = {},
+): Event => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(event, {
+        clientX: { value: init.clientX ?? 0 },
+        clientY: { value: init.clientY ?? 0 },
+        dataTransfer: { value: init.dataTransfer ?? null },
+    });
+    target.dispatchEvent(event);
+    return event;
+};
+
 const selectCustomPlaylistSource = async (
     elements: ReturnType<typeof getPlaylistModalElements>,
     value: string,
@@ -1110,6 +1125,66 @@ describe('createPlaylistController', () => {
         ]);
         expect(state.loadedPlaylistTrackIndexes).toEqual([2, 0, 1]);
         expect(Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]')).map((button) => Number(button.dataset.playlistTrackIndex))).toEqual([2, 0, 1]);
+    });
+
+    it('shows and clears a non-shifting external drop indicator while dragging files over a playlist', async () => {
+        const state = createPlaylistControllerState();
+        const { controller, elements } = mountPlaylistController({
+            state,
+            shouldAutoSavePlaylistsOnAddRemove: true,
+        });
+
+        await expect(controller.loadPlaylistByPath('/playlists/demo.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        const targetRow = elements.playlistList.querySelector('[data-playlist-position="1"]') as HTMLLIElement | null;
+        expect(targetRow).not.toBeNull();
+        const resolvedTargetRow = targetRow as HTMLLIElement;
+        const rowCountBeforeDrag = elements.playlistList.querySelectorAll('.playlist-row').length;
+        const externalFileDrag = { types: ['Files'], dropEffect: 'none' } as unknown as DataTransfer;
+
+        Object.defineProperty(document, 'elementFromPoint', {
+            value: vi.fn(() => resolvedTargetRow),
+            configurable: true,
+        });
+        Object.defineProperty(resolvedTargetRow, 'getBoundingClientRect', {
+            value: () => ({
+                top: 100,
+                left: 0,
+                width: 320,
+                height: 40,
+                right: 320,
+                bottom: 140,
+                x: 0,
+                y: 100,
+                toJSON: () => ({}),
+            }),
+            configurable: true,
+        });
+
+        const dragOverEvent = dispatchDragEvent(resolvedTargetRow, 'dragover', {
+            clientX: 12,
+            clientY: 110,
+            dataTransfer: externalFileDrag,
+        });
+
+        expect(dragOverEvent.defaultPrevented).toBe(true);
+        expect(resolvedTargetRow.classList.contains('is-external-drop-target-before')).toBe(true);
+        expect(elements.playlistList.querySelector('.playlist-row.is-external-drop-target-after')).toBeNull();
+        expect(elements.playlistList.querySelectorAll('.playlist-row').length).toBe(rowCountBeforeDrag);
+
+        Object.defineProperty(document, 'elementFromPoint', {
+            value: vi.fn(() => null),
+            configurable: true,
+        });
+        dispatchDragEvent(resolvedTargetRow, 'dragleave', {
+            clientX: 500,
+            clientY: 20,
+            dataTransfer: externalFileDrag,
+        });
+
+        expect(elements.playlistList.querySelector('.playlist-row.is-external-drop-target-before')).toBeNull();
+        expect(elements.playlistList.querySelector('.playlist-row.is-external-drop-target-after')).toBeNull();
     });
 
     it('saves the loaded playlist immediately after removing a track when enabled', async () => {

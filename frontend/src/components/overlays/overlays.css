@@ -3418,6 +3418,7 @@
     grid-template-columns: auto auto 1fr auto;
     align-items: center;
     gap: 0.2rem;
+    position: relative;
 }
 
 .playlist-row-read-only {
@@ -3446,6 +3447,27 @@
 
 .playlist-row.is-drop-target .playlist-item {
     background: rgba(255, 255, 255, 0.16);
+}
+
+.playlist-row.is-external-drop-target-before::before,
+.playlist-row.is-external-drop-target-after::after {
+    content: '';
+    position: absolute;
+    left: 0.45rem;
+    right: 0.45rem;
+    height: 0;
+    border-top: 2px solid rgba(190, 229, 255, 0.96);
+    box-shadow: 0 0 0 1px rgba(30, 78, 112, 0.22);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.playlist-row.is-external-drop-target-before::before {
+    top: -1px;
+}
+
+.playlist-row.is-external-drop-target-after::after {
+    bottom: -1px;
 }
 
 .playlist-drag-handle,
