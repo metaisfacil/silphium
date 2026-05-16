@@ -18,6 +18,15 @@ type libraryQuickScanBuildResult struct {
 	DiscoveredChildFoldersByParent map[string]map[string]struct{}
 }
 
+type libraryFullScanBuildHints struct {
+	TotalEntries   int
+	TrackCount     int
+	TextFileCount  int
+	ImageFileCount int
+}
+
+const deferredHydrationFallbackQuickScanMultiplier = 4.0
+
 func libraryDeferredHydrationEnabled() bool {
 	return !libraryScanRunningUnderGoTest()
 }
@@ -355,16 +364,15 @@ func buildFilesystemQuickScan(roots []libraryRootConfig, isScanCanceled func() b
 
 	for _, root := range roots {
 		addDiscoveredChildFolder(build.DiscoveredChildFoldersByParent, "", root.Name)
-		if absoluteRootPath, ok := absoluteNormalizedPath(root.Path); ok {
-			if _, exists := seenDirectories[absoluteRootPath]; !exists {
-				seenDirectories[absoluteRootPath] = struct{}{}
-				build.DirectoryPaths = append(build.DirectoryPaths, absoluteRootPath)
-			}
+		normalizedRootPath := filepath.Clean(root.Path)
+		if _, exists := seenDirectories[normalizedRootPath]; !exists {
+			seenDirectories[normalizedRootPath] = struct{}{}
+			build.DirectoryPaths = append(build.DirectoryPaths, normalizedRootPath)
 		}
 	}
 
-	var walk func(root libraryRootConfig, absolutePath string, folderPath string) error
-	walk = func(root libraryRootConfig, absolutePath string, folderPath string) error {
+	var walk func(absolutePath string, folderPath string) error
+	walk = func(absolutePath string, folderPath string) error {
 		if isScanCanceled() {
 			return errLibraryScanCanceled
 		}
@@ -384,21 +392,16 @@ func buildFilesystemQuickScan(roots []libraryRootConfig, isScanCanceled func() b
 
 			currentPath := filepath.Join(absolutePath, entry.Name())
 			build.ScanResult.TotalEntries++
-
-			folderPathForEntry, relativePath, relativeOK := folderAndRelativeForLibraryRoot(root, currentPath)
-			if !relativeOK {
-				continue
-			}
+			relativePath := buildVirtualLibraryPath(folderPath, entry.Name())
 
 			if entry.IsDir() {
 				addDiscoveredChildFolder(build.DiscoveredChildFoldersByParent, folderPath, relativePath)
-				if absoluteDirectoryPath, ok := absoluteNormalizedPath(currentPath); ok {
-					if _, exists := seenDirectories[absoluteDirectoryPath]; !exists {
-						seenDirectories[absoluteDirectoryPath] = struct{}{}
-						build.DirectoryPaths = append(build.DirectoryPaths, absoluteDirectoryPath)
-					}
+				normalizedDirectoryPath := filepath.Clean(currentPath)
+				if _, exists := seenDirectories[normalizedDirectoryPath]; !exists {
+					seenDirectories[normalizedDirectoryPath] = struct{}{}
+					build.DirectoryPaths = append(build.DirectoryPaths, normalizedDirectoryPath)
 				}
-				if err := walk(root, currentPath, relativePath); err != nil {
+				if err := walk(currentPath, relativePath); err != nil {
 					return err
 				}
 				continue
@@ -416,7 +419,7 @@ func buildFilesystemQuickScan(roots []libraryRootConfig, isScanCanceled func() b
 					continue
 				}
 
-				folderKey := strings.ToLower(folderPathForEntry)
+				folderKey := strings.ToLower(folderPath)
 				name := strings.ToLower(entry.Name())
 				priority := coverPriority(name)
 				currentPriority, hasCurrent := selectedCoverPriority[folderKey]
@@ -433,7 +436,7 @@ func buildFilesystemQuickScan(roots []libraryRootConfig, isScanCanceled func() b
 	}
 
 	for _, root := range roots {
-		if err := walk(root, root.Path, root.Name); err != nil {
+		if err := walk(root.Path, root.Name); err != nil {
 			return libraryQuickScanBuildResult{}, err
 		}
 	}
@@ -441,22 +444,22 @@ func buildFilesystemQuickScan(roots []libraryRootConfig, isScanCanceled func() b
 	return build, nil
 }
 
-func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bool) (LibraryScanResult, error) {
+func buildFilesystemFullScan(roots []libraryRootConfig, hints libraryFullScanBuildHints, isScanCanceled func() bool) (LibraryScanResult, error) {
 	rootPath, rootName := aggregateLibraryScanRootInfo(roots)
 	result := LibraryScanResult{
 		RootPath:          rootPath,
 		RootName:          rootName,
-		TrackFiles:        []LibraryIndexedFile{},
-		TextFiles:         []LibraryIndexedFile{},
-		ImageFiles:        []LibraryIndexedFile{},
-		CoverPathByFolder: map[string]string{},
+		TrackFiles:        make([]LibraryIndexedFile, 0, max(0, hints.TrackCount)),
+		TextFiles:         make([]LibraryIndexedFile, 0, max(0, hints.TextFileCount)),
+		ImageFiles:        make([]LibraryIndexedFile, 0, max(0, hints.ImageFileCount)),
+		CoverPathByFolder: make(map[string]string, max(0, hints.ImageFileCount/8)),
 	}
 
-	selectedCoverPriority := make(map[string]int)
-	selectedCoverName := make(map[string]string)
+	selectedCoverPriority := make(map[string]int, max(0, hints.ImageFileCount/8))
+	selectedCoverName := make(map[string]string, max(0, hints.ImageFileCount/8))
 
-	var walk func(root libraryRootConfig, absolutePath string) error
-	walk = func(root libraryRootConfig, absolutePath string) error {
+	var walk func(root libraryRootConfig, absolutePath string, folderPath string) error
+	walk = func(root libraryRootConfig, absolutePath string, folderPath string) error {
 		if isScanCanceled() {
 			return errLibraryScanCanceled
 		}
@@ -482,13 +485,10 @@ func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bo
 				continue
 			}
 
-			folderPathForEntry, relativePath, relativeOK := folderAndRelativeForLibraryRoot(root, currentPath)
-			if !relativeOK {
-				continue
-			}
+			relativePath := buildVirtualLibraryPath(folderPath, entry.Name())
 
 			if entry.IsDir() {
-				if err := walk(root, currentPath); err != nil {
+				if err := walk(root, currentPath, relativePath); err != nil {
 					return err
 				}
 				continue
@@ -498,7 +498,7 @@ func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bo
 				Name:         entry.Name(),
 				Path:         currentPath,
 				RelativePath: relativePath,
-				FolderPath:   folderPathForEntry,
+				FolderPath:   folderPath,
 				RootPath:     root.Path,
 				RootName:     root.Name,
 				ReleaseDepth: root.ReleaseDepth,
@@ -516,7 +516,7 @@ func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bo
 					continue
 				}
 
-				folderKey := strings.ToLower(folderPathForEntry)
+				folderKey := strings.ToLower(folderPath)
 				name := strings.ToLower(entry.Name())
 				priority := coverPriority(name)
 				currentPriority, hasCurrent := selectedCoverPriority[folderKey]
@@ -533,7 +533,7 @@ func buildFilesystemFullScan(roots []libraryRootConfig, isScanCanceled func() bo
 	}
 
 	for _, root := range roots {
-		if err := walk(root, root.Path); err != nil {
+		if err := walk(root, root.Path, root.Name); err != nil {
 			return LibraryScanResult{}, err
 		}
 	}
@@ -594,7 +594,7 @@ func (a *App) estimateDeferredHydrationMs(totalEntries int, quickScanElapsed tim
 		estimatedMs += learnedFinalizeMs
 	}
 	if estimatedMs <= 0 {
-		estimatedMs = quickElapsedMs
+		estimatedMs = quickElapsedMs * deferredHydrationFallbackQuickScanMultiplier
 	}
 	if estimatedMs < 1000 {
 		estimatedMs = 1000
@@ -681,13 +681,13 @@ func (a *App) emitDeferredScanInitialProgress(rootPath string) {
 	})
 }
 
-func (a *App) buildDeferredHydrationScan(roots []libraryRootConfig, expectedScanGeneration uint64) (LibraryScanResult, error) {
+func (a *App) buildDeferredHydrationScan(roots []libraryRootConfig, hints libraryFullScanBuildHints, expectedScanGeneration uint64) (LibraryScanResult, error) {
 	generationState := a.libraryGenerationState()
 	isScanCanceled := func() bool {
 		return generationState.libraryScanGeneration.Load() != expectedScanGeneration
 	}
 
-	result, err := buildFilesystemFullScan(roots, isScanCanceled)
+	result, err := buildFilesystemFullScan(roots, hints, isScanCanceled)
 	if err != nil {
 		return LibraryScanResult{}, err
 	}
@@ -695,7 +695,7 @@ func (a *App) buildDeferredHydrationScan(roots []libraryRootConfig, expectedScan
 	return result, nil
 }
 
-func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expectedScanGeneration uint64, totalEntries int, estimatedMs float64) {
+func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expectedScanGeneration uint64, hints libraryFullScanBuildHints, estimatedMs float64) {
 	if len(roots) == 0 {
 		return
 	}
@@ -712,7 +712,7 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 		stopProgress := make(chan struct{})
 		rootPath, _ := aggregateLibraryScanRootInfo(activeRoots)
 		if estimatedMs > 0 {
-			a.emitDeferredHydrationProgress(rootPath, totalEntries, startedAt, estimatedMs)
+			a.emitDeferredHydrationProgress(rootPath, hints.TotalEntries, startedAt, estimatedMs)
 		}
 
 		if estimatedMs > 0 {
@@ -728,11 +728,11 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 						a.emitDeferredHydrationProgress(rootPath, entries, started, estimatedMs)
 					}
 				}
-			}(rootPath, totalEntries, startedAt, stopProgress)
+			}(rootPath, hints.TotalEntries, startedAt, stopProgress)
 		}
 		defer close(stopProgress)
 
-		result, err := a.buildDeferredHydrationScan(activeRoots, expectedScanGeneration)
+		result, err := a.buildDeferredHydrationScan(activeRoots, hints, expectedScanGeneration)
 		if err != nil {
 			contentState.indexMu.Lock()
 			if generationState.libraryScanGeneration.Load() == expectedScanGeneration {
@@ -769,7 +769,7 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 		}
 		a.notifyMusicBrainzTagWorker()
 		a.notifyLibraryFilesDatabaseWorker()
-		a.emitDeferredHydrationProgress(result.RootPath, totalEntries, startedAt, 0)
+		a.emitDeferredHydrationProgress(result.RootPath, hints.TotalEntries, startedAt, 0)
 
 		a.logRescanEvent(
 			"Deferred library hydration END: tracks=%d text=%d images=%d took %.2fms",
@@ -934,7 +934,12 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 		a.startLibraryFileHydrationAsync(
 			roots,
 			scanGeneration,
-			quickBuild.ScanResult.TotalEntries,
+			libraryFullScanBuildHints{
+				TotalEntries:   quickBuild.ScanResult.TotalEntries,
+				TrackCount:     quickBuild.ScanResult.TrackCount,
+				TextFileCount:  quickBuild.ScanResult.TextFileCount,
+				ImageFileCount: quickBuild.ScanResult.ImageFileCount,
+			},
 			a.estimateDeferredHydrationMs(quickBuild.ScanResult.TotalEntries, time.Since(scanStartedAt)),
 		)
 	}

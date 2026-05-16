@@ -638,6 +638,35 @@ func TestGetLibraryFolderPageSortedUsesMusicBrainzTaggedAlbumLookupCache(t *test
 	}
 }
 
+func TestGetLibraryFolderPageSortedSkipsMusicBrainzAnnotationWhenStoreMutexIsBusy(t *testing.T) {
+	app, _ := newIndexedLibraryAppForTests(t)
+	app.settingsLoaded = true
+	app.settings.MusicBrainzTagDatabaseEnabled = true
+	app.musicBrainzTagStoreLoaded = true
+	app.musicBrainzTagReleaseFoldersByID = map[string]map[string]struct{}{
+		"11111111-1111-4111-8111-111111111111": {
+			"Library One/Artist One/Album One": {},
+		},
+	}
+
+	app.musicBrainzTagMu.Lock()
+	defer app.musicBrainzTagMu.Unlock()
+
+	resultCh := make(chan LibraryFolderPage, 1)
+	go func() {
+		resultCh <- app.GetLibraryFolderPageSorted("Library One/Artist One", "name", 0, 10)
+	}()
+
+	select {
+	case result := <-resultCh:
+		if result.TotalEntries != 1 || len(result.Entries) != 1 {
+			t.Fatalf("GetLibraryFolderPageSorted(busy metadata store) = %#v, want immediate album entries", result)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("GetLibraryFolderPageSorted() blocked behind a busy MusicBrainz metadata store mutex")
+	}
+}
+
 func TestSearchLibraryCancellationAfterLock(t *testing.T) {
 	app, _ := newIndexedLibraryAppForTests(t)
 

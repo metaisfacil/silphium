@@ -194,7 +194,7 @@ describe('app-library-load-runtime', () => {
         await scanPromise;
     });
 
-    it('clears the historical ETA instead of pinning at 1s when the scan outlives the learned estimate', async () => {
+    it('replaces an exhausted historical ETA with a scanning status while the backend scan is still unresolved', async () => {
         vi.useFakeTimers();
         let nowMs = 0;
         vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
@@ -223,6 +223,7 @@ describe('app-library-load-runtime', () => {
         nowMs = 1_200;
         await vi.advanceTimersByTimeAsync(1_200);
 
+        expect(context.setLibraryLoadingStatusLabel).toHaveBeenLastCalledWith('Scanning library folders...');
         expect(context.setLibraryLoadingEtaSeconds).toHaveBeenLastCalledWith(null);
         expect(context.setForceReloadEtaSeconds).toHaveBeenLastCalledWith(null);
 

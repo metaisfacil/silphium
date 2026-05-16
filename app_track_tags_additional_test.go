@@ -476,6 +476,32 @@ func TestReadTrackTagsFallsBackToFileReadWhenDatabaseMetadataIsEmpty(t *testing.
 	}
 }
 
+func TestApplyStoredMetadataToIndexedTracksDoesNotLazyLoadMetadataStore(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithLoadedSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled: boolPointer(true),
+	})
+	app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)
+
+	entries := []LibraryIndexedFile{{
+		Name:         filepath.Base(fixture.trackOne),
+		Path:         fixture.trackOne,
+		RelativePath: filepath.ToSlash(filepath.Base(filepath.Dir(fixture.trackOne)) + "/" + filepath.Base(fixture.trackOne)),
+		FolderPath:   "Library/Artist One/Album One",
+		RootPath:     fixture.rootOne,
+		RootName:     "Library",
+	}}
+
+	enriched := app.applyStoredMetadataToIndexedTracks(entries)
+
+	if app.musicBrainzTagStoreLoaded {
+		t.Fatal("applyStoredMetadataToIndexedTracks() loaded the metadata store, want startup path to skip lazy loading")
+	}
+	if len(enriched) != 1 || enriched[0].CachedTrackTitle != "" || enriched[0].CachedAlbumTitle != "" || enriched[0].CachedArtistName != "" {
+		t.Fatalf("applyStoredMetadataToIndexedTracks() = %#v, want unchanged entry without lazy metadata load", enriched)
+	}
+}
+
 func TestTrackTagWorkerAndBlobNoMetadataBranches(t *testing.T) {
 	originalReadTaglibTags := readTaglibTags
 	t.Cleanup(func() {

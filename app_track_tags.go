@@ -1197,8 +1197,9 @@ func (a *App) applyStoredMetadataToIndexedTracks(entries []LibraryIndexedFile) [
 
 	a.musicBrainzTagMu.Lock()
 	defer a.musicBrainzTagMu.Unlock()
-
-	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+	if !a.musicBrainzTagStoreLoaded {
+		return entries
+	}
 
 	enriched := append([]LibraryIndexedFile(nil), entries...)
 	for index, entry := range enriched {

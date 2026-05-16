@@ -425,6 +425,12 @@ func (a *App) startLibraryFilesRefreshAsync(roots []libraryRootConfig, expectedS
 		contentState.indexMu.Unlock()
 		return
 	}
+	hydrationHints := libraryFullScanBuildHints{
+		TotalEntries:   contentState.libraryScan.TotalEntries,
+		TrackCount:     contentState.libraryScan.TrackCount,
+		TextFileCount:  contentState.libraryScan.TextFileCount,
+		ImageFileCount: contentState.libraryScan.ImageFileCount,
+	}
 	indexState.libraryFileHydrationPending = true
 	contentState.indexMu.Unlock()
 
@@ -433,7 +439,7 @@ func (a *App) startLibraryFilesRefreshAsync(roots []libraryRootConfig, expectedS
 
 	go func(rootsCopy []libraryRootConfig) {
 		startedAt := time.Now()
-		result, err := a.buildDeferredHydrationScan(rootsCopy, expectedScanGeneration)
+		result, err := a.buildDeferredHydrationScan(rootsCopy, hydrationHints, expectedScanGeneration)
 		if err != nil {
 			contentState.indexMu.Lock()
 			if generationState.libraryScanGeneration.Load() == expectedScanGeneration {

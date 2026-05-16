@@ -73,9 +73,13 @@ func (a *App) annotateMusicBrainzTaggedAlbumFolders(entries []LibraryBrowserEntr
 		return
 	}
 
-	a.musicBrainzTagMu.Lock()
+	if !a.musicBrainzTagMu.TryLock() {
+		return
+	}
 	defer a.musicBrainzTagMu.Unlock()
-	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+	if !a.musicBrainzTagStoreLoaded {
+		return
+	}
 
 	if len(a.musicBrainzTagReleaseFoldersByID) == 0 {
 		return

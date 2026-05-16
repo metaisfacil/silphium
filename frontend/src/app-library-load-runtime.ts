@@ -138,6 +138,12 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         context.setForceReloadEtaSeconds(null);
     };
 
+    const setScanningLibraryStatus = (): void => {
+        context.setLibraryLoadingStatusLabel('Scanning library folders...');
+        context.setLibraryLoadingEtaSeconds(null);
+        context.setForceReloadEtaSeconds(null);
+    };
+
     const stopHistoricalTotalLoadEtaCountdown = (): void => {
         if (historicalTotalLoadEtaHandle !== null) {
             window.clearInterval(historicalTotalLoadEtaHandle);
@@ -163,6 +169,15 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
 
     const syncHistoricalTotalLoadEta = (): void => {
         const etaSeconds = historicalTotalLoadEtaSeconds();
+        if (etaSeconds === null) {
+            if (context.fullLibraryScanLoadActive && context.activeLibraryLoadScanResolvedAtMs === null) {
+                setScanningLibraryStatus();
+                return;
+            }
+
+            context.setLibraryLoadingStatusLabel('');
+        }
+
         context.setLibraryLoadingEtaSeconds(etaSeconds);
         context.setForceReloadEtaSeconds(etaSeconds);
     };

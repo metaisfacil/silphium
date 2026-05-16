@@ -172,7 +172,7 @@ func TestBuildFilesystemQuickScanAndLazyFilesystemHelpers(t *testing.T) {
 		t.Fatalf("collectLibraryFolderImageFilesFromFilesystem() = %#v, want %#v", got, want)
 	}
 
-	fullScan, err := buildFilesystemFullScan(roots, func() bool { return false })
+	fullScan, err := buildFilesystemFullScan(roots, libraryFullScanBuildHints{}, func() bool { return false })
 	if err != nil {
 		t.Fatalf("buildFilesystemFullScan() error = %v", err)
 	}
@@ -180,5 +180,16 @@ func TestBuildFilesystemQuickScanAndLazyFilesystemHelpers(t *testing.T) {
 		if strings.Contains(entry.Path, "outside-link.flac") {
 			t.Fatal("buildFilesystemFullScan() should skip symlinked entries that escape the root")
 		}
+	}
+}
+
+func TestEstimateDeferredHydrationMsFallbackExceedsQuickScanDuration(t *testing.T) {
+	app := NewApp()
+	quickScanElapsed := 2 * time.Second
+
+	estimatedMs := app.estimateDeferredHydrationMs(278037, quickScanElapsed)
+
+	if estimatedMs <= float64(quickScanElapsed.Milliseconds()) {
+		t.Fatalf("estimateDeferredHydrationMs() = %.2fms, want fallback estimate above quick scan duration %.2fms", estimatedMs, float64(quickScanElapsed.Milliseconds()))
 	}
 }
