@@ -127,6 +127,7 @@ export interface AppLibraryLoadRuntimeContext {
 export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContext) => {
     let deferredHydrationPending = false;
     let deferredHydrationLoadInFlight = false;
+    let deferredHydrationBootstrapInFlight = false;
     let libraryScanLoadInFlight = false;
     let queuedDeferredHydrationScanResult: LibraryScanResult | null = null;
     let historicalTotalLoadEtaHandle: number | null = null;
@@ -649,6 +650,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
 
         deferredHydrationPending = false;
         deferredHydrationLoadInFlight = false;
+        deferredHydrationBootstrapInFlight = true;
         context.fullLibraryScanLoadActive = true;
         context.suppressAutoSelectAfterFullLibraryScan = false;
         context.beginLibraryLoadTracking();
@@ -671,6 +673,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             }
             keepLoadingForDeferredHydration = hasDeferredHydrationWork(scanResult);
             deferredHydrationPending = keepLoadingForDeferredHydration;
+            deferredHydrationBootstrapInFlight = false;
             await loadLibraryScanWithExclusion(scanResult);
             if (keepLoadingForDeferredHydration && queuedDeferredHydrationScanResult && !queuedDeferredHydrationScanResult.deferredFiles) {
                 keepLoadingForDeferredHydration = false;
@@ -678,6 +681,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             }
             deferredHydrationPending = keepLoadingForDeferredHydration;
         } finally {
+            deferredHydrationBootstrapInFlight = false;
             if (!keepLoadingForDeferredHydration) {
                 finishActiveLibraryLoad();
             }
@@ -693,10 +697,16 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             return;
         }
 
-        if (deferredHydrationPending && !scanResult.deferredFiles && !deferredHydrationLoadInFlight) {
-            if (libraryScanLoadInFlight) {
+        const shouldTreatAsDeferredHydrationCompletion = !scanResult.deferredFiles
+            && !deferredHydrationLoadInFlight
+            && context.fullLibraryScanLoadActive
+            && context.activeLibraryLoadScanResolvedAtMs === null
+            && (deferredHydrationPending || deferredHydrationBootstrapInFlight);
+
+        if (shouldTreatAsDeferredHydrationCompletion) {
+            if (libraryScanLoadInFlight || deferredHydrationBootstrapInFlight) {
                 queuedDeferredHydrationScanResult = scanResult;
-                context.logRescan('Queued deferred hydration completion while the initial scan load is still in flight');
+                context.logRescan('Queued deferred hydration completion while the startup scan bootstrap is still in flight');
                 return;
             }
 
