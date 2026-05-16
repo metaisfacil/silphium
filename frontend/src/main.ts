@@ -617,6 +617,9 @@ const {
         return runtimeControllerRefs.playlistController;
     },
     playbackSequencingService,
+    resetShuffleHistory: () => {
+        runtimeScope.resetShuffleHistory();
+    },
     updatePlayOrderMenuState,
     visualizerController,
     applyUiDitheringSetting,

@@ -1973,6 +1973,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             appendTrackIndexes(queue, normalizedTrackIndexes);
         }
 
+        controllerState.playbackSource = 'queue';
         hydrateTrackMetadataInBackground(normalizedTrackIndexes);
         scheduleRender();
         notifyPlaybackQueueMutated();
@@ -2043,6 +2044,49 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const clearEditableQueue = (): void => {
         clearEditableQueueState();
         scheduleRender();
+    };
+
+    const redrawPlaybackQueueFollowingCurrent = (): void => {
+        if (!options.playbackSequencingService) {
+            return;
+        }
+
+        if (!controllerState.editableQueueTrackIndexes || controllerState.editableQueueTrackIndexes.length === 0) {
+            if (controllerState.playbackSource !== 'queue') {
+                return;
+            }
+
+            scheduleRender();
+            notifyPlaybackQueueMutated();
+            return;
+        }
+
+        const queueIndexes = controllerState.editableQueueTrackIndexes.slice();
+        const currentPosition = resolveEditableQueueCurrentPosition(queueIndexes);
+        if (currentPosition < 0 || currentPosition >= queueIndexes.length) {
+            return;
+        }
+
+        const prefix = queueIndexes.slice(0, currentPosition);
+        const redrawSource = {
+            key: 'queue::editable',
+            indexes: queueIndexes.slice(currentPosition),
+        };
+        const redrawnSequence = options.playbackSequencingService.baseSequenceIndexes(redrawSource);
+        if (redrawnSequence.indexes.length === 0) {
+            return;
+        }
+
+        const nextQueueIndexes = prefix.concat(redrawnSequence.indexes);
+        const queueChanged = nextQueueIndexes.length !== queueIndexes.length
+            || nextQueueIndexes.some((trackIndex, position) => trackIndex !== queueIndexes[position]);
+
+        controllerState.playbackSource = 'queue';
+        setEditableQueueState(nextQueueIndexes, prefix.length + redrawnSequence.currentPosition);
+        scheduleRender();
+        if (queueChanged) {
+            notifyPlaybackQueueMutated();
+        }
     };
 
     const activatePlaybackQueueSource = (): void => {
@@ -2743,6 +2787,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         openModal,
         refreshOpenModal,
         resetState,
+        redrawPlaybackQueueFollowingCurrent,
         scheduleRender,
         refreshFavorites: () => {
             updateHeaderSourceControl();

@@ -136,8 +136,9 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
                 setPlaybackOrderMode,
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-library'),
             },
+            resetShuffleHistory: vi.fn(),
             playlistController: {
-                clearEditableQueue: vi.fn(),
+                redrawPlaybackQueueFollowingCurrent: vi.fn(),
             },
             updatePlayOrderMenuState: vi.fn(),
         };
@@ -147,14 +148,38 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         runtime.setPlaybackOrderMode('ordered-library');
 
         expect(context.currentSettings.playbackOrder).toBe('ordered-library');
-        expect(context.playlistController.clearEditableQueue).not.toHaveBeenCalled();
+        expect(context.playlistController.redrawPlaybackQueueFollowingCurrent).toHaveBeenCalledTimes(1);
+        expect(context.resetShuffleHistory).not.toHaveBeenCalled();
         expect(context.updatePlayOrderMenuState).not.toHaveBeenCalled();
 
         runtime.setPlaybackOrderMode('shuffle-library');
 
         expect(context.currentSettings.playbackOrder).toBe('shuffle-library');
-        expect(context.playlistController.clearEditableQueue).toHaveBeenCalledTimes(1);
+        expect(context.playlistController.redrawPlaybackQueueFollowingCurrent).toHaveBeenCalledTimes(2);
         expect(context.updatePlayOrderMenuState).toHaveBeenCalledTimes(1);
+    });
+
+    it('forces a fresh shuffle redraw when the active mode is clicked again', () => {
+        const context = {
+            currentSettings: createSettings({ playbackOrder: 'shuffle-library' }),
+            playbackSequencingService: {
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-library'),
+                setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => false),
+            },
+            resetShuffleHistory: vi.fn(),
+            playlistController: {
+                redrawPlaybackQueueFollowingCurrent: vi.fn(),
+            },
+            updatePlayOrderMenuState: vi.fn(),
+        };
+
+        const runtime = createPlaybackOrderPlaylistRuntime(context);
+
+        runtime.setPlaybackOrderMode('shuffle-library');
+
+        expect(context.resetShuffleHistory).toHaveBeenCalledTimes(1);
+        expect(context.playlistController.redrawPlaybackQueueFollowingCurrent).toHaveBeenCalledTimes(1);
+        expect(context.updatePlayOrderMenuState).not.toHaveBeenCalled();
     });
 
     it('persists playback-order settings and reapplies normalized UI state', async () => {
@@ -175,8 +200,9 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-library'),
                 setPlaybackOrderMode: vi.fn(() => true),
             },
+            resetShuffleHistory: vi.fn(),
             playlistController: {
-                clearEditableQueue: vi.fn(),
+                redrawPlaybackQueueFollowingCurrent: vi.fn(),
             },
             updatePlayOrderMenuState: vi.fn(),
             visualizerController: {
@@ -207,7 +233,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         expect(context.visualizerController.setLissajousScale).toHaveBeenCalledWith(0.45);
         expect(context.visualizerController.setEnabled).toHaveBeenCalledWith(false);
         expect(context.applyUiDitheringSetting).toHaveBeenCalledTimes(1);
-        expect(context.playlistController.clearEditableQueue).toHaveBeenCalledTimes(1);
+        expect(context.playlistController.redrawPlaybackQueueFollowingCurrent).toHaveBeenCalledTimes(1);
         expect(context.updatePlayOrderMenuState).toHaveBeenCalledTimes(1);
     });
 
@@ -232,8 +258,9 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
+            resetShuffleHistory: vi.fn(),
             playlistController: {
-                clearEditableQueue: vi.fn(),
+                redrawPlaybackQueueFollowingCurrent: vi.fn(),
             },
             updatePlayOrderMenuState: vi.fn(),
             rebuildTrackPathIndex: vi.fn(),
@@ -278,8 +305,9 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
+            resetShuffleHistory: vi.fn(),
             playlistController: {
-                clearEditableQueue: vi.fn(),
+                redrawPlaybackQueueFollowingCurrent: vi.fn(),
             },
             updatePlayOrderMenuState: vi.fn(),
             rebuildTrackPathIndex: vi.fn(),
@@ -321,8 +349,9 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
+            resetShuffleHistory: vi.fn(),
             playlistController: {
-                clearEditableQueue: vi.fn(),
+                redrawPlaybackQueueFollowingCurrent: vi.fn(),
             },
             updatePlayOrderMenuState: vi.fn(),
             rebuildTrackPathIndex: vi.fn(),
@@ -357,8 +386,9 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
+            resetShuffleHistory: vi.fn(),
             playlistController: {
-                clearEditableQueue: vi.fn(),
+                redrawPlaybackQueueFollowingCurrent: vi.fn(),
             },
             updatePlayOrderMenuState: vi.fn(),
         };
@@ -392,8 +422,9 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
+            resetShuffleHistory: vi.fn(),
             playlistController: {
-                clearEditableQueue: vi.fn(),
+                redrawPlaybackQueueFollowingCurrent: vi.fn(),
             },
             updatePlayOrderMenuState: vi.fn(),
         };
@@ -426,8 +457,9 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
                 getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
+            resetShuffleHistory: vi.fn(),
             playlistController: {
-                clearEditableQueue: vi.fn(),
+                redrawPlaybackQueueFollowingCurrent: vi.fn(),
             },
             updatePlayOrderMenuState: vi.fn(),
         };

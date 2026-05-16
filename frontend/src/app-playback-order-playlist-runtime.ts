@@ -25,12 +25,13 @@ type PlaybackOrderPlaylistRuntimeContext = {
     tracks?: Track[];
     trackIndexByPath?: Map<string, number>;
     playlistController: {
-        clearEditableQueue: () => void;
+        redrawPlaybackQueueFollowingCurrent: () => void;
     };
     playbackSequencingService: {
         setPlaybackOrderMode: (mode: PlaybackOrderMode) => boolean;
         getPlaybackOrderMode: () => PlaybackOrderMode;
     };
+    resetShuffleHistory: () => void;
     updatePlayOrderMenuState: () => void;
     visualizerController?: {
         setEnabled: (enabled: boolean) => void;
@@ -73,13 +74,15 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
 
     const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
         const changed = context.playbackSequencingService.setPlaybackOrderMode(nextMode);
-        if (!changed) {
-            return;
+        if (!changed && (nextMode === 'shuffle-album' || nextMode === 'shuffle-library')) {
+            context.resetShuffleHistory();
         }
 
         context.currentSettings.playbackOrder = nextMode;
-        context.playlistController.clearEditableQueue();
-        context.updatePlayOrderMenuState();
+        context.playlistController.redrawPlaybackQueueFollowingCurrent();
+        if (changed) {
+            context.updatePlayOrderMenuState();
+        }
     };
 
     const savePlaybackOrderSetting = async (): Promise<void> => {
