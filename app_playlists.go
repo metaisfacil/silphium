@@ -195,7 +195,7 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 			rootPath := ""
 			rootName := ""
 			if root, ok := a.activeLibraryRootForPath(resolved); ok {
-				if indexed, indexedOk := indexFileForRoot(root, resolved, filepath.Base(resolved)); indexedOk {
+				if indexed, indexedOk := indexFileForRootWithModifiedAt(root, resolved, filepath.Base(resolved), modifiedAtMsFromFileInfo(fileInfo)); indexedOk {
 					result.TrackFiles = append(result.TrackFiles, indexed)
 					continue
 				}

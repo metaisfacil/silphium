@@ -73,6 +73,8 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let playerCardTrackTransitionSettleHandle: number | undefined;
     let playerCardTrackTransitionFrameHandle = 0;
     let playerCardTrackTransitionVersion = 0;
+    let nowPlayingCoverRequestVersion = 0;
+    let visibleNowPlayingCoverTrackPathKey = '';
 
     const bridgeTraceSink = async (message: string): Promise<void> => {
         await LogFrontendMessage(message);
@@ -359,6 +361,10 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     };
 
     const scheduleNowPlayingCoverRefresh = (): void => {
+        const activeTrack = context.currentTrackIndex >= 0 && context.currentTrackIndex < context.tracks.length
+            ? context.tracks[context.currentTrackIndex]
+            : undefined;
+        const scheduledTrackPathKey = trackPathKey(activeTrack?.path || '');
         if (context.pendingNowPlayingCoverRefreshHandle !== null) {
             window.clearTimeout(context.pendingNowPlayingCoverRefreshHandle);
         }
@@ -375,9 +381,24 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 return;
             }
 
+            if (scheduledTrackPathKey === '' || trackPathKey(activeTrack.path) !== scheduledTrackPathKey) {
+                return;
+            }
+
             context.coverArtService.invalidateResolvedForTrack(activeTrack);
             void applyCoverArtForTrack(context.currentTrackIndex);
         }, context.nowPlayingCoverRefreshDebounceMs);
+    };
+
+    const trackPathKey = (path: string): string => path.trim().toLowerCase();
+
+    const clearVisibleCoverArt = (trackPath = ''): void => {
+        visibleNowPlayingCoverTrackPathKey = trackPathKey(trackPath);
+        context.coverArtBackground.removeAttribute('src');
+        context.coverArtBackground.classList.remove('is-visible');
+        context.coverArt.removeAttribute('src');
+        context.coverArt.classList.remove('is-visible');
+        context.setBackgroundCover();
     };
 
     const rebuildTrackPathIndex = (): void => {
@@ -437,8 +458,6 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
         return foundIndex;
     };
-
-    const trackPathKey = (path: string): string => path.trim().toLowerCase();
 
     const {
         cachedReplayGainReleaseDynamicRangeLabelForCurrentTrack,
@@ -744,8 +763,20 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
+        const requestedTrackPathKey = trackPathKey(track.path);
+        const requestVersion = ++nowPlayingCoverRequestVersion;
+        if (index === context.currentTrackIndex && requestedTrackPathKey !== visibleNowPlayingCoverTrackPathKey) {
+            clearVisibleCoverArt(track.path);
+        }
+
         const coverSrc = await context.resolveCoverForTrack(track);
-        if (index !== context.currentTrackIndex) {
+        const activeTrack = context.tracks[context.currentTrackIndex];
+        if (
+            requestVersion !== nowPlayingCoverRequestVersion
+            || index !== context.currentTrackIndex
+            || !activeTrack
+            || trackPathKey(activeTrack.path) !== requestedTrackPathKey
+        ) {
             return;
         }
 
@@ -755,6 +786,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             const coverArtAlreadyVisible = context.coverArtBackground.classList.contains('is-visible')
                 && context.coverArt.classList.contains('is-visible');
             if (coverArtAlreadyVisible && coverArtBackgroundSrc === coverSrc && coverArtSrc === coverSrc) {
+                visibleNowPlayingCoverTrackPathKey = requestedTrackPathKey;
                 context.setBackgroundCover(coverSrc);
                 return;
             }
@@ -763,6 +795,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             context.coverArtBackground.classList.add('is-visible');
             context.coverArt.src = coverSrc;
             context.coverArt.classList.add('is-visible');
+            visibleNowPlayingCoverTrackPathKey = requestedTrackPathKey;
             context.setBackgroundCover(coverSrc);
             return;
         }
@@ -773,15 +806,12 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             && !(context.coverArtBackground.getAttribute('src') || '')
             && !(context.coverArt.getAttribute('src') || '')
         ) {
+            visibleNowPlayingCoverTrackPathKey = requestedTrackPathKey;
             context.setBackgroundCover();
             return;
         }
 
-        context.coverArtBackground.removeAttribute('src');
-        context.coverArtBackground.classList.remove('is-visible');
-        context.coverArt.removeAttribute('src');
-        context.coverArt.classList.remove('is-visible');
-        context.setBackgroundCover();
+        clearVisibleCoverArt(track.path);
     };
 
     const syncCurrentTrackFromPlaybackState = (state: AudioPlaybackState): void => {
@@ -1160,6 +1190,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
         const clearNowPlayingCard = (): void => {
             clearPlayerCardTrackTransition();
+            nowPlayingCoverRequestVersion += 1;
             context.currentTrackIndex = -1;
             context.trackTitle.textContent = 'Unknown Title';
             context.trackAlbum.textContent = 'Unknown Album';
@@ -1183,6 +1214,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             applyMbLinks(context.trackTitle, context.trackAlbum, context.trackArtist, {});
             applyMbLinks(context.trackTitleInline, context.trackReleaseAlbum, context.trackArtistHeader, {});
             updateExplorationButton(document, undefined);
+            clearVisibleCoverArt();
             context.playlistController().scheduleRender();
         };
 
@@ -1351,12 +1383,20 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         context.trackTechnicalAlt.disabled = false;
     };
 
+    const hasTrackMusicBrainzIds = (track: Track): boolean => {
+        return Object.values(track.mbIds).some((value) => (value || '').trim() !== '')
+            || track.artistMbids.some((artistId) => artistId.trim() !== '');
+    };
+
     const refreshNowPlayingLabel = (): void => {
         if (context.currentTrackIndex < 0 || context.currentTrackIndex >= context.tracks.length) {
             return;
         }
 
         const activeTrack = context.tracks[context.currentTrackIndex];
+        if (context.coverFlipped && !hasTrackMusicBrainzIds(activeTrack)) {
+            setCoverFlipped(false);
+        }
         const replayGainReleaseTrackPaths = context.currentSettings.audio.replayGainEnabled
             ? currentReplayGainReleaseTrackPaths()
             : [];

@@ -70,6 +70,17 @@ import { createPlaybackStateService } from './services/playback-state-service';
 import { playbackReconcileMaxPollIntervalMs } from './utils/playback-reconcile-delay';
 import { runBackgroundBridgeCall, shouldDeferBackgroundBridgeCall } from './utils/bridge-load-gate';
 
+const createDeferred = <T>() => {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((nextResolve, nextReject) => {
+        resolve = nextResolve;
+        reject = nextReject;
+    });
+
+    return { promise, resolve, reject };
+};
+
 const createContext = (): AppNowPlayingRuntimeContext => {
     const playerShell = document.createElement('div');
     const playerLane = document.createElement('div');
@@ -142,6 +153,7 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         gaplessQueueRequestVersion: 0,
         playbackMutationVersion: 0,
         pendingNowPlayingCoverRefreshHandle: null,
+        coverFlipped: false,
         tagRequestVersion: 0,
         artistInfoRequestVersion: 0,
         playPause: document.createElement('button'),
@@ -584,6 +596,18 @@ describe('createAppNowPlayingRuntime', () => {
         );
 
         vi.useRealTimers();
+    });
+
+    it('resets the flipped player card when refreshing a track without MusicBrainz IDs', () => {
+        const context = createContext();
+        context.coverFlipped = true;
+        context.coverFlipper.classList.add('is-flipped');
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.refreshNowPlayingLabel();
+
+        expect(context.coverFlipped).toBe(false);
+        expect(context.coverFlipper.classList.contains('is-flipped')).toBe(false);
     });
 
     it('keeps the transport UI active across a transient not-playing snapshot during automatic track advance', async () => {
@@ -1324,5 +1348,99 @@ describe('createAppNowPlayingRuntime', () => {
         expect(context.resolveCoverForTrack).toHaveBeenCalledWith(context.tracks[0]);
 
         vi.useRealTimers();
+    });
+
+    it('clears the visible cover art when playback becomes unloaded', () => {
+        const context = createContext();
+        context.coverArtBackground.setAttribute('src', '/art/cover.jpg');
+        context.coverArtBackground.classList.add('is-visible');
+        context.coverArt.setAttribute('src', '/art/cover.jpg');
+        context.coverArt.classList.add('is-visible');
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: false,
+            playing: false,
+            currentTime: 0,
+            duration: 0,
+            volume: 1,
+            sourcePath: '',
+            endEventId: 0,
+        });
+
+        expect(context.coverArt.classList.contains('is-visible')).toBe(false);
+        expect(context.coverArtBackground.classList.contains('is-visible')).toBe(false);
+        expect(context.coverArt.getAttribute('src')).toBeNull();
+        expect(context.coverArtBackground.getAttribute('src')).toBeNull();
+        expect(context.setBackgroundCover).toHaveBeenCalledWith();
+    });
+
+    it('clears stale visible cover art immediately while the next track cover is still resolving', async () => {
+        const context = createContext();
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+            },
+        ];
+        context.coverArtBackground.setAttribute('src', '/art/old.jpg');
+        context.coverArtBackground.classList.add('is-visible');
+        context.coverArt.setAttribute('src', '/art/old.jpg');
+        context.coverArt.classList.add('is-visible');
+
+        const deferredCover = createDeferred<string | undefined>();
+        context.resolveCoverForTrack = vi.fn(async (track) => {
+            if (track.path === '/music/next.flac') {
+                return await deferredCover.promise;
+            }
+
+            return '/art/old.jpg';
+        });
+
+        const runtime = createAppNowPlayingRuntime(context);
+        context.currentTrackIndex = 1;
+        const applyCover = runtime.applyCoverArtForTrack(1);
+
+        expect(context.currentTrackIndex).toBe(1);
+        expect(context.coverArt.classList.contains('is-visible')).toBe(false);
+        expect(context.coverArtBackground.classList.contains('is-visible')).toBe(false);
+        expect(context.coverArt.getAttribute('src')).toBeNull();
+        expect(context.coverArtBackground.getAttribute('src')).toBeNull();
+
+        deferredCover.resolve('/art/new.jpg');
+        await applyCover;
+
+        expect(context.coverArt.getAttribute('src')).toBe('/art/new.jpg');
+        expect(context.coverArtBackground.getAttribute('src')).toBe('/art/new.jpg');
+        expect(context.coverArt.classList.contains('is-visible')).toBe(true);
+        expect(context.coverArtBackground.classList.contains('is-visible')).toBe(true);
+    });
+
+    it('ignores an older overlapping cover request for the same current track', async () => {
+        const context = createContext();
+        const firstCover = createDeferred<string | undefined>();
+        const resolveCoverForTrack = vi.fn()
+            .mockImplementationOnce(async () => await firstCover.promise)
+            .mockImplementationOnce(async () => '/art/new.jpg');
+        context.resolveCoverForTrack = resolveCoverForTrack;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        const firstApply = runtime.applyCoverArtForTrack(0);
+        await Promise.resolve();
+        await runtime.applyCoverArtForTrack(0);
+
+        expect(context.coverArt.getAttribute('src')).toBe('/art/new.jpg');
+        expect(context.coverArtBackground.getAttribute('src')).toBe('/art/new.jpg');
+
+        firstCover.resolve('/art/old.jpg');
+        await firstApply;
+
+        expect(context.coverArt.getAttribute('src')).toBe('/art/new.jpg');
+        expect(context.coverArtBackground.getAttribute('src')).toBe('/art/new.jpg');
     });
 });
