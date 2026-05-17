@@ -188,7 +188,7 @@ state.libraryTotalLoadEstimateMs = storedLibraryTotalLoadEstimateMs > 0
         : 0);
 let activeLibraryLoadStartedAtMs: number | null = null;
 let activeLibraryLoadResolved = false;
-const libraryIndexedFilePageSize = 1000;
+const libraryIndexedFilePageSize = 5000;
 const libraryIncrementalRefreshDebounceMs = 180;
 const nowPlayingCoverRefreshDebounceMs = 220;
 

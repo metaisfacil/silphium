@@ -509,8 +509,8 @@ func TestMusicBrainzTagWorkerStateCleanupSnapshotAndRetryBranches(t *testing.T) 
 		t.Fatalf("musicBrainzTagReleaseDepthByRootPath() = %#v, want one normalized root entry", depthByRoot)
 	}
 
-	if snapshot := app.musicBrainzTagLibraryTrackSnapshot(app.musicBrainzTagWorkerConfiguredRootPaths(), nil); snapshot != nil {
-		t.Fatalf("musicBrainzTagLibraryTrackSnapshot() = %#v, want nil for an empty index", snapshot)
+	if snapshot, ready := app.musicBrainzTagLibraryTrackSnapshot(app.musicBrainzTagWorkerConfiguredRootPaths(), nil); snapshot != nil || ready {
+		t.Fatalf("musicBrainzTagLibraryTrackSnapshot() = (%#v, %t), want (nil, false) for an empty pre-bootstrap index", snapshot, ready)
 	}
 
 	disabledTrack := indexedTrackForTest(fixture.rootTwo, fixture.trackTwo)
@@ -522,8 +522,8 @@ func TestMusicBrainzTagWorkerStateCleanupSnapshotAndRetryBranches(t *testing.T) 
 		ReleaseDepth:                     2,
 		MusicBrainzTagWorkerScansEnabled: boolPointer(false),
 	}}
-	if snapshot := app.musicBrainzTagLibraryTrackSnapshot(app.musicBrainzTagWorkerConfiguredRootPaths(), app.musicBrainzTagWorkerDisabledRootPaths()); snapshot != nil {
-		t.Fatalf("musicBrainzTagLibraryTrackSnapshot(disabled root) = %#v, want nil", snapshot)
+	if snapshot, ready := app.musicBrainzTagLibraryTrackSnapshot(app.musicBrainzTagWorkerConfiguredRootPaths(), app.musicBrainzTagWorkerDisabledRootPaths()); snapshot != nil || !ready {
+		t.Fatalf("musicBrainzTagLibraryTrackSnapshot(disabled root) = (%#v, %t), want (nil, true)", snapshot, ready)
 	}
 	signature, ok := trackTagsFileSignatureForPath(disabledTrack.Path)
 	if !ok {
@@ -565,8 +565,8 @@ func TestMusicBrainzTagWorkerStateCleanupSnapshotAndRetryBranches(t *testing.T) 
 		EntityType: "release",
 		MBID:       "55555555-5555-4555-8555-555555555555",
 	}
-	if snapshot := app.musicBrainzTagLibraryTrackSnapshot(app.musicBrainzTagWorkerConfiguredRootPaths(), app.musicBrainzTagWorkerDisabledRootPaths()); snapshot != nil {
-		t.Fatalf("musicBrainzTagLibraryTrackSnapshot(removed root) = %#v, want nil", snapshot)
+	if snapshot, ready := app.musicBrainzTagLibraryTrackSnapshot(app.musicBrainzTagWorkerConfiguredRootPaths(), app.musicBrainzTagWorkerDisabledRootPaths()); snapshot != nil || !ready {
+		t.Fatalf("musicBrainzTagLibraryTrackSnapshot(removed root) = (%#v, %t), want (nil, true)", snapshot, ready)
 	}
 	state = app.buildMusicBrainzTagWorkerState(8)
 	if state.totalTrackPaths != 0 || len(state.pendingTrackPaths) != 0 {
@@ -610,6 +610,117 @@ func TestMusicBrainzTagWorkerStateCleanupSnapshotAndRetryBranches(t *testing.T) 
 	}
 	if len(app.musicBrainzTagStore.Entities) != 0 {
 		t.Fatalf("expected unreferenced entity cleanup to remove stored entities, got %#v", app.musicBrainzTagStore.Entities)
+	}
+}
+
+func TestMusicBrainzTagWorkerStateDoesNotPurgeStoredRecordsBeforeLibraryIndexReady(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	indexed := indexedTrackForTest(fixture.rootOne, fixture.trackOne)
+	signature, ok := trackTagsFileSignatureForPath(indexed.Path)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) failed", indexed.Path)
+	}
+
+	const releaseID = "22222222-2222-4222-8222-222222222222"
+	const artistID = "11111111-1111-4111-8111-111111111111"
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne)
+	app.musicBrainzTagStore.Tracks[indexed.Path] = musicBrainzTagTrackRecord{
+		Signature:         signature,
+		ReleaseID:         releaseID,
+		ArtistIDs:         []string{artistID},
+		ReleaseFolderPath: releaseFolderPathForIndexedTrack(indexed, 2),
+		ArtistFolderPaths: artistFolderPathsForIndexedTrack(indexed, 2),
+		LastScannedAt:     time.Now(),
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("release", releaseID)] = musicBrainzTagEntityRecord{
+		EntityType:    "release",
+		MBID:          releaseID,
+		LastFetchedAt: time.Now(),
+		LastAttemptAt: time.Now(),
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("artist", artistID)] = musicBrainzTagEntityRecord{
+		EntityType:    "artist",
+		MBID:          artistID,
+		LastFetchedAt: time.Now(),
+		LastAttemptAt: time.Now(),
+	}
+	app.rebuildMusicBrainzTagIndexesLocked()
+
+	state := app.buildMusicBrainzTagWorkerState(11)
+	if state.totalTrackPaths != 0 || len(state.pendingTrackPaths) != 0 || len(state.pendingEntityKeys) != 0 {
+		t.Fatalf("buildMusicBrainzTagWorkerState(startup bootstrap) = %#v, want no work before the library index is ready", state)
+	}
+	if len(app.musicBrainzTagStore.Tracks) != 1 {
+		t.Fatalf("expected stored tracks to survive startup bootstrap, got %#v", app.musicBrainzTagStore.Tracks)
+	}
+	if len(app.musicBrainzTagStore.Entities) != 2 {
+		t.Fatalf("expected stored entities to survive startup bootstrap, got %#v", app.musicBrainzTagStore.Entities)
+	}
+
+	app.trackByPath = map[string]LibraryIndexedFile{indexed.Path: indexed}
+	state = app.buildMusicBrainzTagWorkerState(12)
+	if state.totalTrackPaths != 1 || state.completedTrackPaths != 1 || len(state.pendingTrackPaths) != 0 {
+		t.Fatalf("buildMusicBrainzTagWorkerState(after library load) = %#v, want the persisted track record to be reused", state)
+	}
+	if state.totalEntityLookups != 2 || state.completedEntityLookups != 2 || len(state.pendingEntityKeys) != 0 {
+		t.Fatalf("entity progress after library load = %#v, want persisted entity records to remain completed", state)
+	}
+}
+
+func TestMusicBrainzTagWorkerStateDoesNotPurgeStoredRecordsWhileLibraryScanIsInProgress(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	indexed := indexedTrackForTest(fixture.rootOne, fixture.trackOne)
+	signature, ok := trackTagsFileSignatureForPath(indexed.Path)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) failed", indexed.Path)
+	}
+
+	const releaseID = "22222222-2222-4222-8222-222222222222"
+	const artistID = "11111111-1111-4111-8111-111111111111"
+	app := newMusicBrainzTagWorkerStateTestApp(fixture.rootOne)
+	app.activeLibraryRoots = []libraryRootConfig{{Path: normalizePath(fixture.rootOne), Name: "Library", ReleaseDepth: 2}}
+	app.scanInProgress = true
+	app.musicBrainzTagStore.Tracks[indexed.Path] = musicBrainzTagTrackRecord{
+		Signature:         signature,
+		ReleaseID:         releaseID,
+		ArtistIDs:         []string{artistID},
+		ReleaseFolderPath: releaseFolderPathForIndexedTrack(indexed, 2),
+		ArtistFolderPaths: artistFolderPathsForIndexedTrack(indexed, 2),
+		LastScannedAt:     time.Now(),
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("release", releaseID)] = musicBrainzTagEntityRecord{
+		EntityType:    "release",
+		MBID:          releaseID,
+		LastFetchedAt: time.Now(),
+		LastAttemptAt: time.Now(),
+	}
+	app.musicBrainzTagStore.Entities[musicBrainzTagEntityKey("artist", artistID)] = musicBrainzTagEntityRecord{
+		EntityType:    "artist",
+		MBID:          artistID,
+		LastFetchedAt: time.Now(),
+		LastAttemptAt: time.Now(),
+	}
+	app.rebuildMusicBrainzTagIndexesLocked()
+
+	state := app.buildMusicBrainzTagWorkerState(21)
+	if state.totalTrackPaths != 0 || len(state.pendingTrackPaths) != 0 || len(state.pendingEntityKeys) != 0 {
+		t.Fatalf("buildMusicBrainzTagWorkerState(scan in progress) = %#v, want no authoritative work before the library index stabilizes", state)
+	}
+	if len(app.musicBrainzTagStore.Tracks) != 1 {
+		t.Fatalf("expected stored tracks to survive in-progress scan bootstrap, got %#v", app.musicBrainzTagStore.Tracks)
+	}
+	if len(app.musicBrainzTagStore.Entities) != 2 {
+		t.Fatalf("expected stored entities to survive in-progress scan bootstrap, got %#v", app.musicBrainzTagStore.Entities)
+	}
+
+	app.scanInProgress = false
+	app.trackByPath = map[string]LibraryIndexedFile{indexed.Path: indexed}
+	state = app.buildMusicBrainzTagWorkerState(22)
+	if state.totalTrackPaths != 1 || state.completedTrackPaths != 1 || len(state.pendingTrackPaths) != 0 {
+		t.Fatalf("buildMusicBrainzTagWorkerState(stable library load) = %#v, want the persisted track record to be reused after startup", state)
+	}
+	if state.totalEntityLookups != 2 || state.completedEntityLookups != 2 || len(state.pendingEntityKeys) != 0 {
+		t.Fatalf("entity progress after stable startup = %#v, want persisted entity records to remain completed", state)
 	}
 }
 

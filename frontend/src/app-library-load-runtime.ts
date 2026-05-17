@@ -145,6 +145,13 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         context.setForceReloadEtaSeconds(null);
     };
 
+    const setLoadingLibraryFilesStatus = (): void => {
+        context.setLibraryPathMessage('Loading library files…');
+        context.setLibraryLoadingStatusLabel('Loading library files...');
+        context.setLibraryLoadingEtaSeconds(null);
+        context.setForceReloadEtaSeconds(null);
+    };
+
     const stopHistoricalTotalLoadEtaCountdown = (): void => {
         if (historicalTotalLoadEtaHandle !== null) {
             window.clearInterval(historicalTotalLoadEtaHandle);
@@ -211,6 +218,22 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             || (scanResult.imageFileCount || 0) > 0;
     };
 
+    const hasCompleteLibraryPayload = (scanResult: LibraryScanResult): boolean => {
+        const trackCount = Math.max(scanResult.trackCount || 0, (scanResult.trackFiles || []).length);
+        const textFileCount = Math.max(scanResult.textFileCount || 0, (scanResult.textFiles || []).length);
+
+        return (scanResult.trackFiles || []).length >= trackCount
+            && (scanResult.textFiles || []).length >= textFileCount;
+    };
+
+    const requiresPagedIndexedFileTransfer = (scanResult: LibraryScanResult): boolean => {
+        if (scanResult.deferredFiles) {
+            return false;
+        }
+
+        return !hasCompleteLibraryPayload(scanResult);
+    };
+
     const loadLibraryScanWithExclusion = async (
         scanResult: LibraryScanResult,
         options?: { autoSelectStartingTrack?: boolean; preserveFolderView?: boolean; currentFolderPath?: string },
@@ -226,16 +249,25 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
     const completeDeferredHydrationLoad = async (scanResult: LibraryScanResult): Promise<void> => {
         deferredHydrationLoadInFlight = true;
         queuedDeferredHydrationScanResult = null;
+        const requiresPagedTransfer = requiresPagedIndexedFileTransfer(scanResult);
         try {
-            context.markLibraryScanResolved();
-            context.setLibraryLoadingStatusLabel('');
             stopHistoricalTotalLoadEtaCountdown();
-            if (context.libraryClientFinalizeEstimateMs > 0) {
+            if (requiresPagedTransfer) {
+                setLoadingLibraryFilesStatus();
+            } else {
+                context.markLibraryScanResolved();
+                context.setLibraryLoadingStatusLabel('');
+            }
+
+            if (!requiresPagedTransfer && context.libraryClientFinalizeEstimateMs > 0) {
                 const finalizeEtaSeconds = Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000));
                 context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
                 context.setForceReloadEtaSeconds(finalizeEtaSeconds);
             }
             await loadLibraryScanWithExclusion(scanResult);
+            if (requiresPagedTransfer) {
+                context.markLibraryScanResolved();
+            }
         } catch (error) {
             console.error(error);
         } finally {
@@ -329,7 +361,9 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
     };
 
     const updateLibraryLoadingEtaFromProgress = (progress: LibraryScanProgress): void => {
-        const clientTailSeconds = context.libraryClientFinalizeEstimateMs > 0
+        const normalizedPhase = String(progress?.phase || '').trim().toLowerCase();
+        const includeClientTail = normalizedPhase === 'finalizing';
+        const clientTailSeconds = includeClientTail && context.libraryClientFinalizeEstimateMs > 0
             ? Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000))
             : 0;
         const historicalEtaSeconds = historicalTotalLoadEtaSeconds();
@@ -342,7 +376,6 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             return;
         }
 
-        const normalizedPhase = String(progress.phase || '').trim().toLowerCase();
         if (normalizedPhase === 'finalizing' && progress.etaSeconds <= 0 && clientTailSeconds <= 0) {
             stopHistoricalTotalLoadEtaCountdown();
             setFinalizingLibraryStatus();
@@ -369,14 +402,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             return createScanCollections(scanResult);
         }
 
-        const hasCompleteLibraryPayload = (() => {
-            const trackCount = Math.max(scanResult.trackCount || 0, (scanResult.trackFiles || []).length);
-            const textFileCount = Math.max(scanResult.textFileCount || 0, (scanResult.textFiles || []).length);
-
-            return (scanResult.trackFiles || []).length >= trackCount
-                && (scanResult.textFiles || []).length >= textFileCount;
-        })();
-        if (hasCompleteLibraryPayload) {
+        if (!requiresPagedIndexedFileTransfer(scanResult)) {
             return await mapLibraryScanResult(scanResult, initialScanCollectionOptions);
         }
 
@@ -386,6 +412,8 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         const totalFileCount = totalTrackCount + totalTextFileCount;
         let loadedFileCount = 0;
         const transferStartedAtMs = performance.now();
+
+        setLoadingLibraryFilesStatus();
 
         const updateTransferEta = (): void => {
             if (totalFileCount <= 0 || loadedFileCount <= 0) {
@@ -397,20 +425,11 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
                 ? Math.max(0, (elapsedTransferMs / loadedFileCount) * (totalFileCount - loadedFileCount))
                 : 0;
 
-            let historicalRemainingMs = 0;
-            if (context.activeLibraryLoadScanResolvedAtMs !== null && context.libraryClientFinalizeEstimateMs > 0) {
-                historicalRemainingMs = Math.max(0, context.libraryClientFinalizeEstimateMs - (performance.now() - context.activeLibraryLoadScanResolvedAtMs));
-            }
-
-            const remainingMs = Math.max(measuredRemainingMs, historicalRemainingMs);
+            const remainingMs = measuredRemainingMs;
             if (remainingMs > 0) {
-                if (remainingMs <= 0) {
-                    setFinalizingLibraryStatus();
-                    return;
-                }
-
                 context.setLibraryLoadingStatusLabel('');
                 context.setLibraryLoadingEtaSeconds(Math.max(1, Math.ceil(remainingMs / 1000)));
+                context.setForceReloadEtaSeconds(Math.max(1, Math.ceil(remainingMs / 1000)));
             }
         };
 
@@ -662,10 +681,16 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         try {
             context.setLibraryPathMessage(context.currentSettings.libraryFolders.length > 1 ? 'Scanning library folders…' : 'Scanning folder…');
             const scanResult = await context.scanConfiguredLibraryFoldersBackend();
+            const requiresPagedTransfer = requiresPagedIndexedFileTransfer(scanResult);
             if (!scanResult.deferredFiles) {
-                context.markLibraryScanResolved();
                 stopHistoricalTotalLoadEtaCountdown();
-                if (context.libraryClientFinalizeEstimateMs > 0) {
+                if (requiresPagedTransfer) {
+                    setLoadingLibraryFilesStatus();
+                } else {
+                    context.markLibraryScanResolved();
+                }
+
+                if (!requiresPagedTransfer && context.libraryClientFinalizeEstimateMs > 0) {
                     const finalizeEtaSeconds = Math.max(1, Math.ceil(context.libraryClientFinalizeEstimateMs / 1000));
                     context.setLibraryLoadingEtaSeconds(finalizeEtaSeconds);
                     context.setForceReloadEtaSeconds(finalizeEtaSeconds);
@@ -675,6 +700,9 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             deferredHydrationPending = keepLoadingForDeferredHydration;
             deferredHydrationBootstrapInFlight = false;
             await loadLibraryScanWithExclusion(scanResult);
+            if (!scanResult.deferredFiles && requiresPagedTransfer) {
+                context.markLibraryScanResolved();
+            }
             if (keepLoadingForDeferredHydration && queuedDeferredHydrationScanResult && !queuedDeferredHydrationScanResult.deferredFiles) {
                 keepLoadingForDeferredHydration = false;
                 await completeDeferredHydrationLoad(queuedDeferredHydrationScanResult);

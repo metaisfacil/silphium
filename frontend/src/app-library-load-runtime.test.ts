@@ -28,6 +28,17 @@ const emptyIndexedFilePage = (kind: LibraryIndexedFilePage['kind']): LibraryInde
     entries: [],
 });
 
+const createDeferred = <T>() => {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+
+    return { promise, resolve, reject };
+};
+
 const createContext = (quickScanResult: LibraryScanResult, trackEntry: LibraryIndexedFile) => ({
     libraryIndexedFilePageSize: 1000,
     selectedLibraryRootLabel: 'Library',
@@ -231,6 +242,34 @@ describe('app-library-load-runtime', () => {
         await scanPromise;
     });
 
+    it('does not add the client finalize tail onto active scanning progress', () => {
+        const quickScanResult = createScanResult();
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const context = createContext(quickScanResult, trackEntry);
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+
+        runtime.updateLibraryLoadingEtaFromProgress({
+            rootPath: 'C:/Library',
+            entriesScanned: 40,
+            totalEntries: 100,
+            elapsedMs: 15_000,
+            etaSeconds: 15,
+            phase: 'scanning',
+        });
+
+        expect(context.setLibraryLoadingStatusLabel).toHaveBeenLastCalledWith('');
+        expect(context.setLibraryLoadingEtaSeconds).toHaveBeenLastCalledWith(15);
+        expect(context.setForceReloadEtaSeconds).toHaveBeenLastCalledWith(15);
+    });
+
     it('keeps a finalizing 1s scan ETA visible until it reaches zero', () => {
         const quickScanResult = createScanResult();
         const trackEntry: LibraryIndexedFile = {
@@ -329,6 +368,52 @@ describe('app-library-load-runtime', () => {
         expect(context.finishLibraryLoadTracking).toHaveBeenCalledTimes(1);
         expect(context.setLibraryLoading).toHaveBeenLastCalledWith(false);
         expect(context.fullLibraryScanLoadActive).toBe(false);
+    });
+
+    it('switches from scanning to loading library files before the first paged hydration result arrives', async () => {
+        const quickScanResult = createScanResult({
+            totalEntries: 1,
+            trackCount: 1,
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const trackPageDeferred = createDeferred<LibraryIndexedFilePage>();
+        const context = createContext(quickScanResult, trackEntry);
+        context.loadIndexedFilePage = vi.fn(async (kind: LibraryIndexedFilePage['kind']) => {
+            if (kind === 'track') {
+                return await trackPageDeferred.promise;
+            }
+
+            return emptyIndexedFilePage(kind);
+        });
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+        const scanPromise = runtime.scanConfiguredLibraryFolders();
+
+        await vi.waitFor(() => {
+            expect(context.setLibraryPathMessage).toHaveBeenCalledWith('Loading library files…');
+        });
+
+        expect(context.setLibraryLoadingStatusLabel).toHaveBeenCalledWith('Loading library files...');
+        expect(context.setLibraryLoadingEtaSeconds).not.toHaveBeenCalledWith(2);
+        expect(context.markLibraryScanResolved).not.toHaveBeenCalled();
+
+        trackPageDeferred.resolve({
+            kind: 'track',
+            offset: 0,
+            limit: 1000,
+            totalEntries: 1,
+            entries: [trackEntry],
+        });
+        await scanPromise;
+
+        expect(context.markLibraryScanResolved).toHaveBeenCalledTimes(1);
     });
 
     it('keeps the historical ETA running for deferred scans until hydration completes', async () => {

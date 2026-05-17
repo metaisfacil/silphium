@@ -129,13 +129,21 @@ func (a *App) musicBrainzTagWorkerDisabledRootPaths() map[string]struct{} {
 	return disabledRootPaths
 }
 
-func (a *App) musicBrainzTagLibraryTrackSnapshot(configuredRootPaths map[string]struct{}, disabledRootPaths map[string]struct{}) map[string]LibraryIndexedFile {
+func (a *App) musicBrainzTagLibraryTrackSnapshot(configuredRootPaths map[string]struct{}, disabledRootPaths map[string]struct{}) (map[string]LibraryIndexedFile, bool) {
 	contentState := a.libraryContentState()
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
+	scanState := a.libraryScanState()
+	indexState := a.libraryIndexState()
+	contentState.indexMu.RLock()
+	defer contentState.indexMu.RUnlock()
+
+	snapshotReady := !scanState.scanInProgress && !indexState.libraryFileHydrationPending
 
 	if len(contentState.trackByPath) == 0 {
-		return nil
+		if !snapshotReady {
+			return nil, false
+		}
+
+		return nil, len(contentState.activeLibraryRoots) > 0 || len(configuredRootPaths) == 0
 	}
 
 	snapshot := make(map[string]LibraryIndexedFile, len(contentState.trackByPath))
@@ -155,16 +163,16 @@ func (a *App) musicBrainzTagLibraryTrackSnapshot(configuredRootPaths map[string]
 	}
 
 	if len(snapshot) == 0 {
-		return nil
+		return nil, snapshotReady
 	}
 
-	return snapshot
+	return snapshot, snapshotReady
 }
 
 func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWorkerState {
 	configuredRootPaths := a.musicBrainzTagWorkerConfiguredRootPaths()
 	disabledRootPaths := a.musicBrainzTagWorkerDisabledRootPaths()
-	snapshot := a.musicBrainzTagLibraryTrackSnapshot(configuredRootPaths, disabledRootPaths)
+	snapshot, snapshotReady := a.musicBrainzTagLibraryTrackSnapshot(configuredRootPaths, disabledRootPaths)
 	state := musicBrainzTagWorkerState{
 		generation:           generation,
 		indexedByPath:        snapshot,
@@ -276,6 +284,11 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 		delete(storedTracks, path)
 		trackRemovals = append(trackRemovals, path)
 	}
+	state.totalTrackPaths = actualTrackPaths
+
+	if !snapshotReady {
+		return state
+	}
 
 	if len(trackRemovals) > 0 || len(trackUpdates) > 0 {
 		a.musicBrainzTagMu.Lock()
@@ -288,7 +301,6 @@ func (a *App) buildMusicBrainzTagWorkerState(generation uint64) musicBrainzTagWo
 		}
 		a.musicBrainzTagMu.Unlock()
 	}
-	state.totalTrackPaths = actualTrackPaths
 
 	staggeringEnabled := a.musicBrainzTagRequestStaggeringEnabled()
 	staleDays := a.musicBrainzTagStaleDays()
