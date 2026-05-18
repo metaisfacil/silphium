@@ -243,7 +243,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         const payload = {
             artistName: track.displayArtist || firstTagValue(track, 'artist') || 'Unknown Artist',
             trackName: track.displayTitle || track.title || track.name,
-            releaseName: track.displayAlbum || firstTagValue(track, 'album') || '',
+            releaseName: firstTagValue(track, 'album') || track.displayAlbum || '',
             albumArtist: firstTagValue(track, 'albumartist', 'album artist', 'album_artist') || undefined,
             trackNumber: normalizedTrackNumber(track),
             recordingMbid: track.mbIds.recordingId || undefined,

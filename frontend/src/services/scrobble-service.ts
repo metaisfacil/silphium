@@ -201,10 +201,14 @@ export const createScrobbleService = (
         return undefined;
     };
 
+    const scrobbleReleaseName = (track: Track): string => {
+        return firstTagValue(track, 'album') || track.displayAlbum || '';
+    };
+
     const buildScrobbleMetadata = (track: Track, stateDuration: number): ScrobblePayload => ({
         artistName: track.displayArtist || firstTagValue(track, 'artist') || 'Unknown Artist',
         trackName: track.displayTitle || track.title || track.name,
-        releaseName: track.displayAlbum || firstTagValue(track, 'album') || '',
+        releaseName: scrobbleReleaseName(track),
         albumArtist: firstTagValue(track, 'albumartist', 'album artist', 'album_artist') || undefined,
         trackNumber: normalizedTrackNumber(track),
         durationSeconds: durationSeconds(track, stateDuration),

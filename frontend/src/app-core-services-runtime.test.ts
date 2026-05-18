@@ -147,7 +147,7 @@ import type { ListenBrainzSocialControllerOptions } from './controllers/listenbr
 import { createAppCoreServicesRuntime } from './app-core-services-runtime';
 import type { AppCoreServicesRuntimeContext } from './app-runtime-setup';
 import { resetBridgeLoadGateForTests, shouldDeferBackgroundBridgeCall } from './utils/bridge-load-gate';
-import { GetLastFmFollowing, GetLastFmFollowingFeed, GetListenBrainzFollowing, GetListenBrainzFollowingFeed } from '../wailsjs/go/main/App';
+import { GetLastFmFollowing, GetLastFmFollowingFeed, GetListenBrainzFollowing, GetListenBrainzFollowingFeed, SubmitLastFmLove } from '../wailsjs/go/main/App';
 
 const createTrack = () => ({
     title: 'Track',
@@ -364,5 +364,39 @@ describe('createAppCoreServicesRuntime', () => {
             }],
             warnings: ['ListenBrainz feed connection was closed by the remote host.'],
         });
+    });
+
+    it('keeps the player-card album title while Last.fm feedback uses the tagged album title', async () => {
+        const context = createContext();
+        context.currentSettings.lastFmApiKey = 'lfm-key';
+        context.currentSettings.lastFmApiSecret = 'lfm-secret';
+        context.currentSettings.lastFmSessionKey = 'lfm-session';
+        context.tracks[0] = {
+            ...createTrack(),
+            displayAlbum: 'Brilliant Anthology (初回限定盤)',
+            allFileTags: {
+                album: ['Brilliant Anthology'],
+            },
+            mbIds: {
+                recordingId: 'recording-123',
+            },
+        };
+
+        createAppCoreServicesRuntime(context);
+
+        const controllerCalls = createListenBrainzControllerMock.mock.calls as unknown as Array<[{ 
+            onFeedbackSubmitted?: (track: (typeof context.tracks)[number], score: -1 | 0 | 1) => Promise<void> | void;
+        }]>
+        const controllerOptions = controllerCalls[0]?.[0] as {
+            onFeedbackSubmitted?: (track: (typeof context.tracks)[number], score: -1 | 0 | 1) => Promise<void> | void;
+        } | undefined;
+        expect(controllerOptions).toBeDefined();
+
+        await controllerOptions?.onFeedbackSubmitted?.(context.tracks[0], 1);
+
+        expect(context.tracks[0].displayAlbum).toBe('Brilliant Anthology (初回限定盤)');
+        expect(SubmitLastFmLove).toHaveBeenCalledWith(expect.objectContaining({
+            releaseName: 'Brilliant Anthology',
+        }));
     });
 });

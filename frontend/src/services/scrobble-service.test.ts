@@ -280,6 +280,47 @@ describe('createScrobbleService', () => {
         );
     });
 
+    it('prefers the tagged album title over hydrated display album metadata when scrobbling', async () => {
+        const submitListenBrainz = vi.fn(async () => undefined);
+        const submitLastFm = vi.fn(async () => undefined);
+        const service = createScrobbleService({ submitListenBrainz, submitLastFm });
+
+        const playbackState = createPlaybackState({ currentTime: 200, duration: 300 });
+        const track = createTrack({
+            displayAlbum: 'Brilliant Anthology (初回限定盤)',
+            allFileTags: {
+                album: ['Brilliant Anthology'],
+            },
+            mbIds: {
+                recordingId: 'recording-123',
+                releaseId: 'release-123',
+            },
+        });
+
+        service.startTrackSession(track.path);
+        service.maybeSubmit(playbackState, track, { listenBrainz: true, lastFm: true });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(submitListenBrainz).toHaveBeenNthCalledWith(
+            1,
+            'playing_now',
+            expect.objectContaining({
+                releaseName: 'Brilliant Anthology',
+            }),
+            0,
+        );
+        expect(submitLastFm).toHaveBeenNthCalledWith(
+            1,
+            'playing_now',
+            expect.objectContaining({
+                releaseName: 'Brilliant Anthology',
+            }),
+            0,
+        );
+    });
+
     it('mutates injected scrobble session state instead of closure-local session data', async () => {
         const submitListenBrainz = vi.fn(async () => undefined);
         const state = createScrobbleSessionState();
