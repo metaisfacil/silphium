@@ -500,7 +500,6 @@ func (a *App) startup(ctx context.Context) {
 	a.refreshSystemTrayForSettings()
 	a.startMediaKeyWatcher()
 	a.startMusicBrainzTagWorker()
-	a.notifyMusicBrainzTagWorker()
 }
 
 func (a *App) shutdown(context.Context) {

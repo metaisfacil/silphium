@@ -199,6 +199,9 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	if app.musicBrainzTagWorkerState().wakeCh == nil {
 		t.Fatal("startup() should initialize the MusicBrainz background worker")
 	}
+	if generation := app.musicBrainzTagWorkerState().generation.Load(); generation != 0 {
+		t.Fatalf("startup() musicbrainz worker generation = %d, want 0 before the first library/index notification", generation)
+	}
 	if runtime.GOOS == "windows" && app.mediaKeyWatcherState().stopCh == nil {
 		t.Fatal("startup() should initialize the media key watcher on Windows")
 	}
