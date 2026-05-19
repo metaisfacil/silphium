@@ -88,7 +88,7 @@ type PlaylistControllerOptions = {
     getCurrentTrackIndex: () => number;
     getPlaybackOrderLabel: () => string;
     getBaseSequence: () => PlaylistSequence;
-    playbackSequencingService?: Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection'>;
+    playbackSequencingService?: Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection' | 'getPlaybackOrderMode'>;
     ensureTrackTagsResolvedBatch: (indexes: number[]) => Promise<void>;
     selectPlaylistFile: () => Promise<string>;
     selectPlaylistSaveFile: () => Promise<string>;
@@ -578,6 +578,81 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         controllerState.editableQueueTrackIndexes = queueIndexes;
         controllerState.editableQueueCurrentPosition = clampEditableQueuePosition(queueIndexes, currentPosition);
         return queueIndexes;
+    };
+
+    const queueIndexesEqual = (left: number[] | null | undefined, right: number[]): boolean => {
+        if (!left || left.length !== right.length) {
+            return false;
+        }
+
+        return left.every((trackIndex, position) => trackIndex === right[position]);
+    };
+
+    const limitQueueIndexesToSourceOccurrences = (queueIndexes: number[], sourceIndexes: number[]): number[] => {
+        if (sourceIndexes.length === 0) {
+            return [];
+        }
+
+        const remainingCounts = new Map<number, number>();
+        for (const trackIndex of sourceIndexes) {
+            remainingCounts.set(trackIndex, (remainingCounts.get(trackIndex) || 0) + 1);
+        }
+
+        const limitedIndexes: number[] = [];
+        for (const trackIndex of queueIndexes) {
+            const remaining = remainingCounts.get(trackIndex) || 0;
+            if (remaining <= 0) {
+                continue;
+            }
+
+            limitedIndexes.push(trackIndex);
+            remainingCounts.set(trackIndex, remaining - 1);
+            if (limitedIndexes.length >= sourceIndexes.length) {
+                return limitedIndexes;
+            }
+        }
+
+        for (const trackIndex of sourceIndexes) {
+            const remaining = remainingCounts.get(trackIndex) || 0;
+            if (remaining <= 0) {
+                continue;
+            }
+
+            limitedIndexes.push(trackIndex);
+            remainingCounts.set(trackIndex, remaining - 1);
+            if (limitedIndexes.length >= sourceIndexes.length) {
+                break;
+            }
+        }
+
+        return limitedIndexes;
+    };
+
+    const isShuffleQueuePlayback = (): boolean => {
+        const playbackOrderMode = options.playbackSequencingService?.getPlaybackOrderMode?.();
+        return controllerState.playbackSource === 'queue'
+            && (playbackOrderMode === 'shuffle-library' || playbackOrderMode === 'shuffle-album');
+    };
+
+    const redrawPlaybackQueueFromBaseSequence = (currentPositionOverride?: number): boolean => {
+        if (!isShuffleQueuePlayback()) {
+            return false;
+        }
+
+        const nextSequence = options.getBaseSequence();
+        if (nextSequence.indexes.length === 0) {
+            clearEditableQueueState();
+            return false;
+        }
+
+        const previousQueue = controllerState.editableQueueTrackIndexes?.slice();
+        const previousPosition = controllerState.editableQueueCurrentPosition;
+        const nextIndexes = nextSequence.indexes.slice();
+        const nextPosition = clampEditableQueuePosition(nextIndexes, currentPositionOverride ?? nextSequence.currentPosition);
+
+        controllerState.playbackSource = 'queue';
+        setEditableQueueState(nextIndexes, nextPosition);
+        return !queueIndexesEqual(previousQueue, nextIndexes) || previousPosition !== nextPosition;
     };
 
     const resolveEditableQueueCurrentPosition = (queueIndexes: number[]): number => {
@@ -2217,6 +2292,22 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             }
 
             if (direction > 0 && controllerState.editableQueueTrackIndexes && currentPosition >= queueIndexes.length - 1) {
+                if (isShuffleQueuePlayback()) {
+                    const nextQueue = options.getBaseSequence();
+                    const nextPosition = nextQueue.currentPosition + 1;
+                    if (nextPosition < nextQueue.indexes.length) {
+                        if (mutateState) {
+                            const queueChanged = redrawPlaybackQueueFromBaseSequence(nextPosition);
+                            scheduleRender();
+                            if (queueChanged) {
+                                notifyPlaybackQueueMutated();
+                            }
+                        }
+
+                        return nextQueue.indexes[nextPosition];
+                    }
+                }
+
 	            if (!mutateState) {
 	                return undefined;
 	            }
@@ -2259,8 +2350,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 return;
             }
 
+	        const queueChanged = redrawPlaybackQueueFromBaseSequence();
+
             scheduleRender();
-            notifyPlaybackQueueMutated();
+            if (queueChanged) {
+                notifyPlaybackQueueMutated();
+            }
             return;
         }
 
@@ -2271,21 +2366,33 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         }
 
         const prefix = queueIndexes.slice(0, currentPosition);
+        const redrawTail = queueIndexes.slice(currentPosition);
         const redrawSource = {
             key: 'queue::editable',
-            indexes: queueIndexes.slice(currentPosition),
+            indexes: redrawTail,
         };
         const redrawnSequence = options.playbackSequencingService.baseSequenceIndexes(redrawSource);
         if (redrawnSequence.indexes.length === 0) {
             return;
         }
 
-        const nextQueueIndexes = prefix.concat(redrawnSequence.indexes);
+        const limitedRedrawIndexes = isShuffleQueuePlayback()
+            ? limitQueueIndexesToSourceOccurrences(redrawnSequence.indexes, redrawTail)
+            : redrawnSequence.indexes;
+        const limitedCurrentPosition = Math.min(
+            redrawnSequence.currentPosition,
+            Math.max(0, limitedRedrawIndexes.length - 1),
+        );
+        if (limitedRedrawIndexes.length === 0) {
+            return;
+        }
+
+        const nextQueueIndexes = prefix.concat(limitedRedrawIndexes);
         const queueChanged = nextQueueIndexes.length !== queueIndexes.length
             || nextQueueIndexes.some((trackIndex, position) => trackIndex !== queueIndexes[position]);
 
         controllerState.playbackSource = 'queue';
-        setEditableQueueState(nextQueueIndexes, prefix.length + redrawnSequence.currentPosition);
+        setEditableQueueState(nextQueueIndexes, prefix.length + limitedCurrentPosition);
         scheduleRender();
         if (queueChanged) {
             notifyPlaybackQueueMutated();
@@ -2790,7 +2897,9 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
                 }
 
                 if (controllerState.editableQueueTrackIndexes && controllerState.editableQueueTrackIndexes.length === 0) {
-                    clearEditableQueueState();
+                    if (!redrawPlaybackQueueFromBaseSequence()) {
+                        clearEditableQueueState();
+                    }
                 } else {
                     updateEditableQueueCurrentPositionAfterRemoval(removePosition, activeQueue.length);
                 }

@@ -103,7 +103,7 @@ const createTrack = (name: string, folderPath: string): Track => ({
 const mountPlaylistController = (options: {
     state?: PlaylistControllerState;
     shouldAutoSavePlaylistsOnAddRemove?: boolean;
-    playbackSequencingService?: Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection'>;
+    playbackSequencingService?: Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection' | 'getPlaybackOrderMode'>;
     onQueueRequested?: (clientX: number, clientY: number, trackIndexes: number[], feedbackTrackIndex?: number, includeFileActions?: boolean, fileActionPath?: string) => void;
     trackViews?: PlaylistTrackView[];
     getBaseSequence?: () => { indexes: number[]; currentPosition: number };
@@ -264,9 +264,10 @@ describe('createPlaylistController', () => {
     it('uses the shared playback sequencing service for active playlist playback', async () => {
         const playbackSequencingService = {
             baseSequenceIndexes: vi.fn(() => ({ indexes: [1, 2], currentPosition: 0 })),
+            getPlaybackOrderMode: vi.fn(() => 'ordered-library'),
             nextTrackIndexForDirection: vi.fn(() => 2),
             peekNextTrackIndexForDirection: vi.fn(() => 1),
-        } satisfies Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection'>;
+        } satisfies Pick<PlaybackSequencingService, 'baseSequenceIndexes' | 'nextTrackIndexForDirection' | 'peekNextTrackIndexForDirection' | 'getPlaybackOrderMode'>;
         const { controller, elements } = mountPlaylistController({ playbackSequencingService });
 
         await controller.loadPlaylistByPath('/playlists/demo.m3u8');
@@ -951,9 +952,44 @@ describe('createPlaylistController', () => {
         expect(secondRedraw).not.toBeNull();
         expect(firstRedraw?.indexes[0]).toBe(0);
         expect(secondRedraw?.indexes[0]).toBe(0);
-        expect(firstRedraw?.indexes.slice(1)).not.toEqual(secondRedraw?.indexes.slice(1));
+        expect(firstRedraw?.indexes.slice().sort((left, right) => left - right)).toEqual([0, 1, 2, 3]);
+        expect(secondRedraw?.indexes.slice().sort((left, right) => left - right)).toEqual([0, 1, 2, 3]);
 
         randomSpy.mockRestore();
+    });
+
+    it('filters generated shuffle redraw duplicates back down to the queue source membership', () => {
+        const state = createPlaylistControllerState();
+        state.editableQueueTrackIndexes = [0, 1, 2, 3];
+        state.editableQueueCurrentPosition = 0;
+        state.playbackSource = 'queue';
+
+        const baseSequenceIndexes = vi
+            .fn()
+            .mockReturnValueOnce({ indexes: [0, 1, 2, 3, 0, 1], currentPosition: 0 })
+            .mockReturnValueOnce({ indexes: [0, 3, 2, 1], currentPosition: 0 });
+
+        const { controller } = mountPlaylistController({
+            state,
+            playbackSequencingService: {
+                baseSequenceIndexes,
+                getPlaybackOrderMode: vi.fn(() => 'shuffle-library'),
+                nextTrackIndexForDirection: vi.fn(),
+                peekNextTrackIndexForDirection: vi.fn(),
+            },
+        });
+
+        controller.redrawPlaybackQueueFollowingCurrent();
+        controller.redrawPlaybackQueueFollowingCurrent();
+
+        expect(baseSequenceIndexes).toHaveBeenNthCalledWith(1, {
+            key: 'queue::editable',
+            indexes: [0, 1, 2, 3],
+        });
+        expect(controller.getSequenceOverride()).toEqual({
+            indexes: [0, 3, 2, 1],
+            currentPosition: 0,
+        });
     });
 
     it('re-renders derived shuffle queues when the queue is library-backed instead of editable', async () => {
@@ -1008,6 +1044,76 @@ describe('createPlaylistController', () => {
         expect(onPlaybackSequenceMutated).toHaveBeenCalledTimes(1);
 
         randomSpy.mockRestore();
+    });
+
+    it('redraws another shuffle queue batch when advancing past the exhausted queue tail', () => {
+        const state = createPlaylistControllerState();
+        state.editableQueueTrackIndexes = [0];
+        state.editableQueueCurrentPosition = 0;
+        state.playbackSource = 'queue';
+
+        const { controller, onPlaybackSequenceMutated } = mountPlaylistController({
+            state,
+            playbackSequencingService: createPlaybackSequencingService({
+                getTracks: () => [
+                    createTrack('01 Current', 'Library/Artist/Album A'),
+                    createTrack('02 Beta', 'Library/Artist/Album B'),
+                    createTrack('03 Gamma', 'Library/Artist/Album C'),
+                ],
+                getCurrentTrackIndex: () => 0,
+                getReleaseDepthForTrack: () => 0,
+                initialPlaybackOrderMode: 'shuffle-library',
+            }),
+            getBaseSequence: () => ({
+                indexes: [0, 2, 1],
+                currentPosition: 0,
+            }),
+        });
+
+        expect(controller.getNextTrackIndex(1)).toBe(2);
+        expect(controller.getSequenceOverride()).toEqual({
+            indexes: [0, 2, 1],
+            currentPosition: 0,
+        });
+        expect(onPlaybackSequenceMutated).toHaveBeenCalledTimes(1);
+    });
+
+    it('redraws another shuffle queue batch after deleting every queued track', async () => {
+        const state = createPlaylistControllerState();
+        state.editableQueueTrackIndexes = [0];
+        state.editableQueueCurrentPosition = 0;
+        state.playbackSource = 'queue';
+
+        const { controller, elements, onPlaybackSequenceMutated } = mountPlaylistController({
+            state,
+            playbackSequencingService: createPlaybackSequencingService({
+                getTracks: () => [
+                    createTrack('01 Current', 'Library/Artist/Album A'),
+                    createTrack('02 Beta', 'Library/Artist/Album B'),
+                    createTrack('03 Gamma', 'Library/Artist/Album C'),
+                ],
+                getCurrentTrackIndex: () => 0,
+                getReleaseDepthForTrack: () => 0,
+                initialPlaybackOrderMode: 'shuffle-library',
+            }),
+            getBaseSequence: () => ({
+                indexes: [0, 2, 1],
+                currentPosition: 0,
+            }),
+        });
+
+        controller.openModal();
+        const removeButton = elements.playlistList.querySelector('[data-playlist-remove-position="0"]') as HTMLButtonElement | null;
+        expect(removeButton).not.toBeNull();
+
+        removeButton?.click();
+        await flushPromises();
+
+        expect(controller.getSequenceOverride()).toEqual({
+            indexes: [0, 2, 1],
+            currentPosition: 0,
+        });
+        expect(onPlaybackSequenceMutated).toHaveBeenCalledTimes(1);
     });
 
     it('promotes add-next queue mutations to the active playback source while playing a playlist', async () => {
