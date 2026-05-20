@@ -706,8 +706,10 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 
 	rootsCopy := append([]libraryRootConfig(nil), roots...)
 	a.logRescanEvent("Deferred library hydration START: roots=%d", len(rootsCopy))
+	releaseAsyncTask := a.beginLibraryScanAsyncTask()
 
 	go func(activeRoots []libraryRootConfig) {
+		defer releaseAsyncTask()
 		startedAt := time.Now()
 		stopProgress := make(chan struct{})
 		rootPath, _ := aggregateLibraryScanRootInfo(activeRoots)

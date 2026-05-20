@@ -226,7 +226,7 @@ func TestScanLibraryFoldersDeferredFallsBackToFilesystemQuickScanWhenMetadataPat
 	app.settingsLoaded = true
 	app.settings = normalizeAppSettings(AppSettings{})
 	t.Cleanup(func() {
-		app.stopLibraryFilesDatabaseWorker()
+		cleanupDeferredLibraryScanTestApp(t, app)
 	})
 
 	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
@@ -272,7 +272,7 @@ func TestScanLibraryFoldersDeferredLoadsFromDatabaseBeforeFilesystemRefresh(t *t
 	app.settingsLoaded = true
 	app.settings = normalizeAppSettings(AppSettings{})
 	t.Cleanup(func() {
-		app.stopLibraryFilesDatabaseWorker()
+		cleanupDeferredLibraryScanTestApp(t, app)
 	})
 
 	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
@@ -311,7 +311,6 @@ func TestScanLibraryFoldersDeferredLoadsFromDatabaseBeforeFilesystemRefresh(t *t
 		t.Fatalf("ResolveLibraryFolderForPath(database) = %q, want %q", got, "Library/Artist One/Album One")
 	}
 
-	app.libraryScanGeneration.Add(1)
 }
 
 func TestScanLibraryFoldersDeferredSkipsDatabaseWhenStartupLoadDisabled(t *testing.T) {
@@ -325,7 +324,7 @@ func TestScanLibraryFoldersDeferredSkipsDatabaseWhenStartupLoadDisabled(t *testi
 		LocalLibraryFilesDatabaseLoadOnStartup: &disabled,
 	})
 	t.Cleanup(func() {
-		app.stopLibraryFilesDatabaseWorker()
+		cleanupDeferredLibraryScanTestApp(t, app)
 	})
 
 	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
@@ -355,7 +354,6 @@ func TestScanLibraryFoldersDeferredSkipsDatabaseWhenStartupLoadDisabled(t *testi
 		t.Fatalf("GetLibraryFolderTrackCount(filesystem) = %d, want 0", got)
 	}
 
-	app.libraryScanGeneration.Add(1)
 }
 
 func TestScanLibraryFolderPersistsLibraryFilesDatabase(t *testing.T) {

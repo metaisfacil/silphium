@@ -144,6 +144,9 @@ type appLibraryScanState struct {
 	scanEntryMs                            float64
 	scanFinalizeMs                         float64
 	scanWatcherMs                          float64
+	asyncTaskMu                            sync.Mutex
+	asyncTaskCond                          *sync.Cond
+	asyncTaskCount                         int
 }
 
 type appLibraryGenerationState struct {
@@ -557,6 +560,39 @@ func (a *App) libraryContentState() *appLibraryContentState {
 
 func (a *App) libraryScanState() *appLibraryScanState {
 	return &a.libraryState().appLibraryScanState
+}
+
+func (a *App) beginLibraryScanAsyncTask() func() {
+	scanState := a.libraryScanState()
+	scanState.asyncTaskMu.Lock()
+	if scanState.asyncTaskCond == nil {
+		scanState.asyncTaskCond = sync.NewCond(&scanState.asyncTaskMu)
+	}
+	scanState.asyncTaskCount++
+	scanState.asyncTaskMu.Unlock()
+
+	return func() {
+		scanState.asyncTaskMu.Lock()
+		if scanState.asyncTaskCount > 0 {
+			scanState.asyncTaskCount--
+		}
+		if scanState.asyncTaskCount == 0 && scanState.asyncTaskCond != nil {
+			scanState.asyncTaskCond.Broadcast()
+		}
+		scanState.asyncTaskMu.Unlock()
+	}
+}
+
+func (a *App) waitForLibraryScanAsyncTasks() {
+	scanState := a.libraryScanState()
+	scanState.asyncTaskMu.Lock()
+	if scanState.asyncTaskCond == nil {
+		scanState.asyncTaskCond = sync.NewCond(&scanState.asyncTaskMu)
+	}
+	for scanState.asyncTaskCount > 0 {
+		scanState.asyncTaskCond.Wait()
+	}
+	scanState.asyncTaskMu.Unlock()
 }
 
 func (a *App) libraryGenerationState() *appLibraryGenerationState {

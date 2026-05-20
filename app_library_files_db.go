@@ -436,8 +436,10 @@ func (a *App) startLibraryFilesRefreshAsync(roots []libraryRootConfig, expectedS
 
 	activeRoots := append([]libraryRootConfig(nil), roots...)
 	a.logRescanEvent("Library files database refresh START: roots=%d", len(activeRoots))
+	releaseAsyncTask := a.beginLibraryScanAsyncTask()
 
 	go func(rootsCopy []libraryRootConfig) {
+		defer releaseAsyncTask()
 		startedAt := time.Now()
 		result, err := a.buildDeferredHydrationScan(rootsCopy, hydrationHints, expectedScanGeneration)
 		if err != nil {

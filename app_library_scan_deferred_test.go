@@ -42,6 +42,9 @@ func TestScanLibraryFoldersDeferredEmitsHydrationEvents(t *testing.T) {
 	app.ctx = context.Background()
 	app.scanEntryMs = 1
 	app.scanFinalizeMs = 20
+	t.Cleanup(func() {
+		cleanupDeferredLibraryScanTestApp(t, app)
+	})
 
 	result := app.scanLibraryFoldersDeferred([]AppLibraryFolder{{
 		Path:         fixture.rootOne,
@@ -80,12 +83,14 @@ func TestScanLibraryFoldersDeferredEmitsHydrationEvents(t *testing.T) {
 			seenCompletionUpdate,
 		)
 	}
-	app.libraryScanGeneration.Add(1)
 }
 
 func TestScanLibraryFoldersDeferredUsesFilesystemQuickScan(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	app := NewApp()
+	t.Cleanup(func() {
+		cleanupDeferredLibraryScanTestApp(t, app)
+	})
 
 	result := app.scanLibraryFoldersDeferred([]AppLibraryFolder{{
 		Path:         fixture.rootOne,
@@ -117,7 +122,6 @@ func TestScanLibraryFoldersDeferredUsesFilesystemQuickScan(t *testing.T) {
 		t.Fatalf("GetLibraryFolderTrackCount() = %d, want 1", got)
 	}
 
-	app.libraryScanGeneration.Add(1)
 }
 
 func TestBuildFilesystemQuickScanAndLazyFilesystemHelpers(t *testing.T) {
