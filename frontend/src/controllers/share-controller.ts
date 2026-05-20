@@ -5,6 +5,7 @@ import {
 } from '../services/share-image-service';
 import { deriveShareImageAccentPalette, type ShareImageAccentPalette } from '../utils/cover-accent-palette';
 import { buildShareImageDefaultFilename, blobToBase64 } from '../utils/display-helpers';
+import { lookupMusicBrainzEntity } from '../utils/musicbrainz-entity-helpers';
 import type { ArtistExternalUrl, AudioVisualizationFrame, Track } from '../types/app-types';
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
 import { faviconUrlForResource } from '../utils/musicbrainz-entity-helpers';
@@ -109,6 +110,68 @@ const copyableShareResources = (urls: ArtistExternalUrl[]): string => (
         .join('\n')
 );
 
+const splitShareGenreTagValues = (values: string[]): string[] => values
+    .flatMap((value) => value.split(';'))
+    .map((value) => value.trim())
+    .filter((value) => value !== '');
+
+const normalizeShareGenreList = (values: string[]): string[] => {
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+
+    for (const value of values) {
+        const cleanValue = value.trim();
+        if (cleanValue === '') {
+            continue;
+        }
+
+        const dedupeKey = cleanValue.toLowerCase();
+        if (seen.has(dedupeKey)) {
+            continue;
+        }
+
+        seen.add(dedupeKey);
+        normalized.push(cleanValue);
+    }
+
+    return normalized;
+};
+
+const extractShareGenresFromTrackTags = (track: Track): string[] => {
+    const genreTagValues: string[] = [];
+
+    for (const [tagName, values] of Object.entries(track.allFileTags || {})) {
+        const normalizedTagName = tagName.trim().toLowerCase();
+        if (normalizedTagName !== 'genre' && normalizedTagName !== 'style') {
+            continue;
+        }
+
+        genreTagValues.push(...splitShareGenreTagValues(values || []));
+    }
+
+    return normalizeShareGenreList(genreTagValues);
+};
+
+const resolveSharePreviewGenres = async (track: Track): Promise<string[]> => {
+    const trackGenres = extractShareGenresFromTrackTags(track);
+    if (trackGenres.length > 0) {
+        return trackGenres;
+    }
+
+    const recordingID = track.mbIds.recordingId?.trim() || '';
+    if (recordingID === '') {
+        return [];
+    }
+
+    try {
+        const recordingEntity = await lookupMusicBrainzEntity('recording', recordingID);
+        return normalizeShareGenreList(recordingEntity.tags || []);
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+};
+
 export interface ShareControllerElements {
     shareModal: HTMLDivElement;
     shareBackdrop: HTMLElement;
@@ -174,6 +237,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
         title: string;
         album: string;
         artist: string;
+        genres: string[];
         trackPath: string;
         coverImage?: ImageBitmap;
         accents: ShareImageAccentPalette;
@@ -461,6 +525,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
             title: sharePreviewSnapshot.title,
             album: sharePreviewSnapshot.album,
             artist: sharePreviewSnapshot.artist,
+            genres: sharePreviewSnapshot.genres,
             comment: shareCommentInput.value,
             coverImage: sharePreviewSnapshot.coverImage,
             accents: sharePreviewSnapshot.accents,
@@ -603,9 +668,12 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
                 return;
             }
 
-            const coverSource = await resolveShareCoverSource(track);
+            const [coverSource, waveformSamples, genres] = await Promise.all([
+                resolveShareCoverSource(track),
+                resolveShareWaveformSamples(track.path),
+                resolveSharePreviewGenres(track),
+            ]);
             const coverImage = await loadShareCanvasImage(coverSource);
-            const waveformSamples = await resolveShareWaveformSamples(track.path);
             if (requestVersion !== sharePreviewRequestVersion) {
                 coverImage?.close();
                 return;
@@ -616,6 +684,7 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
                 title: track.displayTitle || track.title || track.name || 'Unknown Title',
                 album: track.displayAlbum || 'Unknown Album',
                 artist: track.displayArtist || 'Unknown Artist',
+                genres,
                 trackPath: track.path,
                 coverImage,
                 accents,

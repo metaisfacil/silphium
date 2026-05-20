@@ -5,6 +5,7 @@ export type ShareImagePreviewData = {
     album: string;
     artist: string;
     comment: string;
+    genres?: string[];
     coverImage?: CanvasImageSource;
     accents?: ShareImageAccentPalette;
     waveformSamples?: number[];
@@ -19,6 +20,16 @@ type RgbColor = {
     r: number;
     g: number;
     b: number;
+};
+
+type ShareGenrePill = {
+    label: string;
+    width: number;
+};
+
+type ShareGenreLayout = {
+    rows: ShareGenrePill[][];
+    height: number;
 };
 
 const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void => {
@@ -523,6 +534,137 @@ const drawLabel = (ctx: CanvasRenderingContext2D, label: string, x: number, y: n
     ctx.restore();
 };
 
+const normalizeShareGenres = (genres: string[] | undefined): string[] => {
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+
+    for (const rawGenre of genres || []) {
+        const cleanGenre = normalizeWhitespace(rawGenre || '');
+        if (cleanGenre === '') {
+            continue;
+        }
+
+        const dedupeKey = cleanGenre.toLowerCase();
+        if (seen.has(dedupeKey)) {
+            continue;
+        }
+
+        seen.add(dedupeKey);
+        normalized.push(cleanGenre);
+    }
+
+    return normalized;
+};
+
+const layoutShareGenrePills = (
+    ctx: CanvasRenderingContext2D,
+    genres: string[],
+    maxWidth: number,
+    maxRows: number,
+): ShareGenreLayout => {
+    const normalizedGenres = normalizeShareGenres(genres);
+    if (normalizedGenres.length === 0 || maxWidth <= 0 || maxRows <= 0) {
+        return { rows: [], height: 0 };
+    }
+
+    const pillHorizontalPadding = 10;
+    const pillGapX = 8;
+    const pillGapY = 8;
+    const pillHeight = 24;
+
+    ctx.save();
+    ctx.font = '600 12px "Nunito", "Segoe UI", sans-serif';
+
+    const rows: ShareGenrePill[][] = [];
+    let currentRow: ShareGenrePill[] = [];
+    let currentRowWidth = 0;
+
+    for (const genre of normalizedGenres) {
+        const fittedLabel = fitTextWithEllipsis(ctx, genre, Math.max(0, maxWidth - (pillHorizontalPadding * 2)));
+        if (fittedLabel === '') {
+            continue;
+        }
+
+        const pillWidth = Math.min(maxWidth, Math.ceil(ctx.measureText(fittedLabel).width) + (pillHorizontalPadding * 2));
+        const requiredWidth = currentRow.length === 0 ? pillWidth : currentRowWidth + pillGapX + pillWidth;
+
+        if (currentRow.length > 0 && requiredWidth > maxWidth) {
+            rows.push(currentRow);
+            if (rows.length === maxRows) {
+                currentRow = [];
+                break;
+            }
+
+            currentRow = [];
+            currentRowWidth = 0;
+        }
+
+        currentRow.push({
+            label: fittedLabel,
+            width: pillWidth,
+        });
+        currentRowWidth = currentRow.length === 1 ? pillWidth : currentRowWidth + pillGapX + pillWidth;
+    }
+
+    if (currentRow.length > 0 && rows.length < maxRows) {
+        rows.push(currentRow);
+    }
+
+    ctx.restore();
+
+    return {
+        rows,
+        height: rows.length > 0 ? (rows.length * pillHeight) + ((rows.length - 1) * pillGapY) : 0,
+    };
+};
+
+const drawShareGenrePills = (
+    ctx: CanvasRenderingContext2D,
+    genres: string[],
+    x: number,
+    y: number,
+    maxWidth: number,
+): number => {
+    const layout = layoutShareGenrePills(ctx, genres, maxWidth, 2);
+    if (layout.rows.length === 0) {
+        return 0;
+    }
+
+    const pillGapX = 8;
+    const pillGapY = 8;
+    const pillHeight = 24;
+    const pillRadius = 12;
+
+    ctx.save();
+    ctx.font = '600 12px "Nunito", "Segoe UI", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(247, 244, 239, 0.92)';
+
+    let cursorY = y;
+    for (const row of layout.rows) {
+        let cursorX = x;
+        for (const pill of row) {
+            ctx.save();
+            drawRoundedRect(ctx, cursorX, cursorY, pill.width, pillHeight, pillRadius);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.fillText(pill.label, cursorX + (pill.width / 2), cursorY + (pillHeight / 2) + 0.5);
+            cursorX += pill.width + pillGapX;
+        }
+
+        cursorY += pillHeight + pillGapY;
+    }
+
+    ctx.restore();
+    return layout.height;
+};
+
 export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareImagePreviewData): void => {
     const context = canvas.getContext('2d');
     if (!context) {
@@ -537,6 +679,7 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
     const trackTitle = normalizeWhitespace(data.title) || 'Unknown Title';
     const trackArtist = normalizeWhitespace(data.artist) || 'Unknown Artist';
     const trackAlbum = normalizeWhitespace(data.album) || 'Unknown Album';
+    const trackGenres = normalizeShareGenres(data.genres);
     const waveformSamples = normalizeWaveformSamples(data.waveformSamples, `${trackTitle}|${trackArtist}|${trackAlbum}`);
 
     fillCanvasBackground(ctx, data.accents || defaultShareImageAccents);
@@ -577,7 +720,12 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
     const metadataStartY = contentStartY + 26;
     const commentTopY = contentStartY + 193;
     const metadataBottomPadding = 8;
-    const metadataHeightBudget = commentTopY - metadataStartY - metadataBottomPadding;
+    ctx.save();
+    ctx.font = '600 12px "Nunito", "Segoe UI", sans-serif';
+    const genreLayout = layoutShareGenrePills(ctx, trackGenres, textWidth, 2);
+    ctx.restore();
+    const genreTopGap = genreLayout.rows.length > 0 ? 10 : 0;
+    const metadataHeightBudget = Math.max(0, commentTopY - metadataStartY - metadataBottomPadding - genreTopGap - genreLayout.height);
     const maxSharedReduction = Math.min(...textFieldConfigs.map((field) => field.maxReduction));
 
     let sharedReduction = maxSharedReduction;
@@ -666,6 +814,11 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
     for (const line of albumLines) {
         ctx.fillText(line, textX, cursorY);
         cursorY += albumLineHeight;
+    }
+
+    if (trackGenres.length > 0) {
+        cursorY += genreTopGap;
+        drawShareGenrePills(ctx, trackGenres, textX, cursorY, textWidth);
     }
     ctx.restore();
 

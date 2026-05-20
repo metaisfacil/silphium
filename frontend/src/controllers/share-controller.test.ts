@@ -5,12 +5,14 @@ const {
     canvasToPngBlobMock,
     deriveShareImageAccentPaletteMock,
     loadShareCanvasImageMock,
+    lookupMusicBrainzEntityMock,
     renderShareImagePreviewMock,
 } = vi.hoisted(() => ({
     blobToBase64Mock: vi.fn(),
     canvasToPngBlobMock: vi.fn(),
     deriveShareImageAccentPaletteMock: vi.fn(),
     loadShareCanvasImageMock: vi.fn(),
+    lookupMusicBrainzEntityMock: vi.fn(),
     renderShareImagePreviewMock: vi.fn(),
 }));
 
@@ -22,6 +24,11 @@ vi.mock('../services/share-image-service', () => ({
 
 vi.mock('../utils/cover-accent-palette', () => ({
     deriveShareImageAccentPalette: deriveShareImageAccentPaletteMock,
+}));
+
+vi.mock('../utils/musicbrainz-entity-helpers', () => ({
+    faviconUrlForResource: vi.fn(() => undefined),
+    lookupMusicBrainzEntity: lookupMusicBrainzEntityMock,
 }));
 
 vi.mock('../utils/display-helpers', () => ({
@@ -154,6 +161,7 @@ describe('share-controller', () => {
         canvasToPngBlobMock.mockResolvedValue(new Blob(['png'], { type: 'image/png' }));
         blobToBase64Mock.mockResolvedValue('encoded-png');
         loadShareCanvasImageMock.mockResolvedValue({ close: vi.fn() });
+        lookupMusicBrainzEntityMock.mockResolvedValue({ tags: [] });
         renderShareImagePreviewMock.mockImplementation(() => undefined);
         deriveShareImageAccentPaletteMock.mockReturnValue({});
         vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback): number => {
@@ -248,6 +256,49 @@ describe('share-controller', () => {
 
         expect(elements.shareStreamingLinksRegion.hidden).toBe(false);
         expect(elements.shareStreamingLinks.querySelectorAll('.artist-link-btn')).toHaveLength(1);
+    });
+
+    it('prefers local genre and style tags when rendering the share preview', async () => {
+        const track = createTrack();
+        track.allFileTags = {
+            GENRE: ['Electronic; Ambient'],
+            STYLE: ['Synthwave', 'Ambient'],
+        };
+
+        const { controller } = createController(track);
+
+        await controller.open();
+
+        expect(lookupMusicBrainzEntityMock).not.toHaveBeenCalled();
+        expect(renderShareImagePreviewMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+            genres: ['Electronic', 'Ambient', 'Synthwave'],
+        }));
+    });
+
+    it('falls back to MusicBrainz recording tags when file tags do not provide genres', async () => {
+        const track = createTrack();
+        track.mbIds.recordingId = '99999999-9999-4999-8999-999999999999';
+        lookupMusicBrainzEntityMock.mockResolvedValue({
+            found: true,
+            entityType: 'recording',
+            mbid: track.mbIds.recordingId,
+            title: 'Track',
+            subtitle: '',
+            summary: '',
+            facts: [],
+            tags: ['Darkwave', 'Post-punk', 'Darkwave'],
+            urls: [],
+            rawJson: '{}',
+        });
+
+        const { controller } = createController(track);
+
+        await controller.open();
+
+        expect(lookupMusicBrainzEntityMock).toHaveBeenCalledWith('recording', track.mbIds.recordingId);
+        expect(renderShareImagePreviewMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+            genres: ['Darkwave', 'Post-punk'],
+        }));
     });
 
     it('offers copy link and copy all actions for share-modal streaming links', async () => {
