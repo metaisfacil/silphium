@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	"net/url"
-	"path/filepath"
+	pathpkg "path"
 	"strings"
 )
 
@@ -115,14 +115,23 @@ func (a *App) systemMediaTransportControlsSnapshotForState(state AudioPlaybackSt
 	snapshot.CoverArtURL = a.systemMediaTransportControlsCoverArtURL(snapshot.SourcePath, indexed, ok)
 
 	if snapshot.Title == "" {
-		baseName := filepath.Base(snapshot.SourcePath)
-		snapshot.Title = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+		snapshot.Title = fallbackTrackTitleFromPath(snapshot.SourcePath)
 	}
 	if snapshot.AlbumArtist == "" && snapshot.Artist != "" {
 		snapshot.AlbumArtist = snapshot.Artist
 	}
 
 	return snapshot
+}
+
+func fallbackTrackTitleFromPath(sourcePath string) string {
+	normalizedPath := strings.TrimSpace(strings.ReplaceAll(sourcePath, "\\", "/"))
+	if normalizedPath == "" {
+		return ""
+	}
+
+	baseName := pathpkg.Base(normalizedPath)
+	return strings.TrimSuffix(baseName, pathpkg.Ext(baseName))
 }
 
 func (a *App) systemMediaTransportControlsTextMetadata(sourcePath string, indexed LibraryIndexedFile, indexedAvailable bool) (string, string, string, string) {
