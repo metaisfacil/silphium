@@ -53,20 +53,35 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         }
     };
 
+    const finalizeDeferredTrackHydration = (index: number): void => {
+        if (index !== context.currentTrackIndex || index < 0 || index >= context.tracks.length) {
+            return;
+        }
+
+        void context.applyCoverArtForTrack(index).catch((error: unknown) => {
+            console.error(error);
+        });
+
+        context.libraryController().renderFolder('none');
+
+        context.artistInfoRequestVersion += 1;
+        void context.hydrateCurrentArtistInfo(index);
+    };
+
     const runDeferredTrackHydration = (index: number): void => {
         if (index !== context.currentTrackIndex || index < 0 || index >= context.tracks.length) {
             return;
         }
 
         context.tagRequestVersion += 1;
-        void context.hydrateCurrentTrackTag(index, context.tagRequestVersion);
-
-        void context.applyCoverArtForTrack(index).catch((error: unknown) => {
-            console.error(error);
-        });
-
-        context.artistInfoRequestVersion += 1;
-        void context.hydrateCurrentArtistInfo(index);
+        const requestVersion = context.tagRequestVersion;
+        void context.hydrateCurrentTrackTag(index, requestVersion)
+            .catch((error: unknown) => {
+                console.error(error);
+            })
+            .finally(() => {
+                finalizeDeferredTrackHydration(index);
+            });
     };
 
     const scheduleTrackHydration = (index: number, delayMs: number): void => {
@@ -271,10 +286,6 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
 
         context.refreshNowPlayingLabel();
         updateMediaSessionMetadata();
-        context.libraryController().renderFolder('none');
-        void context.applyCoverArtForTrack(index).catch((error: unknown) => {
-            console.error(error);
-        });
         scheduleTrackHydration(index, postLoadTrackHydrationDelayMs);
     };
 

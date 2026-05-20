@@ -401,6 +401,23 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         context.setBackgroundCover();
     };
 
+    const finalizeCurrentTrackUiRefresh = (index: number, expectedTrackPathKey: string): void => {
+        if (index !== context.currentTrackIndex || index < 0 || index >= context.tracks.length) {
+            return;
+        }
+
+        const activeTrack = context.tracks[index];
+        if (!activeTrack || trackPathKey(activeTrack.path) !== expectedTrackPathKey) {
+            return;
+        }
+
+        void applyCoverArtForTrack(index);
+        context.libraryController().renderFolder('none');
+
+        context.artistInfoRequestVersion += 1;
+        void context.hydrateCurrentArtistInfo(index);
+    };
+
     const rebuildTrackPathIndex = (): void => {
         context.trackIndexByPath.clear();
         context.tracks.forEach((track: Track, index: number) => {
@@ -887,15 +904,16 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         runPlayerCardTrackTransition(() => {
             refreshNowPlayingLabel();
         });
-        void applyCoverArtForTrack(resolvedIndex);
-        context.libraryController().renderFolder('none');
-
         context.tagRequestVersion += 1;
-        void context.hydrateCurrentTrackTag(resolvedIndex, context.tagRequestVersion);
+        const tagRequestVersion = context.tagRequestVersion;
+        void context.hydrateCurrentTrackTag(resolvedIndex, tagRequestVersion)
+            .catch((error: unknown) => {
+                console.error(error);
+            })
+            .finally(() => {
+                finalizeCurrentTrackUiRefresh(resolvedIndex, normalizedSourcePathKey);
+            });
         maybeRefreshSettledTransitionMetadata();
-
-        context.artistInfoRequestVersion += 1;
-        void context.hydrateCurrentArtistInfo(resolvedIndex);
 
         void context.refreshListenBrainzFeedbackForCurrentTrack(true);
     };

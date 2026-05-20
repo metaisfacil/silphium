@@ -220,16 +220,18 @@ describe('createAppPlaybackControlsRuntime', () => {
         await runtime.loadTrack(0);
 
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
-        expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
-        expect(context.libraryController().renderFolder).toHaveBeenCalledWith('none');
+        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
+        expect(context.libraryController().renderFolder).not.toHaveBeenCalled();
 
         await vi.advanceTimersByTimeAsync(299);
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
-        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
+        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
+        expect(context.libraryController().renderFolder).not.toHaveBeenCalled();
 
         await vi.advanceTimersByTimeAsync(1);
         expect(context.hydrateCurrentTrackTag).toHaveBeenCalledWith(0, 1);
-        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(2);
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
+        expect(context.libraryController().renderFolder).toHaveBeenCalledWith('none');
 
         coverDeferred.resolve();
     });
@@ -245,17 +247,46 @@ describe('createAppPlaybackControlsRuntime', () => {
 
         await runtime.loadTrack(0);
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
-        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
+        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
 
         await runtime.playCurrentTrack();
 
         await vi.advanceTimersByTimeAsync(299);
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
-        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
+        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
 
         await vi.advanceTimersByTimeAsync(1);
         expect(context.hydrateCurrentTrackTag).toHaveBeenCalledWith(0, 1);
-        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(2);
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
+        expect(context.libraryController().renderFolder).toHaveBeenCalledWith('none');
+
+        coverDeferred.resolve();
+    });
+
+    it('keeps cover and folder refresh behind deferred metadata hydration after load', async () => {
+        vi.useFakeTimers();
+
+        const coverDeferred = createDeferred();
+        const hydrateDeferred = createDeferred<void>();
+        const context = createContext(coverDeferred.promise);
+        context.hydrateCurrentTrackTag = vi.fn(async () => {
+            await hydrateDeferred.promise;
+        }) as never;
+
+        const runtime = createAppPlaybackControlsRuntime(context);
+
+        await runtime.loadTrack(0);
+        await vi.advanceTimersByTimeAsync(300);
+
+        expect(context.hydrateCurrentTrackTag).toHaveBeenCalledWith(0, 1);
+        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
+        expect(context.libraryController().renderFolder).not.toHaveBeenCalled();
+
+        hydrateDeferred.resolve();
+        await vi.waitFor(() => {
+            expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
+            expect(context.libraryController().renderFolder).toHaveBeenCalledWith('none');
+        });
 
         coverDeferred.resolve();
     });

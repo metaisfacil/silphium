@@ -87,6 +87,7 @@ const createContext = (): AppNowPlayingRuntimeContext => {
     const playerCard = document.createElement('div');
     const lyricsPanel = document.createElement('aside');
     const lyricsContent = document.createElement('div');
+    const renderFolder = vi.fn();
     playerShell.append(playerLane);
     playerLane.append(playerCard, lyricsPanel);
     lyricsPanel.append(lyricsContent);
@@ -229,7 +230,7 @@ const createContext = (): AppNowPlayingRuntimeContext => {
         libraryController: () => ({
             getLibraryRootName: vi.fn(() => ''),
             isSidebarOpen: vi.fn(() => false),
-            renderFolder: vi.fn(),
+            renderFolder,
             setLibraryPathMessage: vi.fn(),
             setSidebarAutoFolderPath: vi.fn(),
         }) as never,
@@ -734,6 +735,55 @@ describe('createAppNowPlayingRuntime', () => {
         await vi.advanceTimersByTimeAsync(100);
 
         expect(refreshTrack).toHaveBeenCalledTimes(1);
+
+        vi.useRealTimers();
+    });
+
+    it('waits for automatic transition hydration before refreshing cover art and folder state', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        const hydrateDeferred = createDeferred<void>();
+        context.currentTrackIndex = -1;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+                displayAlbum: 'Next Album',
+                displayArtist: 'Next Artist',
+            },
+        ];
+        context.playbackStateService = createPlaybackStateService() as never;
+        context.hydrateCurrentTrackTag = vi.fn(async () => {
+            await hydrateDeferred.promise;
+        }) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 0,
+            duration: 240,
+            volume: 0.8,
+            sourcePath: '/music/next.flac',
+            endEventId: 0,
+        });
+
+        expect(context.currentTrackIndex).toBe(1);
+        expect(context.hydrateCurrentTrackTag).toHaveBeenCalledWith(1, 1);
+        expect(context.resolveCoverForTrack).not.toHaveBeenCalled();
+        expect(context.libraryController().renderFolder).not.toHaveBeenCalled();
+
+        hydrateDeferred.resolve();
+        await vi.waitFor(() => {
+            expect(context.resolveCoverForTrack).toHaveBeenCalledWith(context.tracks[1]);
+            expect(context.libraryController().renderFolder).toHaveBeenCalledWith('none');
+        });
 
         vi.useRealTimers();
     });
