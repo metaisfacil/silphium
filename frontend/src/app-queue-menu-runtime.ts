@@ -110,6 +110,9 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         context.trackMetaMenuTarget = null;
         context.trackMetaMenuActionScope = null;
         context.trackMetaMenuActionPath = '';
+        context.trackMetaArtistFilterQuery = '';
+        context.trackMetaFilterArtistBtn.hidden = true;
+        context.trackMetaArtistDivider.hidden = true;
         context.trackMetaSendToList.innerHTML = '';
         context.trackMetaSendToDivider.hidden = true;
     };
@@ -552,6 +555,8 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         copyAction: 'none' | 'file' | 'folder',
         actionScope: CustomSendToActionScope | null,
         actionPath: string,
+        artistFilterQuery = '',
+        showArtistFilterAction = false,
     ): void => {
         if (context.currentTrackIndex < 0 || context.currentTrackIndex >= context.tracks.length) {
             return;
@@ -566,6 +571,10 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
         context.trackMetaBrowserFolderBtn.hidden = !includeFolderAction;
         context.trackMetaMenuActionScope = actionScope;
         context.trackMetaMenuActionPath = actionPath.trim();
+        context.trackMetaArtistFilterQuery = showArtistFilterAction ? artistFilterQuery.trim() : '';
+        const showArtistFilter = showArtistFilterAction && context.trackMetaArtistFilterQuery !== '';
+        context.trackMetaFilterArtistBtn.hidden = !showArtistFilter;
+        context.trackMetaArtistDivider.hidden = !showArtistFilter;
         const scopedActions = actionScope === null ? [] : sendToActionsForScope(actionScope);
         const showScopedActions = scopedActions.length > 0 && context.trackMetaMenuActionPath !== '';
         context.trackMetaSendToDivider.hidden = !showScopedActions;

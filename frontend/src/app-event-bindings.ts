@@ -3,6 +3,7 @@ import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-contr
 import type { AppEventBindingsContext } from './app-bootstrap-setup';
 import { openMbLink } from './musicbrainz';
 import type { AudioPlaybackState, LibraryScanProgress, LibraryScanResult, MusicBrainzTagWorkerProgress, PlaybackOrderMode } from './types/app-types';
+import { openMusicBrainzLibrarySearch } from './utils/musicbrainz-entity-helpers';
 import {
     logBridgeEvent,
     summarizeLibraryScanProgressForBridge,
@@ -255,6 +256,15 @@ export const triggerSidebarOpenInBrowserAction = (
     closeSidebarQueueMenu();
 };
 
+export const triggerTrackMetaArtistFilterAction = (
+    query: string,
+    openLibrarySearch: (query: string, options?: { expandFilteredFolders?: boolean }) => void,
+    closeTrackMetaMenu: () => void,
+): void => {
+    closeTrackMetaMenu();
+    openMusicBrainzLibrarySearch(query, openLibrarySearch);
+};
+
 export const setupAppEventBindings = (context: AppEventBindingsContext): void => {
     const {
         window,
@@ -305,6 +315,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         trackMetaBrowserFolderBtn,
         trackMetaCopyFilePathBtn,
         trackMetaCopyFolderPathBtn,
+        trackMetaFilterArtistBtn,
         trackMetaOpenMbBtn,
         trackMetaSendToList,
         back,
@@ -369,6 +380,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         closePlayOrderMenu,
         closeTrackMetaMenu,
         closeListenBrainzFeedbackMenu,
+        openLibrarySearch,
         openPlayOrderMenu,
         setPlaybackOrderMode,
         savePlaybackOrderSetting,
@@ -380,6 +392,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         trackMetaMenuTarget,
         trackMetaMenuActionScope,
         trackMetaMenuActionPath,
+        trackMetaArtistFilterQuery,
         goToTrack,
         toggleCurrentTrack,
         unlockMediaSessionAnchorFromUserGesture,
@@ -794,6 +807,9 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     trackMetaBrowserFolderBtn.addEventListener('click', () => { closeTrackMetaMenu(); void openCurrentTrackFolderInFileBrowser(); });
     trackMetaCopyFilePathBtn.addEventListener('click', () => { closeTrackMetaMenu(); void copyCurrentTrackFilePath(); });
     trackMetaCopyFolderPathBtn.addEventListener('click', () => { closeTrackMetaMenu(); void copyCurrentTrackFolderPath(); });
+    trackMetaFilterArtistBtn.addEventListener('click', () => {
+        triggerTrackMetaArtistFilterAction(trackMetaArtistFilterQuery(), openLibrarySearch, closeTrackMetaMenu);
+    });
 
     trackMetaOpenMbBtn.addEventListener('click', () => {
         const target = trackMetaMenuTarget();

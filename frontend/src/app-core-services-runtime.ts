@@ -34,7 +34,7 @@ import { createTrackMetadataService } from './services/track-metadata-service';
 import { openMbLink } from './musicbrainz';
 import { noteSlowBackgroundBridgeCall, runBackgroundBridgeCall } from './utils/bridge-load-gate';
 import { formatPerfLogMessage } from './utils/perf-log';
-import { lookupMusicBrainzTrackMetadata, setMusicBrainzRequestLogServerResolver } from './utils/musicbrainz-entity-helpers';
+import { lookupMusicBrainzTrackMetadata, musicBrainzMBIDSearchQuery, setMusicBrainzRequestLogServerResolver } from './utils/musicbrainz-entity-helpers';
 import { scheduleLastFmRequest } from './utils/lastfm-request-scheduler';
 import { scheduleListenBrainzRequest } from './utils/musicbrainz-request-scheduler';
 import type { AudioVisualizationFrame, ImageLibraryFile, LibraryIndexedFile, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
@@ -88,6 +88,78 @@ const addListenHistoryEntry = async (
     }
 
     return await AddListenHistoryEntry(trackPath, trackName, artistName, releaseName, listenedAt, playedPercent);
+};
+
+const artistMBIDFromTarget = (target: HTMLElement | null): string => {
+    const mbUrl = (target?.closest('[data-mb-url]') as HTMLElement | null)?.dataset.mbUrl || target?.dataset.mbUrl || '';
+    if (mbUrl === '') {
+        return '';
+    }
+
+    try {
+        const parsed = new URL(mbUrl);
+        const match = parsed.pathname.match(/\/artist\/([^/]+)$/i);
+        return decodeURIComponent(match?.[1] || '').trim();
+    } catch {
+        const match = mbUrl.match(/\/artist\/([^/?#]+)/i);
+        return decodeURIComponent(match?.[1] || '').trim();
+    }
+};
+
+const taggedArtistMBIDsForTrack = (track: Track | undefined): string[] => {
+    if (!track) {
+        return [];
+    }
+
+    const taggedValues: string[] = [];
+    const seen = new Set<string>();
+    const taggedKeys = new Set([
+        'musicbrainz_artistid',
+        'musicbrainz artist id',
+        'txxx:musicbrainz artist id',
+    ]);
+
+    const pushCandidate = (value: string): void => {
+        const clean = value.trim();
+        if (clean === '') {
+            return;
+        }
+
+        const key = clean.toLowerCase();
+        if (seen.has(key)) {
+            return;
+        }
+
+        seen.add(key);
+        taggedValues.push(clean);
+    };
+
+    pushCandidate(track.mbIds.artistId || '');
+
+    for (const [tagName, values] of Object.entries(track.allFileTags || {})) {
+        if (!taggedKeys.has(tagName.trim().toLowerCase())) {
+            continue;
+        }
+
+        for (const value of values) {
+            for (const candidate of value.split(';')) {
+                pushCandidate(candidate);
+            }
+        }
+    }
+
+    return taggedValues;
+};
+
+export const artistFilterSearchQueryForTarget = (track: Track | undefined, target: HTMLElement | null): string => {
+    const taggedArtistMBIDs = taggedArtistMBIDsForTrack(track);
+    if (taggedArtistMBIDs.length === 0) {
+        return '';
+    }
+
+    const targetMBID = artistMBIDFromTarget(target);
+    const resolvedMBID = targetMBID !== '' ? targetMBID : taggedArtistMBIDs[0];
+    return musicBrainzMBIDSearchQuery('artist', resolvedMBID || '');
 };
 
 export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeContext) => {
@@ -798,12 +870,13 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             ? eventTarget.closest('[data-mb-url]')
             : null;
         const firstArtistLink = context.trackArtist.querySelector('[data-mb-url]');
+        const trackMetaTarget = nestedLink instanceof HTMLElement && context.trackArtist.contains(nestedLink)
+            ? nestedLink
+            : (firstArtistLink instanceof HTMLElement ? firstArtistLink : context.trackArtist);
         context.setTrackMetaMenuTarget(
-            nestedLink instanceof HTMLElement && context.trackArtist.contains(nestedLink)
-                ? nestedLink
-                : (firstArtistLink instanceof HTMLElement ? firstArtistLink : context.trackArtist),
+            trackMetaTarget,
         );
-        context.openTrackMetaMenu(event.clientX, event.clientY, false, null, null, '');
+        context.openTrackMetaMenu(event.clientX, event.clientY, false, null, null, '', artistFilterSearchQueryForTarget(context.tracks[context.currentTrackIndex], trackMetaTarget), true);
     });
     context.trackTitleInline.addEventListener('click', (event: MouseEvent) => {
         if (shouldBlockTrackMetaModalOpen()) {
@@ -890,12 +963,13 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             ? eventTarget.closest('[data-mb-url]')
             : null;
         const firstArtistLink = context.trackArtistHeader.querySelector('[data-mb-url]');
+        const trackMetaTarget = nestedLink instanceof HTMLElement && context.trackArtistHeader.contains(nestedLink)
+            ? nestedLink
+            : (firstArtistLink instanceof HTMLElement ? firstArtistLink : context.trackArtistHeader);
         context.setTrackMetaMenuTarget(
-            nestedLink instanceof HTMLElement && context.trackArtistHeader.contains(nestedLink)
-                ? nestedLink
-                : (firstArtistLink instanceof HTMLElement ? firstArtistLink : context.trackArtistHeader),
+            trackMetaTarget,
         );
-        context.openTrackMetaMenu(event.clientX, event.clientY, false, null, null, '');
+        context.openTrackMetaMenu(event.clientX, event.clientY, false, null, null, '', artistFilterSearchQueryForTarget(context.tracks[context.currentTrackIndex], trackMetaTarget), true);
     });
 
     return {

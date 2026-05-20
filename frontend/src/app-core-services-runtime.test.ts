@@ -132,6 +132,7 @@ vi.mock('./musicbrainz', () => ({
 
 vi.mock('./utils/musicbrainz-entity-helpers', () => ({
     lookupMusicBrainzTrackMetadata: vi.fn(async () => ({})),
+    musicBrainzMBIDSearchQuery: vi.fn((entityType: string, mbid: string) => mbid ? `mbid-${entityType}:${mbid.toLowerCase()}` : ''),
     setMusicBrainzRequestLogServerResolver: vi.fn(),
 }));
 
@@ -144,7 +145,7 @@ vi.mock('./utils/musicbrainz-request-scheduler', () => ({
 }));
 
 import type { ListenBrainzSocialControllerOptions } from './controllers/listenbrainz-social-controller';
-import { createAppCoreServicesRuntime } from './app-core-services-runtime';
+import { artistFilterSearchQueryForTarget, createAppCoreServicesRuntime } from './app-core-services-runtime';
 import type { AppCoreServicesRuntimeContext } from './app-runtime-setup';
 import { resetBridgeLoadGateForTests, shouldDeferBackgroundBridgeCall } from './utils/bridge-load-gate';
 import { GetLastFmFollowing, GetLastFmFollowingFeed, GetListenBrainzFollowing, GetListenBrainzFollowingFeed, SubmitLastFmLove } from '../wailsjs/go/main/App';
@@ -398,5 +399,69 @@ describe('createAppCoreServicesRuntime', () => {
         expect(SubmitLastFmLove).toHaveBeenCalledWith(expect.objectContaining({
             releaseName: 'Brilliant Anthology',
         }));
+    });
+
+    it('builds an artist MBID sidebar filter query from a nested player-card artist link', () => {
+        const track = {
+            ...createTrack(),
+            mbIds: {
+                artistId: 'artist-primary',
+            },
+            allFileTags: {
+                MUSICBRAINZ_ARTISTID: ['artist-primary; artist-secondary'],
+            },
+            artistMbids: ['artist-primary', 'artist-secondary'],
+            mbArtistCredits: [
+                { name: 'Primary Artist', artistId: 'artist-primary', joinPhrase: ' feat. ' },
+                { name: 'Guest Artist', artistId: 'artist-secondary', joinPhrase: '' },
+            ],
+        };
+        const trackArtistHeader = document.createElement('div');
+        trackArtistHeader.innerHTML = '<span class="track-artist-link" data-mb-url="https://musicbrainz.org/artist/artist-secondary">Guest Artist</span>';
+
+        const guestArtistLink = trackArtistHeader.querySelector('.track-artist-link') as HTMLElement;
+
+        expect(artistFilterSearchQueryForTarget(track, guestArtistLink)).toBe('mbid-artist:artist-secondary');
+    });
+
+    it('returns no artist sidebar filter query when the track lacks tagged artist MBIDs', () => {
+        const track = {
+            ...createTrack(),
+            mbIds: {},
+            allFileTags: {},
+            artistMbids: ['derived-artist-id'],
+            mbArtistCredits: [
+                { name: 'Derived Artist', artistId: 'derived-artist-id', joinPhrase: '' },
+            ],
+        };
+        const trackArtistHeader = document.createElement('div');
+        trackArtistHeader.innerHTML = '<span class="track-artist-link" data-mb-url="https://musicbrainz.org/artist/derived-artist-id">Derived Artist</span>';
+
+        const derivedArtistLink = trackArtistHeader.querySelector('.track-artist-link') as HTMLElement;
+
+        expect(artistFilterSearchQueryForTarget(track, derivedArtistLink)).toBe('');
+    });
+
+    it('uses the clicked artist MBID when the track has tagged artist MBIDs but the clicked credit is not in that tagged set', () => {
+        const track = {
+            ...createTrack(),
+            mbIds: {
+                artistId: 'artist-primary',
+            },
+            allFileTags: {
+                MUSICBRAINZ_ARTISTID: ['artist-primary'],
+            },
+            artistMbids: ['artist-primary', 'artist-guest'],
+            mbArtistCredits: [
+                { name: 'Primary Artist', artistId: 'artist-primary', joinPhrase: ' feat. ' },
+                { name: 'Guest Artist', artistId: 'artist-guest', joinPhrase: '' },
+            ],
+        };
+        const trackArtistHeader = document.createElement('div');
+        trackArtistHeader.innerHTML = '<span class="track-artist-link" data-mb-url="https://musicbrainz.org/artist/artist-guest">Guest Artist</span>';
+
+        const guestArtistLink = trackArtistHeader.querySelector('.track-artist-link') as HTMLElement;
+
+        expect(artistFilterSearchQueryForTarget(track, guestArtistLink)).toBe('mbid-artist:artist-guest');
     });
 });

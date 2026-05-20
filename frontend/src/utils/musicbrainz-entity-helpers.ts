@@ -76,6 +76,19 @@ export const musicBrainzMBIDSearchQuery = (entityType: string, mbid: string): st
     }
 };
 
+export const openMusicBrainzLibrarySearch = (
+    query: string,
+    openLibrarySearch?: (query: string, options?: { expandFilteredFolders?: boolean }) => void,
+): boolean => {
+    const cleanQuery = query.trim();
+    if (cleanQuery === '' || !openLibrarySearch) {
+        return false;
+    }
+
+    openLibrarySearch(cleanQuery, { expandFilteredFolders: true });
+    return true;
+};
+
 export const lookupMusicBrainzTrackMetadata = async (recordingId: string, releaseId: string): Promise<MusicBrainzTrackMetadata> => {
     const cleanRecordingId = recordingId.trim();
     const cleanReleaseId = releaseId.trim();

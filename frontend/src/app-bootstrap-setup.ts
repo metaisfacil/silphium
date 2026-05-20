@@ -166,6 +166,8 @@ type AppEventBindingsScope = RuntimeScope<
     | 'trackMetaBrowserFolderBtn'
     | 'trackMetaCopyFilePathBtn'
     | 'trackMetaCopyFolderPathBtn'
+    | 'trackMetaFilterArtistBtn'
+    | 'trackMetaArtistDivider'
     | 'trackMetaOpenMbBtn'
     | 'trackMetaSendToList'
     | 'back'
@@ -232,6 +234,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'closePlayOrderMenu'
     | 'closeTrackMetaMenu'
     | 'closeListenBrainzFeedbackMenu'
+    | 'openLibrarySearch'
     | 'openPlayOrderMenu'
     | 'setPlaybackOrderMode'
     | 'savePlaybackOrderSetting'
@@ -243,6 +246,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'trackMetaMenuTarget'
     | 'trackMetaMenuActionScope'
     | 'trackMetaMenuActionPath'
+    | 'trackMetaArtistFilterQuery'
     | 'goToTrack'
     | 'toggleCurrentTrack'
     | 'updateLyricsPanelVisibility'
@@ -543,6 +547,8 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         trackMetaBrowserFolderBtn: scope.trackMetaBrowserFolderBtn,
         trackMetaCopyFilePathBtn: scope.trackMetaCopyFilePathBtn,
         trackMetaCopyFolderPathBtn: scope.trackMetaCopyFolderPathBtn,
+        trackMetaFilterArtistBtn: scope.trackMetaFilterArtistBtn,
+        trackMetaArtistDivider: scope.trackMetaArtistDivider,
         trackMetaOpenMbBtn: scope.trackMetaOpenMbBtn,
         trackMetaSendToList: scope.trackMetaSendToList,
         back: scope.back,
@@ -609,6 +615,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         closePlayOrderMenu: scope.closePlayOrderMenu,
         closeTrackMetaMenu: scope.closeTrackMetaMenu,
         closeListenBrainzFeedbackMenu: scope.closeListenBrainzFeedbackMenu,
+        openLibrarySearch: scope.openLibrarySearch,
         openPlayOrderMenu: scope.openPlayOrderMenu,
         setPlaybackOrderMode: scope.setPlaybackOrderMode,
         savePlaybackOrderSetting: scope.savePlaybackOrderSetting,
@@ -620,6 +627,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         trackMetaMenuTarget: () => scope.trackMetaMenuTarget,
         trackMetaMenuActionScope: () => scope.trackMetaMenuActionScope,
         trackMetaMenuActionPath: () => scope.trackMetaMenuActionPath,
+        trackMetaArtistFilterQuery: () => scope.trackMetaArtistFilterQuery,
         goToTrack: scope.goToTrack,
         toggleCurrentTrack: scope.toggleCurrentTrack,
         updateLyricsPanelVisibility: scope.updateLyricsPanelVisibility,

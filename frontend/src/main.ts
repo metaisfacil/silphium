@@ -473,6 +473,7 @@ const runtimeScope = Object.create(shell, {
     trackMetaMenuTarget: createStateAccessor('trackMetaMenuTarget'),
     trackMetaMenuActionScope: createStateAccessor('trackMetaMenuActionScope'),
     trackMetaMenuActionPath: createStateAccessor('trackMetaMenuActionPath'),
+    trackMetaArtistFilterQuery: createStateAccessor('trackMetaArtistFilterQuery'),
     settingsControllerRef: createScopeAccessor(() => runtimeControllerRefs.settingsController),
     playlistControllerRef: createScopeAccessor(() => runtimeControllerRefs.playlistController),
     playlistTargetModalControllerRef: createScopeAccessor(() => runtimeControllerRefs.playlistTargetModalController),
@@ -508,8 +509,10 @@ Object.assign(runtimeScope, setupCoreServicesRuntime(Object.assign(Object.create
         actionScope: CustomSendToActionScope,
         actionKind: 'track' | 'album' | null,
         actionPath: string,
+        artistFilterQuery?: string,
+        showArtistFilterAction?: boolean,
     ) => {
-        runtimeScope.openTrackMetaMenu(clientX, clientY, includeCopyActions, actionScope, actionKind, actionPath);
+        runtimeScope.openTrackMetaMenu(clientX, clientY, includeCopyActions, actionScope, actionKind, actionPath, artistFilterQuery, showArtistFilterAction);
     },
 })));
 

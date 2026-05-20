@@ -192,7 +192,7 @@ type ReturnedRuntimeMethods = {
     openPlayOrderMenu: (clientX: number, clientY: number) => void;
     closePlayOrderMenu: () => void;
     openSidebarQueueMenu: (...args: unknown[]) => void;
-    openTrackMetaMenu: (clientX: number, clientY: number, includeCopyActions: boolean, actionScope: CustomSendToActionScope | null, actionKind: TrackMetaActionKind, actionPath: string) => void;
+    openTrackMetaMenu: (clientX: number, clientY: number, includeCopyActions: boolean, actionScope: CustomSendToActionScope | null, actionKind: TrackMetaActionKind, actionPath: string, artistFilterQuery?: string, showArtistFilterAction?: boolean) => void;
     closeTrackMetaMenu: () => void;
     playDroppedTrackPath: (droppedTrackPath: string) => Promise<void>;
     playSidebarQueueSelection: (trackIndexes: number[]) => Promise<void>;
@@ -284,6 +284,7 @@ export interface AppRuntimeState {
     trackMetaMenuTarget: HTMLElement | null;
     trackMetaMenuActionScope: CustomSendToActionScope | null;
     trackMetaMenuActionPath: string;
+    trackMetaArtistFilterQuery: string;
     suppressCoverFrontClickUntil: number;
 }
 

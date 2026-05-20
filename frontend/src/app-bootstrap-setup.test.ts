@@ -73,6 +73,7 @@ const createScope = () => {
         trackMetaMenuTarget: document.createElement('div'),
         trackMetaMenuActionScope: 'track',
         trackMetaMenuActionPath: '/music/current.flac',
+        trackMetaArtistFilterQuery: 'mbid-artist:artist-id',
         coverFlipped: true,
         suppressCoverFrontClickUntil: 99,
         librarySettings: document.createElement('button'),
@@ -227,6 +228,8 @@ const createScope = () => {
         trackMetaBrowserFolderBtn: document.createElement('button'),
         trackMetaCopyFilePathBtn: document.createElement('button'),
         trackMetaCopyFolderPathBtn: document.createElement('button'),
+        trackMetaFilterArtistBtn: document.createElement('button'),
+        trackMetaArtistDivider: document.createElement('hr'),
         trackMetaOpenMbBtn: document.createElement('button'),
         trackMetaSendToList: document.createElement('div'),
         back: document.createElement('button'),
@@ -413,6 +416,7 @@ describe('app-bootstrap-setup wrappers', () => {
         expect(context.trackMetaMenuTarget()).toBe(scope.trackMetaMenuTarget);
         expect(context.trackMetaMenuActionScope()).toBe('track');
         expect(context.trackMetaMenuActionPath()).toBe('/music/current.flac');
+        expect(context.trackMetaArtistFilterQuery()).toBe('mbid-artist:artist-id');
         expect(context.coverFlipped).toBe(true);
         expect(context.suppressCoverFrontClickUntil).toBe(99);
         expect(context.currentMusicBrainzTagWorkerProgress).toEqual({ progress: 0.25 });

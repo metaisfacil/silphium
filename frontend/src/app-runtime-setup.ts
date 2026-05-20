@@ -149,6 +149,7 @@ type AppQueueMenuRuntimeScope = RuntimeScope<
     | 'trackMetaMenuTarget'
     | 'trackMetaMenuActionScope'
     | 'trackMetaMenuActionPath'
+    | 'trackMetaArtistFilterQuery'
     | 'playOrderMenu'
     | 'trackMetaMenu'
     | 'trackMetaSendToList'
@@ -156,6 +157,8 @@ type AppQueueMenuRuntimeScope = RuntimeScope<
     | 'trackMetaCopyFilePathBtn'
     | 'trackMetaCopyFolderPathBtn'
     | 'trackMetaCopyDivider'
+    | 'trackMetaFilterArtistBtn'
+    | 'trackMetaArtistDivider'
     | 'trackMetaParentFolderBtn'
     | 'trackMetaBrowserFolderBtn'
     | 'sidebarQueueMenu'
@@ -445,8 +448,8 @@ const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) =>
     setTrackMetaMenuTarget: (value: HTMLElement) => {
         scope.trackMetaMenuTarget = value;
     },
-    openTrackMetaMenu: (clientX: number, clientY: number, includeCopyActions: boolean, actionScope: CustomSendToActionScope | null, actionKind: 'track' | 'album' | null, actionPath: string) => {
-        scope.openTrackMetaMenu(clientX, clientY, includeCopyActions, actionScope, actionKind, actionPath);
+    openTrackMetaMenu: (clientX: number, clientY: number, includeCopyActions: boolean, actionScope: CustomSendToActionScope | null, actionKind: 'track' | 'album' | null, actionPath: string, artistFilterQuery?: string, showArtistFilterAction?: boolean) => {
+        scope.openTrackMetaMenu(clientX, clientY, includeCopyActions, actionScope, actionKind, actionPath, artistFilterQuery, showArtistFilterAction);
     },
 });
 
@@ -724,6 +727,12 @@ const createQueueMenuRuntimeContext = (scope: AppQueueMenuRuntimeScope) => ({
     set trackMetaMenuActionPath(value) {
         scope.trackMetaMenuActionPath = value;
     },
+    get trackMetaArtistFilterQuery() {
+        return scope.trackMetaArtistFilterQuery;
+    },
+    set trackMetaArtistFilterQuery(value) {
+        scope.trackMetaArtistFilterQuery = value;
+    },
     playOrderMenu: scope.playOrderMenu,
     trackMetaMenu: scope.trackMetaMenu,
     trackMetaSendToList: scope.trackMetaSendToList,
@@ -731,6 +740,8 @@ const createQueueMenuRuntimeContext = (scope: AppQueueMenuRuntimeScope) => ({
     trackMetaCopyFilePathBtn: scope.trackMetaCopyFilePathBtn,
     trackMetaCopyFolderPathBtn: scope.trackMetaCopyFolderPathBtn,
     trackMetaCopyDivider: scope.trackMetaCopyDivider,
+    trackMetaFilterArtistBtn: scope.trackMetaFilterArtistBtn,
+    trackMetaArtistDivider: scope.trackMetaArtistDivider,
     trackMetaParentFolderBtn: scope.trackMetaParentFolderBtn,
     trackMetaBrowserFolderBtn: scope.trackMetaBrowserFolderBtn,
     sidebarQueueMenu: scope.sidebarQueueMenu,

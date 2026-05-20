@@ -1,5 +1,5 @@
 import type { MusicBrainzExplorationGraph, MusicBrainzExplorationNode, Track } from '../types/app-types';
-import { lookupMusicBrainzExploration, musicBrainzMBIDSearchQuery } from '../utils/musicbrainz-entity-helpers';
+import { lookupMusicBrainzExploration, musicBrainzMBIDSearchQuery, openMusicBrainzLibrarySearch } from '../utils/musicbrainz-entity-helpers';
 import { renderExplorationGraph } from './overlays/exploration-graph';
 import { getExplorationModalElements, renderExplorationModal } from './overlays/exploration-modal';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
@@ -249,12 +249,11 @@ const openExplorationModal = async (
         activeExplorationRequestId = null;
         renderExplorationData(explorationContent, cached, (node) => {
             const query = musicBrainzMBIDSearchQuery(node.entityType, node.mbid);
-            if (query === '' || !openLibrarySearch) {
+            if (!openMusicBrainzLibrarySearch(query, openLibrarySearch)) {
                 return;
             }
 
             closeExplorationModal(modal, explorationContent, explorationTitle);
-            openLibrarySearch(query, { expandFilteredFolders: true });
         });
         return;
     }
@@ -270,12 +269,11 @@ const openExplorationModal = async (
     explorationCache.set(cacheKey, graph);
     renderExplorationData(explorationContent, graph, (node) => {
         const query = musicBrainzMBIDSearchQuery(node.entityType, node.mbid);
-        if (query === '' || !openLibrarySearch) {
+        if (!openMusicBrainzLibrarySearch(query, openLibrarySearch)) {
             return;
         }
 
         closeExplorationModal(modal, explorationContent, explorationTitle);
-        openLibrarySearch(query, { expandFilteredFolders: true });
     });
 };
 

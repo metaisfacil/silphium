@@ -31,6 +31,15 @@ vi.mock('../utils/musicbrainz-entity-helpers', () => ({
         }
         return '';
     },
+    openMusicBrainzLibrarySearch: (query: string, openLibrarySearch?: (searchQuery: string, options?: { expandFilteredFolders?: boolean }) => void) => {
+        const cleanQuery = query.trim();
+        if (cleanQuery === '' || !openLibrarySearch) {
+            return false;
+        }
+
+        openLibrarySearch(cleanQuery, { expandFilteredFolders: true });
+        return true;
+    },
 }));
 
 import type { Track } from '../types/app-types';

@@ -57,6 +57,7 @@ export interface AppState {
     trackMetaMenuTarget: HTMLElement | null;
     trackMetaMenuActionScope: CustomSendToActionScope | null;
     trackMetaMenuActionPath: string;
+    trackMetaArtistFilterQuery: string;
     sidebarQueueTrackIndexes: number[];
     sidebarQueueFeedbackTrackIndex: number | null;
     sidebarQueueFolderPath: string;
@@ -120,6 +121,7 @@ export const createAppState = (): AppState => ({
     trackMetaMenuTarget: null,
     trackMetaMenuActionScope: null,
     trackMetaMenuActionPath: '',
+    trackMetaArtistFilterQuery: '',
     sidebarQueueTrackIndexes: [],
     sidebarQueueFeedbackTrackIndex: null,
     sidebarQueueFolderPath: '',

@@ -6,7 +6,7 @@ vi.mock('../wailsjs/runtime/runtime', () => ({
     OnFileDrop: vi.fn(),
 }));
 
-import { handleExternalFileDrop, setupTrackNavigationBindings, setupVolumeControlBindings, triggerSidebarOpenInBrowserAction } from './app-event-bindings';
+import { handleExternalFileDrop, setupTrackNavigationBindings, setupVolumeControlBindings, triggerSidebarOpenInBrowserAction, triggerTrackMetaArtistFilterAction } from './app-event-bindings';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -199,6 +199,32 @@ describe('triggerSidebarOpenInBrowserAction', () => {
         await flushPromises();
 
         expect(callOrder).toEqual(['open', 'close']);
+    });
+});
+
+describe('triggerTrackMetaArtistFilterAction', () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('closes the menu and opens the sidebar search when a query is available', () => {
+        const openLibrarySearch = vi.fn();
+        const closeTrackMetaMenu = vi.fn();
+
+        triggerTrackMetaArtistFilterAction('mbid-artist:artist-id', openLibrarySearch, closeTrackMetaMenu);
+
+        expect(closeTrackMetaMenu).toHaveBeenCalledTimes(1);
+        expect(openLibrarySearch).toHaveBeenCalledWith('mbid-artist:artist-id', { expandFilteredFolders: true });
+    });
+
+    it('still closes the menu when the artist query is empty', () => {
+        const openLibrarySearch = vi.fn();
+        const closeTrackMetaMenu = vi.fn();
+
+        triggerTrackMetaArtistFilterAction('   ', openLibrarySearch, closeTrackMetaMenu);
+
+        expect(closeTrackMetaMenu).toHaveBeenCalledTimes(1);
+        expect(openLibrarySearch).not.toHaveBeenCalled();
     });
 });
 

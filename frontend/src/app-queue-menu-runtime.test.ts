@@ -211,6 +211,9 @@ describe('createAppQueueMenuRuntime menu positioning', () => {
             trackMetaMenuTarget: null,
             trackMetaMenuActionScope: null,
             trackMetaMenuActionPath: '',
+            trackMetaArtistFilterQuery: '',
+            trackMetaFilterArtistBtn: document.createElement('button'),
+            trackMetaArtistDivider: document.createElement('div'),
             closeListenBrainzFeedbackMenu: vi.fn(),
             playlistController: {
                 getPlaybackOrderScopeLabel: () => 'Library',
@@ -226,7 +229,6 @@ describe('createAppQueueMenuRuntime menu positioning', () => {
 
         expect(getBoundingClientRect).not.toHaveBeenCalled();
         expect(playOrderMenu.hidden).toBe(false);
-        expect(playOrderMenu.style.visibility).toBe('hidden');
         expect(animationFrameCallback).toBeTypeOf('function');
 
         animationFrameCallback?.(16);
@@ -234,7 +236,6 @@ describe('createAppQueueMenuRuntime menu positioning', () => {
         expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
         expect(playOrderMenu.style.left).toBe('300px');
         expect(playOrderMenu.style.top).toBe('200px');
-        expect(playOrderMenu.style.visibility).toBe('');
     });
 
     it('relabels source-wide playback-order menu items for playlist playback', () => {
@@ -251,6 +252,9 @@ describe('createAppQueueMenuRuntime menu positioning', () => {
             trackMetaMenuTarget: null,
             trackMetaMenuActionScope: null,
             trackMetaMenuActionPath: '',
+            trackMetaArtistFilterQuery: '',
+            trackMetaFilterArtistBtn: document.createElement('button'),
+            trackMetaArtistDivider: document.createElement('div'),
             closeListenBrainzFeedbackMenu: vi.fn(),
             playlistController: {
                 getPlaybackOrderScopeLabel: () => 'Playlist',
@@ -298,6 +302,7 @@ describe('createAppQueueMenuRuntime sidebar open-in-browser action', () => {
             trackMetaMenuTarget: null,
             trackMetaMenuActionScope: null,
             trackMetaMenuActionPath: '',
+            trackMetaArtistFilterQuery: '',
             playOrderMenu: document.createElement('div'),
             trackMetaMenu: document.createElement('div'),
             trackMetaSendToList: document.createElement('div'),
@@ -305,6 +310,8 @@ describe('createAppQueueMenuRuntime sidebar open-in-browser action', () => {
             trackMetaCopyFilePathBtn: document.createElement('button'),
             trackMetaCopyFolderPathBtn: document.createElement('button'),
             trackMetaCopyDivider: document.createElement('div'),
+            trackMetaFilterArtistBtn: document.createElement('button'),
+            trackMetaArtistDivider: document.createElement('div'),
             trackMetaParentFolderBtn: document.createElement('button'),
             trackMetaBrowserFolderBtn: document.createElement('button'),
             sidebarQueueMenu: document.createElement('div'),
@@ -386,5 +393,93 @@ describe('createAppQueueMenuRuntime sidebar open-in-browser action', () => {
 
         expect(openFileInFileBrowser).toHaveBeenCalledWith('/music/library/notes.txt');
         expect(openFolderInFileBrowserMock).not.toHaveBeenCalled();
+    });
+
+    it('shows the artist filter action only for artist menus and always shows its divider when visible', () => {
+        const context = {
+            currentTrackIndex: 0,
+            tracks: [{ folderPath: 'Library/Artist/Album', path: 'Library/Artist/Album/track.flac' }],
+            currentSettings: { customSendToActions: [] },
+            sidebarQueueTrackIndexes: [],
+            sidebarQueueFeedbackTrackIndex: null,
+            sidebarQueueFolderPath: '',
+            sidebarQueueFolderLabel: '',
+            sidebarQueueFolderTarget: false,
+            sidebarQueueTrackIndexesScopedToSelection: false,
+            sidebarQueueFileActionPath: '',
+            sidebarQueueIncludeFileActions: false,
+            sidebarQueueSendToActionScope: null,
+            queueConfirmResolver: null,
+            trackMetaMenuTarget: null,
+            trackMetaMenuActionScope: null,
+            trackMetaMenuActionPath: '',
+            trackMetaArtistFilterQuery: '',
+            playOrderMenu: document.createElement('div'),
+            trackMetaMenu: document.createElement('div'),
+            trackMetaSendToList: document.createElement('div'),
+            trackMetaSendToDivider: document.createElement('div'),
+            trackMetaCopyFilePathBtn: document.createElement('button'),
+            trackMetaCopyFolderPathBtn: document.createElement('button'),
+            trackMetaCopyDivider: document.createElement('div'),
+            trackMetaFilterArtistBtn: document.createElement('button'),
+            trackMetaArtistDivider: document.createElement('div'),
+            trackMetaParentFolderBtn: document.createElement('button'),
+            trackMetaBrowserFolderBtn: document.createElement('button'),
+            trackMetaOpenMbBtn: document.createElement('button'),
+            sidebarQueueMenu: document.createElement('div'),
+            sidebarQueuePlay: document.createElement('button'),
+            sidebarQueueAddNext: document.createElement('button'),
+            sidebarQueueEnd: document.createElement('button'),
+            sidebarQueueAddToPlaylist: document.createElement('button'),
+            sidebarQueueBrowserActionsDivider: document.createElement('div'),
+            sidebarQueueOpenInBrowser: document.createElement('button'),
+            sidebarQueueTreeToggleDivider: document.createElement('div'),
+            sidebarQueueTreeToggleBtn: document.createElement('button'),
+            sidebarQueueSendToList: document.createElement('div'),
+            sidebarQueueSendToDivider: document.createElement('div'),
+            sidebarQueueFeedbackDivider: document.createElement('div'),
+            sidebarQueueLove: document.createElement('button'),
+            sidebarQueueHate: document.createElement('button'),
+            playPause: document.createElement('button'),
+            queueConfirmModal: document.createElement('div'),
+            queueConfirmTitle: document.createElement('div'),
+            queueConfirmMessage: document.createElement('div'),
+            libraryBrowser: document.createElement('div'),
+            libraryController: { navigateToFolder: vi.fn() },
+            playlistController: { closeMenu: vi.fn(), getPlaybackOrderScopeLabel: () => 'Library' },
+            playlistTargetModalController: { prompt: vi.fn() },
+            sidebarController: { showLibrary: vi.fn() },
+            socialController: { clearSelection: vi.fn() },
+            playbackSequencingService: { getPlaybackOrderMode: vi.fn(() => 'ordered-library'), getPlaybackOrderLabel: vi.fn(() => 'Ordered') },
+            sidebarQueueDescendantPromptThreshold: 200,
+            closeListenBrainzFeedbackMenu: vi.fn(),
+            hasListenBrainzScrobbling: vi.fn(() => false),
+            ensureTrackIndexForPath: vi.fn(() => -1),
+            ensureTrackTagsResolved: vi.fn(async () => undefined),
+            submitListenBrainzFeedbackForTrack: vi.fn(async () => undefined),
+            openErrorModal: vi.fn(),
+            logFrontendMessage: vi.fn(async () => undefined),
+            loadTrack: vi.fn(async () => undefined),
+            queueGaplessNextTrack: vi.fn(async () => undefined),
+            playCurrentTrack: vi.fn(async () => undefined),
+        } as unknown as Parameters<typeof createAppQueueMenuRuntime>[0];
+
+        const runtime = createAppQueueMenuRuntime(context);
+
+        runtime.openTrackMetaMenu(12, 18, false, 'none', null, '', 'mbid-artist:artist-id', false);
+        expect(context.trackMetaFilterArtistBtn.hidden).toBe(true);
+        expect(context.trackMetaArtistDivider.hidden).toBe(true);
+
+        runtime.openTrackMetaMenu(12, 18, false, 'none', null, '', 'mbid-artist:artist-id', true);
+        expect(context.trackMetaFilterArtistBtn.hidden).toBe(false);
+        expect(context.trackMetaArtistDivider.hidden).toBe(false);
+
+        runtime.openTrackMetaMenu(12, 18, true, 'none', null, '', '', true);
+        expect(context.trackMetaFilterArtistBtn.hidden).toBe(true);
+        expect(context.trackMetaArtistDivider.hidden).toBe(true);
+
+        runtime.closeTrackMetaMenu();
+        expect(context.trackMetaFilterArtistBtn.hidden).toBe(true);
+        expect(context.trackMetaArtistDivider.hidden).toBe(true);
     });
 });

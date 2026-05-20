@@ -72,6 +72,7 @@ const testState = vi.hoisted(() => {
     const setVisualizerMode = vi.fn();
     const setEqualizerPosition = vi.fn();
     const setPlaybackOrderMode = vi.fn();
+    const openTrackMetaMenu = vi.fn();
     const updatePlayOrderMenuState = vi.fn();
     const openLibrarySearch = vi.fn();
 
@@ -128,6 +129,7 @@ const testState = vi.hoisted(() => {
         libraryController,
         musicBrainzProgress,
         normalizedSettings,
+        openTrackMetaMenu,
         playlistController,
         refreshAvailableAudioOutputDevices,
         openLibrarySearch,
@@ -224,6 +226,7 @@ vi.mock('./app-runtime-setup', () => ({
         refreshAvailableAudioOutputDevices: testState.refreshAvailableAudioOutputDevices,
     })),
     setupQueueMenuRuntime: vi.fn(() => ({
+        openTrackMetaMenu: testState.openTrackMetaMenu,
         updatePlayOrderMenuState: testState.updatePlayOrderMenuState,
     })),
 }));
@@ -402,5 +405,28 @@ describe('main entrypoint runtime scope', () => {
             'mbid-artist:5e9450ca-77d5-4f64-a385-f453cfe98b24',
             { expandFilteredFolders: true },
         );
+    });
+
+    it('forwards artist filter queries through the runtime scope track meta wrapper', async () => {
+        await import('./main');
+
+        const scope = testState.getControllerScope() as {
+            openTrackMetaMenu?: (
+                clientX: number,
+                clientY: number,
+                includeCopyActions: boolean,
+                actionScope: 'track' | 'album' | null,
+                actionKind: 'track' | 'album' | null,
+                actionPath: string,
+                artistFilterQuery?: string,
+                showArtistFilterAction?: boolean,
+            ) => void;
+        } | null;
+
+        expect(scope?.openTrackMetaMenu).toBeTypeOf('function');
+
+        scope?.openTrackMetaMenu?.(24, 48, false, null, null, '', 'mbid-artist:artist-id', true);
+
+        expect(testState.openTrackMetaMenu).toHaveBeenCalledWith(24, 48, false, null, null, '', 'mbid-artist:artist-id', true);
     });
 });
