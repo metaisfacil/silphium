@@ -448,6 +448,121 @@ describe('createPlaylistController', () => {
         });
     });
 
+    it('prunes hydrated silence tracks back out of the editable playback queue', async () => {
+        const trackViews: PlaylistTrackView[] = [
+            createTrackView(0),
+            { displayTitle: 'Placeholder Silence', name: 'Track 1', displayArtist: 'Artist 1', tagsResolved: false },
+            createTrackView(2),
+        ];
+        const { controller, elements, ensureTrackTagsResolvedBatch, onPlaybackSequenceMutated } = mountPlaylistController({
+            trackViews,
+            getBaseSequence: () => ({
+                indexes: [0, 1, 2],
+                currentPosition: 0,
+            }),
+        });
+        ensureTrackTagsResolvedBatch.mockImplementation(async (...args: unknown[]) => {
+            const indexes = args[0] as number[];
+            indexes.forEach((index) => {
+                trackViews[index].displayTitle = '[silence]';
+                trackViews[index].tagsResolved = true;
+            });
+        });
+
+        controller.addToQueueEnd([1]);
+        onPlaybackSequenceMutated.mockClear();
+
+        controller.openModal();
+        await flushPromises();
+
+        expect(ensureTrackTagsResolvedBatch).toHaveBeenCalledWith([1]);
+        expect(controller.getSequenceOverride()).toEqual({
+            indexes: [0, 2],
+            currentPosition: 0,
+        });
+        expect(onPlaybackSequenceMutated).toHaveBeenCalledTimes(1);
+
+        const queueTrackButtons = Array.from(elements.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]'));
+        expect(queueTrackButtons.map((button) => button.dataset.playlistTrackIndex)).toEqual(['0', '2']);
+    });
+
+    it('prunes hydrated silence tracks out of loaded playlists before they can repopulate the queue', async () => {
+        document.body.innerHTML = `${renderPlaylistMenu()}${renderPlaylistModal()}`;
+        const trigger = document.createElement('button');
+        document.body.append(trigger);
+
+        const menu = getPlaylistMenuElements(document);
+        const modal = getPlaylistModalElements(document);
+        const trackViews: PlaylistTrackView[] = [
+            createTrackView(0),
+            { displayTitle: 'Placeholder Silence', name: 'Track 1', displayArtist: 'Artist 1', tagsResolved: false },
+            createTrackView(2),
+        ];
+        const ensureTrackTagsResolvedBatch = vi.fn(async (indexes: number[]) => {
+            indexes.forEach((index) => {
+                trackViews[index].displayTitle = '(silence)';
+                trackViews[index].tagsResolved = true;
+            });
+        });
+
+        const controller = createPlaylistController({
+            trigger,
+            menu,
+            modal,
+            getTrack: (index: number) => trackViews[index],
+            getTrackPath: (index: number) => `/music/track-${index}.flac`,
+            getTrackCount: () => trackViews.length,
+            getCurrentTrackIndex: () => 0,
+            getPlaybackOrderLabel: () => 'Ordered',
+            getBaseSequence: () => ({
+                indexes: [0, 1, 2],
+                currentPosition: 0,
+            }),
+            ensureTrackTagsResolvedBatch,
+            selectPlaylistFile: vi.fn(async () => ''),
+            selectPlaylistSaveFile: vi.fn(async () => ''),
+            loadPlaylistData: vi.fn(async () => ({
+                name: 'hydrating.m3u8',
+                trackIndexes: [0, 1, 2],
+            })),
+            loadListenHistoryData: vi.fn(async () => null),
+            savePlaylistTrackMetadataCache: vi.fn(async () => true),
+            savePlaylistData: vi.fn(async () => true),
+            appendTracksToPlaylistData: vi.fn(async () => true),
+            openErrorModal: vi.fn(),
+            getFavoritePlaylists: () => [],
+            hasListenHistoryPlaylist: () => false,
+            onTrackChosen: vi.fn(async () => undefined),
+            onExternalPlaylistLoaded: vi.fn(() => undefined),
+            onPlaybackSequenceMutated: vi.fn(async () => undefined),
+        });
+
+        await expect(controller.loadPlaylistByPath('/playlists/hydrating.m3u8')).resolves.toBe(true);
+        await flushPromises();
+
+        const playlistTrackButtons = Array.from(modal.playlistList.querySelectorAll<HTMLButtonElement>('[data-playlist-track-index]'));
+        expect(playlistTrackButtons.map((button) => button.dataset.playlistTrackIndex)).toEqual(['0', '2']);
+    });
+
+    it('ignores silence-titled tracks when appending directly into a loaded playlist', async () => {
+        const trackViews: PlaylistTrackView[] = [
+            createTrackView(0),
+            { displayTitle: '[silence]', name: 'silence.flac', displayArtist: 'Artist 1', tagsResolved: true },
+            createTrackView(2),
+        ];
+        const { controller, appendTracksToPlaylistData } = mountPlaylistController({ trackViews });
+
+        await expect(controller.loadPlaylistByPath('/playlists/demo.m3u8')).resolves.toBe(true);
+        const appended = await controller.appendTracksToPlaylist('/playlists/demo.m3u8', [1, 2]);
+
+        expect(appended).toBe(true);
+        expect(appendTracksToPlaylistData).toHaveBeenCalledWith('/playlists/demo.m3u8', [
+            '/music/track-2.flac',
+        ]);
+        expect(controller.isTrackAlreadyInLoadedPlaylist('/playlists/demo.m3u8', 1)).toBe(false);
+        expect(controller.isTrackAlreadyInLoadedPlaylist('/playlists/demo.m3u8', 2)).toBe(true);
+    });
+
     it('switches to a favorite playlist from the source selector and resets back to the queue state', async () => {
         const { controller, elements, loadPlaylistData, onTrackChosen } = mountPlaylistController();
 

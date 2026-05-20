@@ -523,6 +523,80 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         return trackIndexes.filter((trackIndex) => isQueueEligibleTrackIndex(trackIndex));
     };
 
+    const pruneHydratedSilenceTracksFromLoadedPlaylist = (silenceTrackIndexes: ReadonlySet<number>): boolean => {
+        if (!controllerState.loadedPlaylistTrackIndexes || silenceTrackIndexes.size === 0) {
+            return false;
+        }
+
+        const nextTrackIndexes: number[] = [];
+        const nextCachedItems = controllerState.loadedPlaylistCachedItems ? [] as LoadedPlaylistCachedItem[] : null;
+        const nextHistoryItems = controllerState.loadedPlaylistHistoryItems ? [] as LoadedListenHistoryItem[] : null;
+        let changed = false;
+
+        controllerState.loadedPlaylistTrackIndexes.forEach((trackIndex, position) => {
+            if (silenceTrackIndexes.has(trackIndex)) {
+                changed = true;
+                return;
+            }
+
+            nextTrackIndexes.push(trackIndex);
+            if (nextCachedItems) {
+                nextCachedItems.push(controllerState.loadedPlaylistCachedItems?.[position] || {});
+            }
+            if (nextHistoryItems) {
+                nextHistoryItems.push(controllerState.loadedPlaylistHistoryItems?.[position] || { listenedAt: 0, playedPercent: 0 });
+            }
+        });
+
+        if (!changed) {
+            return false;
+        }
+
+        controllerState.loadedPlaylistTrackIndexes = nextTrackIndexes;
+        controllerState.loadedPlaylistCachedItems = nextCachedItems;
+        controllerState.loadedPlaylistHistoryItems = nextHistoryItems;
+        return true;
+    };
+
+    const pruneHydratedSilenceTracksFromEditableQueue = (silenceTrackIndexes: ReadonlySet<number>): boolean => {
+        if (!controllerState.editableQueueTrackIndexes || silenceTrackIndexes.size === 0) {
+            return false;
+        }
+
+        const nextQueueIndexes = controllerState.editableQueueTrackIndexes.filter((trackIndex) => !silenceTrackIndexes.has(trackIndex));
+        if (nextQueueIndexes.length === controllerState.editableQueueTrackIndexes.length) {
+            return false;
+        }
+
+        if (nextQueueIndexes.length === 0) {
+            clearEditableQueueState();
+            return true;
+        }
+
+        controllerState.editableQueueTrackIndexes = nextQueueIndexes;
+        resolveEditableQueueCurrentPosition(nextQueueIndexes);
+        return true;
+    };
+
+    const pruneHydratedSilenceTracksFromPlaybackState = (trackIndexes: number[]): boolean => {
+        const silenceTrackIndexes = new Set(trackIndexes.filter((trackIndex) => !isQueueEligibleTrackIndex(trackIndex)));
+        if (silenceTrackIndexes.size === 0) {
+            return false;
+        }
+
+        const loadedPlaylistChanged = pruneHydratedSilenceTracksFromLoadedPlaylist(silenceTrackIndexes);
+        const editableQueueChanged = pruneHydratedSilenceTracksFromEditableQueue(silenceTrackIndexes);
+        if (!loadedPlaylistChanged && !editableQueueChanged) {
+            return false;
+        }
+
+        if (editableQueueChanged || controllerState.playbackSource === 'playlist') {
+            notifyPlaybackQueueMutated();
+        }
+
+        return true;
+    };
+
     const sanitizeLoadedPlaylistData = (loadedPlaylist: LoadedPlaylistData): LoadedPlaylistData => {
         const nextTrackIndexes: number[] = [];
         const nextCachedItems = loadedPlaylist.cachedItems ? [] as LoadedPlaylistCachedItem[] : undefined;
@@ -1894,8 +1968,15 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
                 resolvedIndexesForCache.push(...batch);
 
+                const playbackStateChanged = pruneHydratedSilenceTracksFromPlaybackState(batch);
+
                 completed += batch.length;
                 setHydrationProgress(completed, totalTracks);
+
+                if (playbackStateChanged) {
+                    renderPlaylist(true);
+                    continue;
+                }
 
                 if (controllerState.selectedSource !== 'queue' && hasLoadedPlaylist()) {
                     refreshRenderedPlaylistRows(batch);
@@ -2036,11 +2117,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             return false;
         }
 
-        const normalizedTrackIndexes = trackIndexes.filter((trackIndex) => (
-            Number.isInteger(trackIndex)
-            && trackIndex >= 0
-            && trackIndex < options.getTrackCount()
-        ));
+        const normalizedTrackIndexes = normalizeQueueEligibleTrackIndexes(trackIndexes);
         if (normalizedTrackIndexes.length === 0) {
             return false;
         }
