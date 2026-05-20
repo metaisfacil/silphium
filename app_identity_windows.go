@@ -9,6 +9,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+const silphiumWindowsAppUserModelID = "metaisfacil.Silphium"
+
 var (
 	shell32DLL                                  = windows.NewLazySystemDLL("Shell32.dll")
 	procSetCurrentProcessExplicitAppUserModelID = shell32DLL.NewProc("SetCurrentProcessExplicitAppUserModelID")
