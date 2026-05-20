@@ -720,13 +720,13 @@ func (a *App) setLibraryIndexFromScan(scan LibraryScanResult, expectedScanGenera
 	lockWaitStart := time.Now()
 	contentState.indexMu.Lock()
 	a.logRescanEvent("  - setLibraryIndexFromScan acquired lock (waited %.2fms)", time.Since(lockWaitStart).Seconds()*1000)
-	defer contentState.indexMu.Unlock()
 	if expectedScanGeneration > 0 && generationState.libraryScanGeneration.Load() != expectedScanGeneration {
 		a.logRescanEvent(
 			"  - setLibraryIndexFromScan canceled: stale generation expected=%d active=%d",
 			expectedScanGeneration,
 			generationState.libraryScanGeneration.Load(),
 		)
+		contentState.indexMu.Unlock()
 		return false
 	}
 
@@ -760,5 +760,7 @@ func (a *App) setLibraryIndexFromScan(scan LibraryScanResult, expectedScanGenera
 	a.markLibrarySearchIndexDirtyLocked()
 	a.logRescanEvent("  - cover paths copied (%.2fms)", time.Since(copyCoverStartTime).Seconds()*1000)
 	a.logRescanEvent("setLibraryIndexFromScan END: total time %.2fms", time.Since(setStartTime).Seconds()*1000)
+	contentState.indexMu.Unlock()
+	a.syncSystemMediaTransportControlsCurrentState()
 	return true
 }

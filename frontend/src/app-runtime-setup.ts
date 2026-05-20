@@ -335,6 +335,7 @@ type AppPlaybackControlsRuntimeScope = RuntimeScope<
     | 'availableAudioOutputDevices'
     | 'aboutVersion'
     | 'coverArtService'
+    | 'isWindowsRuntime'
     | 'gaplessQueueRequestVersion'
     | 'queuedGaplessTrackPath'
     | 'playbackSequencingService'
@@ -1143,6 +1144,7 @@ const createPlaybackControlsRuntimeContext = (scope: AppPlaybackControlsRuntimeS
     set availableAudioOutputDevices(value) {
         scope.availableAudioOutputDevices = value;
     },
+    isWindowsRuntime: scope.isWindowsRuntime,
     aboutVersion: scope.aboutVersion,
     coverArtService: scope.coverArtService,
     get gaplessQueueRequestVersion() {

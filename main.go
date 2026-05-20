@@ -14,6 +14,10 @@ var assets embed.FS
 var runWailsApp = wails.Run
 
 func main() {
+	if err := initializePlatformIdentity(); err != nil {
+		println("Error:", err.Error())
+	}
+
 	// Create an instance of the app structure
 	app := NewApp()
 

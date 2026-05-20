@@ -140,6 +140,7 @@ func (a *App) InitializeAudioBackend() (AudioPlaybackState, error) {
 		}
 
 		state = backend.State()
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, nil)
 		return state, nil
 	})
 }
@@ -153,6 +154,7 @@ func (a *App) AudioLoadTrack(path string) (AudioPlaybackState, error) {
 		}()
 
 		state, err = a.audioLoadTrackWithReplayGainContext(path, nil)
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, err)
 		return state, err
 	})
 }
@@ -170,6 +172,7 @@ func (a *App) AudioLoadTrackWithReplayGainContext(path string, replayGainRelease
 		}()
 
 		state, err = a.audioLoadTrackWithReplayGainContext(path, replayGainReleasePaths)
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, err)
 		return state, err
 	})
 }
@@ -217,6 +220,7 @@ func (a *App) AudioPlay() (AudioPlaybackState, error) {
 		}()
 
 		state, err = a.audioBackend().Play()
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, err)
 		return state, err
 	})
 }
@@ -230,6 +234,7 @@ func (a *App) AudioPause() (AudioPlaybackState, error) {
 		}()
 
 		state, err = a.audioBackend().Pause()
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, err)
 		return state, err
 	})
 }
@@ -243,6 +248,7 @@ func (a *App) AudioStop() (AudioPlaybackState, error) {
 		}()
 
 		state, err = a.audioBackend().Stop()
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, err)
 		return state, err
 	})
 }
@@ -256,6 +262,7 @@ func (a *App) AudioSeek(seconds float64) (AudioPlaybackState, error) {
 		}()
 
 		state, err = a.audioBackend().Seek(seconds)
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, err)
 		return state, err
 	})
 }
@@ -269,6 +276,7 @@ func (a *App) AudioSetVolume(volume float64) (AudioPlaybackState, error) {
 		}()
 
 		state, err = a.audioBackend().SetVolume(volume)
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, err)
 		return state, err
 	})
 }
@@ -278,6 +286,7 @@ func (a *App) AudioGetState() AudioPlaybackState {
 	return profiledValue(a, "AudioGetState", func() AudioPlaybackState {
 		trace := a.beginBridgeTrace("transport", "AudioGetState", "")
 		state := a.audioBackend().State()
+		a.syncSystemMediaTransportControlsState(state)
 		trace.finish(audioPlaybackStateForLog(state), nil)
 		return state
 	})
@@ -316,6 +325,7 @@ func (a *App) AudioReinitializeBackend() (AudioPlaybackState, error) {
 		}
 
 		state = backend.State()
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, nil)
 		return state, nil
 	})
 }

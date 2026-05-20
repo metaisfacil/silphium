@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -185,6 +186,8 @@ func TestReserveBridgeTraceRequestIDCorrelatesBridgeLogs(t *testing.T) {
 
 func TestAppStartupAndShutdown(t *testing.T) {
 	app := NewApp()
+	fakeSMTC := &fakeSystemMediaTransportControlsManager{}
+	app.systemMediaTransportControlsState().manager = fakeSMTC
 	app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)
 	app.startup(context.Background())
 	if app.ctx == nil {
@@ -205,6 +208,12 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	if runtime.GOOS == "windows" && app.mediaKeyWatcherState().stopCh == nil {
 		t.Fatal("startup() should initialize the media key watcher on Windows")
 	}
+	if fakeSMTC.startCalls != 1 {
+		t.Fatalf("startup() SMTC start calls = %d, want %d", fakeSMTC.startCalls, 1)
+	}
+	if fakeSMTC.syncCalls == 0 {
+		t.Fatal("startup() should sync system media transport controls state")
+	}
 
 	app.shutdown(context.Background())
 	if !app.quitRequested.Load() {
@@ -216,6 +225,9 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	if app.mediaKeyWatcherState().stopCh != nil || app.musicBrainzTagWorkerState().wakeCh != nil {
 		t.Fatal("shutdown() should stop background workers")
 	}
+	if fakeSMTC.stopCalls != 1 {
+		t.Fatalf("shutdown() SMTC stop calls = %d, want %d", fakeSMTC.stopCalls, 1)
+	}
 
 	closeErrorApp := &App{}
 	closeErrorApp.audio = NewAudioBackend()
@@ -226,6 +238,241 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	}
 	if closeErrorApp.audio.context != nil {
 		t.Fatal("shutdown(close error) should clear the audio context")
+	}
+}
+
+func TestSystemMediaTransportControlsSnapshotForStateUsesIndexedMetadata(t *testing.T) {
+	app := NewApp()
+	fixture := createLibraryTestFixture(t)
+	app.trackByPath = map[string]LibraryIndexedFile{
+		normalizePath(fixture.trackOne): {
+			Path:             normalizePath(fixture.trackOne),
+			RelativePath:     "Library/Artist One/Album One/01 Intro.flac",
+			FolderPath:       "Library/Artist One/Album One",
+			CachedTrackTitle: "Intro",
+			CachedArtistName: "Artist One",
+			CachedAlbumTitle: "Album One",
+		},
+	}
+	app.internalCoverArtState().baseURL = "http://127.0.0.1:9876"
+	app.internalCoverArtState().token = "secret-token"
+	app.libraryScan.CoverPathByFolder = map[string]string{
+		strings.ToLower("Library/Artist One/Album One"): fixture.coverOne,
+	}
+
+	snapshot := app.systemMediaTransportControlsSnapshotForState(AudioPlaybackState{
+		Loaded:      true,
+		Playing:     true,
+		CurrentTime: 12.5,
+		Duration:    180,
+		SourcePath:  fixture.trackOne,
+	})
+
+	if snapshot.Title != "Intro" {
+		t.Fatalf("snapshot.Title = %q, want %q", snapshot.Title, "Intro")
+	}
+	if snapshot.Artist != "Artist One" {
+		t.Fatalf("snapshot.Artist = %q, want %q", snapshot.Artist, "Artist One")
+	}
+	if snapshot.AlbumTitle != "Album One" {
+		t.Fatalf("snapshot.AlbumTitle = %q, want %q", snapshot.AlbumTitle, "Album One")
+	}
+	if snapshot.AlbumArtist != "Artist One" {
+		t.Fatalf("snapshot.AlbumArtist = %q, want %q", snapshot.AlbumArtist, "Artist One")
+	}
+	if snapshot.SourcePath != normalizePath(fixture.trackOne) {
+		t.Fatalf("snapshot.SourcePath = %q, want %q", snapshot.SourcePath, normalizePath(fixture.trackOne))
+	}
+	if !snapshot.Playing || !snapshot.Loaded {
+		t.Fatalf("snapshot = %#v, want loaded playing state preserved", snapshot)
+	}
+	if snapshot.CoverArtURL == "" {
+		t.Fatal("snapshot.CoverArtURL = empty, want loopback cover art URL")
+	}
+}
+
+func TestSystemMediaTransportControlsSnapshotFallsBackToFilename(t *testing.T) {
+	app := NewApp()
+	snapshot := app.systemMediaTransportControlsSnapshotForState(AudioPlaybackState{
+		Loaded:     true,
+		SourcePath: `C:\Music\Artist\01 Sample Track.flac`,
+	})
+
+	if snapshot.Title != "01 Sample Track" {
+		t.Fatalf("snapshot.Title = %q, want %q", snapshot.Title, "01 Sample Track")
+	}
+	if snapshot.Artist != "" || snapshot.AlbumTitle != "" || snapshot.AlbumArtist != "" {
+		t.Fatalf("snapshot = %#v, want only filename fallback metadata", snapshot)
+	}
+}
+
+func TestSystemMediaTransportControlsSnapshotUsesTrackTagsCacheFallback(t *testing.T) {
+	app := NewApp()
+	fixture := createLibraryTestFixture(t)
+	trackPath := normalizePath(fixture.trackOne)
+	signature, ok := trackTagsFileSignatureForPath(trackPath)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", trackPath)
+	}
+	app.putTrackTagsCache(trackPath, signature, TrackTags{
+		Title:       "Cached Title",
+		Artist:      "Cached Artist",
+		Album:       "Cached Album",
+		AlbumArtist: "Cached Album Artist",
+	}, true)
+
+	snapshot := app.systemMediaTransportControlsSnapshotForState(AudioPlaybackState{
+		Loaded:     true,
+		SourcePath: trackPath,
+	})
+
+	if snapshot.Title != "Cached Title" {
+		t.Fatalf("snapshot.Title = %q, want %q", snapshot.Title, "Cached Title")
+	}
+	if snapshot.Artist != "Cached Artist" {
+		t.Fatalf("snapshot.Artist = %q, want %q", snapshot.Artist, "Cached Artist")
+	}
+	if snapshot.AlbumTitle != "Cached Album" {
+		t.Fatalf("snapshot.AlbumTitle = %q, want %q", snapshot.AlbumTitle, "Cached Album")
+	}
+	if snapshot.AlbumArtist != "Cached Album Artist" {
+		t.Fatalf("snapshot.AlbumArtist = %q, want %q", snapshot.AlbumArtist, "Cached Album Artist")
+	}
+}
+
+func TestSystemMediaTransportControlsSnapshotDoesNotReadTrackTagsOnCacheMiss(t *testing.T) {
+	app := NewApp()
+	fixture := createLibraryTestFixture(t)
+	trackPath := normalizePath(fixture.trackOne)
+	originalReadTaglibTags := readTaglibTags
+	readCalls := 0
+	readTaglibTags = func(string) (map[string][]string, error) {
+		readCalls++
+		return map[string][]string{"TITLE": {"Should Not Be Read"}}, nil
+	}
+	t.Cleanup(func() {
+		readTaglibTags = originalReadTaglibTags
+	})
+
+	snapshot := app.systemMediaTransportControlsSnapshotForState(AudioPlaybackState{
+		Loaded:     true,
+		SourcePath: trackPath,
+	})
+
+	if readCalls != 0 {
+		t.Fatalf("systemMediaTransportControlsSnapshotForState() read tag calls = %d, want 0", readCalls)
+	}
+	if snapshot.Title != "01 Intro" {
+		t.Fatalf("snapshot.Title = %q, want %q", snapshot.Title, "01 Intro")
+	}
+}
+
+func TestAudioGetStateSyncsSystemMediaTransportControls(t *testing.T) {
+	app := NewApp()
+	fakeSMTC := &fakeSystemMediaTransportControlsManager{}
+	app.systemMediaTransportControlsState().manager = fakeSMTC
+	state := app.AudioGetState()
+
+	if fakeSMTC.syncCalls != 1 {
+		t.Fatalf("AudioGetState() sync calls = %d, want %d", fakeSMTC.syncCalls, 1)
+	}
+	if fakeSMTC.lastSnapshot.Loaded != state.Loaded || fakeSMTC.lastSnapshot.Playing != state.Playing {
+		t.Fatalf("AudioGetState() synced snapshot = %#v, want playback state %#v", fakeSMTC.lastSnapshot, state)
+	}
+}
+
+func TestReadTrackTagsSyncsSystemMediaTransportControlsCurrentTrack(t *testing.T) {
+	app := NewApp()
+	fakeSMTC := &fakeSystemMediaTransportControlsManager{}
+	app.systemMediaTransportControlsState().manager = fakeSMTC
+	fixture := createLibraryTestFixture(t)
+	trackPath := normalizePath(fixture.trackOne)
+	app.activeLibraryRoots = []libraryRootConfig{{Path: normalizePath(fixture.rootOne), Name: "Library"}}
+	app.audioBackend().streamSegments = []audioTrackSegment{{SourcePath: trackPath, PCMData: make([]byte, audioBytesPerFrame*8)}}
+
+	originalReadTaglibTags := readTaglibTags
+	readTaglibTags = func(string) (map[string][]string, error) {
+		return map[string][]string{
+			"TITLE":       {"Hydrated Title"},
+			"ARTIST":      {"Hydrated Artist"},
+			"ALBUM":       {"Hydrated Album"},
+			"ALBUMARTIST": {"Hydrated Album Artist"},
+		}, nil
+	}
+	t.Cleanup(func() {
+		readTaglibTags = originalReadTaglibTags
+	})
+
+	tags := app.ReadTrackTags([]string{trackPath})
+	if got := tags[trackPath].Title; got != "Hydrated Title" {
+		t.Fatalf("ReadTrackTags()[track].Title = %q, want %q", got, "Hydrated Title")
+	}
+	if fakeSMTC.syncCalls != 1 {
+		t.Fatalf("ReadTrackTags() sync calls = %d, want %d", fakeSMTC.syncCalls, 1)
+	}
+	if fakeSMTC.lastSnapshot.Title != "Hydrated Title" || fakeSMTC.lastSnapshot.Artist != "Hydrated Artist" || fakeSMTC.lastSnapshot.AlbumTitle != "Hydrated Album" {
+		t.Fatalf("ReadTrackTags() snapshot = %#v, want hydrated metadata", fakeSMTC.lastSnapshot)
+	}
+	if fakeSMTC.lastSnapshot.AlbumArtist != "Hydrated Album Artist" {
+		t.Fatalf("ReadTrackTags() album artist = %q, want %q", fakeSMTC.lastSnapshot.AlbumArtist, "Hydrated Album Artist")
+	}
+}
+
+func TestSetLibraryIndexFromScanSyncsSystemMediaTransportControlsCurrentTrackMetadata(t *testing.T) {
+	app := NewApp()
+	fakeSMTC := &fakeSystemMediaTransportControlsManager{}
+	app.systemMediaTransportControlsState().manager = fakeSMTC
+	fixture := createLibraryTestFixture(t)
+	rootPath := normalizePath(fixture.rootOne)
+	trackPath := normalizePath(fixture.trackOne)
+	app.activeLibraryRoots = []libraryRootConfig{{Path: rootPath, Name: "Library"}}
+	app.internalCoverArtState().baseURL = "http://127.0.0.1:9876"
+	app.internalCoverArtState().token = "secret-token"
+	app.audioBackend().streamSegments = []audioTrackSegment{{SourcePath: trackPath, PCMData: make([]byte, audioBytesPerFrame*8)}}
+
+	updated := app.setLibraryIndexFromScan(LibraryScanResult{
+		TrackFiles: []LibraryIndexedFile{{
+			Name:             filepath.Base(trackPath),
+			Path:             trackPath,
+			RelativePath:     "Library/Artist One/Album One/01 Intro.flac",
+			FolderPath:       "Library/Artist One/Album One",
+			RootPath:         rootPath,
+			RootName:         "Library",
+			CachedTrackTitle: "Track Title",
+			CachedArtistName: "Track Artist",
+			CachedAlbumTitle: "Track Album",
+		}},
+		CoverPathByFolder: map[string]string{
+			strings.ToLower("Library/Artist One/Album One"): fixture.coverOne,
+		},
+	}, 0)
+	if !updated {
+		t.Fatal("setLibraryIndexFromScan() = false, want true")
+	}
+	if fakeSMTC.syncCalls != 1 {
+		t.Fatalf("setLibraryIndexFromScan() sync calls = %d, want %d", fakeSMTC.syncCalls, 1)
+	}
+	if fakeSMTC.lastSnapshot.Title != "Track Title" || fakeSMTC.lastSnapshot.Artist != "Track Artist" || fakeSMTC.lastSnapshot.AlbumTitle != "Track Album" {
+		t.Fatalf("setLibraryIndexFromScan() snapshot = %#v, want indexed track metadata", fakeSMTC.lastSnapshot)
+	}
+	if fakeSMTC.lastSnapshot.CoverArtURL == "" {
+		t.Fatal("setLibraryIndexFromScan() cover art URL = empty, want loopback cover art")
+	}
+	parsedURL, err := url.Parse(fakeSMTC.lastSnapshot.CoverArtURL)
+	if err != nil {
+		t.Fatalf("url.Parse(cover art URL) error = %v", err)
+	}
+	if parsedURL.Path != internalCoverArtPath {
+		t.Fatalf("cover art URL path = %q, want %q", parsedURL.Path, internalCoverArtPath)
+	}
+	if got := parsedURL.Query().Get("id"); got != openSubsonicFolderCoverID("Library/Artist One/Album One") {
+		t.Fatalf("cover art id = %q, want folder cover id", got)
+	}
+	if got := parsedURL.Query().Get("token"); got != "secret-token" {
+		t.Fatalf("cover art token = %q, want %q", got, "secret-token")
+	}
+	if got := parsedURL.Query().Get("size"); got != "256" {
+		t.Fatalf("cover art size = %q, want %q", got, "256")
 	}
 }
 
@@ -313,4 +560,24 @@ func TestDisposeFrontendSessionState(t *testing.T) {
 	default:
 		t.Fatal("DisposeFrontendSessionState() should close the library watcher stop channel")
 	}
+}
+
+type fakeSystemMediaTransportControlsManager struct {
+	startCalls   int
+	stopCalls    int
+	syncCalls    int
+	lastSnapshot systemMediaTransportControlsSnapshot
+}
+
+func (f *fakeSystemMediaTransportControlsManager) Start(*App) {
+	f.startCalls++
+}
+
+func (f *fakeSystemMediaTransportControlsManager) Stop() {
+	f.stopCalls++
+}
+
+func (f *fakeSystemMediaTransportControlsManager) Sync(snapshot systemMediaTransportControlsSnapshot) {
+	f.syncCalls++
+	f.lastSnapshot = snapshot
 }

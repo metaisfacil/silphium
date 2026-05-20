@@ -83,6 +83,7 @@ describe('createMediaSessionController', () => {
         };
 
         const controller = createMediaSessionController({
+            enableBrowserMediaSession: true,
             getPlaybackState: () => playbackState,
             getCurrentTrack: () => undefined,
             getCachedArtwork: () => undefined,
@@ -111,5 +112,46 @@ describe('createMediaSessionController', () => {
         controller.updatePositionState();
 
         expect(mediaSession.setPositionState).toHaveBeenCalledTimes(2);
+    });
+
+    it('stays inert when browser media session integration is disabled', () => {
+        const controller = createMediaSessionController({
+            enableBrowserMediaSession: false,
+            getPlaybackState: () => ({
+                loaded: true,
+                playing: true,
+                currentTime: 12,
+                duration: 300,
+                volume: 1,
+                sourcePath: '/music/track.flac',
+                endEventId: 0,
+            }),
+            getCurrentTrack: () => undefined,
+            getCachedArtwork: () => undefined,
+            getCoverArtPreview: () => ({ visible: false, src: '' }),
+            playCurrentTrack: async () => undefined,
+            pauseCurrentTrack: async () => undefined,
+            toggleCurrentTrack: async () => undefined,
+            goToTrack: () => undefined,
+            stopCurrentTrack: async () => undefined,
+            seekToTime: async () => undefined,
+        });
+
+        const mediaSession = (navigator as Navigator & {
+            mediaSession: Pick<MediaSession, 'setActionHandler' | 'setPositionState'> & {
+                setActionHandler: ReturnType<typeof vi.fn>;
+                setPositionState: ReturnType<typeof vi.fn>;
+            };
+        }).mediaSession;
+
+        controller.initialize();
+        controller.updatePlaybackState();
+        controller.updatePositionState();
+        controller.updateMetadata();
+        controller.unlockFromUserGesture();
+
+        expect(URL.createObjectURL).not.toHaveBeenCalled();
+        expect(mediaSession.setActionHandler).not.toHaveBeenCalled();
+        expect(mediaSession.setPositionState).not.toHaveBeenCalled();
     });
 });

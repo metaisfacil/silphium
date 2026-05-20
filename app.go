@@ -48,6 +48,7 @@ type App struct {
 	appMusicBrainzTagState
 	scrobble         appScrobbleState
 	internalCoverArt appInternalCoverArtState
+	smtc             appSMTCState
 
 	openSubsonicMu          sync.Mutex
 	openSubsonicServer      *http.Server
@@ -501,6 +502,7 @@ func (a *App) startup(ctx context.Context) {
 	a.syncInternalCoverArtServer()
 	a.syncOpenSubsonicServer()
 	a.refreshSystemTrayForSettings()
+	a.startSystemMediaTransportControls()
 	a.startMediaKeyWatcher()
 	a.startMusicBrainzTagWorker()
 }
@@ -511,6 +513,7 @@ func (a *App) shutdown(context.Context) {
 	a.stopInternalCoverArtServer()
 	a.stopOpenSubsonicServer()
 	a.stopSystemTray()
+	a.stopSystemMediaTransportControls()
 	a.stopMediaKeyWatcher()
 	a.stopLibraryWatcher()
 	a.stopLibraryFilesDatabaseWorker()
@@ -683,6 +686,9 @@ func (a *App) DisposeFrontendSessionState() {
 			if _, err := a.audioBackend().Stop(); err != nil {
 				log.Printf("failed to stop audio backend while disposing frontend session: %v", err)
 				a.audioBackend().stopWithoutInitialize()
+				a.syncSystemMediaTransportControlsState(a.audioBackend().State())
+			} else {
+				a.syncSystemMediaTransportControlsState(a.audioBackend().State())
 			}
 		}
 	})

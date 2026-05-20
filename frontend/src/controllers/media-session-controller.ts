@@ -10,6 +10,7 @@ type MediaArtwork = {
 };
 
 type MediaSessionControllerOptions = {
+    enableBrowserMediaSession: boolean;
     getPlaybackState: () => AudioPlaybackState;
     getCurrentTrack: () => Track | undefined;
     getCachedArtwork: (track: Track) => MediaArtwork | undefined;
@@ -70,7 +71,7 @@ const createSilentWavObjectUrl = (): string => {
 export type MediaSessionController = ReturnType<typeof createMediaSessionController>;
 
 export const createMediaSessionController = (options: MediaSessionControllerOptions) => {
-    const supportsMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator;
+    const supportsMediaSession = options.enableBrowserMediaSession && typeof navigator !== 'undefined' && 'mediaSession' in navigator;
     const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
     const mediaSessionAnchorUrl = supportsMediaSession ? createSilentWavObjectUrl() : '';
     const mediaSessionAnchorAudio = supportsMediaSession

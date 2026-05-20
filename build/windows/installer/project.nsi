@@ -27,6 +27,7 @@ Unicode true
 ###
 ## !define PRODUCT_EXECUTABLE  "Application.exe"      # Default "${INFO_PROJECTNAME}.exe"
 ## !define UNINST_KEY_NAME     "UninstKeyInRegistry"  # Default "${INFO_COMPANYNAME}${INFO_PRODUCTNAME}"
+!define APP_USER_MODEL_ID      "metaisfacil.Silphium"
 ####
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ####
@@ -87,9 +88,20 @@ Section
     SetOutPath $INSTDIR
 
     !insertmacro wails.files
+    File /oname=$PLUGINSDIR\set-shortcut-appid.ps1 "set-shortcut-appid.ps1"
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+
+    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NonInteractive -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\set-shortcut-appid.ps1" -ShortcutPath "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" -AppUserModelId "${APP_USER_MODEL_ID}"'
+    Pop $0
+    StrCmp $0 "0" +2 0
+    DetailPrint "Failed to set AppUserModelID on Start Menu shortcut (exit $0)"
+
+    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NonInteractive -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\set-shortcut-appid.ps1" -ShortcutPath "$DESKTOP\${INFO_PRODUCTNAME}.lnk" -AppUserModelId "${APP_USER_MODEL_ID}"'
+    Pop $0
+    StrCmp $0 "0" +2 0
+    DetailPrint "Failed to set AppUserModelID on desktop shortcut (exit $0)"
 
     !insertmacro wails.associateFiles
     !insertmacro wails.associateCustomProtocols

@@ -1267,7 +1267,15 @@ func (a *App) readTrackTagsFromMetadataDatabase(jobs []readTrackTagsJob) map[str
 // ReadTrackTags reads tag and technical metadata for track files by path.
 func (a *App) ReadTrackTags(paths []string) map[string]TrackTags {
 	return profiledValue(a, "ReadTrackTags", func() map[string]TrackTags {
-		return a.readTrackTagsWithWorkerLimit(paths, trackTagsWorkerLimit, true)
+		tagByPath := a.readTrackTagsWithWorkerLimit(paths, trackTagsWorkerLimit, true)
+		if len(tagByPath) != 0 {
+			resolvedPaths := make([]string, 0, len(tagByPath))
+			for path := range tagByPath {
+				resolvedPaths = append(resolvedPaths, path)
+			}
+			a.syncSystemMediaTransportControlsForTrackPaths(resolvedPaths)
+		}
+		return tagByPath
 	})
 }
 
@@ -1318,6 +1326,7 @@ func (a *App) RefreshTrackMetadata(path string) (TrackTags, error) {
 		if signature, ok := trackTagsFileSignatureForPath(cleanPath); ok {
 			a.refreshTrackMetadataDatabaseRecord(cleanPath, signature, tags)
 		}
+		a.syncSystemMediaTransportControlsForTrackPaths([]string{cleanPath})
 		return tags, nil
 	})
 }

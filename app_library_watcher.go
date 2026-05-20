@@ -407,6 +407,7 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 		EntryLimit:     contentState.libraryScan.EntryLimit,
 	}
 	contentState.indexMu.Unlock()
+	a.syncSystemMediaTransportControlsCurrentState()
 	a.notifyMusicBrainzTagWorker()
 	a.notifyLibraryFilesDatabaseWorkerIncremental(preparedChanges, notification.TotalEntries)
 	a.logRescanEvent("applyIncrementalLibraryChanges update took %.2fms, total time %.2fms",

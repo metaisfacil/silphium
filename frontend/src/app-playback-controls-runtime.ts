@@ -449,6 +449,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
     };
 
     const mediaSessionController = createMediaSessionController({
+        enableBrowserMediaSession: !context.isWindowsRuntime,
         getPlaybackState: () => context.playbackStateService.getPlaybackState(),
         getCurrentTrack: () => (context.currentTrackIndex >= 0 && context.currentTrackIndex < context.tracks.length ? context.tracks[context.currentTrackIndex] : undefined),
         getCachedArtwork: (track: Track) => context.coverArtService.getCachedMediaArtwork(track),

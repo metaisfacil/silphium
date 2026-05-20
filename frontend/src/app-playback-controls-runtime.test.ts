@@ -98,6 +98,7 @@ const createContext = (coverPromise: Promise<void>): AppPlaybackControlsRuntimeC
     return {
         tracks: [createTrack()],
         currentTrackIndex: -1,
+        isWindowsRuntime: false,
         gaplessQueueRequestVersion: 0,
         queuedGaplessTrackPath: '',
         playPauseToggleInFlight: false,
@@ -195,6 +196,18 @@ describe('createAppPlaybackControlsRuntime', () => {
 
         const mediaSessionController = createMediaSessionControllerMock.mock.results.at(-1)?.value;
         expect(mediaSessionController?.unlockFromUserGesture).not.toHaveBeenCalled();
+    });
+
+    it('disables browser media session integration on Windows runtime', () => {
+        const coverDeferred = createDeferred();
+        const context = createContext(coverDeferred.promise);
+        context.isWindowsRuntime = true;
+
+        createAppPlaybackControlsRuntime(context);
+
+        expect(createMediaSessionControllerMock).toHaveBeenCalledWith(expect.objectContaining({
+            enableBrowserMediaSession: false,
+        }));
     });
 
     it('defers current-track hydration until after the post-load idle window', async () => {
