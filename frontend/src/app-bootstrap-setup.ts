@@ -73,6 +73,7 @@ type AppControllerSetupScope = RuntimeScope<
     | 'playlistTargetModalElements'
     | 'shareElements'
     | 'ensureTrackTagsResolved'
+    | 'trackMetadataService'
     | 'trackIndexForPath'
     | 'resolveCoverForTrack'
     | 'coverArtService'
@@ -425,6 +426,9 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
     shareElements: scope.shareElements,
     ensureTrackTagsResolved: async (index: number) => {
         await scope.ensureTrackTagsResolved(index);
+    },
+    refreshTrackTags: async (paths: string[]) => {
+        await scope.trackMetadataService.refreshTrackTags(paths);
     },
     trackIndexForPath: scope.trackIndexForPath,
     resolveCoverForTrack: async (track: Track) => await scope.resolveCoverForTrack(track),

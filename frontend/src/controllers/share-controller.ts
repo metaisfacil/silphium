@@ -120,12 +120,12 @@ const normalizeShareGenreList = (values: string[]): string[] => {
     const seen = new Set<string>();
 
     for (const value of values) {
-        const cleanValue = value.trim();
+        const cleanValue = value.trim().toLowerCase();
         if (cleanValue === '') {
             continue;
         }
 
-        const dedupeKey = cleanValue.toLowerCase();
+        const dedupeKey = cleanValue;
         if (seen.has(dedupeKey)) {
             continue;
         }
@@ -150,6 +150,21 @@ const extractShareGenresFromTrackTags = (track: Track): string[] => {
     }
 
     return normalizeShareGenreList(genreTagValues);
+};
+
+const hasShareGenreTagSource = (track: Track): boolean => {
+    for (const [tagName, values] of Object.entries(track.allFileTags || {})) {
+        const normalizedTagName = tagName.trim().toLowerCase();
+        if (normalizedTagName !== 'genre' && normalizedTagName !== 'style') {
+            continue;
+        }
+
+        if ((values || []).some((value) => value.trim() !== '')) {
+            return true;
+        }
+    }
+
+    return false;
 };
 
 const resolveSharePreviewGenres = async (track: Track): Promise<string[]> => {
@@ -190,6 +205,7 @@ export interface ShareControllerOptions {
     elements: ShareControllerElements;
     getCurrentTrack: () => { track: Track; index: number } | undefined;
     ensureTrackTagsResolved: (index: number) => Promise<void>;
+    refreshTrackTags?: (paths: string[]) => Promise<void>;
     trackIndexForPath: (path: string) => number;
     getTrack: (index: number) => Track | undefined;
     resolveCoverForTrack: (track: Track) => Promise<string | undefined>;
@@ -550,8 +566,25 @@ export const createShareController = (options: ShareControllerOptions): ShareCon
             return undefined;
         }
 
-        const resolvedIndex = options.trackIndexForPath(selectedTrackPath);
-        return resolvedIndex >= 0 ? (options.getTrack(resolvedIndex) || selectedTrack) : selectedTrack;
+        let resolvedIndex = options.trackIndexForPath(selectedTrackPath);
+        let resolvedTrack = resolvedIndex >= 0 ? (options.getTrack(resolvedIndex) || selectedTrack) : selectedTrack;
+
+        if (!hasShareGenreTagSource(resolvedTrack) && options.refreshTrackTags) {
+            try {
+                await options.refreshTrackTags([selectedTrackPath]);
+            } catch (error) {
+                console.error(error);
+            }
+
+            if (requestVersion !== sharePreviewRequestVersion) {
+                return undefined;
+            }
+
+            resolvedIndex = options.trackIndexForPath(selectedTrackPath);
+            resolvedTrack = resolvedIndex >= 0 ? (options.getTrack(resolvedIndex) || selectedTrack) : selectedTrack;
+        }
+
+        return resolvedTrack;
     };
 
     const resolveShareCoverSource = async (track: Track): Promise<string | undefined> => {

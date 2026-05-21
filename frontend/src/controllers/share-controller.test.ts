@@ -126,6 +126,7 @@ const createController = (
         elements,
         getCurrentTrack: () => ({ track, index: 0 }),
         ensureTrackTagsResolved: vi.fn(async () => undefined),
+        refreshTrackTags: vi.fn(async () => undefined),
         trackIndexForPath: vi.fn(() => 0),
         getTrack: vi.fn(() => track),
         resolveCoverForTrack: vi.fn(async () => undefined),
@@ -253,6 +254,7 @@ describe('share-controller', () => {
         ]);
         await flushPromises();
         await flushPromises();
+        await flushPromises();
 
         expect(elements.shareStreamingLinksRegion.hidden).toBe(false);
         expect(elements.shareStreamingLinks.querySelectorAll('.artist-link-btn')).toHaveLength(1);
@@ -271,7 +273,7 @@ describe('share-controller', () => {
 
         expect(lookupMusicBrainzEntityMock).not.toHaveBeenCalled();
         expect(renderShareImagePreviewMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-            genres: ['Electronic', 'Ambient', 'Synthwave'],
+            genres: ['electronic', 'ambient', 'synthwave'],
         }));
     });
 
@@ -297,7 +299,32 @@ describe('share-controller', () => {
 
         expect(lookupMusicBrainzEntityMock).toHaveBeenCalledWith('recording', track.mbIds.recordingId);
         expect(renderShareImagePreviewMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-            genres: ['Darkwave', 'Post-punk'],
+            genres: ['darkwave', 'post-punk'],
+        }));
+    });
+
+    it('refreshes local tags before falling back to MusicBrainz genres', async () => {
+        const track = createTrack();
+        track.tagsResolved = true;
+        track.mbIds.recordingId = '99999999-9999-4999-8999-999999999999';
+
+        const refreshTrackTags = vi.fn(async () => {
+            track.allFileTags = {
+                GENRE: ['Shoegaze'],
+                STYLE: ['Dream Pop'],
+            };
+        });
+
+        const { controller } = createController(track, {
+            refreshTrackTags,
+        });
+
+        await controller.open();
+
+        expect(refreshTrackTags).toHaveBeenCalledWith(['/music/track.flac']);
+        expect(lookupMusicBrainzEntityMock).not.toHaveBeenCalled();
+        expect(renderShareImagePreviewMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+            genres: ['shoegaze', 'dream pop'],
         }));
     });
 

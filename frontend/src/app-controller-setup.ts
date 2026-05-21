@@ -191,6 +191,9 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
         ensureTrackTagsResolved: async (index: number) => {
             await context.ensureTrackTagsResolved(index);
         },
+        refreshTrackTags: async (paths: string[]) => {
+            await context.refreshTrackTags(paths);
+        },
         trackIndexForPath: context.trackIndexForPath,
         getTrack: (index: number) => context.tracks[index],
         resolveCoverForTrack: async (track: Track) => {

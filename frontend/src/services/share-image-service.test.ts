@@ -445,4 +445,82 @@ describe('share image preview text fitting', () => {
         expect(genreCalls.length).toBe(4);
         expect(genreCalls.every((call) => call.y > (albumCall?.y || 0))).toBe(true);
     });
+
+    it('keeps genre pills at a fixed distance above the quote box regardless of metadata height', () => {
+        const createCanvasWithDrawCalls = () => {
+            const drawCalls: Array<{ text: string; x: number; y: number; font: string }> = [];
+            let currentFont = '12px sans-serif';
+            const context = {
+                clearRect: vi.fn(),
+                createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+                createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+                beginPath: vi.fn(),
+                moveTo: vi.fn(),
+                lineTo: vi.fn(),
+                arcTo: vi.fn(),
+                closePath: vi.fn(),
+                clip: vi.fn(),
+                fillRect: vi.fn(),
+                fill: vi.fn(),
+                stroke: vi.fn(),
+                save: vi.fn(),
+                restore: vi.fn(),
+                drawImage: vi.fn(),
+                measureText: vi.fn((text: string) => ({ width: text.length * 7.2 })),
+                fillText: vi.fn((text: string, x: number, y: number) => {
+                    drawCalls.push({ text, x, y, font: currentFont });
+                }),
+                set fillStyle(_value: string | CanvasGradient | CanvasPattern) { void _value; },
+                set strokeStyle(_value: string | CanvasGradient | CanvasPattern) { void _value; },
+                set lineWidth(_value: number) { void _value; },
+                set filter(_value: string) { void _value; },
+                set font(value: string) {
+                    currentFont = value;
+                },
+                set textAlign(_value: CanvasTextAlign) { void _value; },
+                set textBaseline(_value: CanvasTextBaseline) { void _value; },
+                set globalAlpha(_value: number) { void _value; },
+                set shadowColor(_value: string) { void _value; },
+                set shadowBlur(_value: number) { void _value; },
+                set shadowOffsetY(_value: number) { void _value; },
+            } as unknown as CanvasRenderingContext2D;
+
+            const canvas = {
+                width: 0,
+                height: 0,
+                getContext: vi.fn(() => context),
+            } as unknown as HTMLCanvasElement;
+
+            return { canvas, drawCalls };
+        };
+
+        const expectedGenres = ['ambient', 'downtempo'];
+
+        const shortRender = createCanvasWithDrawCalls();
+        renderShareImagePreview(shortRender.canvas, {
+            title: 'Track',
+            album: 'Album',
+            artist: 'Artist',
+            comment: 'Listening right now.',
+            genres: expectedGenres,
+        });
+
+        const longRender = createCanvasWithDrawCalls();
+        renderShareImagePreview(longRender.canvas, {
+            title: 'Long title words long title words long title words long title words long title words',
+            album: 'Long album words long album words long album words long album words',
+            artist: 'Long artist words long artist words long artist words',
+            comment: 'Listening right now.',
+            genres: expectedGenres,
+        });
+
+        const shortGenreYs = shortRender.drawCalls
+            .filter((call) => expectedGenres.includes(call.text))
+            .map((call) => call.y);
+        const longGenreYs = longRender.drawCalls
+            .filter((call) => expectedGenres.includes(call.text))
+            .map((call) => call.y);
+
+        expect(shortGenreYs).toEqual(longGenreYs);
+    });
 });

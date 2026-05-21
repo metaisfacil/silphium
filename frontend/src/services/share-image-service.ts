@@ -15,6 +15,8 @@ const shareImageWidth = 600;
 const shareImageHeight = 350;
 const shareQuoteBoxY = 228;
 const shareQuoteBoxHeight = 76;
+const shareGenresTopGap = 10;
+const shareGenresBottomGap = 12;
 
 type RgbColor = {
     r: number;
@@ -718,14 +720,19 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
     ];
 
     const metadataStartY = contentStartY + 26;
-    const commentTopY = contentStartY + 193;
+    const commentTopY = shareQuoteBoxY;
     const metadataBottomPadding = 8;
     ctx.save();
     ctx.font = '600 12px "Nunito", "Segoe UI", sans-serif';
     const genreLayout = layoutShareGenrePills(ctx, trackGenres, textWidth, 2);
     ctx.restore();
-    const genreTopGap = genreLayout.rows.length > 0 ? 10 : 0;
-    const metadataHeightBudget = Math.max(0, commentTopY - metadataStartY - metadataBottomPadding - genreTopGap - genreLayout.height);
+    const genreTopGap = genreLayout.rows.length > 0 ? shareGenresTopGap : 0;
+    const genreTopY = genreLayout.rows.length > 0
+        ? commentTopY - shareGenresBottomGap - genreLayout.height
+        : undefined;
+    const metadataHeightBudget = genreTopY === undefined
+        ? Math.max(0, commentTopY - metadataStartY - metadataBottomPadding)
+        : Math.max(0, genreTopY - metadataStartY - genreTopGap);
     const maxSharedReduction = Math.min(...textFieldConfigs.map((field) => field.maxReduction));
 
     let sharedReduction = maxSharedReduction;
@@ -816,9 +823,8 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
         cursorY += albumLineHeight;
     }
 
-    if (trackGenres.length > 0) {
-        cursorY += genreTopGap;
-        drawShareGenrePills(ctx, trackGenres, textX, cursorY, textWidth);
+    if (trackGenres.length > 0 && genreTopY !== undefined) {
+        drawShareGenrePills(ctx, trackGenres, textX, genreTopY, textWidth);
     }
     ctx.restore();
 
