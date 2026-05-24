@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -40,11 +39,6 @@ const (
 	smtcSignatureButtonPressedEventArgs                   = "rc(Windows.Media.SystemMediaTransportControlsButtonPressedEventArgs;{b7f47116-a56f-4dc8-9e11-92031f4a87c2})"
 	smtcSignaturePlaybackPositionChangeRequestedEventArgs = "rc(Windows.Media.PlaybackPositionChangeRequestedEventArgs;{b4493f88-eb28-4961-9c14-335e44f3e125})"
 	gwOwner                                               = 4
-
-	mediaPlaybackStatusClosed  = 0
-	mediaPlaybackStatusStopped = 2
-	mediaPlaybackStatusPlaying = 3
-	mediaPlaybackStatusPaused  = 4
 
 	mediaPlaybackTypeMusic = 1
 
@@ -112,10 +106,6 @@ type windowsSystemMediaTransportControlsWorkerState struct {
 
 type eventRegistrationToken struct {
 	Value int64
-}
-
-type timeSpan struct {
-	Duration int64
 }
 
 type systemMediaTransportControls struct {
@@ -766,21 +756,6 @@ func findCurrentProcessMainWindow() (windows.HWND, error) {
 	return 0, errSystemMediaTransportControlsWindowNotFound
 }
 
-func systemMediaTransportControlsWindowTitleScore(title string) int {
-	trimmedTitle := strings.TrimSpace(title)
-	if trimmedTitle == "" {
-		return -1
-	}
-	if trimmedTitle == "Silphium" {
-		return 2
-	}
-	if strings.EqualFold(trimmedTitle, "Silphium") {
-		return 1
-	}
-
-	return 0
-}
-
 func mediaKeyActionForSMTCButton(button uintptr) string {
 	switch button {
 	case smtcButtonPlay, smtcButtonPause:
@@ -794,38 +769,6 @@ func mediaKeyActionForSMTCButton(button uintptr) string {
 	default:
 		return ""
 	}
-}
-
-func playbackStatusForSnapshot(snapshot systemMediaTransportControlsSnapshot) uintptr {
-	if !snapshot.Loaded || snapshot.SourcePath == "" {
-		return systemMediaTransportControlsResetPlaybackStatus()
-	}
-	if snapshot.Playing {
-		return mediaPlaybackStatusPlaying
-	}
-	return mediaPlaybackStatusPaused
-}
-
-func systemMediaTransportControlsResetPlaybackStatus() uintptr {
-	return mediaPlaybackStatusClosed
-}
-
-func secondsToTimeSpan(seconds float64) timeSpan {
-	if seconds <= 0 {
-		return timeSpan{}
-	}
-	return timeSpan{Duration: int64(seconds * float64(time.Second/100))}
-}
-
-func absFloat64(value float64) float64 {
-	if value < 0 {
-		return -value
-	}
-	return value
-}
-
-func timeSpanToSeconds(value timeSpan) float64 {
-	return float64(value.Duration) / float64(time.Second/100)
 }
 
 func parameterizedInstanceGUID(baseGUID string, signatures ...string) string {
@@ -1342,10 +1285,6 @@ func (v *systemMediaTransportControlsTimelineProperties) setTimeSpanProperty(met
 		return ole.NewError(hr)
 	}
 	return nil
-}
-
-func timeSpanSyscallArg(value timeSpan) uintptr {
-	return uintptr(value.Duration)
 }
 
 func (v *systemMediaTransportControlsButtonPressedEventArgs) GetButton() (uintptr, error) {
