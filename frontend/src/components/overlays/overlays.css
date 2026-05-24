@@ -838,28 +838,6 @@
     align-items: start;
 }
 
-.settings-ui-layout-controls {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0.75rem;
-    align-items: start;
-}
-
-.settings-ui-layout-controls > .settings-field:first-child {
-    grid-column: 1;
-    grid-row: 1;
-}
-
-#settings-player-card-layout-field,
-#settings-roon-accent-field {
-    grid-column: 2;
-    grid-row: 1;
-}
-
-.settings-ui-layout-controls > [hidden] {
-    display: none !important;
-}
-
 .settings-accent-row {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -985,16 +963,10 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .settings-ui-layout-controls {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .settings-visualizer-controls {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    #settings-player-card-layout-field,
-    #settings-roon-accent-field,
     #settings-equalizer-position-field,
     #settings-lissajous-scale-field {
         grid-column: 1;

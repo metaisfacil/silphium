@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getSettingsModalElements, renderSettingsModal } from '../components/overlays/settings-modal';
-import type { AppShellTheme, AudioOutputDevice, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout } from '../types/app-types';
+import type { AudioOutputDevice, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress } from '../types/app-types';
 import type { RoonAccentSettings } from '../utils/roon-accent-theme';
 import { createSettingsController, type SettingsFormValues, type SettingsViewValues } from './settings-controller';
 import { createSettingsControllerState, type SettingsControllerState } from './settings-controller-types';
@@ -98,8 +98,6 @@ const mountSettingsController = (options: {
     forceReload?: (values: SettingsFormValues) => Promise<void>;
     fetchLastFmSessionKey?: (apiKey: string, apiSecret: string) => Promise<string>;
     selectLibraryFolder?: () => Promise<string>;
-    getShellTheme?: () => AppShellTheme;
-    getPlayerCardLayout?: () => PlayerCardLayout;
     getRoonAccentTheme?: () => RoonAccentSettings;
     state?: SettingsControllerState;
 } = {}) => {
@@ -112,8 +110,6 @@ const mountSettingsController = (options: {
     const forceReload = options.forceReload ?? vi.fn(async () => undefined);
     const fetchLastFmSessionKey = options.fetchLastFmSessionKey ?? vi.fn(async () => 'session-key');
     const applyAudioNow = vi.fn(async () => createApplyAudioNowResult());
-    const setShellTheme = vi.fn((_theme: AppShellTheme) => undefined);
-    const setPlayerCardLayout = vi.fn((_layout: PlayerCardLayout) => undefined);
     const setRoonAccentTheme = vi.fn((_theme: RoonAccentSettings) => undefined);
 
     const controller = createSettingsController({
@@ -128,10 +124,6 @@ const mountSettingsController = (options: {
         fetchLastFmSessionKey,
         applyAudioNow,
         forceReload,
-        getShellTheme: options.getShellTheme ?? (() => 'roon'),
-        setShellTheme,
-        getPlayerCardLayout: options.getPlayerCardLayout ?? (() => 'release'),
-        setPlayerCardLayout,
         getRoonAccentTheme: options.getRoonAccentTheme ?? (() => ({ color: '#68b4ff', saturation: 100 })),
         setRoonAccentTheme,
     });
@@ -197,7 +189,7 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-audio-output-device"]')?.textContent).toBe('Audio output device');
         expect(document.querySelector('label[for="settings-audio-output-buffer-ms"]')?.textContent).toBe('Audio output buffer (ms)');
         expect(document.querySelector('label[for="settings-local-library-files-database-listen-history-threshold-seconds"]')?.textContent).toBe('Skipped-track history threshold');
-        expect(document.querySelector('label[for="settings-player-card-layout"]')?.textContent).toBe('Player card layout');
+        expect(document.querySelector('label[for="settings-roon-accent-color"]')?.textContent).toBe('Accent colour');
         expect(document.querySelector('label[for="settings-lissajous-enabled"]')?.textContent?.trim()).toBe('Show player visualizer');
         expect(document.querySelector('label[for="settings-visualizer-mode"]')?.textContent).toBe('Visualizer style');
         expect(document.querySelector('label[for="settings-lissajous-scale"]')?.textContent).toBe('Lissajous scale');
@@ -205,7 +197,7 @@ describe('createSettingsController', () => {
         expect(document.querySelector('label[for="settings-ui-dithering-enabled"]')?.textContent?.trim()).toBe('Enable pseudo-dithering');
         expect(document.querySelector('#settings-cover-art-priority-accordion-toggle')?.textContent?.trim()).toBe('Cover art source priority');
         expect(document.querySelector('#settings-shortcut-accordion-toggle')?.textContent?.trim()).toBe('Keyboard shortcuts');
-        expect(document.querySelector('[aria-label="Show help for Player card layout"]')).not.toBeNull();
+        expect(document.querySelector('[aria-label="Show help for Accent colour"]')).not.toBeNull();
         expect(document.querySelector('[aria-label="Show help for Keyboard shortcuts"]')).not.toBeNull();
         expect(document.querySelector('label[for="settings-shortcut-play-pause"]')?.textContent).toBe('Play/pause toggle');
         expect(document.querySelector('#settings-apply-audio-now')?.getAttribute('aria-label')).toBe('Refresh audio settings');
@@ -312,26 +304,14 @@ describe('createSettingsController', () => {
         expect(elements.settingsLissajousScaleValue.textContent).toBe('40%');
     });
 
-    it('shows Player card layout only for the Classic shell theme', () => {
-        const roonMount = mountSettingsController({ getShellTheme: () => 'roon' });
-        roonMount.controller.open('ui');
+    it('shows the Roon accent controls in the UI tab', () => {
+        const { controller, elements } = mountSettingsController();
+        controller.open('ui');
 
-        expect(roonMount.elements.settingsUiLayoutGrid.dataset.shellTheme).toBe('roon');
-        expect(roonMount.elements.settingsPlayerCardLayoutField.hidden).toBe(true);
-        expect(roonMount.elements.settingsPlayerCardLayout.disabled).toBe(true);
-        expect(roonMount.elements.settingsRoonAccentField.hidden).toBe(false);
-        expect(roonMount.elements.settingsRoonAccentColor.disabled).toBe(false);
-
-        roonMount.controller.close();
-
-        const classicMount = mountSettingsController({ getShellTheme: () => 'classic' });
-        classicMount.controller.open('ui');
-
-        expect(classicMount.elements.settingsUiLayoutGrid.dataset.shellTheme).toBe('classic');
-        expect(classicMount.elements.settingsPlayerCardLayoutField.hidden).toBe(false);
-        expect(classicMount.elements.settingsPlayerCardLayout.disabled).toBe(false);
-        expect(classicMount.elements.settingsRoonAccentField.hidden).toBe(true);
-        expect(classicMount.elements.settingsRoonAccentColor.disabled).toBe(true);
+        expect(document.activeElement).toBe(elements.settingsRoonAccentColor);
+        expect(elements.settingsRoonAccentField.hidden).toBe(false);
+        expect(elements.settingsRoonAccentColor.disabled).toBe(false);
+        expect(elements.settingsRoonAccentSaturation.disabled).toBe(false);
     });
 
     it('hydrates and mutates an injected settings draft state', () => {

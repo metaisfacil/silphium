@@ -55,10 +55,7 @@ type AppControllerSetupScope = RuntimeScope<
     | 'updatePlayButton'
     | 'scanConfiguredLibraryFolders'
     | 'openErrorModal'
-    | 'getStoredShellTheme'
-    | 'applyShellTheme'
-    | 'getStoredLayout'
-    | 'applyPlayerCardLayout'
+    | 'initializeRoonShell'
     | 'getStoredRoonAccentTheme'
     | 'applyRoonAccentTheme'
     | 'playlistBtn'
@@ -421,10 +418,6 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
         await scope.scanConfiguredLibraryFolders();
     },
     openErrorModal: scope.openErrorModal,
-    getShellTheme: scope.getStoredShellTheme,
-    setShellTheme: scope.applyShellTheme,
-    getPlayerCardLayout: scope.getStoredLayout,
-    setPlayerCardLayout: scope.applyPlayerCardLayout,
     getRoonAccentTheme: scope.getStoredRoonAccentTheme,
     setRoonAccentTheme: scope.applyRoonAccentTheme,
     playlistBtn: scope.playlistBtn,

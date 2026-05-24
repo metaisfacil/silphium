@@ -26,10 +26,6 @@ const createContext = (): SettingsControllerEventContext => {
             fetchLastFmSessionKey: vi.fn(async () => ''),
             applyAudioNow: vi.fn(async () => ({ devices: [], selectedDevice: 'default', message: 'Audio settings refreshed.' })),
             forceReload: vi.fn(async () => undefined),
-            getShellTheme: vi.fn(() => 'roon'),
-            setShellTheme: vi.fn(),
-            getPlayerCardLayout: vi.fn(() => 'default'),
-            setPlayerCardLayout: vi.fn(),
             getRoonAccentTheme: vi.fn((): RoonAccentSettings => ({ color: '#68b4ff', saturation: 100 })),
             setRoonAccentTheme: vi.fn(),
         },
@@ -63,6 +59,7 @@ const createContext = (): SettingsControllerEventContext => {
         refreshMusicBrainzRateControls: vi.fn(),
         refreshListenBrainzRateControls: vi.fn(),
         refreshEqualizerPositionControls: vi.fn(),
+        refreshRoonAccentFieldPreview: vi.fn(),
         refreshScrobbleRuleDialogControls: vi.fn(),
         refreshAudioOutputDevices: vi.fn(),
         refreshForceReloadStatus: vi.fn(),
@@ -172,33 +169,21 @@ describe('bindSettingsControllerEvents', () => {
         );
     });
 
-    it('shows and enables Player card layout only when Classic theme is selected', () => {
+    it('applies the Roon accent settings directly from the UI controls', () => {
         const context = createContext();
         bindSettingsControllerEvents(context);
 
-        context.elements.settingsShellTheme.value = 'classic';
-        context.elements.settingsShellTheme.dispatchEvent(new Event('change', { bubbles: true }));
-
-        expect(context.elements.settingsUiLayoutGrid.dataset.shellTheme).toBe('classic');
-        expect(context.elements.settingsPlayerCardLayoutField.hidden).toBe(false);
-        expect(context.elements.settingsPlayerCardLayout.disabled).toBe(false);
-        expect(context.elements.settingsRoonAccentField.hidden).toBe(true);
-        expect(context.options.setShellTheme).toHaveBeenCalledWith('classic');
-
-        context.elements.settingsPlayerCardLayout.value = 'release';
-        context.elements.settingsPlayerCardLayout.dispatchEvent(new Event('change', { bubbles: true }));
-        expect(context.options.setPlayerCardLayout).toHaveBeenCalledWith('release');
-
-        context.elements.settingsShellTheme.value = 'roon';
-        context.elements.settingsShellTheme.dispatchEvent(new Event('change', { bubbles: true }));
-
-        expect(context.elements.settingsUiLayoutGrid.dataset.shellTheme).toBe('roon');
-        expect(context.elements.settingsPlayerCardLayoutField.hidden).toBe(true);
-        expect(context.elements.settingsPlayerCardLayout.disabled).toBe(true);
         expect(context.elements.settingsRoonAccentField.hidden).toBe(false);
         expect(context.elements.settingsRoonAccentColor.disabled).toBe(false);
+        expect(context.elements.settingsRoonAccentSaturation.disabled).toBe(false);
 
-        context.elements.settingsPlayerCardLayout.dispatchEvent(new Event('change', { bubbles: true }));
-        expect(context.options.setPlayerCardLayout).toHaveBeenCalledTimes(1);
+        context.elements.settingsRoonAccentColor.value = '#123456';
+        context.elements.settingsRoonAccentColor.dispatchEvent(new Event('input', { bubbles: true }));
+        context.elements.settingsRoonAccentSaturation.value = '42';
+        context.elements.settingsRoonAccentSaturation.dispatchEvent(new Event('input', { bubbles: true }));
+
+        expect((context.options.setRoonAccentTheme as ReturnType<typeof vi.fn>).mock.calls.at(-1)).toEqual([
+            { color: '#123456', saturation: 42 },
+        ]);
     });
 });

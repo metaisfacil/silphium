@@ -57,8 +57,7 @@ const testState = vi.hoisted(() => {
         renderFolder: vi.fn(),
     };
 
-    const applyPlayerCardLayout = vi.fn();
-    const getStoredLayout = vi.fn(() => 'album-left');
+    const initializeRoonShell = vi.fn();
     const handleSettingsChanged = vi.fn();
     const initializeAppVersion = vi.fn(async () => undefined);
     const initializeBackendPlayback = vi.fn(async () => undefined);
@@ -126,11 +125,10 @@ const testState = vi.hoisted(() => {
     };
 
     return {
-        applyPlayerCardLayout,
+        initializeRoonShell,
         artistInfoController,
         createShell,
         getControllerScope: () => controllerScope,
-        getStoredLayout,
         handleSettingsChanged,
         imageModalController,
         initializeAppVersion,
@@ -193,12 +191,9 @@ vi.mock('./app-bootstrap-setup', () => ({
 vi.mock('./app-runtime-setup', () => ({
     setupCoreServicesRuntime: vi.fn(() => ({
         applyRoonAccentTheme: vi.fn(),
-        applyShellTheme: vi.fn(),
-        applyPlayerCardLayout: testState.applyPlayerCardLayout,
         defaultMusicBrainzServerUrl: 'https://musicbrainz.org',
-        getStoredLayout: testState.getStoredLayout,
         getStoredRoonAccentTheme: vi.fn(() => ({ color: '#68b4ff', saturation: 1 })),
-        getStoredShellTheme: vi.fn(() => 'roon'),
+        initializeRoonShell: testState.initializeRoonShell,
         openLibrarySearch: testState.openLibrarySearch,
         visualizerController: {
             setEnabled: testState.setLissajousEnabled,

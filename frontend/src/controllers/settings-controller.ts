@@ -157,11 +157,6 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagWorkerProgressValue,
         settingsMusicBrainzTagWorkerProgressRemaining,
         settingsMusicBrainzTagWorkerProgressStatus,
-        settingsUiLayoutGrid,
-        settingsShellTheme,
-        settingsPlayerCardLayoutField,
-        settingsPlayerCardLayout,
-        settingsRoonAccentField,
         settingsRoonAccentColor,
         settingsRoonAccentSaturation,
         settingsRoonAccentSaturationValue,
@@ -219,19 +214,6 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsRoonAccentColor.style.setProperty('--settings-accent-color', accentTheme.appliedColor);
         settingsRoonAccentSaturationValue.value = `${accentTheme.saturation}%`;
         settingsRoonAccentSaturationValue.textContent = `${accentTheme.saturation}%`;
-    };
-
-    const refreshShellThemeControlVisibility = (): void => {
-        const shellTheme = settingsShellTheme.value === 'classic' ? 'classic' : 'roon';
-        const classicThemeSelected = shellTheme === 'classic';
-        const roonThemeSelected = shellTheme === 'roon';
-
-        settingsUiLayoutGrid.dataset.shellTheme = shellTheme;
-        settingsPlayerCardLayoutField.hidden = !classicThemeSelected;
-        settingsPlayerCardLayout.disabled = !classicThemeSelected;
-        settingsRoonAccentField.hidden = !roonThemeSelected;
-        settingsRoonAccentColor.disabled = !roonThemeSelected;
-        settingsRoonAccentSaturation.disabled = !roonThemeSelected;
     };
 
     // Dialog state
@@ -871,13 +853,10 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         refreshLocalLibraryFilesDatabaseControls();
         refreshMusicBrainzTagWorkerControls();
         renderMusicBrainzTagWorkerProgress(values.musicBrainzTagWorkerProgress);
-        settingsShellTheme.value = options.getShellTheme();
-        settingsPlayerCardLayout.value = options.getPlayerCardLayout();
         const roonAccentTheme = options.getRoonAccentTheme();
         settingsRoonAccentColor.value = roonAccentTheme.color;
         settingsRoonAccentSaturation.value = String(roonAccentTheme.saturation);
         refreshRoonAccentFieldPreview();
-        refreshShellThemeControlVisibility();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
         controllerState.favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
         controllerState.customSendToActions = normalizeCustomSendToActions(values.customSendToActions || []);
@@ -964,7 +943,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
 
-        settingsShellTheme.focus();
+        settingsRoonAccentColor.focus();
     };
 
     bindShortcutCaptureInput(settingsShortcutPlayPauseToggle);

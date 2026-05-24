@@ -22,7 +22,6 @@ import type { createPlaybackStateService, PlaybackSessionState } from './service
 import type { createScrobbleService, ScrobbleSessionState } from './services/scrobble-service';
 import type { createTrackMetadataService } from './services/track-metadata-service';
 import type {
-    AppShellTheme,
     AppSettings,
     ArtistExternalUrl,
     AudioOutputDevice,
@@ -41,7 +40,6 @@ import type {
     MusicBrainzEntityType,
     MusicBrainzTagWorkerProgress,
     PlaybackOrderMode,
-    PlayerCardLayout,
     TextLibraryFile,
     Track,
 } from './types/app-types';
@@ -115,10 +113,7 @@ type ReturnedRuntimeMethods = {
     refreshListenBrainzFeedbackForCurrentTrack: (force?: boolean) => Promise<void>;
     resetListenBrainzFeedbackState: () => void;
     submitListenBrainzFeedbackForTrack: (trackIndex: number, score: ListenBrainzFeedbackScore) => Promise<void>;
-    applyPlayerCardLayout: (layout: PlayerCardLayout) => void;
-    getStoredLayout: () => PlayerCardLayout;
-    applyShellTheme: (theme: AppShellTheme) => void;
-    getStoredShellTheme: () => AppShellTheme;
+    initializeRoonShell: () => void;
     applyRoonAccentTheme: (theme: RoonAccentSettings) => void;
     getStoredRoonAccentTheme: () => RoonAccentSettings;
     showOverviewPage: () => void;

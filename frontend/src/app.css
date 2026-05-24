@@ -1819,10 +1819,6 @@
     min-width: 5.4rem;
 }
 
-.player-card.layout-release #track-technical-alt {
-    display: block;
-}
-
 #exploration-btn {
     position: absolute;
     right: 0.8rem;
@@ -2263,39 +2259,6 @@
     display: none;
 }
 
-/* Release layout */
-.player-card.layout-release {
-    grid-template-rows: auto minmax(0, 1fr) auto auto auto auto auto;
-}
-
-.player-card.layout-release .track-artist-header {
-    display: block;
-    grid-row: 1;
-    margin: 0;
-    text-align: center;
-    font-size: clamp(0.9rem, 3.6cqw, 1.15rem);
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    opacity: 0.9;
-    min-height: 1.3em;
-    min-width: 0;
-}
-
-.player-card.layout-release #cover-frame {
-    grid-row: 2;
-}
-
-.player-card.layout-release .track-release-meta {
-    display: grid;
-    grid-row: 4;
-    grid-template-columns: 1fr minmax(0, 50%);
-    grid-template-rows: auto auto;
-    column-gap: 0.5rem;
-    row-gap: 0.18rem;
-}
-
 .track-release-album {
     font-size: clamp(0.82rem, calc(1.6cqh + 0.55cqw), 1rem);
     opacity: 0.85;
@@ -2350,79 +2313,9 @@
     min-width: 0;
 }
 
-.player-card.layout-release .track-meta {
-    display: none;
-}
-
-/* Time row: 2-row grid — genre sits above duration on the right;
-   current-time and song title occupy the bottom row. */
-.player-card.layout-release .time-row {
-    grid-row: 5;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto auto;
-}
-
-.player-card.layout-release #seek {
-    grid-row: 6;
-}
-
-.player-card.layout-release .controls-row {
-    grid-row: 7;
-}
-
-.player-card.layout-release #track-technical {
-    display: none;
-}
-
-.player-card.layout-release #track-technical-alt {
-    display: block;
-    grid-row: 3;
-}
-
 /* track-time-center is transparent in both layouts */
 .track-time-center {
     display: contents;
-}
-
-/* Explicitly place each time-row child in the release layout */
-.player-card.layout-release #current-time {
-    grid-column: 1;
-    grid-row: 2;
-    justify-self: start;
-}
-
-.player-card.layout-release .track-title-inline {
-    display: block;
-    grid-column: 2;
-    grid-row: 2;
-    text-align: center;
-    justify-self: stretch;
-    align-self: center;
-    min-width: 0;
-}
-
-.player-card.layout-release .track-position-inline {
-    display: block;
-    grid-column: 2;
-    grid-row: 1;
-    text-align: center;
-    justify-self: center;
-    min-height: 1.3em;
-}
-
-.player-card.layout-release .track-genre-inline {
-    display: block;
-    grid-column: 3;
-    grid-row: 1;
-    justify-self: end;
-    text-align: right;
-    min-height: 1.3em;
-}
-
-.player-card.layout-release #track-duration {
-    grid-column: 3;
-    grid-row: 2;
-    justify-self: end;
 }
 
 .track-title-inline {
@@ -3191,13 +3084,6 @@
     cursor: pointer;
 }
 
-#app.shell-theme-classic .overview-page,
-#app.shell-theme-classic .player-taskbar,
-#app.shell-theme-classic .sidebar-nav-pane,
-#app.shell-theme-classic .sidebar-mode-bar {
-    display: none !important;
-}
-
 #app.shell-theme-roon {
     --sidebar-width: min(360px, 34vw);
     --sidebar-width-expanded: min(420px, 40vw);
@@ -3446,10 +3332,6 @@
     box-shadow: none;
     backdrop-filter: none;
     overflow: visible;
-}
-
-#app.shell-theme-roon .player-card.layout-release {
-    grid-template-rows: auto;
 }
 
 #app.shell-theme-roon .player-card .track-artist-header,

@@ -286,8 +286,6 @@ export type ScrobbleRule = {
 
 export type CoverArtPrioritySource = 'file' | 'embedded' | 'musicbrainz';
 
-export type AppShellTheme = 'classic' | 'roon';
-export type PlayerCardLayout = 'default' | 'release';
 export type PlayerVisualizerMode = 'lissajous' | 'equalizer';
 export type PlayerEqualizerPosition = 'bottom' | 'top';
 

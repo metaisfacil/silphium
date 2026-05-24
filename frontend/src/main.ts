@@ -521,8 +521,7 @@ openExplorationLibrarySearch = (query: string, options?: { expandFilteredFolders
 };
 
 const {
-    applyShellTheme,
-    applyPlayerCardLayout,
+    initializeRoonShell,
     applyRoonAccentTheme,
     defaultMusicBrainzServerUrl,
     visualizerController,
@@ -531,8 +530,6 @@ const {
     playbackStateService,
     refreshListenBrainzFeedbackForCurrentTrack,
     resetListenBrainzFeedbackState,
-    getStoredShellTheme,
-    getStoredLayout,
     getStoredRoonAccentTheme,
 } = runtimeScope;
 
@@ -678,9 +675,8 @@ const {
 } = runtimeScope;
 
 const initializeSettings = async (): Promise<void> => {
-    applyShellTheme(getStoredShellTheme());
-    applyPlayerCardLayout(getStoredLayout());
     applyRoonAccentTheme(getStoredRoonAccentTheme());
+    initializeRoonShell();
     resetListenBrainzFeedbackState();
 
     try {
