@@ -2,7 +2,6 @@ import type { SettingsModalElements } from '../components/overlays/settings-moda
 import type {
     AudioOutputDevice,
     AppLibraryFolder,
-    AppShellTheme,
     CoverArtPrioritySource,
     CustomSendToAction,
     ScrobbleRule,
@@ -216,9 +215,6 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsApplyAudioNow,
         settingsMusicBrainzTagDatabaseEnabled,
         settingsUiLayoutGrid,
-        settingsShellTheme,
-        settingsPlayerCardLayoutField,
-        settingsPlayerCardLayout,
         settingsRoonAccentField,
         settingsRoonAccentColor,
         settingsRoonAccentSaturation,
@@ -228,19 +224,6 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsCoverArtPriorityAccordionPanel,
         settingsCoverArtPriorityList,
     } = elements;
-
-    const refreshShellThemeControlVisibility = (): void => {
-        const shellTheme = settingsShellTheme.value === 'classic' ? 'classic' : 'roon';
-        const classicThemeSelected = shellTheme === 'classic';
-        const roonThemeSelected = shellTheme === 'roon';
-
-        settingsUiLayoutGrid.dataset.shellTheme = shellTheme;
-        settingsPlayerCardLayoutField.hidden = !classicThemeSelected;
-        settingsPlayerCardLayout.disabled = !classicThemeSelected;
-        settingsRoonAccentField.hidden = !roonThemeSelected;
-        settingsRoonAccentColor.disabled = !roonThemeSelected;
-        settingsRoonAccentSaturation.disabled = !roonThemeSelected;
-    };
 
     const bindAccordionHeaderToggle = (
         toggle: HTMLButtonElement,
@@ -516,17 +499,12 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
 
     settingsTabUi.addEventListener('click', () => {
         setActiveTab('ui');
-        if (!settingsPlayerCardLayout.disabled && !settingsPlayerCardLayoutField.hidden) {
-            settingsPlayerCardLayout.focus();
-            return;
-        }
-
         if (!settingsRoonAccentColor.disabled && !settingsRoonAccentField.hidden) {
             settingsRoonAccentColor.focus();
             return;
         }
 
-        settingsShellTheme.focus();
+        settingsUiLayoutGrid.focus();
     });
 
     settingsTabsScrollLeft.addEventListener('click', () => {
@@ -672,24 +650,9 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         scrollCoverArtPriorityAccordionIntoView,
     );
 
-    settingsShellTheme.addEventListener('change', () => {
-        const theme: AppShellTheme = settingsShellTheme.value === 'classic' ? 'classic' : 'roon';
-        refreshShellThemeControlVisibility();
-        options.setShellTheme(theme);
-    });
-
-    settingsPlayerCardLayout.addEventListener('change', () => {
-        if (settingsPlayerCardLayout.disabled || settingsShellTheme.value !== 'classic') {
-            return;
-        }
-
-        const layout = settingsPlayerCardLayout.value === 'release' ? 'release' : 'default';
-        options.setPlayerCardLayout(layout);
-    });
-
     const applyRoonAccentTheme = (): void => {
         context.refreshRoonAccentFieldPreview();
-        if (settingsRoonAccentColor.disabled || settingsRoonAccentSaturation.disabled || settingsShellTheme.value !== 'roon') {
+        if (settingsRoonAccentColor.disabled || settingsRoonAccentSaturation.disabled || settingsRoonAccentField.hidden) {
             return;
         }
 

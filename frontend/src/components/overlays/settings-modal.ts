@@ -107,9 +107,6 @@ export type SettingsModalElements = {
     settingsMusicBrainzTagWorkerProgressRemaining: HTMLParagraphElement;
     settingsMusicBrainzTagWorkerProgressStatus: HTMLParagraphElement;
     settingsUiLayoutGrid: HTMLDivElement;
-    settingsShellTheme: HTMLSelectElement;
-    settingsPlayerCardLayoutField: HTMLDivElement;
-    settingsPlayerCardLayout: HTMLSelectElement;
     settingsRoonAccentField: HTMLDivElement;
     settingsRoonAccentColor: HTMLInputElement;
     settingsRoonAccentSaturation: HTMLInputElement;
@@ -409,23 +406,9 @@ export const renderSettingsModal = (): string => `
                     </div>
                 </div>
                 <div id="settings-panel-ui" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-ui" hidden>
-                    <div id="settings-ui-layout-grid" class="settings-ui-layout-controls" data-shell-theme="roon">
-                        <div class="settings-field">
-                            ${renderSettingsLabel('settings-shell-theme', 'Shell theme', 'Classic keeps the centered player focus. Roon-inspired switches the app to an overview-first landscape shell with a bottom transport bar.')}
-                            <select id="settings-shell-theme" class="settings-input settings-select">
-                                <option value="roon">Roon-inspired</option>
-                                <option value="classic">Classic</option>
-                            </select>
-                        </div>
-                        <div id="settings-player-card-layout-field" class="settings-field" hidden>
-                            ${renderSettingsLabel('settings-player-card-layout', 'Player card layout', 'Choose how track metadata is arranged on the player card.')}
-                            <select id="settings-player-card-layout" class="settings-input settings-select">
-                                <option value="default">Default — Title, album, artist</option>
-                                <option value="release">Release-focused — Artist, cover, label &amp; year</option>
-                            </select>
-                        </div>
-                        <div id="settings-roon-accent-field" class="settings-field" hidden>
-                            ${renderSettingsLabel('settings-roon-accent-color', 'Accent colour', 'Tints the Roon-inspired shell chrome. Lower saturation for a neutral grey treatment closer to Classic.')}
+                    <div id="settings-ui-layout-grid" tabindex="-1">
+                        <div id="settings-roon-accent-field" class="settings-field">
+                            ${renderSettingsLabel('settings-roon-accent-color', 'Accent colour', 'Tints the Roon-inspired shell chrome. Lower saturation for a more neutral treatment.')}
                             <div class="settings-accent-row">
                                 <input id="settings-roon-accent-color" class="settings-color-input" type="color" value="#68b4ff">
                                 <input id="settings-roon-accent-saturation" class="settings-range-input settings-accent-range-input" type="range" min="0" max="100" step="1" value="100">
@@ -731,9 +714,6 @@ export const getSettingsModalElements = (root: ParentNode): SettingsModalElement
     settingsMusicBrainzTagWorkerProgressRemaining: root.querySelector('#settings-musicbrainz-tag-worker-progress-remaining') as HTMLParagraphElement,
     settingsMusicBrainzTagWorkerProgressStatus: root.querySelector('#settings-musicbrainz-tag-worker-progress-status') as HTMLParagraphElement,
     settingsUiLayoutGrid: root.querySelector('#settings-ui-layout-grid') as HTMLDivElement,
-    settingsShellTheme: root.querySelector('#settings-shell-theme') as HTMLSelectElement,
-    settingsPlayerCardLayoutField: root.querySelector('#settings-player-card-layout-field') as HTMLDivElement,
-    settingsPlayerCardLayout: root.querySelector('#settings-player-card-layout') as HTMLSelectElement,
     settingsRoonAccentField: root.querySelector('#settings-roon-accent-field') as HTMLDivElement,
     settingsRoonAccentColor: root.querySelector('#settings-roon-accent-color') as HTMLInputElement,
     settingsRoonAccentSaturation: root.querySelector('#settings-roon-accent-saturation') as HTMLInputElement,

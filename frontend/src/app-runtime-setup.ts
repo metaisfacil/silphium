@@ -331,8 +331,7 @@ type AppLibraryLoadRuntimeScope = RuntimeScope<
     | 'scheduleLibraryIncrementalFolderRefresh'
     | 'scheduleNowPlayingCoverRefresh'
     | 'refreshOverviewDashboard'
-    | 'applyPlayerCardLayout'
-    | 'getStoredLayout'
+    | 'initializeRoonShell'
     | 'resetListenBrainzFeedbackState'
     | 'listAudioOutputDevices'
     | 'getSettings'
@@ -1144,8 +1143,6 @@ export const setupLibraryLoadRuntime = (scope: AppLibraryLoadRuntimeScope) => cr
     scheduleLibraryIncrementalFolderRefresh: scope.scheduleLibraryIncrementalFolderRefresh,
     scheduleNowPlayingCoverRefresh: scope.scheduleNowPlayingCoverRefresh,
     refreshOverviewDashboard: scope.refreshOverviewDashboard,
-    applyPlayerCardLayout: scope.applyPlayerCardLayout,
-    getStoredLayout: scope.getStoredLayout,
     resetListenBrainzFeedbackState: scope.resetListenBrainzFeedbackState,
     listAudioOutputDevices: async () => await scope.listAudioOutputDevices(),
     getSettings: async () => await scope.getSettings(),

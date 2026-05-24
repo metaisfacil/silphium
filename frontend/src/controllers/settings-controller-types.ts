@@ -1,5 +1,5 @@
 import type { SettingsModalElements } from '../components/overlays/settings-modal';
-import type { AppLibraryFolder, AppShellTheme, AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, CustomSendToActionScope, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout, PlayerEqualizerPosition, PlayerVisualizerMode, ScrobbleFilterMode, ScrobbleRule, ScrobbleRuleField, ScrobbleRuleOperator } from '../types/app-types';
+import type { AppLibraryFolder, AudioOutputDevice, CoverArtPrioritySource, CustomSendToAction, CustomSendToActionScope, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerEqualizerPosition, PlayerVisualizerMode, ScrobbleFilterMode, ScrobbleRule, ScrobbleRuleField, ScrobbleRuleOperator } from '../types/app-types';
 import type { RoonAccentSettings } from '../utils/roon-accent-theme';
 
 export type LibraryFolderDialogValues = {
@@ -96,10 +96,6 @@ export type SettingsControllerOptions = {
     forceReload: (values: SettingsFormValues) => Promise<void>;
     beforeClose?: () => Promise<string | null>;
     onCloseBlocked?: (message: string) => void;
-    getShellTheme: () => AppShellTheme;
-    setShellTheme: (theme: AppShellTheme) => void;
-    getPlayerCardLayout: () => PlayerCardLayout;
-    setPlayerCardLayout: (layout: PlayerCardLayout) => void;
     getRoonAccentTheme: () => RoonAccentSettings;
     setRoonAccentTheme: (theme: RoonAccentSettings) => void;
     isWindows?: boolean;

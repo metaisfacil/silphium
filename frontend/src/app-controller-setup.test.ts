@@ -194,8 +194,6 @@ const createContext = () => {
         updatePlayButton: vi.fn(),
         scanConfiguredLibraryFolders: vi.fn(async () => undefined),
         openErrorModal: vi.fn(),
-        getPlayerCardLayout: vi.fn(() => 'release'),
-        setPlayerCardLayout: vi.fn(),
         playlistBtn: document.createElement('button'),
         playlistMenuElements: { menu: document.createElement('div') },
         playlistModalElements: { modal: document.createElement('div') },
@@ -393,8 +391,6 @@ describe('app-controller-setup', () => {
         context.validateConfiguredFFmpegPath.mockResolvedValueOnce({ available: false });
         expect(await settingsConfig.beforeClose()).toBe('Missing FFmpeg');
         settingsConfig.onCloseBlocked('Missing FFmpeg');
-        settingsConfig.setPlayerCardLayout('cover');
-        expect(settingsConfig.getPlayerCardLayout()).toBe('release');
         expect(context.scanConfiguredLibraryFolders).toHaveBeenCalledTimes(3);
 
         await playlistConfig.ensureTrackTagsResolvedBatch([0, 1]);
@@ -488,7 +484,6 @@ describe('app-controller-setup', () => {
         expect(context.updatePlayButton).toHaveBeenCalled();
         expect(context.scanConfiguredLibraryFolders).toHaveBeenCalled();
         expect(context.openErrorModal).toHaveBeenCalledWith('FFmpeg Required', 'Missing FFmpeg');
-        expect(context.setPlayerCardLayout).toHaveBeenCalledWith('cover');
         expect(context.loadTrack).toHaveBeenCalledWith(1, true, undefined, true);
         expect(context.playCurrentTrack).toHaveBeenCalled();
         expect(context.openSidebarQueueMenu).toHaveBeenCalledWith(11, 22, [1], 1, true, '/music/library/track-2.flac');

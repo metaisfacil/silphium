@@ -39,7 +39,7 @@ import { scheduleLastFmRequest } from './utils/lastfm-request-scheduler';
 import { scheduleListenBrainzRequest } from './utils/musicbrainz-request-scheduler';
 import type { RoonAccentSettings } from './utils/roon-accent-theme';
 import { DEFAULT_ROON_ACCENT_COLOR, DEFAULT_ROON_ACCENT_SATURATION, resolveRoonAccentTheme } from './utils/roon-accent-theme';
-import type { AppShellTheme, AudioVisualizationFrame, ImageLibraryFile, LibraryIndexedFile, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
+import type { AudioVisualizationFrame, ImageLibraryFile, LibraryIndexedFile, ListenBrainzSocialEvent, Track } from './types/app-types';
 import { activeSelectionTargetWithin, firstTagValue, normalizedTrackNumber } from './utils/display-helpers';
 import { folderKeyForPath, relativeFolderSegmentsForTrack, releaseFolderPathForTrackAtDepth } from './utils/main-helpers';
 
@@ -229,8 +229,6 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     const overviewAlbumGridPendingUnloadByTrackIndex = new Map<number, number>();
     const overviewAlbumGridUnloadGenerationByTrackIndex = new Map<number, number>();
     const overviewAlbumGridViewStabilityWaiters: Array<() => void> = [];
-    const shellThemeKey = 'appShellTheme';
-    const playerCardLayoutKey = 'playerCardLayout';
     const roonAccentColorKey = 'roonAccentColor';
     const roonAccentSaturationKey = 'roonAccentSaturation';
     const localReleaseFolderByMBID = new Map<string, Promise<string>>();
@@ -2064,9 +2062,6 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
     window.addEventListener('resize', syncResponsiveOverviewScrollPosition, { passive: true });
 
-    const getStoredShellTheme = (): AppShellTheme =>
-        localStorage.getItem(shellThemeKey) === 'classic' ? 'classic' : 'roon';
-
     function refreshOverviewDashboard(): void {
         const trackCount = context.tracks.length;
         const albumCount = buildOverviewAlbumGridEntries().length;
@@ -2147,9 +2142,6 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     syncOverviewDashboardMode();
     syncOverviewAlbumGridScrollPill({ showHint: false });
 
-    const getStoredLayout = (): PlayerCardLayout =>
-        localStorage.getItem(playerCardLayoutKey) === 'release' ? 'release' : 'default';
-
     const getStoredRoonAccentTheme = (): RoonAccentSettings => resolveRoonAccentTheme({
         color: localStorage.getItem(roonAccentColorKey) ?? DEFAULT_ROON_ACCENT_COLOR,
         saturation: localStorage.getItem(roonAccentSaturationKey) ?? String(DEFAULT_ROON_ACCENT_SATURATION),
@@ -2171,31 +2163,14 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         syncRoonAccentCssVars(resolvedTheme);
     };
 
-    const syncPlayerCardLayoutClass = (layout: PlayerCardLayout): void => {
-        const classicThemeActive = context.app.classList.contains('shell-theme-classic');
-        context.playerCard.classList.toggle('layout-release', classicThemeActive && layout === 'release');
-    };
-
-    const applyPlayerCardLayout = (layout: PlayerCardLayout): void => {
-        localStorage.setItem(playerCardLayoutKey, layout);
-        syncPlayerCardLayoutClass(layout);
-    };
-
-    const applyShellTheme = (theme: AppShellTheme): void => {
-        context.app.classList.toggle('shell-theme-classic', theme === 'classic');
-        context.app.classList.toggle('shell-theme-roon', theme === 'roon');
-        localStorage.setItem(shellThemeKey, theme);
-        syncPlayerCardLayoutClass(getStoredLayout());
-        syncRoonAccentCssVars(getStoredRoonAccentTheme());
-
-        if (theme === 'roon') {
-            showOverviewPage();
-            sidebarController.showNavigation();
-            return;
-        }
-
-        showNowPlayingPage();
-        sidebarController.showLibrary();
+    const initializeRoonShell = (): void => {
+        context.app.classList.remove('shell-theme-classic');
+        context.app.classList.add('shell-theme-roon');
+        context.playerCard.classList.remove('layout-release');
+        localStorage.removeItem('appShellTheme');
+        localStorage.removeItem('playerCardLayout');
+        showOverviewPage();
+        sidebarController.showNavigation();
     };
 
     const trackMetaClickSuppressDurationMs = 280;
@@ -2399,16 +2374,13 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     });
 
     return {
-        applyShellTheme,
-        applyPlayerCardLayout,
+        initializeRoonShell,
         applyRoonAccentTheme,
         closeListenBrainzFeedbackMenu,
         coverArtService,
         defaultLastFmServerUrl,
         defaultListenBrainzServerUrl,
         defaultMusicBrainzServerUrl,
-        getStoredShellTheme,
-        getStoredLayout,
         getStoredRoonAccentTheme,
         hasLastFmScrobbling,
         hasListenBrainzScrobbling,

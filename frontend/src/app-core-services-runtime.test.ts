@@ -595,7 +595,7 @@ describe('createAppCoreServicesRuntime', () => {
         context.overviewPage.scrollTop = 192;
         const originalInnerWidth = window.innerWidth;
 
-        runtime.applyShellTheme('roon');
+        runtime.initializeRoonShell();
 
         expect(context.app.classList.contains('showing-overview')).toBe(true);
         expect(context.overviewPage.hidden).toBe(false);
@@ -623,18 +623,21 @@ describe('createAppCoreServicesRuntime', () => {
         expect(context.playerLane.hidden).toBe(false);
     });
 
-    it('applies player card layout only while the Classic shell is active', () => {
+    it('initializes the Roon shell and clears deprecated shell preferences', () => {
         const context = createContext();
         const runtime = createAppCoreServicesRuntime(context);
 
-        runtime.applyPlayerCardLayout('release');
-        expect(context.playerCard.classList.contains('layout-release')).toBe(false);
+        localStorage.setItem('appShellTheme', 'classic');
+        localStorage.setItem('playerCardLayout', 'release');
+        context.playerCard.classList.add('layout-release');
 
-        runtime.applyShellTheme('classic');
-        expect(context.playerCard.classList.contains('layout-release')).toBe(true);
+        runtime.initializeRoonShell();
 
-        runtime.applyShellTheme('roon');
+        expect(context.app.classList.contains('shell-theme-roon')).toBe(true);
+        expect(context.app.classList.contains('shell-theme-classic')).toBe(false);
         expect(context.playerCard.classList.contains('layout-release')).toBe(false);
+        expect(localStorage.getItem('appShellTheme')).toBeNull();
+        expect(localStorage.getItem('playerCardLayout')).toBeNull();
     });
 
     it('groups multi-disc releases into one last added overview card at the configured release depth', async () => {

@@ -126,8 +126,6 @@ const createContext = (quickScanResult: LibraryScanResult, trackEntry: LibraryIn
     refreshPlaylistOpenModal: vi.fn(),
     scheduleLibraryIncrementalFolderRefresh: vi.fn(),
     scheduleNowPlayingCoverRefresh: vi.fn(),
-    applyPlayerCardLayout: vi.fn(),
-    getStoredLayout: vi.fn(() => 'release'),
     resetListenBrainzFeedbackState: vi.fn(),
     listAudioOutputDevices: vi.fn(async () => []),
     getSettings: vi.fn(async () => ({ libraryFolders: [] })),

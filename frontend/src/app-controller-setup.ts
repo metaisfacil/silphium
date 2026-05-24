@@ -114,10 +114,6 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
             await context.scanConfiguredLibraryFolders();
         },
         openErrorModal: context.openErrorModal,
-        getShellTheme: context.getShellTheme,
-        setShellTheme: context.setShellTheme,
-        getPlayerCardLayout: context.getPlayerCardLayout,
-        setPlayerCardLayout: context.setPlayerCardLayout,
         getRoonAccentTheme: context.getRoonAccentTheme,
         setRoonAccentTheme: context.setRoonAccentTheme,
     });

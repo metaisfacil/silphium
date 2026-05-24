@@ -8,7 +8,6 @@ import type {
     LibraryScanProgress,
     LibraryScanResult,
     MusicBrainzTagWorkerProgress,
-    PlayerCardLayout,
     TextLibraryFile,
     Track,
 } from './types/app-types';
@@ -102,8 +101,6 @@ export interface AppLibraryLoadRuntimeContext {
     scheduleLibraryIncrementalFolderRefresh: () => void;
     scheduleNowPlayingCoverRefresh: () => void;
     refreshOverviewDashboard?: () => void;
-    applyPlayerCardLayout: (layout: PlayerCardLayout) => void;
-    getStoredLayout: () => PlayerCardLayout;
     resetListenBrainzFeedbackState: () => void;
     listAudioOutputDevices: () => Promise<AudioOutputDevice[]>;
     getSettings: () => Promise<AppSettings>;
