@@ -2,6 +2,7 @@ import { createSettingsController, type SettingsController } from './controllers
 import type { SettingsModalElements } from './components/overlays';
 import type {
     AppLibraryFolder,
+    AppShellTheme,
     AppSettings,
     AudioOutputDevice,
     AudioPlaybackState,
@@ -11,6 +12,7 @@ import type {
     Track,
 } from './types/app-types';
 import type { SettingsControllerState } from './controllers/settings-controller-types';
+import type { RoonAccentSettings } from './utils/roon-accent-theme';
 import { libraryFolderMusicBrainzTagWorkerScansEnabled, normalizeLibraryFolderKind, normalizeLibraryFolders } from './utils/main-helpers';
 import { normalizeAppSettings } from './utils/settings-normalization';
 
@@ -113,8 +115,12 @@ export interface AppSettingsControllerSetupContext {
     updatePlayButton: () => void;
     scanConfiguredLibraryFolders: () => Promise<void>;
     openErrorModal: (title: string, message: string) => void;
+    getShellTheme: () => AppShellTheme;
+    setShellTheme: (theme: AppShellTheme) => void;
     getPlayerCardLayout: () => PlayerCardLayout;
     setPlayerCardLayout: (layout: PlayerCardLayout) => void;
+    getRoonAccentTheme: () => RoonAccentSettings;
+    setRoonAccentTheme: (theme: RoonAccentSettings) => void;
 }
 
 export const setupSettingsController = (context: AppSettingsControllerSetupContext): SettingsController => {
@@ -415,7 +421,11 @@ export const setupSettingsController = (context: AppSettingsControllerSetupConte
         onCloseBlocked: (message: string): void => {
             context.openErrorModal('FFmpeg Required', message);
         },
+        getShellTheme: context.getShellTheme,
+        setShellTheme: context.setShellTheme,
         getPlayerCardLayout: context.getPlayerCardLayout,
         setPlayerCardLayout: context.setPlayerCardLayout,
+        getRoonAccentTheme: context.getRoonAccentTheme,
+        setRoonAccentTheme: context.setRoonAccentTheme,
     });
 };

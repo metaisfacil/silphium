@@ -2,6 +2,7 @@ import type { SettingsModalElements } from '../components/overlays/settings-moda
 import type {
     AudioOutputDevice,
     AppLibraryFolder,
+    AppShellTheme,
     CoverArtPrioritySource,
     CustomSendToAction,
     ScrobbleRule,
@@ -65,6 +66,7 @@ export interface SettingsControllerEventContext {
     refreshMusicBrainzRateControls: () => void;
     refreshListenBrainzRateControls: () => void;
     refreshEqualizerPositionControls: () => void;
+    refreshRoonAccentFieldPreview: () => void;
     refreshScrobbleRuleDialogControls: (preferredOperator?: ScrobbleRuleOperator) => void;
     refreshAudioOutputDevices: (devices: AudioOutputDevice[], selectedDevice: string) => void;
     refreshForceReloadStatus: () => void;
@@ -213,13 +215,32 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         settingsAudioOutputDevice,
         settingsApplyAudioNow,
         settingsMusicBrainzTagDatabaseEnabled,
+        settingsUiLayoutGrid,
+        settingsShellTheme,
+        settingsPlayerCardLayoutField,
         settingsPlayerCardLayout,
+        settingsRoonAccentField,
+        settingsRoonAccentColor,
+        settingsRoonAccentSaturation,
         settingsVisualizerMode,
         settingsLissajousScale,
         settingsCoverArtPriorityAccordionToggle,
         settingsCoverArtPriorityAccordionPanel,
         settingsCoverArtPriorityList,
     } = elements;
+
+    const refreshShellThemeControlVisibility = (): void => {
+        const shellTheme = settingsShellTheme.value === 'classic' ? 'classic' : 'roon';
+        const classicThemeSelected = shellTheme === 'classic';
+        const roonThemeSelected = shellTheme === 'roon';
+
+        settingsUiLayoutGrid.dataset.shellTheme = shellTheme;
+        settingsPlayerCardLayoutField.hidden = !classicThemeSelected;
+        settingsPlayerCardLayout.disabled = !classicThemeSelected;
+        settingsRoonAccentField.hidden = !roonThemeSelected;
+        settingsRoonAccentColor.disabled = !roonThemeSelected;
+        settingsRoonAccentSaturation.disabled = !roonThemeSelected;
+    };
 
     const bindAccordionHeaderToggle = (
         toggle: HTMLButtonElement,
@@ -495,7 +516,17 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
 
     settingsTabUi.addEventListener('click', () => {
         setActiveTab('ui');
-        settingsPlayerCardLayout.focus();
+        if (!settingsPlayerCardLayout.disabled && !settingsPlayerCardLayoutField.hidden) {
+            settingsPlayerCardLayout.focus();
+            return;
+        }
+
+        if (!settingsRoonAccentColor.disabled && !settingsRoonAccentField.hidden) {
+            settingsRoonAccentColor.focus();
+            return;
+        }
+
+        settingsShellTheme.focus();
     });
 
     settingsTabsScrollLeft.addEventListener('click', () => {
@@ -641,10 +672,37 @@ export const bindSettingsControllerEvents = (context: SettingsControllerEventCon
         scrollCoverArtPriorityAccordionIntoView,
     );
 
+    settingsShellTheme.addEventListener('change', () => {
+        const theme: AppShellTheme = settingsShellTheme.value === 'classic' ? 'classic' : 'roon';
+        refreshShellThemeControlVisibility();
+        options.setShellTheme(theme);
+    });
+
     settingsPlayerCardLayout.addEventListener('change', () => {
+        if (settingsPlayerCardLayout.disabled || settingsShellTheme.value !== 'classic') {
+            return;
+        }
+
         const layout = settingsPlayerCardLayout.value === 'release' ? 'release' : 'default';
         options.setPlayerCardLayout(layout);
     });
+
+    const applyRoonAccentTheme = (): void => {
+        context.refreshRoonAccentFieldPreview();
+        if (settingsRoonAccentColor.disabled || settingsRoonAccentSaturation.disabled || settingsShellTheme.value !== 'roon') {
+            return;
+        }
+
+        options.setRoonAccentTheme({
+            color: settingsRoonAccentColor.value,
+            saturation: Number.parseFloat(settingsRoonAccentSaturation.value),
+        });
+    };
+
+    settingsRoonAccentColor.addEventListener('input', applyRoonAccentTheme);
+    settingsRoonAccentColor.addEventListener('change', applyRoonAccentTheme);
+    settingsRoonAccentSaturation.addEventListener('input', applyRoonAccentTheme);
+    settingsRoonAccentSaturation.addEventListener('change', applyRoonAccentTheme);
 
     settingsFavoritePlaylistList.addEventListener('click', (event) => {
         const target = event.target;

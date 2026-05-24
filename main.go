@@ -24,10 +24,10 @@ func main() {
 	// Create application with options
 	err := runWailsApp(&options.App{
 		Title:     "Silphium",
-		Width:     580,
-		Height:    825,
-		MinWidth:  580,
-		MinHeight: 700,
+		Width:     1180,
+		Height:    780,
+		MinWidth:  900,
+		MinHeight: 640,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

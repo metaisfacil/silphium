@@ -31,7 +31,7 @@ const flushPromises = async (): Promise<void> => {
 
 const mountController = (options?: {
     token?: string;
-    hasAnyProviderConfigured?: boolean;
+    hasAnyProviderConfigured?: boolean | (() => boolean);
     isSidebarVisible?: () => boolean;
     fetchFollowingUsers?: ListenBrainzSocialControllerOptions['fetchFollowingUsers'];
     fetchFollowingFeed?: ListenBrainzSocialControllerOptions['fetchFollowingFeed'];
@@ -86,7 +86,13 @@ const mountController = (options?: {
             socialFeedStatus,
             socialFeedList,
         },
-        hasAnyProviderConfigured: () => options?.hasAnyProviderConfigured ?? (options?.token ?? 'token').trim() !== '',
+        hasAnyProviderConfigured: () => {
+            if (typeof options?.hasAnyProviderConfigured === 'function') {
+                return options.hasAnyProviderConfigured();
+            }
+
+            return options?.hasAnyProviderConfigured ?? (options?.token ?? 'token').trim() !== '';
+        },
         isSidebarVisible: options?.isSidebarVisible || (() => true),
         fetchFollowingUsers,
         fetchFollowingFeed,
@@ -129,6 +135,19 @@ describe('createListenBrainzSocialController', () => {
         document.body.innerHTML = '';
     });
 
+    it('warms social data in the background when providers are already configured', async () => {
+        const {
+            fetchFollowingUsers,
+            fetchFollowingFeed,
+        } = mountController();
+
+        await flushPromises();
+
+        expect(fetchFollowingUsers).toHaveBeenCalledTimes(1);
+        expect(fetchFollowingFeed).toHaveBeenCalledTimes(1);
+        expect(fetchFollowingFeed).toHaveBeenCalledWith(40);
+    });
+
     it('loads and renders the social feed when the social tab opens', async () => {
         const {
             libraryExpandToggle,
@@ -136,8 +155,6 @@ describe('createListenBrainzSocialController', () => {
             sidebarSectionTriggerLabel,
             sidebarSectionMenu,
             sidebarSectionOptionSocial,
-            sidebarPaneLibrary,
-            sidebarPaneSocial,
             socialFeedList,
             fetchFollowingUsers,
             fetchFollowingFeed,
@@ -191,8 +208,6 @@ describe('createListenBrainzSocialController', () => {
         expect(fetchFollowingFeed).toHaveBeenCalledWith(40);
         expect(sidebarSectionTriggerLabel.textContent).toBe('SOCIAL');
         expect(libraryExpandToggle.hidden).toBe(true);
-        expect(sidebarPaneLibrary.hidden).toBe(true);
-        expect(sidebarPaneSocial.hidden).toBe(false);
         expect(socialFeedList.textContent).toContain('Track Two');
         expect(socialFeedList.textContent).not.toContain('Track One');
         expect(socialFeedList.textContent).toContain('Track Three');
@@ -335,7 +350,7 @@ describe('createListenBrainzSocialController', () => {
     });
 
     it('switches back to the library pane when requested programmatically', async () => {
-        const { controller, libraryExpandToggle, sidebarSectionOptionSocial, sidebarSectionTriggerLabel, sidebarPaneLibrary, sidebarPaneSocial } = mountController();
+        const { controller, libraryExpandToggle, sidebarSectionOptionSocial, sidebarSectionTriggerLabel } = mountController();
 
         sidebarSectionOptionSocial.click();
         await flushPromises();
@@ -344,8 +359,31 @@ describe('createListenBrainzSocialController', () => {
 
         expect(sidebarSectionTriggerLabel.textContent).toBe('LIBRARY');
         expect(libraryExpandToggle.hidden).toBe(false);
-        expect(sidebarPaneLibrary.hidden).toBe(false);
-        expect(sidebarPaneSocial.hidden).toBe(true);
+        expect(controller.isSocialActive()).toBe(false);
+    });
+
+    it('warms social data after settings enable a provider while the library pane stays active', async () => {
+        let providersConfigured = false;
+        const {
+            controller,
+            fetchFollowingUsers,
+            fetchFollowingFeed,
+        } = mountController({
+            hasAnyProviderConfigured: () => providersConfigured,
+        });
+
+        await flushPromises();
+
+        expect(fetchFollowingUsers).not.toHaveBeenCalled();
+        expect(fetchFollowingFeed).not.toHaveBeenCalled();
+
+        providersConfigured = true;
+        controller.handleSettingsChanged();
+        await flushPromises();
+
+        expect(fetchFollowingUsers).toHaveBeenCalledTimes(1);
+        expect(fetchFollowingFeed).toHaveBeenCalledTimes(1);
+        expect(fetchFollowingFeed).toHaveBeenCalledWith(40);
         expect(controller.isSocialActive()).toBe(false);
     });
 

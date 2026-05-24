@@ -1250,6 +1250,50 @@ describe('createPlaylistController', () => {
         expect(controller.getNextTrackIndex(1)).toBe(0);
     });
 
+    it('inserts add-next tracks after the active queue cursor when the current track appears multiple times', () => {
+        const state = createPlaylistControllerState();
+        state.editableQueueTrackIndexes = [1, 0, 2, 0, 3];
+        state.editableQueueCurrentPosition = 3;
+        state.selectedSource = 'queue';
+        state.playbackSource = 'queue';
+
+        const { controller, onPlaybackSequenceMutated } = mountPlaylistController({
+            state,
+            trackViews: Array.from({ length: 6 }, (_, index) => createTrackView(index)),
+        });
+
+        controller.addToQueueNext([5]);
+
+        expect(controller.getSequenceOverride()).toEqual({
+            indexes: [1, 0, 2, 0, 5, 3],
+            currentPosition: 3,
+        });
+        expect(controller.peekNextTrackIndex(1)).toBe(5);
+        expect(onPlaybackSequenceMutated).toHaveBeenCalledTimes(1);
+    });
+
+    it('replaces the playback queue with an explicit selection and cursor', () => {
+        const state = createPlaylistControllerState();
+        state.editableQueueTrackIndexes = [4, 5];
+        state.editableQueueCurrentPosition = 1;
+        state.selectedSource = 'queue';
+        state.playbackSource = 'queue';
+
+        const { controller, onPlaybackSequenceMutated } = mountPlaylistController({
+            state,
+            trackViews: Array.from({ length: 6 }, (_, index) => createTrackView(index)),
+        });
+
+        controller.replacePlaybackQueue([1, 2, 3], 0);
+
+        expect(controller.getSequenceOverride()).toEqual({
+            indexes: [1, 2, 3],
+            currentPosition: 0,
+        });
+        expect(controller.peekNextTrackIndex(1)).toBe(2);
+        expect(onPlaybackSequenceMutated).toHaveBeenCalledTimes(1);
+    });
+
     it('promotes queue-end mutations to the active playback source while playing a playlist', async () => {
         const { controller, elements } = mountPlaylistController();
 

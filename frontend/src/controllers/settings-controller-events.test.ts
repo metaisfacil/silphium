@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { getSettingsModalElements, renderSettingsModal } from '../components/overlays/settings-modal';
+import type { RoonAccentSettings } from '../utils/roon-accent-theme';
 import { bindSettingsControllerEvents, type SettingsControllerEventContext } from './settings-controller-events';
 
 const flushPromises = async (): Promise<void> => {
@@ -25,8 +26,12 @@ const createContext = (): SettingsControllerEventContext => {
             fetchLastFmSessionKey: vi.fn(async () => ''),
             applyAudioNow: vi.fn(async () => ({ devices: [], selectedDevice: 'default', message: 'Audio settings refreshed.' })),
             forceReload: vi.fn(async () => undefined),
+            getShellTheme: vi.fn(() => 'roon'),
+            setShellTheme: vi.fn(),
             getPlayerCardLayout: vi.fn(() => 'default'),
             setPlayerCardLayout: vi.fn(),
+            getRoonAccentTheme: vi.fn((): RoonAccentSettings => ({ color: '#68b4ff', saturation: 100 })),
+            setRoonAccentTheme: vi.fn(),
         },
         libraryFolderRepeatClickWindowMs: 400,
         settingsTabScrollStepPx: 160,
@@ -165,5 +170,35 @@ describe('bindSettingsControllerEvents', () => {
         expect(context.setSettingsStatusMessage).toHaveBeenCalledWith(
             'Unable to refresh audio settings right now: audio output context failed: oto: device not found',
         );
+    });
+
+    it('shows and enables Player card layout only when Classic theme is selected', () => {
+        const context = createContext();
+        bindSettingsControllerEvents(context);
+
+        context.elements.settingsShellTheme.value = 'classic';
+        context.elements.settingsShellTheme.dispatchEvent(new Event('change', { bubbles: true }));
+
+        expect(context.elements.settingsUiLayoutGrid.dataset.shellTheme).toBe('classic');
+        expect(context.elements.settingsPlayerCardLayoutField.hidden).toBe(false);
+        expect(context.elements.settingsPlayerCardLayout.disabled).toBe(false);
+        expect(context.elements.settingsRoonAccentField.hidden).toBe(true);
+        expect(context.options.setShellTheme).toHaveBeenCalledWith('classic');
+
+        context.elements.settingsPlayerCardLayout.value = 'release';
+        context.elements.settingsPlayerCardLayout.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(context.options.setPlayerCardLayout).toHaveBeenCalledWith('release');
+
+        context.elements.settingsShellTheme.value = 'roon';
+        context.elements.settingsShellTheme.dispatchEvent(new Event('change', { bubbles: true }));
+
+        expect(context.elements.settingsUiLayoutGrid.dataset.shellTheme).toBe('roon');
+        expect(context.elements.settingsPlayerCardLayoutField.hidden).toBe(true);
+        expect(context.elements.settingsPlayerCardLayout.disabled).toBe(true);
+        expect(context.elements.settingsRoonAccentField.hidden).toBe(false);
+        expect(context.elements.settingsRoonAccentColor.disabled).toBe(false);
+
+        context.elements.settingsPlayerCardLayout.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(context.options.setPlayerCardLayout).toHaveBeenCalledTimes(1);
     });
 });

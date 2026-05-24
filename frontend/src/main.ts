@@ -176,7 +176,7 @@ const LIBRARY_CLIENT_FINALIZE_MS_KEY = 'libraryClientFinalizeEstimateMs';
 const LIBRARY_TOTAL_LOAD_MS_KEY = 'libraryTotalLoadEstimateMs';
 
 const shell = getAppShellElements(document);
-const { coverFrame } = shell;
+const { coverFrame, playerTaskbar } = shell;
 setLibraryShareConnectionsIndicator(shell.libraryShareConnectionsIndicator, 0);
 const storedLibraryClientFinalizeEstimateMs = parseFloat(localStorage.getItem(LIBRARY_CLIENT_FINALIZE_MS_KEY) ?? '') || 0;
 const storedLibraryTotalLoadEstimateMs = parseFloat(localStorage.getItem(LIBRARY_TOTAL_LOAD_MS_KEY) ?? '') || 0;
@@ -521,7 +521,9 @@ openExplorationLibrarySearch = (query: string, options?: { expandFilteredFolders
 };
 
 const {
+    applyShellTheme,
     applyPlayerCardLayout,
+    applyRoonAccentTheme,
     defaultMusicBrainzServerUrl,
     visualizerController,
     socialController,
@@ -529,7 +531,9 @@ const {
     playbackStateService,
     refreshListenBrainzFeedbackForCurrentTrack,
     resetListenBrainzFeedbackState,
+    getStoredShellTheme,
     getStoredLayout,
+    getStoredRoonAccentTheme,
 } = runtimeScope;
 
 Object.assign(runtimeScope, setupNowPlayingRuntime(Object.assign(Object.create(runtimeScope), {
@@ -674,7 +678,9 @@ const {
 } = runtimeScope;
 
 const initializeSettings = async (): Promise<void> => {
+    applyShellTheme(getStoredShellTheme());
     applyPlayerCardLayout(getStoredLayout());
+    applyRoonAccentTheme(getStoredRoonAccentTheme());
     resetListenBrainzFeedbackState();
 
     try {
@@ -741,10 +747,25 @@ const {
 } = coverFlipRuntime;
 
 const volumeBtn = document.querySelector('#volume-btn') as HTMLButtonElement;
+const syncRoonTaskbarHeight = (): void => {
+    const measuredTaskbarHeightPx = Math.max(0, Math.ceil(playerTaskbar.getBoundingClientRect().height || 0));
+
+    if (measuredTaskbarHeightPx > 0) {
+        app?.style.setProperty('--roon-track-view-taskbar-height', `${measuredTaskbarHeightPx}px`);
+    }
+};
+
 const cardResizeObserver = new ResizeObserver((entries) => {
     const measuredCardHeightPx = entries[0]?.contentRect.height;
     updateLyricsPanelVisibility(measuredCardHeightPx);
 });
+
+const roonTaskbarResizeObserver = new ResizeObserver(() => {
+    syncRoonTaskbarHeight();
+});
+
+syncRoonTaskbarHeight();
+roonTaskbarResizeObserver.observe(playerTaskbar);
 
 const lateRuntimeRefs = {
     coverFront,

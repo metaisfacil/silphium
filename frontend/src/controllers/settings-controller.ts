@@ -1,5 +1,6 @@
 import { UI_TIMINGS_MS } from '../constants/ui-timings';
 import type { AudioOutputDevice, CoverArtPrioritySource, MusicBrainzTagWorkerProgress, ScrobbleRuleOperator } from '../types/app-types';
+import { resolveRoonAccentTheme } from '../utils/roon-accent-theme';
 import { normalizeLissajousScale } from '../utils/settings-normalization';
 import { defaultLibrarySharingPort, normalizeLibraryFolders, normalizeLibrarySharingPort, normalizeScrobbleRules } from '../utils/main-helpers';
 import { normalizeFocusedKeyboardShortcuts } from '../utils/shortcut-bindings';
@@ -156,7 +157,14 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         settingsMusicBrainzTagWorkerProgressValue,
         settingsMusicBrainzTagWorkerProgressRemaining,
         settingsMusicBrainzTagWorkerProgressStatus,
+        settingsUiLayoutGrid,
+        settingsShellTheme,
+        settingsPlayerCardLayoutField,
         settingsPlayerCardLayout,
+        settingsRoonAccentField,
+        settingsRoonAccentColor,
+        settingsRoonAccentSaturation,
+        settingsRoonAccentSaturationValue,
         settingsVisualizerControls,
         settingsVisualizerMode,
         settingsEqualizerPositionField,
@@ -201,6 +209,30 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let musicBrainzTagWorkerRefreshInFlight = false;
     let librarySharingPasswordHash = '';
     const libraryFolderRepeatClickWindowMs = 400;
+
+    const refreshRoonAccentFieldPreview = (): void => {
+        const accentTheme = resolveRoonAccentTheme({
+            color: settingsRoonAccentColor.value,
+            saturation: settingsRoonAccentSaturation.value,
+        });
+
+        settingsRoonAccentColor.style.setProperty('--settings-accent-color', accentTheme.appliedColor);
+        settingsRoonAccentSaturationValue.value = `${accentTheme.saturation}%`;
+        settingsRoonAccentSaturationValue.textContent = `${accentTheme.saturation}%`;
+    };
+
+    const refreshShellThemeControlVisibility = (): void => {
+        const shellTheme = settingsShellTheme.value === 'classic' ? 'classic' : 'roon';
+        const classicThemeSelected = shellTheme === 'classic';
+        const roonThemeSelected = shellTheme === 'roon';
+
+        settingsUiLayoutGrid.dataset.shellTheme = shellTheme;
+        settingsPlayerCardLayoutField.hidden = !classicThemeSelected;
+        settingsPlayerCardLayout.disabled = !classicThemeSelected;
+        settingsRoonAccentField.hidden = !roonThemeSelected;
+        settingsRoonAccentColor.disabled = !roonThemeSelected;
+        settingsRoonAccentSaturation.disabled = !roonThemeSelected;
+    };
 
     // Dialog state
     const dialogTimers: DialogTimers = {
@@ -839,7 +871,13 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         refreshLocalLibraryFilesDatabaseControls();
         refreshMusicBrainzTagWorkerControls();
         renderMusicBrainzTagWorkerProgress(values.musicBrainzTagWorkerProgress);
+        settingsShellTheme.value = options.getShellTheme();
         settingsPlayerCardLayout.value = options.getPlayerCardLayout();
+        const roonAccentTheme = options.getRoonAccentTheme();
+        settingsRoonAccentColor.value = roonAccentTheme.color;
+        settingsRoonAccentSaturation.value = String(roonAccentTheme.saturation);
+        refreshRoonAccentFieldPreview();
+        refreshShellThemeControlVisibility();
         setShortcutValues(normalizeFocusedKeyboardShortcuts(values.keyboardShortcuts));
         controllerState.favoritePlaylists = normalizeFavoritePlaylists(values.favoritePlaylists);
         controllerState.customSendToActions = normalizeCustomSendToActions(values.customSendToActions || []);
@@ -926,7 +964,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
             return;
         }
 
-        settingsPlayerCardLayout.focus();
+        settingsShellTheme.focus();
     };
 
     bindShortcutCaptureInput(settingsShortcutPlayPauseToggle);
@@ -1071,6 +1109,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
         refreshMusicBrainzRateControls,
         refreshListenBrainzRateControls,
         refreshEqualizerPositionControls,
+        refreshRoonAccentFieldPreview,
         refreshScrobbleRuleDialogControls: (preferredOperator?: ScrobbleRuleOperator) => {
             refreshScrobbleRuleDialogControls(scrobbleRuleElements, preferredOperator);
         },

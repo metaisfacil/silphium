@@ -2,7 +2,26 @@ export type MediaControlsElements = {
     playerShell: HTMLElement;
     playerLane: HTMLDivElement;
     playerCard: HTMLElement;
-  playerVisualizerCanvas: HTMLCanvasElement;
+    playerTaskbar: HTMLElement;
+    overviewPage: HTMLElement;
+    overviewShowAlbums: HTMLButtonElement;
+    overviewShowRecents: HTMLButtonElement;
+    overviewTracksCount: HTMLSpanElement;
+    overviewAlbumsCount: HTMLSpanElement;
+    overviewArtistsCount: HTMLSpanElement;
+    overviewLibrariesCount: HTMLSpanElement;
+    overviewRecentsView: HTMLDivElement;
+    overviewAlbumGridView: HTMLDivElement;
+    overviewAlbumGrid: HTMLDivElement;
+    overviewAlbumGridScrollRail: HTMLDivElement;
+    overviewAlbumGridScrollPill: HTMLButtonElement;
+    overviewAlbumGridScrollHint: HTMLDivElement;
+    overviewLastPlayedList: HTMLDivElement;
+    overviewLastAddedList: HTMLDivElement;
+    taskbarCoverArt: HTMLImageElement;
+    taskbarShowPlayer: HTMLButtonElement;
+    taskbarShowOverview: HTMLButtonElement;
+    playerVisualizerCanvas: HTMLCanvasElement;
     trackTitle: HTMLParagraphElement;
     trackAlbum: HTMLParagraphElement;
     trackPosition: HTMLSpanElement;
@@ -64,11 +83,66 @@ const renderShareIcon = (): string => `
     </svg>
 `;
 
+const renderHomeIcon = (): string => `
+    <svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <path fill="currentColor" d="M12 2L1.5 10.5L3 12L5 10.4V21H10V15H14V21H19V10.4L21 12L22.5 10.5L12 2Z"/>
+    </svg>
+`;
+
 export const renderPlayPauseIcon = (state: 'play' | 'pause'): string =>
     state === 'pause' ? renderPauseIcon() : renderPlayIcon();
 
 export const renderMediaControls = (): string => `
     <main class="player-shell">
+      <section id="overview-page" class="overview-page">
+        <div class="overview-stats-grid">
+          <article class="overview-stat-card">
+            <span id="overview-tracks-count" class="overview-stat-value">0</span>
+            <span class="overview-stat-label">Tracks</span>
+          </article>
+          <button id="overview-show-albums" class="overview-stat-card overview-stat-card-button" type="button" aria-pressed="false">
+            <span id="overview-albums-count" class="overview-stat-value">0</span>
+            <span class="overview-stat-label">Albums</span>
+          </button>
+          <article class="overview-stat-card">
+            <span id="overview-artists-count" class="overview-stat-value">0</span>
+            <span class="overview-stat-label">Artists</span>
+          </article>
+          <button id="overview-show-recents" class="overview-stat-card overview-stat-card-button" type="button" aria-pressed="true">
+            <span id="overview-libraries-count" class="overview-stat-value">0</span>
+            <span class="overview-stat-label">Libraries</span>
+          </button>
+        </div>
+        <div id="overview-recents-view" class="overview-content-grid">
+          <section class="overview-section-card" aria-labelledby="overview-last-played-heading">
+            <div class="overview-section-header">
+              <h2 id="overview-last-played-heading" class="overview-section-title">Last played tracks</h2>
+            </div>
+            <div id="overview-last-played-list" class="overview-album-list">
+              <p class="overview-empty">No listen history yet.</p>
+            </div>
+          </section>
+          <section class="overview-section-card" aria-labelledby="overview-last-added-heading">
+            <div class="overview-section-header">
+              <h2 id="overview-last-added-heading" class="overview-section-title">Last added albums</h2>
+            </div>
+            <div id="overview-last-added-list" class="overview-album-list">
+              <p class="overview-empty">No recently added albums yet.</p>
+            </div>
+          </section>
+        </div>
+        <div class="overview-album-grid-shell" hidden>
+          <div id="overview-album-grid-view" class="overview-album-grid-view" hidden>
+            <div id="overview-album-grid" class="library-album-grid">
+              <p class="library-album-grid-empty">No albums in library</p>
+            </div>
+          </div>
+          <div id="overview-album-grid-scroll-rail" class="overview-album-grid-scroll-rail" hidden aria-hidden="true">
+            <button id="overview-album-grid-scroll-pill" class="overview-album-grid-scroll-pill" type="button" tabindex="-1" aria-hidden="true"></button>
+            <div id="overview-album-grid-scroll-hint" class="overview-album-grid-scroll-hint" hidden aria-hidden="true"></div>
+          </div>
+        </div>
+      </section>
       <div id="player-lane" class="player-lane">
       <section id="player-card" class="player-card">
         <canvas id="player-visualizer" class="player-visualizer-canvas" aria-hidden="true"></canvas>
@@ -76,8 +150,8 @@ export const renderMediaControls = (): string => `
         <div id="cover-frame" class="cover-frame" role="button" tabindex="0" aria-label="Flip cover art">
           <div id="cover-flipper" class="cover-flipper">
             <div class="cover-face cover-front">
-              <img id="cover-art-bg" class="cover-art-bg" alt="" aria-hidden="true">
-              <img id="cover-art" class="cover-art" alt="Album cover art">
+              <img id="cover-art-bg" class="cover-art-bg" alt="" aria-hidden="true" draggable="false">
+              <img id="cover-art" class="cover-art" alt="Album cover art" draggable="false">
             </div>
             <div class="cover-face cover-back">
               <div class="artist-info">
@@ -100,49 +174,61 @@ export const renderMediaControls = (): string => `
           <span id="track-release-year" class="track-release-year"></span>
           <span id="track-release-cat" class="track-release-cat"></span>
         </div>
-        <div class="track-meta">
-          <div class="track-title-row">
-            <p id="track-title" class="track-line track-title">Unknown Title</p>
-            <span id="track-position" class="track-position"></span>
-          </div>
-          <p id="track-album" class="track-line track-album">Unknown Album</p>
-          <p id="track-artist" class="track-line track-artist">Unknown Artist</p>
-        </div>
-        <div class="time-row">
-          <span id="current-time">0:00</span>
-          <span class="track-time-center">
-            <button id="track-technical" class="track-technical" type="button" aria-label="Show track technical details" disabled></button>
-            <span id="track-title-inline" class="track-title-inline"></span>
-            <span id="track-position-inline" class="track-position-inline"></span>
-            <span id="track-genre-inline" class="track-genre-inline"></span>
-          </span>
-          <span id="track-duration">0:00</span>
-        </div>
-        <input id="seek" class="slider" type="range" min="0" max="0" value="0" step="0.1">
-        <div class="controls-row">
-          <button id="listenbrainz-love-btn" class="control-btn listenbrainz-love-btn" type="button" aria-label="Love on ListenBrainz" title="Love on ListenBrainz"><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12 20.5C11.64 20.5 11.28 20.37 11 20.11C9.77 18.96 8.6 17.89 7.58 16.96C4.52 14.16 2.5 12.31 2.5 9.5C2.5 6.85 4.59 4.75 7.25 4.75C8.75 4.75 10.19 5.45 11.13 6.56L12 7.6L12.87 6.56C13.81 5.45 15.25 4.75 16.75 4.75C19.41 4.75 21.5 6.85 21.5 9.5C21.5 12.31 19.48 14.16 16.42 16.96C15.4 17.89 14.23 18.96 13 20.11C12.72 20.37 12.36 20.5 12 20.5Z"/></svg></button>
-          <button id="playlist-btn" class="control-btn" type="button" aria-label="Playlist"><svg width="18" height="18" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M 4 5 C 3.446 5 3 5.446 3 6 C 3 6.554 3.446 7 4 7 L 19 7 C 19.554 7 20 6.554 20 6 C 20 5.446 19.554 5 19 5 L 4 5 z M 4 12 C 3.446 12 3 12.446 3 13 C 3 13.554 3.446 14 4 14 L 22 14 C 22.554 14 23 13.554 23 13 C 23 12.446 22.554 12 22 12 L 4 12 z M 21.949219 17.003906 C 21.606467 17.003906 21.272206 17.037416 20.949219 17.103516 L 20.949219 20.955078 L 17.099609 20.955078 C 17.033519 21.278118 17 21.612328 17 21.955078 C 17 22.297828 17.033519 22.632088 17.099609 22.955078 L 20.949219 22.955078 L 20.949219 26.804688 C 21.272206 26.870788 21.606467 26.904297 21.949219 26.904297 C 22.29197 26.904297 22.626178 26.870788 22.949219 26.804688 L 22.949219 22.955078 L 26.800781 22.955078 C 26.866921 22.632088 26.900391 22.297828 26.900391 21.955078 C 26.900391 21.612328 26.866921 21.278118 26.800781 20.955078 L 22.949219 20.955078 L 22.949219 17.103516 C 22.626178 17.037416 22.29197 17.003906 21.949219 17.003906 z M 4 19 C 3.446 19 3 19.446 3 20 C 3 20.554 3.446 21 4 21 L 14 21 C 14.554 21 15 20.554 15 20 C 15 19.446 14.554 19 14 19 L 4 19 z"/></svg></button>
-          <button id="back" class="control-btn" type="button" aria-label="Previous track"><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M7 5.5C7 4.67 6.33 4 5.5 4C4.67 4 4 4.67 4 5.5V18.5C4 19.33 4.67 20 5.5 20C6.33 20 7 19.33 7 18.5V5.5Z"/><path fill="currentColor" d="M18.47 4.65C17.81 4.26 17 4.74 17 5.5V17.14C17 17.9 17.81 18.38 18.47 17.99L8.51 12.19C7.85 11.8 7.85 10.84 8.51 10.45L18.47 4.65Z"/></svg></button>
-          <button id="play-pause" class="control-btn primary" type="button" aria-label="Play">${renderPlayPauseIcon('play')}</button>
-          <button id="forward" class="control-btn" type="button" aria-label="Next track"><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M17 5.5C17 4.67 17.67 4 18.5 4C19.33 4 20 4.67 20 5.5V18.5C20 19.33 19.33 20 18.5 20C17.67 20 17 19.33 17 18.5V5.5Z"/><path fill="currentColor" d="M5.53 4.65C6.19 4.26 7 4.74 7 5.5V17.14C7 17.9 6.19 18.38 5.53 17.99L15.49 12.19C16.15 11.8 16.15 10.84 15.49 10.45L5.53 4.65Z"/></svg></button>
-          <div class="volume-wrap">
-            <button id="volume-btn" class="control-btn" type="button" aria-label="Volume"><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M4 10.25C4 9.56 4.56 9 5.25 9H8.72L12.23 5.49C13.02 4.7 14.38 5.26 14.38 6.37V17.63C14.38 18.74 13.02 19.3 12.23 18.51L8.72 15H5.25C4.56 15 4 14.44 4 13.75V10.25Z"/><path stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M17 9.2C17.93 9.95 18.5 11.1 18.5 12.35C18.5 13.6 17.93 14.75 17 15.5"/><path stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M18.95 7C20.45 8.24 21.35 10.2 21.35 12.35C21.35 14.5 20.45 16.46 18.95 17.7"/></svg></button>
-            <div class="volume-popout" aria-hidden="true">
-              <input id="volume" class="slider" type="range" min="0" max="1" value="0.8" step="0.01">
-            </div>
-          </div>
-          <button id="share-btn" class="control-btn share-btn" type="button" aria-label="Share current track" title="Share current track">${renderShareIcon()}</button>
-        </div>
-        <div id="listenbrainz-feedback-menu" class="track-meta-menu listenbrainz-feedback-menu" role="menu" aria-label="ListenBrainz feedback" hidden>
-          <button id="listenbrainz-feedback-love-btn" class="track-meta-menu-item" type="button" role="menuitem">Love</button>
-          <button id="listenbrainz-feedback-hate-btn" class="track-meta-menu-item" type="button" role="menuitem">Hate</button>
-        </div>
       </section>
       <aside id="lyrics-panel" class="lyrics-panel" aria-hidden="true">
         <p class="lyrics-title">Lyrics</p>
         <pre id="lyrics-content" class="lyrics-content"></pre>
       </aside>
       </div>
+      <section id="player-taskbar" class="player-taskbar">
+        <div class="player-taskbar-primary">
+          <button id="taskbar-show-player" class="player-taskbar-cover-button" type="button" aria-label="Show now playing">
+            <img id="taskbar-cover-art" class="player-taskbar-cover-art" alt="Current album cover" draggable="false">
+          </button>
+          <div class="track-meta">
+            <div class="track-title-row">
+              <p id="track-title" class="track-line track-title">Unknown Title</p>
+              <span id="track-position" class="track-position"></span>
+            </div>
+            <p id="track-album" class="track-line track-album">Unknown Album</p>
+            <p id="track-artist" class="track-line track-artist">Unknown Artist</p>
+          </div>
+        </div>
+        <div class="player-taskbar-center">
+          <div class="time-row">
+            <span id="current-time">0:00</span>
+            <span class="track-time-center">
+              <button id="track-technical" class="track-technical" type="button" aria-label="Show track technical details" disabled></button>
+              <span id="track-title-inline" class="track-title-inline"></span>
+              <span id="track-position-inline" class="track-position-inline"></span>
+              <span id="track-genre-inline" class="track-genre-inline"></span>
+            </span>
+            <span id="track-duration">0:00</span>
+          </div>
+          <input id="seek" class="slider" type="range" min="0" max="0" value="0" step="0.1">
+          <div class="controls-row">
+            <button id="listenbrainz-love-btn" class="control-btn listenbrainz-love-btn" type="button" aria-label="Love on ListenBrainz" title="Love on ListenBrainz"><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M12 20.5C11.64 20.5 11.28 20.37 11 20.11C9.77 18.96 8.6 17.89 7.58 16.96C4.52 14.16 2.5 12.31 2.5 9.5C2.5 6.85 4.59 4.75 7.25 4.75C8.75 4.75 10.19 5.45 11.13 6.56L12 7.6L12.87 6.56C13.81 5.45 15.25 4.75 16.75 4.75C19.41 4.75 21.5 6.85 21.5 9.5C21.5 12.31 19.48 14.16 16.42 16.96C15.4 17.89 14.23 18.96 13 20.11C12.72 20.37 12.36 20.5 12 20.5Z"/></svg></button>
+            <button id="playlist-btn" class="control-btn" type="button" aria-label="Playlist"><svg width="18" height="18" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M 4 5 C 3.446 5 3 5.446 3 6 C 3 6.554 3.446 7 4 7 L 19 7 C 19.554 7 20 6.554 20 6 C 20 5.446 19.554 5 19 5 L 4 5 z M 4 12 C 3.446 12 3 12.446 3 13 C 3 13.554 3.446 14 4 14 L 22 14 C 22.554 14 23 13.554 23 13 C 23 12.446 22.554 12 22 12 L 4 12 z M 21.949219 17.003906 C 21.606467 17.003906 21.272206 17.037416 20.949219 17.103516 L 20.949219 20.955078 L 17.099609 20.955078 C 17.033519 21.278118 17 21.612328 17 21.955078 C 17 22.297828 17.033519 22.632088 17.099609 22.955078 L 20.949219 22.955078 L 20.949219 26.804688 C 21.272206 26.870788 21.606467 26.904297 21.949219 26.904297 C 22.29197 26.904297 22.626178 26.870788 22.949219 26.804688 L 22.949219 22.955078 L 26.800781 22.955078 C 26.866921 22.632088 26.900391 22.297828 26.900391 21.955078 C 26.900391 21.612328 26.866921 21.278118 26.800781 20.955078 L 22.949219 20.955078 L 22.949219 17.103516 C 22.626178 17.037416 22.29197 17.003906 21.949219 17.003906 z M 4 19 C 3.446 19 3 19.446 3 20 C 3 20.554 3.446 21 4 21 L 14 21 C 14.554 21 15 20.554 15 20 C 15 19.446 14.554 19 14 19 L 4 19 z"/></svg></button>
+            <button id="back" class="control-btn" type="button" aria-label="Previous track"><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M7 5.5C7 4.67 6.33 4 5.5 4C4.67 4 4 4.67 4 5.5V18.5C4 19.33 4.67 20 5.5 20C6.33 20 7 19.33 7 18.5V5.5Z"/><path fill="currentColor" d="M18.47 4.65C17.81 4.26 17 4.74 17 5.5V17.14C17 17.9 17.81 18.38 18.47 17.99L8.51 12.19C7.85 11.8 7.85 10.84 8.51 10.45L18.47 4.65Z"/></svg></button>
+            <button id="play-pause" class="control-btn primary" type="button" aria-label="Play">${renderPlayPauseIcon('play')}</button>
+            <button id="forward" class="control-btn" type="button" aria-label="Next track"><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M17 5.5C17 4.67 17.67 4 18.5 4C19.33 4 20 4.67 20 5.5V18.5C20 19.33 19.33 20 18.5 20C17.67 20 17 19.33 17 18.5V5.5Z"/><path fill="currentColor" d="M5.53 4.65C6.19 4.26 7 4.74 7 5.5V17.14C7 17.9 6.19 18.38 5.53 17.99L15.49 12.19C16.15 11.8 16.15 10.84 15.49 10.45L5.53 4.65Z"/></svg></button>
+            <div class="volume-wrap">
+              <button id="volume-btn" class="control-btn" type="button" aria-label="Volume"><svg class="control-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M4 10.25C4 9.56 4.56 9 5.25 9H8.72L12.23 5.49C13.02 4.7 14.38 5.26 14.38 6.37V17.63C14.38 18.74 13.02 19.3 12.23 18.51L8.72 15H5.25C4.56 15 4 14.44 4 13.75V10.25Z"/><path stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M17 9.2C17.93 9.95 18.5 11.1 18.5 12.35C18.5 13.6 17.93 14.75 17 15.5"/><path stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M18.95 7C20.45 8.24 21.35 10.2 21.35 12.35C21.35 14.5 20.45 16.46 18.95 17.7"/></svg></button>
+              <div class="volume-popout" aria-hidden="true">
+                <input id="volume" class="slider" type="range" min="0" max="1" value="0.8" step="0.01">
+              </div>
+            </div>
+            <button id="share-btn" class="control-btn share-btn" type="button" aria-label="Share current track" title="Share current track">${renderShareIcon()}</button>
+          </div>
+          <div id="listenbrainz-feedback-menu" class="track-meta-menu listenbrainz-feedback-menu" role="menu" aria-label="ListenBrainz feedback" hidden>
+            <button id="listenbrainz-feedback-love-btn" class="track-meta-menu-item" type="button" role="menuitem">Love</button>
+            <button id="listenbrainz-feedback-hate-btn" class="track-meta-menu-item" type="button" role="menuitem">Hate</button>
+          </div>
+        </div>
+        <div class="player-taskbar-secondary">
+          <button id="taskbar-show-overview" class="control-btn player-taskbar-overview-btn" type="button" aria-label="Show overview" title="Show overview">${renderHomeIcon()}</button>
+        </div>
+      </section>
     </main>
 `;
 
@@ -150,7 +236,26 @@ export const getMediaControlsElements = (root: ParentNode): MediaControlsElement
     playerShell: root.querySelector('.player-shell') as HTMLElement,
     playerLane: root.querySelector('#player-lane') as HTMLDivElement,
     playerCard: root.querySelector('#player-card') as HTMLElement,
-  playerVisualizerCanvas: root.querySelector('#player-visualizer') as HTMLCanvasElement,
+    playerTaskbar: root.querySelector('#player-taskbar') as HTMLElement,
+    overviewPage: root.querySelector('#overview-page') as HTMLElement,
+    overviewShowAlbums: root.querySelector('#overview-show-albums') as HTMLButtonElement,
+    overviewShowRecents: root.querySelector('#overview-show-recents') as HTMLButtonElement,
+    overviewTracksCount: root.querySelector('#overview-tracks-count') as HTMLSpanElement,
+    overviewAlbumsCount: root.querySelector('#overview-albums-count') as HTMLSpanElement,
+    overviewArtistsCount: root.querySelector('#overview-artists-count') as HTMLSpanElement,
+    overviewLibrariesCount: root.querySelector('#overview-libraries-count') as HTMLSpanElement,
+    overviewRecentsView: root.querySelector('#overview-recents-view') as HTMLDivElement,
+    overviewAlbumGridView: root.querySelector('#overview-album-grid-view') as HTMLDivElement,
+    overviewAlbumGrid: root.querySelector('#overview-album-grid') as HTMLDivElement,
+    overviewAlbumGridScrollRail: root.querySelector('#overview-album-grid-scroll-rail') as HTMLDivElement,
+    overviewAlbumGridScrollPill: root.querySelector('#overview-album-grid-scroll-pill') as HTMLButtonElement,
+    overviewAlbumGridScrollHint: root.querySelector('#overview-album-grid-scroll-hint') as HTMLDivElement,
+    overviewLastPlayedList: root.querySelector('#overview-last-played-list') as HTMLDivElement,
+    overviewLastAddedList: root.querySelector('#overview-last-added-list') as HTMLDivElement,
+    taskbarCoverArt: root.querySelector('#taskbar-cover-art') as HTMLImageElement,
+    taskbarShowPlayer: root.querySelector('#taskbar-show-player') as HTMLButtonElement,
+    taskbarShowOverview: root.querySelector('#taskbar-show-overview') as HTMLButtonElement,
+    playerVisualizerCanvas: root.querySelector('#player-visualizer') as HTMLCanvasElement,
     trackTitle: root.querySelector('#track-title') as HTMLParagraphElement,
     trackAlbum: root.querySelector('#track-album') as HTMLParagraphElement,
     trackPosition: root.querySelector('#track-position') as HTMLSpanElement,

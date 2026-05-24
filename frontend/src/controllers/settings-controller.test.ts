@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getSettingsModalElements, renderSettingsModal } from '../components/overlays/settings-modal';
-import type { AudioOutputDevice, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout } from '../types/app-types';
+import type { AppShellTheme, AudioOutputDevice, FocusedKeyboardShortcuts, MusicBrainzTagWorkerProgress, PlayerCardLayout } from '../types/app-types';
+import type { RoonAccentSettings } from '../utils/roon-accent-theme';
 import { createSettingsController, type SettingsFormValues, type SettingsViewValues } from './settings-controller';
 import { createSettingsControllerState, type SettingsControllerState } from './settings-controller-types';
 
@@ -97,6 +98,9 @@ const mountSettingsController = (options: {
     forceReload?: (values: SettingsFormValues) => Promise<void>;
     fetchLastFmSessionKey?: (apiKey: string, apiSecret: string) => Promise<string>;
     selectLibraryFolder?: () => Promise<string>;
+    getShellTheme?: () => AppShellTheme;
+    getPlayerCardLayout?: () => PlayerCardLayout;
+    getRoonAccentTheme?: () => RoonAccentSettings;
     state?: SettingsControllerState;
 } = {}) => {
     document.body.innerHTML = renderSettingsModal();
@@ -108,7 +112,9 @@ const mountSettingsController = (options: {
     const forceReload = options.forceReload ?? vi.fn(async () => undefined);
     const fetchLastFmSessionKey = options.fetchLastFmSessionKey ?? vi.fn(async () => 'session-key');
     const applyAudioNow = vi.fn(async () => createApplyAudioNowResult());
+    const setShellTheme = vi.fn((_theme: AppShellTheme) => undefined);
     const setPlayerCardLayout = vi.fn((_layout: PlayerCardLayout) => undefined);
+    const setRoonAccentTheme = vi.fn((_theme: RoonAccentSettings) => undefined);
 
     const controller = createSettingsController({
         trigger,
@@ -122,8 +128,12 @@ const mountSettingsController = (options: {
         fetchLastFmSessionKey,
         applyAudioNow,
         forceReload,
-        getPlayerCardLayout: () => 'release',
+        getShellTheme: options.getShellTheme ?? (() => 'roon'),
+        setShellTheme,
+        getPlayerCardLayout: options.getPlayerCardLayout ?? (() => 'release'),
         setPlayerCardLayout,
+        getRoonAccentTheme: options.getRoonAccentTheme ?? (() => ({ color: '#68b4ff', saturation: 100 })),
+        setRoonAccentTheme,
     });
 
     return {
@@ -247,7 +257,7 @@ describe('createSettingsController', () => {
         elements.settingsTabPlaylists.click();
         elements.settingsSavePlaylistsOnAddRemove.checked = true;
         elements.settingsTabUi.click();
-        expect(document.activeElement).toBe(elements.settingsPlayerCardLayout);
+        expect(document.activeElement).toBe(elements.settingsRoonAccentColor);
         expect(elements.settingsCoverArtPriorityAccordionPanel.hidden).toBe(true);
         expect(elements.settingsShortcutAccordionPanel.hidden).toBe(true);
 
@@ -300,6 +310,28 @@ describe('createSettingsController', () => {
         }));
         expect(elements.settingsModal.classList.contains('is-visible')).toBe(false);
         expect(elements.settingsLissajousScaleValue.textContent).toBe('40%');
+    });
+
+    it('shows Player card layout only for the Classic shell theme', () => {
+        const roonMount = mountSettingsController({ getShellTheme: () => 'roon' });
+        roonMount.controller.open('ui');
+
+        expect(roonMount.elements.settingsUiLayoutGrid.dataset.shellTheme).toBe('roon');
+        expect(roonMount.elements.settingsPlayerCardLayoutField.hidden).toBe(true);
+        expect(roonMount.elements.settingsPlayerCardLayout.disabled).toBe(true);
+        expect(roonMount.elements.settingsRoonAccentField.hidden).toBe(false);
+        expect(roonMount.elements.settingsRoonAccentColor.disabled).toBe(false);
+
+        roonMount.controller.close();
+
+        const classicMount = mountSettingsController({ getShellTheme: () => 'classic' });
+        classicMount.controller.open('ui');
+
+        expect(classicMount.elements.settingsUiLayoutGrid.dataset.shellTheme).toBe('classic');
+        expect(classicMount.elements.settingsPlayerCardLayoutField.hidden).toBe(false);
+        expect(classicMount.elements.settingsPlayerCardLayout.disabled).toBe(false);
+        expect(classicMount.elements.settingsRoonAccentField.hidden).toBe(true);
+        expect(classicMount.elements.settingsRoonAccentColor.disabled).toBe(true);
     });
 
     it('hydrates and mutates an injected settings draft state', () => {

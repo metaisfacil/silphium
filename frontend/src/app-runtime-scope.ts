@@ -1,5 +1,6 @@
 import type { getAppShellElements } from './app-shell';
 import type { ArtistDetails } from './types/app-types';
+import type { RoonAccentSettings } from './utils/roon-accent-theme';
 import type { ArtistInfoController, createArtistInfoController } from './controllers/artist-info-controller';
 import type { createVisualizerController } from './controllers/visualizer-controller';
 import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
@@ -21,6 +22,7 @@ import type { createPlaybackStateService, PlaybackSessionState } from './service
 import type { createScrobbleService, ScrobbleSessionState } from './services/scrobble-service';
 import type { createTrackMetadataService } from './services/track-metadata-service';
 import type {
+    AppShellTheme,
     AppSettings,
     ArtistExternalUrl,
     AudioOutputDevice,
@@ -115,6 +117,13 @@ type ReturnedRuntimeMethods = {
     submitListenBrainzFeedbackForTrack: (trackIndex: number, score: ListenBrainzFeedbackScore) => Promise<void>;
     applyPlayerCardLayout: (layout: PlayerCardLayout) => void;
     getStoredLayout: () => PlayerCardLayout;
+    applyShellTheme: (theme: AppShellTheme) => void;
+    getStoredShellTheme: () => AppShellTheme;
+    applyRoonAccentTheme: (theme: RoonAccentSettings) => void;
+    getStoredRoonAccentTheme: () => RoonAccentSettings;
+    showOverviewPage: () => void;
+    showNowPlayingPage: () => void;
+    refreshOverviewDashboard: () => void;
     setCtrlHeldState: (held: boolean) => void;
     suppressTrackMetaClicks: () => void;
     applyCoverArtForTrack: (index: number) => Promise<void>;

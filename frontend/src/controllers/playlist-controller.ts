@@ -2184,8 +2184,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         const queue = mutableQueueSequence();
         if (placement === 'next') {
-            const currentTrackIndex = options.getCurrentTrackIndex();
-            const currentPosition = queue.indexOf(currentTrackIndex);
+            const currentPosition = resolveEditableQueueCurrentPosition(queue);
             const insertAt = currentPosition >= 0 ? currentPosition + 1 : 0;
             insertTrackIndexes(queue, insertAt, normalizedTrackIndexes);
         } else {
@@ -2196,6 +2195,31 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         hydrateTrackMetadataInBackground(normalizedTrackIndexes);
         scheduleRender();
         notifyPlaybackQueueMutated();
+    };
+
+    const replacePlaybackQueue = (trackIndexes: number[], currentPosition = 0): void => {
+        const normalizedTrackIndexes = normalizeQueueEligibleTrackIndexes(trackIndexes);
+        const previousQueue = controllerState.editableQueueTrackIndexes?.slice() || null;
+        const previousPosition = controllerState.editableQueueCurrentPosition;
+        const previousPlaybackSource = controllerState.playbackSource;
+
+        controllerState.playbackSource = 'queue';
+        setEditableQueueState(normalizedTrackIndexes.slice(), currentPosition);
+        if (normalizedTrackIndexes.length > 0) {
+            hydrateTrackMetadataInBackground(normalizedTrackIndexes);
+        }
+
+        scheduleRender();
+
+        const nextQueue = controllerState.editableQueueTrackIndexes || [];
+        const nextPosition = controllerState.editableQueueCurrentPosition;
+        if (
+            previousPlaybackSource !== 'queue'
+            || !queueIndexesEqual(previousQueue, nextQueue)
+            || previousPosition !== nextPosition
+        ) {
+            notifyPlaybackQueueMutated();
+        }
     };
 
     const insertTrackIndexesIntoCurrentView = async (trackIndexes: number[], insertAt: number): Promise<boolean> => {
@@ -3191,6 +3215,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         addToQueueNext: (trackIndexes: number[]) => {
             enqueueTracks(trackIndexes, 'next');
         },
+        replacePlaybackQueue,
         handleDocumentClick: (target: Node): boolean => {
             if (!playlistMenu.hidden && !playlistMenu.contains(target)) {
                 closeMenu();

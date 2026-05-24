@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CoverArtService } from './services/cover-art-service';
 
 const {
     audioGetVisualizationFrameMock,
@@ -14,9 +15,7 @@ const {
     logFrontendMessageMock,
 } = vi.hoisted(() => ({
     audioGetVisualizationFrameMock: vi.fn(),
-    createCoverArtServiceMock: vi.fn(() => ({
-        getCachedMediaArtwork: vi.fn(() => []),
-    })),
+    createCoverArtServiceMock: vi.fn(),
     createListenBrainzControllerMock: vi.fn(() => ({
         canScrobble: vi.fn(() => false),
         closeMenu: vi.fn(),
@@ -43,6 +42,7 @@ const {
     })),
     createScrobbleServiceMock: vi.fn(() => ({})),
     createSidebarControllerMock: vi.fn(() => ({
+        showNavigation: vi.fn(),
         showLibrary: vi.fn(),
         showSocial: vi.fn(),
     })),
@@ -148,7 +148,28 @@ import type { ListenBrainzSocialControllerOptions } from './controllers/listenbr
 import { artistFilterSearchQueryForTarget, createAppCoreServicesRuntime } from './app-core-services-runtime';
 import type { AppCoreServicesRuntimeContext } from './app-runtime-setup';
 import { resetBridgeLoadGateForTests, shouldDeferBackgroundBridgeCall } from './utils/bridge-load-gate';
-import { GetLastFmFollowing, GetLastFmFollowingFeed, GetListenBrainzFollowing, GetListenBrainzFollowingFeed, SubmitLastFmLove } from '../wailsjs/go/main/App';
+import { GetLastFmFollowing, GetLastFmFollowingFeed, GetListenBrainzFollowing, GetListenBrainzFollowingFeed, ReadImageThumbnail, SubmitLastFmLove } from '../wailsjs/go/main/App';
+
+const createCoverArtServiceStub = (overrides: Partial<CoverArtService> = {}): CoverArtService => ({
+    clearCache: vi.fn(),
+    clearResolvedCache: vi.fn(),
+    getCachedMediaArtwork: vi.fn((_track: Parameters<CoverArtService['getCachedMediaArtwork']>[0]) => undefined),
+    getFolderCoverPath: vi.fn((_folderPath: string) => undefined),
+    getKnownFolderCoverPaths: vi.fn((): Array<[string, string]> => []),
+    getMusicBrainzCoverUrlForTrack: vi.fn((_track: Parameters<CoverArtService['getMusicBrainzCoverUrlForTrack']>[0]) => undefined),
+    getResolvedSourceForTrack: vi.fn((_trackPath: string) => undefined),
+    invalidateForTrack: vi.fn((_track: Parameters<CoverArtService['invalidateForTrack']>[0]) => undefined),
+    invalidateResolvedForTrack: vi.fn((_track: Parameters<CoverArtService['invalidateResolvedForTrack']>[0]) => undefined),
+    resolveFolderCoverPath: vi.fn(async (_folderPath: string) => undefined),
+    resolveForTrack: vi.fn(async (_track: Parameters<CoverArtService['resolveForTrack']>[0]) => undefined),
+    setFolderCoverPath: vi.fn((_folderPath: string, _coverPath: string) => undefined),
+    ...overrides,
+});
+
+const flushPromises = async (): Promise<void> => {
+    await Promise.resolve();
+    await Promise.resolve();
+};
 
 const createTrack = () => ({
     title: 'Track',
@@ -218,6 +239,22 @@ const createContext = (): AppCoreServicesRuntimeContext => {
         objectUrls: [],
         playerVisualizerCanvas: document.createElement('canvas'),
         coverArt: document.createElement('img'),
+        overviewTracksCount: document.createElement('div'),
+        overviewShowAlbums: document.createElement('button'),
+        overviewShowRecents: document.createElement('button'),
+        overviewAlbumsCount: document.createElement('div'),
+        overviewArtistsCount: document.createElement('div'),
+        overviewLibrariesCount: document.createElement('div'),
+        overviewRecentsView: document.createElement('div'),
+        overviewAlbumGridView: document.createElement('div'),
+        overviewAlbumGrid: document.createElement('div'),
+        overviewAlbumGridScrollRail: document.createElement('div'),
+        overviewAlbumGridScrollPill: document.createElement('button'),
+        overviewAlbumGridScrollHint: document.createElement('div'),
+        overviewLastPlayedList: document.createElement('div'),
+        overviewLastAddedList: document.createElement('div'),
+        overviewPage: document.createElement('div'),
+        playerLane: document.createElement('div'),
         playerCard: document.createElement('div'),
         listenBrainzLoveBtn: document.createElement('button'),
         listenBrainzFeedbackMenu: document.createElement('div'),
@@ -231,6 +268,9 @@ const createContext = (): AppCoreServicesRuntimeContext => {
         librarySearch,
         sidebarToggle: document.createElement('button'),
         libraryExpandToggle: document.createElement('button'),
+        libraryHeaderTitleText: document.createElement('span'),
+        sidebarNavPane: document.createElement('div'),
+        sidebarModeBar: document.createElement('div'),
         sidebarSectionTrigger: document.createElement('button'),
         sidebarSectionTriggerLabel: document.createElement('div'),
         sidebarSectionMenu: document.createElement('div'),
@@ -251,18 +291,102 @@ const createContext = (): AppCoreServicesRuntimeContext => {
         openTrackMetaMenu: vi.fn(),
         setTrackMetaMenuTarget: vi.fn(),
         getCoverArtImageSource: vi.fn(() => undefined),
+        loadListenHistoryData: vi.fn(async () => null),
     } as unknown as AppCoreServicesRuntimeContext;
+};
+
+type FakeIntersectionObserverTriggerEntry = {
+    target: Element;
+    isIntersecting: boolean;
+};
+
+class FakeIntersectionObserver {
+    static instances: FakeIntersectionObserver[] = [];
+
+    readonly root: Element | Document | null;
+    readonly rootMargin: string;
+    readonly thresholds: ReadonlyArray<number>;
+    private readonly callback: IntersectionObserverCallback;
+    private readonly observedTargets = new Set<Element>();
+
+    constructor(callback: IntersectionObserverCallback, options: IntersectionObserverInit = {}) {
+        this.callback = callback;
+        this.root = options.root || null;
+        this.rootMargin = options.rootMargin || '';
+        this.thresholds = Array.isArray(options.threshold)
+            ? options.threshold
+            : [options.threshold ?? 0];
+        FakeIntersectionObserver.instances.push(this);
+    }
+
+    static reset(): void {
+        FakeIntersectionObserver.instances = [];
+    }
+
+    disconnect(): void {
+        this.observedTargets.clear();
+    }
+
+    observe(target: Element): void {
+        this.observedTargets.add(target);
+    }
+
+    takeRecords(): IntersectionObserverEntry[] {
+        return [];
+    }
+
+    trigger(entries: FakeIntersectionObserverTriggerEntry[]): void {
+        const observerEntries = entries
+            .filter((entry) => this.observedTargets.has(entry.target))
+            .map((entry) => ({
+                boundingClientRect: entry.target.getBoundingClientRect(),
+                intersectionRatio: entry.isIntersecting ? 1 : 0,
+                intersectionRect: entry.target.getBoundingClientRect(),
+                isIntersecting: entry.isIntersecting,
+                rootBounds: null,
+                target: entry.target,
+                time: Date.now(),
+            }) as IntersectionObserverEntry);
+        if (observerEntries.length > 0) {
+            this.callback(observerEntries, this as unknown as IntersectionObserver);
+        }
+    }
+
+    unobserve(target: Element): void {
+        this.observedTargets.delete(target);
+    }
+}
+
+const getFakeIntersectionObserver = (predicate: (observer: FakeIntersectionObserver) => boolean): FakeIntersectionObserver => {
+    const observer = FakeIntersectionObserver.instances.find(predicate);
+    expect(observer).toBeDefined();
+    return observer as FakeIntersectionObserver;
+};
+
+const dispatchPointerLikeEvent = (
+    target: EventTarget,
+    type: string,
+    options: { clientY: number; pointerId: number },
+): void => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clientY', { value: options.clientY });
+    Object.defineProperty(event, 'pointerId', { value: options.pointerId });
+    target.dispatchEvent(event);
 };
 
 describe('createAppCoreServicesRuntime', () => {
     beforeEach(() => {
         resetBridgeLoadGateForTests();
+        createCoverArtServiceMock.mockImplementation(() => createCoverArtServiceStub());
     });
 
     afterEach(() => {
         resetBridgeLoadGateForTests();
         vi.clearAllMocks();
         vi.restoreAllMocks();
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+        FakeIntersectionObserver.reset();
         document.body.innerHTML = '';
     });
 
@@ -463,5 +587,533 @@ describe('createAppCoreServicesRuntime', () => {
         const guestArtistLink = trackArtistHeader.querySelector('.track-artist-link') as HTMLElement;
 
         expect(artistFilterSearchQueryForTarget(track, guestArtistLink)).toBe('mbid-artist:artist-guest');
+    });
+
+    it('keeps both overview and track panes mounted in the Roon shell while toggling the active view class', () => {
+        const context = createContext();
+        const runtime = createAppCoreServicesRuntime(context);
+        context.overviewPage.scrollTop = 192;
+        const originalInnerWidth = window.innerWidth;
+
+        runtime.applyShellTheme('roon');
+
+        expect(context.app.classList.contains('showing-overview')).toBe(true);
+        expect(context.overviewPage.hidden).toBe(false);
+        expect(context.playerLane.hidden).toBe(false);
+        expect(context.overviewPage.scrollTop).toBe(0);
+
+        Object.defineProperty(window, 'innerWidth', {
+            configurable: true,
+            value: 1000,
+        });
+        context.overviewPage.scrollTop = 168;
+        window.dispatchEvent(new Event('resize'));
+
+        expect(context.overviewPage.scrollTop).toBe(0);
+
+        Object.defineProperty(window, 'innerWidth', {
+            configurable: true,
+            value: originalInnerWidth,
+        });
+
+        runtime.showNowPlayingPage();
+
+        expect(context.app.classList.contains('showing-overview')).toBe(false);
+        expect(context.overviewPage.hidden).toBe(false);
+        expect(context.playerLane.hidden).toBe(false);
+    });
+
+    it('applies player card layout only while the Classic shell is active', () => {
+        const context = createContext();
+        const runtime = createAppCoreServicesRuntime(context);
+
+        runtime.applyPlayerCardLayout('release');
+        expect(context.playerCard.classList.contains('layout-release')).toBe(false);
+
+        runtime.applyShellTheme('classic');
+        expect(context.playerCard.classList.contains('layout-release')).toBe(true);
+
+        runtime.applyShellTheme('roon');
+        expect(context.playerCard.classList.contains('layout-release')).toBe(false);
+    });
+
+    it('groups multi-disc releases into one last added overview card at the configured release depth', async () => {
+        const context = createContext();
+        context.releaseDepthForTrack = vi.fn(() => 2);
+        (context as unknown as { tracks: unknown[] }).tracks = [
+            {
+                ...createTrack(),
+                path: '/music/library/artist-one/album-one/disc-1/01 Intro.flac',
+                relativePath: 'Library/Artist One/Album One/Disc 1/01 Intro.flac',
+                folderPath: 'Library/Artist One/Album One/Disc 1',
+                rootPath: '/music/library',
+                rootName: 'Library',
+                displayAlbum: 'Disc 1',
+                displayArtist: 'Artist One',
+                allFileTags: {
+                    album: ['Tagged Album Title'],
+                },
+                modifiedAtMs: 1_700_000_000_000,
+            },
+            {
+                ...createTrack(),
+                path: '/music/library/artist-one/album-one/disc-2/02 Outro.flac',
+                relativePath: 'Library/Artist One/Album One/Disc 2/02 Outro.flac',
+                folderPath: 'Library/Artist One/Album One/Disc 2',
+                rootPath: '/music/library',
+                rootName: 'Library',
+                displayAlbum: 'Disc 2',
+                displayArtist: 'Artist One',
+                allFileTags: {
+                    album: ['Tagged Album Title'],
+                },
+                modifiedAtMs: 1_700_000_100_000,
+            },
+        ] as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+
+        runtime.refreshOverviewDashboard();
+        await flushPromises();
+    await flushPromises();
+
+        const cards = context.overviewLastAddedList.querySelectorAll('.overview-album-card');
+        expect(cards).toHaveLength(1);
+        expect((cards[0] as HTMLElement).dataset.overviewTrackIndex).toBe('1');
+        expect(context.overviewLastAddedList.querySelector('.overview-album-title')?.textContent).toBe('Tagged Album Title');
+        expect(context.overviewLastAddedList.querySelector('.overview-album-artist')?.textContent).toBe('Artist One');
+    });
+
+    it('renders last played overview cards as track entries with track titles', async () => {
+        const context = createContext();
+        context.releaseDepthForTrack = vi.fn(() => 2);
+        (context as unknown as { tracks: unknown[] }).tracks = [
+            {
+                ...createTrack(),
+                title: 'Intro',
+                displayTitle: 'Intro',
+                path: '/music/library/artist-one/album-one/disc-1/01 Intro.flac',
+                relativePath: 'Library/Artist One/Album One/Disc 1/01 Intro.flac',
+                folderPath: 'Library/Artist One/Album One/Disc 1',
+                rootPath: '/music/library',
+                rootName: 'Library',
+                displayAlbum: 'Disc 1',
+                displayArtist: 'Artist One',
+                allFileTags: {
+                    album: ['Tagged Album Title'],
+                },
+            },
+            {
+                ...createTrack(),
+                title: 'Outro',
+                displayTitle: 'Outro',
+                path: '/music/library/artist-one/album-one/disc-2/02 Outro.flac',
+                relativePath: 'Library/Artist One/Album One/Disc 2/02 Outro.flac',
+                folderPath: 'Library/Artist One/Album One/Disc 2',
+                rootPath: '/music/library',
+                rootName: 'Library',
+                displayAlbum: 'Disc 2',
+                displayArtist: 'Artist One',
+                allFileTags: {
+                    album: ['Tagged Album Title'],
+                },
+            },
+        ] as never;
+        context.loadListenHistoryData = vi.fn(async () => ({
+            name: 'Listen History',
+            trackIndexes: [0, 1],
+            historyItems: [
+                { listenedAt: 1_700_000_000, playedPercent: 80 },
+                { listenedAt: 1_700_000_100, playedPercent: 95 },
+            ],
+        } as never));
+
+        const runtime = createAppCoreServicesRuntime(context);
+
+        runtime.refreshOverviewDashboard();
+        await flushPromises();
+    await flushPromises();
+
+        const cards = context.overviewLastPlayedList.querySelectorAll('.overview-album-card');
+        expect(cards).toHaveLength(2);
+        expect((cards[0] as HTMLElement).dataset.overviewTrackIndex).toBe('1');
+        expect(context.overviewLastPlayedList.querySelector('.overview-album-title')?.textContent).toBe('Outro');
+        expect(context.overviewLastPlayedList.querySelector('.overview-album-artist')?.textContent).toBe('Artist One');
+    });
+
+    it('switches the overview between recents and album tiles from the Albums and Libraries cards', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = [
+            {
+                ...createTrack(),
+                path: '/music/a/01.flac',
+                relativePath: 'a/01.flac',
+                folderPath: '/music/a',
+                displayAlbum: 'Album A',
+                displayArtist: 'Artist A',
+            },
+            {
+                ...createTrack(),
+                path: '/music/a/02.flac',
+                relativePath: 'a/02.flac',
+                folderPath: '/music/a',
+                displayAlbum: 'Album A',
+                displayArtist: 'Artist A',
+            },
+            {
+                ...createTrack(),
+                path: '/music/b/01.flac',
+                relativePath: 'b/01.flac',
+                folderPath: '/music/b',
+                displayAlbum: 'Album B',
+                displayArtist: 'Artist B',
+            },
+        ] as never;
+
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            resolveForTrack: vi.fn(async (track: Parameters<CoverArtService['resolveForTrack']>[0]) => `cover:${track.displayAlbum || ''}`),
+        }));
+
+        const runtime = createAppCoreServicesRuntime(context);
+
+        runtime.refreshOverviewDashboard();
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewAlbumsCount.textContent).toBe('2');
+        expect(context.overviewRecentsView.hidden).toBe(false);
+        expect(context.overviewAlbumGridView.hidden).toBe(true);
+
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewRecentsView.hidden).toBe(true);
+        expect(context.overviewAlbumGridView.hidden).toBe(false);
+        expect(context.overviewShowAlbums.getAttribute('aria-pressed')).toBe('true');
+        expect(context.overviewShowRecents.getAttribute('aria-pressed')).toBe('false');
+        expect(context.overviewAlbumGrid.querySelectorAll('.library-album-card')).toHaveLength(2);
+
+        context.overviewShowRecents.click();
+
+        expect(context.overviewRecentsView.hidden).toBe(false);
+        expect(context.overviewAlbumGridView.hidden).toBe(true);
+        expect(context.overviewShowAlbums.getAttribute('aria-pressed')).toBe('false');
+        expect(context.overviewShowRecents.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('loads only an initial slice of album grid thumbnails on first open', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 48 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/${String(index + 1)}/01.flac`,
+            relativePath: `${String(index + 1)}/01.flac`,
+            folderPath: `/music/${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn(() => undefined),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+
+        vi.mocked(ReadImageThumbnail).mockImplementation(async (filePath: string) => ({
+            base64: btoa(filePath),
+            mimeType: 'image/jpeg',
+        }));
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        document.body.append(context.overviewAlbumGridView);
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewAlbumGrid.querySelectorAll('.library-album-card').length).toBeGreaterThan(0);
+        expect(vi.mocked(ReadImageThumbnail).mock.calls.length).toBeGreaterThan(0);
+        expect(vi.mocked(ReadImageThumbnail).mock.calls.length).toBeLessThanOrEqual(32);
+        expect(vi.mocked(ReadImageThumbnail).mock.calls.length).toBeLessThan(48);
+    });
+
+    it('does not apply album-grid cover loads after a cover leaves view until it re-enters', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver as unknown as typeof IntersectionObserver);
+
+        const context = createContext();
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn((folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+
+        let resolveThumbnail!: (value: { base64: string; mimeType: string }) => void;
+        const thumbnailPromise = new Promise<{ base64: string; mimeType: string }>((resolve) => {
+            resolveThumbnail = resolve;
+        });
+        vi.mocked(ReadImageThumbnail).mockImplementation(() => thumbnailPromise);
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        document.body.append(context.overviewAlbumGridView);
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+
+        const image = context.overviewAlbumGrid.querySelector('.library-album-cover-image') as HTMLImageElement;
+        expect(image).toBeTruthy();
+
+        const visibilityObserver = getFakeIntersectionObserver((observer) => observer.root === context.overviewAlbumGridView && observer.rootMargin === '');
+        visibilityObserver.trigger([{ target: image, isIntersecting: true }]);
+        visibilityObserver.trigger([{ target: image, isIntersecting: false }]);
+
+        resolveThumbnail({
+            base64: btoa('cover:/music/cover.jpg'),
+            mimeType: 'image/jpeg',
+        });
+        await flushPromises();
+        await flushPromises();
+
+        expect(image.getAttribute('src')).toBeNull();
+
+        visibilityObserver.trigger([{ target: image, isIntersecting: true }]);
+        await flushPromises();
+        await flushPromises();
+
+        await vi.advanceTimersByTimeAsync(299);
+        expect(image.getAttribute('src')).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(1);
+        await flushPromises();
+
+        expect(image.getAttribute('src')).toContain('data:image/jpeg;base64,');
+        expect(vi.mocked(ReadImageThumbnail).mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('cancels pending album-grid cover invalidation when a cover re-enters view', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver as unknown as typeof IntersectionObserver);
+
+        const context = createContext();
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn((folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+        vi.mocked(ReadImageThumbnail).mockResolvedValue({
+            base64: btoa('cover:/music/cover.jpg'),
+            mimeType: 'image/jpeg',
+        });
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        document.body.append(context.overviewAlbumGridView);
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+
+        const image = context.overviewAlbumGrid.querySelector('.library-album-cover-image') as HTMLImageElement;
+        expect(image).toBeTruthy();
+
+        const visibilityObserver = getFakeIntersectionObserver((observer) => observer.root === context.overviewAlbumGridView && observer.rootMargin === '');
+        visibilityObserver.trigger([{ target: image, isIntersecting: true }]);
+
+        await flushPromises();
+        await flushPromises();
+        await vi.advanceTimersByTimeAsync(300);
+        await flushPromises();
+
+        expect(image.getAttribute('src')).toContain('data:image/jpeg;base64,');
+
+        visibilityObserver.trigger([{ target: image, isIntersecting: false }]);
+        await vi.advanceTimersByTimeAsync(10_000);
+        visibilityObserver.trigger([{ target: image, isIntersecting: true }]);
+        await vi.advanceTimersByTimeAsync(25_000);
+        await flushPromises();
+
+        expect(image.getAttribute('src')).toContain('data:image/jpeg;base64,');
+        expect(image.dataset.coverLoaded).toBe('true');
+    });
+
+    it('waits for the album-grid view to stay static for 300ms before applying a visible cover', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver as unknown as typeof IntersectionObserver);
+
+        const context = createContext();
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn((folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+        vi.mocked(ReadImageThumbnail).mockResolvedValue({
+            base64: btoa('cover:/music/cover.jpg'),
+            mimeType: 'image/jpeg',
+        });
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        document.body.append(context.overviewAlbumGridView);
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+
+        const image = context.overviewAlbumGrid.querySelector('.library-album-cover-image') as HTMLImageElement;
+        expect(image).toBeTruthy();
+
+        const visibilityObserver = getFakeIntersectionObserver((observer) => observer.root === context.overviewAlbumGridView && observer.rootMargin === '');
+        visibilityObserver.trigger([{ target: image, isIntersecting: true }]);
+        await flushPromises();
+        await flushPromises();
+
+        await vi.advanceTimersByTimeAsync(299);
+        await flushPromises();
+        expect(image.getAttribute('src')).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(1);
+        await flushPromises();
+        expect(image.getAttribute('src')).toContain('data:image/jpeg;base64,');
+    });
+
+    it('invalidates offscreen in-flight album-grid cover loads once scrolling settles', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver as unknown as typeof IntersectionObserver);
+
+        const context = createContext();
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn((folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+
+        const resolveThumbnails: Array<(value: { base64: string; mimeType: string }) => void> = [];
+        vi.mocked(ReadImageThumbnail).mockImplementation(() => new Promise((resolve) => {
+            resolveThumbnails.push(resolve);
+        }));
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        document.body.append(context.overviewAlbumGridView);
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+
+        const image = context.overviewAlbumGrid.querySelector('.library-album-cover-image') as HTMLImageElement;
+        expect(image).toBeTruthy();
+
+        const visibilityObserver = getFakeIntersectionObserver((observer) => observer.root === context.overviewAlbumGridView && observer.rootMargin === '');
+        visibilityObserver.trigger([{ target: image, isIntersecting: true }]);
+        visibilityObserver.trigger([{ target: image, isIntersecting: false }]);
+
+        await vi.advanceTimersByTimeAsync(300);
+        await flushPromises();
+        expect(image.dataset.coverResolving).toBeUndefined();
+
+        resolveThumbnails.shift()?.({
+            base64: btoa('cover:/music/cover-stale.jpg'),
+            mimeType: 'image/jpeg',
+        });
+        await flushPromises();
+        await flushPromises();
+
+        expect(image.getAttribute('src')).toBeNull();
+
+        visibilityObserver.trigger([{ target: image, isIntersecting: true }]);
+        await flushPromises();
+
+        expect(vi.mocked(ReadImageThumbnail)).toHaveBeenCalledTimes(2);
+
+        resolveThumbnails.shift()?.({
+            base64: btoa('cover:/music/cover-fresh.jpg'),
+            mimeType: 'image/jpeg',
+        });
+        await flushPromises();
+        await flushPromises();
+        await vi.advanceTimersByTimeAsync(300);
+        await flushPromises();
+
+        expect(image.getAttribute('src')).toContain(btoa('cover:/music/cover-fresh.jpg'));
+    });
+
+    it('aggressively realizes album-grid entries when dragging the scroll pill toward the bottom', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 500 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/${String(index + 1)}/01.flac`,
+            relativePath: `${String(index + 1)}/01.flac`,
+            folderPath: `/music/${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn(() => undefined),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+
+        vi.mocked(ReadImageThumbnail).mockResolvedValue({
+            base64: btoa('cover:/music/cover.jpg'),
+            mimeType: 'image/jpeg',
+        });
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        context.overviewAlbumGridScrollRail.append(context.overviewAlbumGridScrollPill, context.overviewAlbumGridScrollHint);
+        document.body.append(context.overviewAlbumGridView, context.overviewAlbumGridScrollRail);
+
+        Object.defineProperty(context.overviewAlbumGridView, 'clientHeight', { configurable: true, value: 600 });
+        Object.defineProperty(context.overviewAlbumGridView, 'scrollHeight', { configurable: true, get: () => 6000 });
+        Object.defineProperty(context.overviewAlbumGridScrollPill, 'offsetHeight', { configurable: true, value: 54 });
+        context.overviewAlbumGridView.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 500,
+            bottom: 600,
+            width: 500,
+            height: 600,
+            toJSON: () => '',
+        })) as never;
+        context.overviewAlbumGridScrollPill.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 20,
+            bottom: 54,
+            width: 20,
+            height: 54,
+            toJSON: () => '',
+        })) as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewAlbumGrid.querySelectorAll('.library-album-card')).toHaveLength(80);
+
+        context.overviewAlbumGridScrollRail.hidden = false;
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointerdown', { clientY: 40, pointerId: 1 });
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointermove', { clientY: 598, pointerId: 1 });
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewAlbumGrid.querySelectorAll('.library-album-card').length).toBeGreaterThan(80);
     });
 });
