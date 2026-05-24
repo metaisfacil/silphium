@@ -39,6 +39,20 @@ func newAudioTestApp(t *testing.T) (*App, libraryTestFixture, string) {
 	return app, fixture, helperPath
 }
 
+type fakeSystemMediaTransportControlsManager struct {
+	syncCalls    int
+	lastSnapshot systemMediaTransportControlsSnapshot
+}
+
+func (f *fakeSystemMediaTransportControlsManager) Start(*App) {}
+
+func (f *fakeSystemMediaTransportControlsManager) Stop() {}
+
+func (f *fakeSystemMediaTransportControlsManager) Sync(snapshot systemMediaTransportControlsSnapshot) {
+	f.syncCalls++
+	f.lastSnapshot = snapshot
+}
+
 func TestAppAudioMethodsAndWrappers(t *testing.T) {
 	pcmBytes := make([]byte, audioBytesPerFrame*8)
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", base64.StdEncoding.EncodeToString(pcmBytes))
@@ -254,6 +268,59 @@ func TestAudioLoadTrackUsesProgressiveDecodeWhenCachedDurationAvailable(t *testi
 	}
 
 	t.Fatal("progressive cached decode did not finish before timeout")
+}
+
+func TestAudioQueueNextTrackSyncsSystemMediaTransportControls(t *testing.T) {
+	pcmBytes := make([]byte, audioBytesPerFrame*8)
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", base64.StdEncoding.EncodeToString(pcmBytes))
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDERR", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
+
+	fakeContext := &fakeAudioContext{}
+	useFakeAudioContext(t, fakeContext, nil)
+	app, fixture, _ := newAudioTestApp(t)
+	fakeSMTC := &fakeSystemMediaTransportControlsManager{}
+	app.systemMediaTransportControlsState().manager = fakeSMTC
+
+	secondTrack := filepath.Join(fixture.albumOneFolder, "02 Song.flac")
+	writeTestFile(t, secondTrack, "track two")
+
+	if _, err := app.InitializeAudioBackend(); err != nil {
+		t.Fatalf("InitializeAudioBackend() error = %v", err)
+	}
+	if _, err := app.AudioLoadTrack(fixture.trackOne); err != nil {
+		t.Fatalf("AudioLoadTrack() error = %v", err)
+	}
+
+	fakeSMTC.syncCalls = 0
+	queueState, err := app.AudioQueueNextTrack(fixture.trackOne, secondTrack)
+	if err != nil {
+		t.Fatalf("AudioQueueNextTrack() error = %v", err)
+	}
+	if !queueState.Loaded {
+		t.Fatalf("AudioQueueNextTrack() = %#v, want loaded state", queueState)
+	}
+	if fakeSMTC.syncCalls != 1 {
+		t.Fatalf("AudioQueueNextTrack() SMTC sync calls = %d, want 1", fakeSMTC.syncCalls)
+	}
+	if fakeSMTC.lastSnapshot.SourcePath != normalizePath(fixture.trackOne) {
+		t.Fatalf("AudioQueueNextTrack() SMTC source path = %q, want %q", fakeSMTC.lastSnapshot.SourcePath, normalizePath(fixture.trackOne))
+	}
+
+	fakeSMTC.syncCalls = 0
+	queueState, err = app.AudioQueueNextTrackWithReplayGainContext(fixture.trackOne, secondTrack, []string{fixture.trackOne, secondTrack})
+	if err != nil {
+		t.Fatalf("AudioQueueNextTrackWithReplayGainContext() error = %v", err)
+	}
+	if !queueState.Loaded {
+		t.Fatalf("AudioQueueNextTrackWithReplayGainContext() = %#v, want loaded state", queueState)
+	}
+	if fakeSMTC.syncCalls != 1 {
+		t.Fatalf("AudioQueueNextTrackWithReplayGainContext() SMTC sync calls = %d, want 1", fakeSMTC.syncCalls)
+	}
+	if fakeSMTC.lastSnapshot.SourcePath != normalizePath(fixture.trackOne) {
+		t.Fatalf("AudioQueueNextTrackWithReplayGainContext() SMTC source path = %q, want %q", fakeSMTC.lastSnapshot.SourcePath, normalizePath(fixture.trackOne))
+	}
 }
 
 func TestAudioReinitializeBackendError(t *testing.T) {
