@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/rand"
 	"mime"
 	"net"
@@ -36,8 +37,10 @@ const (
 	openSubsonicRESTPrefix                 = "/rest/"
 	openSubsonicAPIVersion                 = "1.16.1"
 	openSubsonicExtensionVersion           = 1
+	openSubsonicExtensionTranscodeOffset   = "transcodeOffset"
 	openSubsonicExtensionAPIKeyAuth        = "apiKeyAuthentication"
 	openSubsonicExtensionFormPost          = "formPost"
+	openSubsonicExtensionTranscoding       = "transcoding"
 	openSubsonicIDKindMusicFolder          = "mf"
 	openSubsonicIDKindDirectory            = "dir"
 	openSubsonicIDKindArtist               = "artist"
@@ -60,6 +63,7 @@ const (
 	openSubsonicErrorNotFound              = 70
 	openSubsonicMediaTypeMusic             = "music"
 	openSubsonicMediaTypeSong              = "song"
+	openSubsonicTranscodeProtocolHTTP      = "http"
 )
 
 type openSubsonicEnvelope struct {
@@ -73,33 +77,38 @@ type openSubsonicXMLEnvelope struct {
 }
 
 type openSubsonicResponse struct {
-	Status                 string                     `json:"status" xml:"status,attr"`
-	Version                string                     `json:"version" xml:"version,attr"`
-	Type                   string                     `json:"type" xml:"type,attr"`
-	ServerVersion          string                     `json:"serverVersion" xml:"serverVersion,attr"`
-	OpenSubsonic           bool                       `json:"openSubsonic" xml:"openSubsonic,attr"`
-	Error                  *openSubsonicError         `json:"error,omitempty" xml:"error,omitempty"`
-	Lyrics                 *openSubsonicLyrics        `json:"lyrics,omitempty" xml:"lyrics,omitempty"`
-	MusicFolders           *openSubsonicMusicFolders  `json:"musicFolders,omitempty" xml:"musicFolders,omitempty"`
-	Genres                 *openSubsonicGenres        `json:"genres,omitempty" xml:"genres,omitempty"`
-	Indexes                *openSubsonicIndexes       `json:"indexes,omitempty" xml:"indexes,omitempty"`
-	Artists                *openSubsonicArtists       `json:"artists,omitempty" xml:"artists,omitempty"`
-	Directory              *openSubsonicDirectory     `json:"directory,omitempty" xml:"directory,omitempty"`
-	Artist                 *openSubsonicArtist        `json:"artist,omitempty" xml:"artist,omitempty"`
-	Album                  *openSubsonicAlbumDetails  `json:"album,omitempty" xml:"album,omitempty"`
-	Playlist               *openSubsonicPlaylist      `json:"playlist,omitempty" xml:"playlist,omitempty"`
-	Song                   *openSubsonicChild         `json:"song,omitempty" xml:"song,omitempty"`
-	SearchResult           *openSubsonicSearchResult  `json:"searchResult,omitempty" xml:"searchResult,omitempty"`
-	SearchResult2          *openSubsonicSearchResult2 `json:"searchResult2,omitempty" xml:"searchResult2,omitempty"`
-	SearchResult3          *openSubsonicSearchResult3 `json:"searchResult3,omitempty" xml:"searchResult3,omitempty"`
-	SimilarSongs           *openSubsonicSimilarSongs  `json:"similarSongs,omitempty" xml:"similarSongs,omitempty"`
-	User                   *openSubsonicUser          `json:"user,omitempty" xml:"user,omitempty"`
-	AlbumList2             *openSubsonicAlbumList2    `json:"albumList2,omitempty" xml:"albumList2,omitempty"`
-	Playlists              *openSubsonicPlaylists     `json:"playlists,omitempty" xml:"playlists,omitempty"`
-	ScanStatus             *openSubsonicScanStatus    `json:"scanStatus,omitempty" xml:"scanStatus,omitempty"`
-	RandomSongs            *openSubsonicRandomSongs   `json:"randomSongs,omitempty" xml:"randomSongs,omitempty"`
-	License                *openSubsonicLicense       `json:"license,omitempty" xml:"license,omitempty"`
-	OpenSubsonicExtensions []openSubsonicExtension    `json:"openSubsonicExtensions,omitempty" xml:"openSubsonicExtensions>openSubsonicExtension,omitempty"`
+	Status                 string                         `json:"status" xml:"status,attr"`
+	Version                string                         `json:"version" xml:"version,attr"`
+	Type                   string                         `json:"type" xml:"type,attr"`
+	ServerVersion          string                         `json:"serverVersion" xml:"serverVersion,attr"`
+	OpenSubsonic           bool                           `json:"openSubsonic" xml:"openSubsonic,attr"`
+	Error                  *openSubsonicError             `json:"error,omitempty" xml:"error,omitempty"`
+	Lyrics                 *openSubsonicLyrics            `json:"lyrics,omitempty" xml:"lyrics,omitempty"`
+	MusicFolders           *openSubsonicMusicFolders      `json:"musicFolders,omitempty" xml:"musicFolders,omitempty"`
+	Genres                 *openSubsonicGenres            `json:"genres,omitempty" xml:"genres,omitempty"`
+	Indexes                *openSubsonicIndexes           `json:"indexes,omitempty" xml:"indexes,omitempty"`
+	Artists                *openSubsonicArtists           `json:"artists,omitempty" xml:"artists,omitempty"`
+	Directory              *openSubsonicDirectory         `json:"directory,omitempty" xml:"directory,omitempty"`
+	Artist                 *openSubsonicArtist            `json:"artist,omitempty" xml:"artist,omitempty"`
+	Album                  *openSubsonicAlbumDetails      `json:"album,omitempty" xml:"album,omitempty"`
+	Playlist               *openSubsonicPlaylist          `json:"playlist,omitempty" xml:"playlist,omitempty"`
+	Song                   *openSubsonicChild             `json:"song,omitempty" xml:"song,omitempty"`
+	AlbumInfo              *openSubsonicAlbumInfo         `json:"albumInfo,omitempty" xml:"albumInfo,omitempty"`
+	AlbumInfo2             *openSubsonicAlbumInfo         `json:"albumInfo2,omitempty" xml:"albumInfo2,omitempty"`
+	ArtistInfo             *openSubsonicArtistInfo        `json:"artistInfo,omitempty" xml:"artistInfo,omitempty"`
+	ArtistInfo2            *openSubsonicArtistInfo        `json:"artistInfo2,omitempty" xml:"artistInfo2,omitempty"`
+	SearchResult           *openSubsonicSearchResult      `json:"searchResult,omitempty" xml:"searchResult,omitempty"`
+	SearchResult2          *openSubsonicSearchResult2     `json:"searchResult2,omitempty" xml:"searchResult2,omitempty"`
+	SearchResult3          *openSubsonicSearchResult3     `json:"searchResult3,omitempty" xml:"searchResult3,omitempty"`
+	SimilarSongs           *openSubsonicSimilarSongs      `json:"similarSongs,omitempty" xml:"similarSongs,omitempty"`
+	User                   *openSubsonicUser              `json:"user,omitempty" xml:"user,omitempty"`
+	AlbumList2             *openSubsonicAlbumList2        `json:"albumList2,omitempty" xml:"albumList2,omitempty"`
+	Playlists              *openSubsonicPlaylists         `json:"playlists,omitempty" xml:"playlists,omitempty"`
+	ScanStatus             *openSubsonicScanStatus        `json:"scanStatus,omitempty" xml:"scanStatus,omitempty"`
+	RandomSongs            *openSubsonicRandomSongs       `json:"randomSongs,omitempty" xml:"randomSongs,omitempty"`
+	License                *openSubsonicLicense           `json:"license,omitempty" xml:"license,omitempty"`
+	OpenSubsonicExtensions []openSubsonicExtension        `json:"openSubsonicExtensions,omitempty" xml:"openSubsonicExtensions>openSubsonicExtension,omitempty"`
+	TranscodeDecision      *openSubsonicTranscodeDecision `json:"transcodeDecision,omitempty" xml:"transcodeDecision,omitempty"`
 }
 
 type openSubsonicError struct {
@@ -117,6 +126,76 @@ type openSubsonicLyrics struct {
 type openSubsonicExtension struct {
 	Name     string `json:"name" xml:"name,attr"`
 	Versions []int  `json:"versions" xml:"versions>int"`
+}
+
+type openSubsonicTranscodeDecision struct {
+	CanDirectPlay    bool                       `json:"canDirectPlay" xml:"canDirectPlay,attr"`
+	CanTranscode     bool                       `json:"canTranscode" xml:"canTranscode,attr"`
+	TranscodeReasons []string                   `json:"transcodeReason,omitempty" xml:"transcodeReason,omitempty"`
+	ErrorReason      string                     `json:"errorReason,omitempty" xml:"errorReason,attr,omitempty"`
+	TranscodeParams  string                     `json:"transcodeParams,omitempty" xml:"transcodeParams,attr,omitempty"`
+	SourceStream     *openSubsonicStreamDetails `json:"sourceStream,omitempty" xml:"sourceStream,omitempty"`
+	TranscodeStream  *openSubsonicStreamDetails `json:"transcodeStream,omitempty" xml:"transcodeStream,omitempty"`
+}
+
+type openSubsonicStreamDetails struct {
+	Protocol        string `json:"protocol,omitempty" xml:"protocol,attr,omitempty"`
+	Container       string `json:"container,omitempty" xml:"container,attr,omitempty"`
+	Codec           string `json:"codec,omitempty" xml:"codec,attr,omitempty"`
+	AudioChannels   int    `json:"audioChannels,omitempty" xml:"audioChannels,attr,omitempty"`
+	AudioBitrate    int    `json:"audioBitrate,omitempty" xml:"audioBitrate,attr,omitempty"`
+	AudioSamplerate int    `json:"audioSamplerate,omitempty" xml:"audioSamplerate,attr,omitempty"`
+	AudioBitdepth   int    `json:"audioBitdepth,omitempty" xml:"audioBitdepth,attr,omitempty"`
+}
+
+type openSubsonicClientInfoRequest struct {
+	Name                       string                                  `json:"name,omitempty"`
+	Platform                   string                                  `json:"platform,omitempty"`
+	MaxAudioBitrate            int                                     `json:"maxAudioBitrate,omitempty"`
+	MaxTranscodingAudioBitrate int                                     `json:"maxTranscodingAudioBitrate,omitempty"`
+	DirectPlayProfiles         []openSubsonicDirectPlayProfileRequest  `json:"directPlayProfiles,omitempty"`
+	TranscodingProfiles        []openSubsonicTranscodingProfileRequest `json:"transcodingProfiles,omitempty"`
+}
+
+type openSubsonicDirectPlayProfileRequest struct {
+	Containers       []string `json:"containers,omitempty"`
+	AudioCodecs      []string `json:"audioCodecs,omitempty"`
+	Protocols        []string `json:"protocols,omitempty"`
+	MaxAudioChannels int      `json:"maxAudioChannels,omitempty"`
+}
+
+type openSubsonicTranscodingProfileRequest struct {
+	Container        string `json:"container,omitempty"`
+	AudioCodec       string `json:"audioCodec,omitempty"`
+	Protocol         string `json:"protocol,omitempty"`
+	MaxAudioChannels int    `json:"maxAudioChannels,omitempty"`
+}
+
+type openSubsonicTranscodeParams struct {
+	MediaID         string `json:"mediaId"`
+	DirectPlay      bool   `json:"directPlay,omitempty"`
+	TargetFormat    string `json:"targetFormat,omitempty"`
+	TargetBitrate   int    `json:"targetBitrate,omitempty"`
+	SourceUpdatedAt int64  `json:"sourceUpdatedAt,omitempty"`
+}
+
+type openSubsonicAlbumInfo struct {
+	Notes          string `json:"notes,omitempty" xml:"notes,omitempty"`
+	MusicBrainzID  string `json:"musicBrainzId,omitempty" xml:"musicBrainzId,omitempty"`
+	LastFMURL      string `json:"lastFmUrl,omitempty" xml:"lastFmUrl,omitempty"`
+	SmallImageURL  string `json:"smallImageUrl,omitempty" xml:"smallImageUrl,omitempty"`
+	MediumImageURL string `json:"mediumImageUrl,omitempty" xml:"mediumImageUrl,omitempty"`
+	LargeImageURL  string `json:"largeImageUrl,omitempty" xml:"largeImageUrl,omitempty"`
+}
+
+type openSubsonicArtistInfo struct {
+	Biography      string                  `json:"biography,omitempty" xml:"biography,omitempty"`
+	MusicBrainzID  string                  `json:"musicBrainzId,omitempty" xml:"musicBrainzId,omitempty"`
+	LastFMURL      string                  `json:"lastFmUrl,omitempty" xml:"lastFmUrl,omitempty"`
+	SmallImageURL  string                  `json:"smallImageUrl,omitempty" xml:"smallImageUrl,omitempty"`
+	MediumImageURL string                  `json:"mediumImageUrl,omitempty" xml:"mediumImageUrl,omitempty"`
+	LargeImageURL  string                  `json:"largeImageUrl,omitempty" xml:"largeImageUrl,omitempty"`
+	SimilarArtist  []openSubsonicArtistRef `json:"similarArtist,omitempty" xml:"similarArtist,omitempty"`
 }
 
 type openSubsonicMusicFolders struct {
@@ -186,31 +265,33 @@ type openSubsonicSearchResult3 struct {
 }
 
 type openSubsonicChild struct {
-	ID            string `json:"id" xml:"id,attr"`
-	Parent        string `json:"parent,omitempty" xml:"parent,attr,omitempty"`
-	IsDir         bool   `json:"isDir" xml:"isDir,attr"`
-	Title         string `json:"title" xml:"title,attr"`
-	Album         string `json:"album,omitempty" xml:"album,attr,omitempty"`
-	Artist        string `json:"artist,omitempty" xml:"artist,attr,omitempty"`
-	Track         int    `json:"track,omitempty" xml:"track,attr,omitempty"`
-	Year          int    `json:"year,omitempty" xml:"year,attr,omitempty"`
-	Genre         string `json:"genre,omitempty" xml:"genre,attr,omitempty"`
-	CoverArt      string `json:"coverArt,omitempty" xml:"coverArt,attr,omitempty"`
-	Size          int64  `json:"size,omitempty" xml:"size,attr,omitempty"`
-	ContentType   string `json:"contentType,omitempty" xml:"contentType,attr,omitempty"`
-	Suffix        string `json:"suffix,omitempty" xml:"suffix,attr,omitempty"`
-	Duration      int    `json:"duration,omitempty" xml:"duration,attr,omitempty"`
-	BitRate       int    `json:"bitRate,omitempty" xml:"bitRate,attr,omitempty"`
-	BitDepth      int    `json:"bitDepth,omitempty" xml:"bitDepth,attr,omitempty"`
-	SamplingRate  int    `json:"samplingRate,omitempty" xml:"samplingRate,attr,omitempty"`
-	ChannelCount  int    `json:"channelCount,omitempty" xml:"channelCount,attr,omitempty"`
-	Path          string `json:"path,omitempty" xml:"path,attr,omitempty"`
-	Created       string `json:"created,omitempty" xml:"created,attr,omitempty"`
-	AlbumID       string `json:"albumId,omitempty" xml:"albumId,attr,omitempty"`
-	ArtistID      string `json:"artistId,omitempty" xml:"artistId,attr,omitempty"`
-	Type          string `json:"type,omitempty" xml:"type,attr,omitempty"`
-	MediaType     string `json:"mediaType,omitempty" xml:"mediaType,attr,omitempty"`
-	MusicBrainzID string `json:"musicBrainzId,omitempty" xml:"musicBrainzId,attr,omitempty"`
+	ID                    string `json:"id" xml:"id,attr"`
+	Parent                string `json:"parent,omitempty" xml:"parent,attr,omitempty"`
+	IsDir                 bool   `json:"isDir" xml:"isDir,attr"`
+	Title                 string `json:"title" xml:"title,attr"`
+	Album                 string `json:"album,omitempty" xml:"album,attr,omitempty"`
+	Artist                string `json:"artist,omitempty" xml:"artist,attr,omitempty"`
+	Track                 int    `json:"track,omitempty" xml:"track,attr,omitempty"`
+	Year                  int    `json:"year,omitempty" xml:"year,attr,omitempty"`
+	Genre                 string `json:"genre,omitempty" xml:"genre,attr,omitempty"`
+	CoverArt              string `json:"coverArt,omitempty" xml:"coverArt,attr,omitempty"`
+	Size                  int64  `json:"size,omitempty" xml:"size,attr,omitempty"`
+	ContentType           string `json:"contentType,omitempty" xml:"contentType,attr,omitempty"`
+	Suffix                string `json:"suffix,omitempty" xml:"suffix,attr,omitempty"`
+	TranscodedContentType string `json:"transcodedContentType,omitempty" xml:"transcodedContentType,attr,omitempty"`
+	TranscodedSuffix      string `json:"transcodedSuffix,omitempty" xml:"transcodedSuffix,attr,omitempty"`
+	Duration              int    `json:"duration,omitempty" xml:"duration,attr,omitempty"`
+	BitRate               int    `json:"bitRate,omitempty" xml:"bitRate,attr,omitempty"`
+	BitDepth              int    `json:"bitDepth,omitempty" xml:"bitDepth,attr,omitempty"`
+	SamplingRate          int    `json:"samplingRate,omitempty" xml:"samplingRate,attr,omitempty"`
+	ChannelCount          int    `json:"channelCount,omitempty" xml:"channelCount,attr,omitempty"`
+	Path                  string `json:"path,omitempty" xml:"path,attr,omitempty"`
+	Created               string `json:"created,omitempty" xml:"created,attr,omitempty"`
+	AlbumID               string `json:"albumId,omitempty" xml:"albumId,attr,omitempty"`
+	ArtistID              string `json:"artistId,omitempty" xml:"artistId,attr,omitempty"`
+	Type                  string `json:"type,omitempty" xml:"type,attr,omitempty"`
+	MediaType             string `json:"mediaType,omitempty" xml:"mediaType,attr,omitempty"`
+	MusicBrainzID         string `json:"musicBrainzId,omitempty" xml:"musicBrainzId,attr,omitempty"`
 }
 
 type openSubsonicLicense struct {
@@ -399,6 +480,7 @@ type openSubsonicStreamOptions struct {
 	Format            string
 	BitrateKbps       int
 	TimeOffsetSeconds float64
+	EstimateLength    bool
 }
 
 type openSubsonicLoggingResponseWriter struct {
@@ -1908,12 +1990,379 @@ func openSubsonicStreamContentType(path string) string {
 	return openSubsonicContentType(path)
 }
 
+func openSubsonicStreamFilename(path string, format string) string {
+	filename := strings.TrimSpace(filepath.Base(path))
+	if filename == "" {
+		return ""
+	}
+
+	trimmedFormat := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(format)), ".")
+	if trimmedFormat == "" {
+		return filename
+	}
+
+	fileExt := filepath.Ext(filename)
+	baseName := strings.TrimSuffix(filename, fileExt)
+	if baseName == "" {
+		return filename
+	}
+
+	return baseName + "." + trimmedFormat
+}
+
 func openSubsonicBitrateKbps(bitRate int) int {
 	if bitRate <= 0 {
 		return 0
 	}
 
 	return (bitRate + 500) / 1000
+}
+
+func openSubsonicNormalizeAudioContainer(value string) string {
+	container := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(value)), ".")
+	switch container {
+	case "oga":
+		return "ogg"
+	case "m4a":
+		return "mp4"
+	default:
+		return container
+	}
+}
+
+func openSubsonicNormalizeAudioCodec(value string) string {
+	codec := openSubsonicNormalizeAudioContainer(value)
+	switch codec {
+	case "mp4":
+		return "aac"
+	case "ogg":
+		return "ogg"
+	default:
+		return codec
+	}
+}
+
+func openSubsonicDefaultTranscodedFormat(path string) string {
+	if openSubsonicNormalizeAudioContainer(filepath.Ext(path)) == "mp3" {
+		return ""
+	}
+
+	return "mp3"
+}
+
+func openSubsonicTranscodedContentType(format string) string {
+	trimmedFormat := strings.TrimSpace(format)
+	if trimmedFormat == "" {
+		return ""
+	}
+
+	contentType, _, _, _ := openSubsonicTranscodeFormat(trimmedFormat)
+	return contentType
+}
+
+func openSubsonicIsWildcardProfileValue(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "*", "*/*", "audio/*", "any":
+		return true
+	default:
+		return false
+	}
+}
+
+func openSubsonicMatchesStringList(values []string, candidate string) bool {
+	if len(values) == 0 {
+		return true
+	}
+
+	normalizedCandidate := openSubsonicNormalizeAudioContainer(candidate)
+	if normalizedCandidate == "" {
+		return false
+	}
+
+	for _, value := range values {
+		if openSubsonicIsWildcardProfileValue(value) || openSubsonicNormalizeAudioContainer(value) == normalizedCandidate {
+			return true
+		}
+	}
+
+	return false
+}
+
+func openSubsonicLogBodySnippet(payload []byte) string {
+	trimmed := strings.TrimSpace(string(payload))
+	if trimmed == "" {
+		return ""
+	}
+	trimmed = strings.ReplaceAll(trimmed, "\r", " ")
+	trimmed = strings.ReplaceAll(trimmed, "\n", " ")
+	if len(trimmed) > 256 {
+		return trimmed[:256] + "..."
+	}
+	return trimmed
+}
+
+func openSubsonicAllowsHTTP(protocols []string) bool {
+	if len(protocols) == 0 {
+		return true
+	}
+
+	for _, protocol := range protocols {
+		if openSubsonicIsWildcardProfileValue(protocol) || strings.EqualFold(strings.TrimSpace(protocol), openSubsonicTranscodeProtocolHTTP) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func openSubsonicNormalizeClientInfo(clientInfo openSubsonicClientInfoRequest) openSubsonicClientInfoRequest {
+	if len(clientInfo.DirectPlayProfiles) == 0 && len(clientInfo.TranscodingProfiles) == 0 {
+		clientInfo.DirectPlayProfiles = []openSubsonicDirectPlayProfileRequest{{
+			Containers:  []string{"mp3"},
+			AudioCodecs: []string{"mp3"},
+			Protocols:   []string{openSubsonicTranscodeProtocolHTTP},
+		}}
+		clientInfo.TranscodingProfiles = []openSubsonicTranscodingProfileRequest{{
+			Container:  "mp3",
+			AudioCodec: "mp3",
+			Protocol:   openSubsonicTranscodeProtocolHTTP,
+		}}
+	}
+
+	return clientInfo
+}
+
+func openSubsonicTrackSourceStreamDetails(snapshot openSubsonicTrackMetadataSnapshot, absoluteTrackPath string) openSubsonicStreamDetails {
+	container := openSubsonicNormalizeAudioContainer(filepath.Ext(absoluteTrackPath))
+	if container == "" {
+		container = openSubsonicNormalizeAudioContainer(filepath.Ext(snapshot.Track.Path))
+	}
+
+	return openSubsonicStreamDetails{
+		Protocol:        openSubsonicTranscodeProtocolHTTP,
+		Container:       container,
+		Codec:           openSubsonicNormalizeAudioCodec(container),
+		AudioChannels:   snapshot.Record.Channels,
+		AudioBitrate:    snapshot.Record.BitRate,
+		AudioSamplerate: snapshot.Record.SampleRate,
+		AudioBitdepth:   snapshot.Record.BitDepth,
+	}
+}
+
+func openSubsonicCanDirectPlayTrack(source openSubsonicStreamDetails, profiles []openSubsonicDirectPlayProfileRequest) bool {
+	for _, profile := range profiles {
+		if !openSubsonicAllowsHTTP(profile.Protocols) {
+			continue
+		}
+		if profile.MaxAudioChannels > 0 && source.AudioChannels > profile.MaxAudioChannels {
+			continue
+		}
+		if !openSubsonicMatchesStringList(profile.Containers, source.Container) {
+			continue
+		}
+		if !openSubsonicMatchesStringList(profile.AudioCodecs, source.Codec) {
+			continue
+		}
+		return true
+	}
+
+	return false
+}
+
+func openSubsonicTargetBitrateKbps(sourceBitrate int, clientInfo openSubsonicClientInfoRequest) int {
+	targetBitrateKbps := defaultRemoteLibraryTranscodingBitrateKbps
+	requestedBitrateBps := clientInfo.MaxTranscodingAudioBitrate
+	if requestedBitrateBps <= 0 {
+		requestedBitrateBps = clientInfo.MaxAudioBitrate
+	}
+	if requestedBitrateBps > 0 {
+		targetBitrateKbps = normalizeRemoteLibraryTranscodingBitrateKbps((requestedBitrateBps + 999) / 1000)
+	}
+	sourceBitrateKbps := openSubsonicBitrateKbps(sourceBitrate)
+	if sourceBitrateKbps > 0 && sourceBitrateKbps < targetBitrateKbps {
+		targetBitrateKbps = sourceBitrateKbps
+	}
+	if targetBitrateKbps <= 0 {
+		targetBitrateKbps = defaultRemoteLibraryTranscodingBitrateKbps
+	}
+
+	return targetBitrateKbps
+}
+
+func openSubsonicTranscodeProfileTarget(profile openSubsonicTranscodingProfileRequest) (string, *openSubsonicStreamDetails) {
+	if !openSubsonicAllowsHTTP([]string{profile.Protocol}) {
+		return "", nil
+	}
+
+	container := openSubsonicNormalizeAudioContainer(profile.Container)
+	codec := openSubsonicNormalizeAudioCodec(profile.AudioCodec)
+	switch {
+	case container == "mp3" || codec == "mp3":
+		return "mp3", &openSubsonicStreamDetails{
+			Protocol:  openSubsonicTranscodeProtocolHTTP,
+			Container: "mp3",
+			Codec:     "mp3",
+		}
+	case container == "opus" || codec == "opus" || container == "ogg":
+		return "opus", &openSubsonicStreamDetails{
+			Protocol:  openSubsonicTranscodeProtocolHTTP,
+			Container: "ogg",
+			Codec:     "opus",
+		}
+	default:
+		return "", nil
+	}
+}
+
+func (a *App) openSubsonicSelectTranscodeTarget(source openSubsonicStreamDetails, clientInfo openSubsonicClientInfoRequest) (string, *openSubsonicStreamDetails, int) {
+	if _, err := resolveFFmpegPath(a.settings.FFmpegPath); err != nil {
+		return "", nil, 0
+	}
+
+	targetBitrateKbps := openSubsonicTargetBitrateKbps(source.AudioBitrate, clientInfo)
+	for _, profile := range clientInfo.TranscodingProfiles {
+		targetFormat, targetStream := openSubsonicTranscodeProfileTarget(profile)
+		if targetStream == nil {
+			continue
+		}
+		targetStream.AudioBitrate = targetBitrateKbps * 1000
+		targetStream.AudioChannels = source.AudioChannels
+		targetStream.AudioSamplerate = source.AudioSamplerate
+		if targetStream.Codec == "mp3" || targetStream.Codec == "opus" {
+			targetStream.AudioBitdepth = 0
+		} else {
+			targetStream.AudioBitdepth = source.AudioBitdepth
+		}
+		return targetFormat, targetStream, targetBitrateKbps
+	}
+
+	return "", nil, 0
+}
+
+func (a *App) openSubsonicResolveSongTrack(requestedID string) (openSubsonicTrackMetadataSnapshot, string, bool) {
+	browse := a.openSubsonicBrowseIndex()
+	trackSnapshot, ok := a.openSubsonicTrackSnapshotForSongID(requestedID, browse)
+	if !ok {
+		return openSubsonicTrackMetadataSnapshot{}, "", false
+	}
+
+	absoluteTrackPath := strings.TrimSpace(trackSnapshot.Track.Path)
+	if absoluteTrackPath == "" {
+		var resolved bool
+		absoluteTrackPath, resolved = a.openSubsonicResolveTrackPath(browse.Roots, trackSnapshot.Track.RelativePath)
+		if !resolved {
+			return openSubsonicTrackMetadataSnapshot{}, "", false
+		}
+	}
+
+	return trackSnapshot, absoluteTrackPath, true
+}
+
+func openSubsonicTrackSourceUpdatedAtUnix(snapshot openSubsonicTrackMetadataSnapshot, absoluteTrackPath string) int64 {
+	if snapshot.Track.ModifiedAtMs > 0 {
+		return time.UnixMilli(snapshot.Track.ModifiedAtMs).UTC().Truncate(time.Second).Unix()
+	}
+
+	if info, err := os.Stat(absoluteTrackPath); err == nil && !info.ModTime().IsZero() {
+		return info.ModTime().UTC().Truncate(time.Second).Unix()
+	}
+
+	return 0
+}
+
+func openSubsonicEncodeTranscodeParams(params openSubsonicTranscodeParams) (string, error) {
+	payload, err := json.Marshal(params)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(payload), nil
+}
+
+func openSubsonicDecodeTranscodeParams(value string) (openSubsonicTranscodeParams, error) {
+	encoded := strings.TrimSpace(value)
+	if encoded == "" {
+		return openSubsonicTranscodeParams{}, errors.New("missing transcode params")
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return openSubsonicTranscodeParams{}, err
+	}
+
+	var params openSubsonicTranscodeParams
+	if err := json.Unmarshal(payload, &params); err != nil {
+		return openSubsonicTranscodeParams{}, err
+	}
+	if strings.TrimSpace(params.MediaID) == "" {
+		return openSubsonicTranscodeParams{}, errors.New("missing token media id")
+	}
+
+	return params, nil
+}
+
+func (a *App) openSubsonicBuildTranscodeDecision(requestedID string, trackSnapshot openSubsonicTrackMetadataSnapshot, absoluteTrackPath string, clientInfo openSubsonicClientInfoRequest) (openSubsonicTranscodeDecision, error) {
+	clientInfo = openSubsonicNormalizeClientInfo(clientInfo)
+	sourceStream := openSubsonicTrackSourceStreamDetails(trackSnapshot, absoluteTrackPath)
+	decision := openSubsonicTranscodeDecision{
+		CanDirectPlay: openSubsonicCanDirectPlayTrack(sourceStream, clientInfo.DirectPlayProfiles),
+		SourceStream:  &sourceStream,
+	}
+
+	targetFormat, targetStream, targetBitrateKbps := a.openSubsonicSelectTranscodeTarget(sourceStream, clientInfo)
+	if targetStream != nil {
+		decision.CanTranscode = true
+		decision.TranscodeStream = targetStream
+	}
+	if !decision.CanDirectPlay {
+		decision.TranscodeReasons = append(decision.TranscodeReasons, "direct play profile does not support the source stream")
+	}
+	if !decision.CanDirectPlay && !decision.CanTranscode {
+		decision.ErrorReason = "no compatible playback profile found"
+	}
+	if !decision.CanDirectPlay && decision.CanTranscode {
+		decision.TranscodeReasons = append(decision.TranscodeReasons, "source stream requires transcoding")
+	}
+	if decision.CanDirectPlay || decision.CanTranscode {
+		params := openSubsonicTranscodeParams{
+			MediaID:         requestedID,
+			DirectPlay:      decision.CanDirectPlay,
+			SourceUpdatedAt: openSubsonicTrackSourceUpdatedAtUnix(trackSnapshot, absoluteTrackPath),
+		}
+		if !decision.CanDirectPlay {
+			params.TargetFormat = targetFormat
+			params.TargetBitrate = targetBitrateKbps
+		}
+		encodedParams, err := openSubsonicEncodeTranscodeParams(params)
+		if err != nil {
+			return openSubsonicTranscodeDecision{}, err
+		}
+		decision.TranscodeParams = encodedParams
+	}
+
+	return decision, nil
+}
+
+func openSubsonicStreamOptionsFromTranscodeParams(params openSubsonicTranscodeParams, offsetSeconds int) openSubsonicStreamOptions {
+	options := openSubsonicStreamOptions{}
+	if offsetSeconds > 0 {
+		options.TimeOffsetSeconds = float64(offsetSeconds)
+	}
+	if params.DirectPlay && offsetSeconds <= 0 {
+		return options
+	}
+
+	options.RequiresTranscode = true
+	options.Format = strings.TrimSpace(params.TargetFormat)
+	options.BitrateKbps = params.TargetBitrate
+	if options.Format == "" {
+		options.Format = "mp3"
+	}
+	if options.BitrateKbps <= 0 {
+		options.BitrateKbps = defaultRemoteLibraryTranscodingBitrateKbps
+	}
+
+	return options
 }
 
 func openSubsonicIndexGroupName(name string) string {
@@ -3002,7 +3451,7 @@ func (a *App) openSubsonicBuildTrackChild(parentID string, snapshot openSubsonic
 		AlbumID:       openSubsonicAlbumID(openSubsonicAlbumKey(snapshot)),
 		ArtistID:      openSubsonicArtistID(openSubsonicArtistKey(snapshot)),
 		CoverArt:      coverArt,
-		ContentType:   openSubsonicContentType(snapshot.Track.Path),
+		ContentType:   openSubsonicStreamContentType(snapshot.Track.Path),
 		Suffix:        strings.TrimPrefix(strings.ToLower(filepath.Ext(snapshot.Track.Path)), "."),
 		BitRate:       openSubsonicBitrateKbps(snapshot.Record.BitRate),
 		BitDepth:      snapshot.Record.BitDepth,
@@ -3012,6 +3461,10 @@ func (a *App) openSubsonicBuildTrackChild(parentID string, snapshot openSubsonic
 		Type:          openSubsonicMediaTypeMusic,
 		MediaType:     openSubsonicMediaTypeSong,
 		MusicBrainzID: strings.TrimSpace(snapshot.Record.RecordingID),
+	}
+	if transcodedFormat := openSubsonicDefaultTranscodedFormat(snapshot.Track.Path); transcodedFormat != "" {
+		child.TranscodedSuffix = transcodedFormat
+		child.TranscodedContentType = openSubsonicTranscodedContentType(transcodedFormat)
 	}
 
 	if snapshot.Record.FileSizeBytes > 0 {
@@ -3060,8 +3513,9 @@ func openSubsonicRequestedStreamOptions(values url.Values) openSubsonicStreamOpt
 	timeOffset, _ := strconv.ParseFloat(strings.TrimSpace(values.Get("timeOffset")), 64)
 	options := openSubsonicStreamOptions{
 		Format:            requestedFormat,
-		BitrateKbps:       normalizeRemoteLibraryTranscodingBitrateKbps(maxBitRate),
+		BitrateKbps:       maxBitRate,
 		TimeOffsetSeconds: timeOffset,
+		EstimateLength:    strings.EqualFold(strings.TrimSpace(values.Get("estimateContentLength")), "true"),
 	}
 	if options.TimeOffsetSeconds > 0 {
 		options.RequiresTranscode = true
@@ -3074,6 +3528,54 @@ func openSubsonicRequestedStreamOptions(values url.Values) openSubsonicStreamOpt
 	}
 
 	return options
+}
+
+func openSubsonicEstimatedTranscodeContentLength(durationSeconds float64, options openSubsonicStreamOptions) int64 {
+	if !options.RequiresTranscode || !options.EstimateLength {
+		return 0
+	}
+
+	effectiveDurationSeconds := durationSeconds - options.TimeOffsetSeconds
+	if effectiveDurationSeconds <= 0 {
+		return 0
+	}
+
+	bitrateKbps := options.BitrateKbps
+	if bitrateKbps <= 0 {
+		bitrateKbps = defaultRemoteLibraryTranscodingBitrateKbps
+	}
+
+	estimatedBytes := int64(math.Ceil(effectiveDurationSeconds * float64(bitrateKbps) * 1024 / 8))
+	if estimatedBytes <= 0 {
+		return 0
+	}
+
+	paddingBytes := int64(math.Ceil(float64(bitrateKbps)*1024/8)) + 64*1024
+	return estimatedBytes + paddingBytes
+}
+
+func openSubsonicPadStreamToEstimatedLength(w http.ResponseWriter, remainingBytes int64) error {
+	if remainingBytes <= 0 {
+		return nil
+	}
+
+	padding := make([]byte, 32*1024)
+	for remainingBytes > 0 {
+		chunkSize := len(padding)
+		if remainingBytes < int64(chunkSize) {
+			chunkSize = int(remainingBytes)
+		}
+		written, err := w.Write(padding[:chunkSize])
+		remainingBytes -= int64(written)
+		if err != nil {
+			return err
+		}
+		if written == 0 {
+			return io.ErrShortWrite
+		}
+	}
+
+	return nil
 }
 
 func openSubsonicTranscodeFormat(format string) (string, string, string, []string) {
@@ -3089,9 +3591,22 @@ func openSubsonicCanFallbackToStaticTrack(options openSubsonicStreamOptions) boo
 	return options.TimeOffsetSeconds <= 0 && strings.TrimSpace(options.Format) == ""
 }
 
-func openSubsonicSetStreamHeaders(w http.ResponseWriter, contentType string, durationSeconds float64) {
+func openSubsonicSetContentDisposition(w http.ResponseWriter, dispositionType string, filename string) {
+	trimmedFilename := strings.TrimSpace(filename)
+	if trimmedFilename == "" {
+		return
+	}
+	if disposition := mime.FormatMediaType(dispositionType, map[string]string{"filename": trimmedFilename}); disposition != "" {
+		w.Header().Set("Content-Disposition", disposition)
+	}
+}
+
+func openSubsonicSetStreamHeaders(w http.ResponseWriter, contentType string, filename string, durationSeconds float64) {
 	if strings.TrimSpace(contentType) != "" {
 		w.Header().Set("Content-Type", contentType)
+	}
+	if strings.TrimSpace(filename) != "" {
+		openSubsonicSetContentDisposition(w, "inline", filename)
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if durationSeconds > 0 {
@@ -3113,7 +3628,7 @@ func openSubsonicServeStaticTrack(w http.ResponseWriter, r *http.Request, absolu
 		return
 	}
 
-	openSubsonicSetStreamHeaders(w, openSubsonicStreamContentType(absoluteTrackPath), durationSeconds)
+	openSubsonicSetStreamHeaders(w, openSubsonicStreamContentType(absoluteTrackPath), openSubsonicStreamFilename(absoluteTrackPath, ""), durationSeconds)
 	w.Header().Set("Accept-Ranges", "bytes")
 	http.ServeContent(w, r, filepath.Base(absoluteTrackPath), info.ModTime(), file)
 }
@@ -3129,14 +3644,15 @@ func (a *App) openSubsonicServeTrack(w http.ResponseWriter, r *http.Request, abs
 		openSubsonicServeStaticTrack(w, r, absoluteTrackPath, durationSeconds)
 		return
 	}
-	if !tryAcquireRemoteLibraryTranscodeSlot() {
-		writeOpenSubsonicError(w, r, openSubsonicErrorGeneric, "transcode capacity reached", "")
+	if !acquireRemoteLibraryTranscodeSlot(r.Context()) {
 		return
 	}
 	defer releaseRemoteLibraryTranscodeSlot()
 
 	contentType, formatName, _, codecArgs := openSubsonicTranscodeFormat(options.Format)
-	if options.BitrateKbps <= 0 {
+	if options.BitrateKbps > 0 {
+		options.BitrateKbps = normalizeRemoteLibraryTranscodingBitrateKbps(options.BitrateKbps)
+	} else {
 		options.BitrateKbps = defaultRemoteLibraryTranscodingBitrateKbps
 	}
 
@@ -3192,15 +3708,27 @@ func (a *App) openSubsonicServeTrack(w http.ResponseWriter, r *http.Request, abs
 		return
 	}
 
-	openSubsonicSetStreamHeaders(w, contentType, durationSeconds)
+	estimatedContentLength := openSubsonicEstimatedTranscodeContentLength(durationSeconds, options)
+	openSubsonicSetStreamHeaders(w, contentType, openSubsonicStreamFilename(absoluteTrackPath, formatName), durationSeconds)
 	w.Header().Set("Accept-Ranges", "none")
+	if estimatedContentLength > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(estimatedContentLength, 10))
+	}
 	if _, err := w.Write(firstChunk[:readCount]); err != nil {
 		_ = command.Process.Kill()
 		_ = command.Wait()
 		return
 	}
-	if _, err := io.Copy(w, stdout); err != nil && !errors.Is(err, context.Canceled) {
+	bytesWritten := int64(readCount)
+	copyCount, err := io.Copy(w, stdout)
+	bytesWritten += copyCount
+	if err != nil && !errors.Is(err, context.Canceled) {
 		logOpenSubsonicEvent("transcode stream copy failed path=%q err=%v stderr=%q", absoluteTrackPath, err, strings.TrimSpace(stderr.String()))
+	}
+	if err == nil && estimatedContentLength > bytesWritten {
+		if padErr := openSubsonicPadStreamToEstimatedLength(w, estimatedContentLength-bytesWritten); padErr != nil && !errors.Is(padErr, context.Canceled) {
+			logOpenSubsonicEvent("transcode estimate padding failed path=%q err=%v stderr=%q", absoluteTrackPath, padErr, strings.TrimSpace(stderr.String()))
+		}
 	}
 	if err := command.Wait(); err != nil && !errors.Is(err, context.Canceled) {
 		logOpenSubsonicEvent("transcode failed path=%q err=%v stderr=%q", absoluteTrackPath, err, strings.TrimSpace(stderr.String()))
@@ -3267,6 +3795,10 @@ func (a *App) handleOpenSubsonicREST(w http.ResponseWriter, r *http.Request) {
 		a.handleOpenSubsonicGetLicense(loggedWriter, r)
 	case "getOpenSubsonicExtensions":
 		a.handleOpenSubsonicGetExtensions(loggedWriter, r)
+	case "getTranscodeDecision":
+		a.handleOpenSubsonicGetTranscodeDecision(loggedWriter, r, values)
+	case "getTranscodeStream":
+		a.handleOpenSubsonicGetTranscodeStream(loggedWriter, r, values)
 	case "getLyrics":
 		a.handleOpenSubsonicGetLyrics(loggedWriter, r, values)
 	case "getMusicFolders":
@@ -3281,8 +3813,16 @@ func (a *App) handleOpenSubsonicREST(w http.ResponseWriter, r *http.Request) {
 		a.handleOpenSubsonicGetMusicDirectory(loggedWriter, r, values)
 	case "getArtist":
 		a.handleOpenSubsonicGetArtist(loggedWriter, r, values)
+	case "getArtistInfo":
+		a.handleOpenSubsonicGetArtistInfo(loggedWriter, r, values, false)
+	case "getArtistInfo2":
+		a.handleOpenSubsonicGetArtistInfo(loggedWriter, r, values, true)
 	case "getAlbum":
 		a.handleOpenSubsonicGetAlbum(loggedWriter, r, values)
+	case "getAlbumInfo":
+		a.handleOpenSubsonicGetAlbumInfo(loggedWriter, r, values, false)
+	case "getAlbumInfo2":
+		a.handleOpenSubsonicGetAlbumInfo(loggedWriter, r, values, true)
 	case "getSong":
 		a.handleOpenSubsonicGetSong(loggedWriter, r, values)
 	case "search":
@@ -3338,10 +3878,138 @@ func (a *App) handleOpenSubsonicGetLicense(w http.ResponseWriter, r *http.Reques
 func (a *App) handleOpenSubsonicGetExtensions(w http.ResponseWriter, r *http.Request) {
 	response := newOpenSubsonicBaseResponse()
 	response.OpenSubsonicExtensions = []openSubsonicExtension{
+		{Name: openSubsonicExtensionTranscodeOffset, Versions: []int{openSubsonicExtensionVersion}},
 		{Name: openSubsonicExtensionAPIKeyAuth, Versions: []int{openSubsonicExtensionVersion}},
 		{Name: openSubsonicExtensionFormPost, Versions: []int{openSubsonicExtensionVersion}},
+		{Name: openSubsonicExtensionTranscoding, Versions: []int{openSubsonicExtensionVersion}},
 	}
 	writeOpenSubsonicResponse(w, r, response)
+}
+
+func (a *App) handleOpenSubsonicGetTranscodeDecision(w http.ResponseWriter, r *http.Request, values url.Values) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	requestedID := strings.TrimSpace(values.Get("mediaId"))
+	if requestedID == "" {
+		writeOpenSubsonicError(w, r, openSubsonicErrorMissingParameter, "required parameter is missing: mediaId", "")
+		return
+	}
+	if strings.TrimSpace(values.Get("mediaType")) != openSubsonicMediaTypeSong {
+		writeOpenSubsonicError(w, r, openSubsonicErrorGeneric, "mediaType is not supported", "")
+		return
+	}
+
+	body := http.MaxBytesReader(w, r.Body, 1<<20)
+	defer body.Close()
+	var clientInfo openSubsonicClientInfoRequest
+	rawBody, err := io.ReadAll(body)
+	if err != nil {
+		writeOpenSubsonicError(w, r, openSubsonicErrorGeneric, "invalid JSON request body", "")
+		return
+	}
+	if len(bytes.TrimSpace(rawBody)) > 0 {
+		if err := json.Unmarshal(rawBody, &clientInfo); err != nil {
+			logOpenSubsonicEvent(
+				"request rejected endpoint=%q code=%d message=%q content_type=%q content_length=%d body=%q",
+				"getTranscodeDecision",
+				openSubsonicErrorGeneric,
+				"invalid JSON request body",
+				strings.TrimSpace(r.Header.Get("Content-Type")),
+				len(rawBody),
+				openSubsonicLogBodySnippet(rawBody),
+			)
+			writeOpenSubsonicError(w, r, openSubsonicErrorGeneric, "invalid JSON request body", "")
+			return
+		}
+	}
+
+	trackSnapshot, absoluteTrackPath, ok := a.openSubsonicResolveSongTrack(requestedID)
+	if !ok {
+		writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "requested song not found", "")
+		return
+	}
+
+	decision, err := a.openSubsonicBuildTranscodeDecision(requestedID, trackSnapshot, absoluteTrackPath, clientInfo)
+	if err != nil {
+		writeOpenSubsonicError(w, r, openSubsonicErrorGeneric, "failed to create transcode decision", "")
+		return
+	}
+	logOpenSubsonicEvent(
+		"transcode decision media_id=%q client=%q platform=%q direct_play=%t can_transcode=%t source_container=%q target_container=%q target_bitrate_bps=%d direct_play_profiles=%d transcoding_profiles=%d",
+		requestedID,
+		strings.TrimSpace(clientInfo.Name),
+		strings.TrimSpace(clientInfo.Platform),
+		decision.CanDirectPlay,
+		decision.CanTranscode,
+		func() string {
+			if decision.SourceStream == nil {
+				return ""
+			}
+			return decision.SourceStream.Container
+		}(),
+		func() string {
+			if decision.TranscodeStream == nil {
+				return ""
+			}
+			return decision.TranscodeStream.Container
+		}(),
+		func() int {
+			if decision.TranscodeStream == nil {
+				return 0
+			}
+			return decision.TranscodeStream.AudioBitrate
+		}(),
+		len(clientInfo.DirectPlayProfiles),
+		len(clientInfo.TranscodingProfiles),
+	)
+
+	response := newOpenSubsonicBaseResponse()
+	response.TranscodeDecision = &decision
+	writeOpenSubsonicResponse(w, r, response)
+}
+
+func (a *App) handleOpenSubsonicGetTranscodeStream(w http.ResponseWriter, r *http.Request, values url.Values) {
+	requestedID := strings.TrimSpace(values.Get("mediaId"))
+	if requestedID == "" {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(values.Get("mediaType")) != openSubsonicMediaTypeSong {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+	params, err := openSubsonicDecodeTranscodeParams(values.Get("transcodeParams"))
+	if err != nil || params.MediaID != requestedID {
+		http.Error(w, "Gone", http.StatusGone)
+		return
+	}
+
+	trackSnapshot, absoluteTrackPath, ok := a.openSubsonicResolveSongTrack(requestedID)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if sourceUpdatedAt := openSubsonicTrackSourceUpdatedAtUnix(trackSnapshot, absoluteTrackPath); params.SourceUpdatedAt > 0 && sourceUpdatedAt > 0 && params.SourceUpdatedAt != sourceUpdatedAt {
+		http.Error(w, "Gone", http.StatusGone)
+		return
+	}
+
+	offsetSeconds, _ := strconv.Atoi(strings.TrimSpace(values.Get("offset")))
+	options := openSubsonicStreamOptionsFromTranscodeParams(params, offsetSeconds)
+	logOpenSubsonicEvent(
+		"transcode stream media_id=%q direct_play=%t target_format=%q target_bitrate_kbps=%d offset_seconds=%d requires_transcode=%t",
+		requestedID,
+		params.DirectPlay,
+		strings.TrimSpace(params.TargetFormat),
+		params.TargetBitrate,
+		offsetSeconds,
+		options.RequiresTranscode,
+	)
+	a.openSubsonicServeTrack(w, r, absoluteTrackPath, options, trackSnapshot.Record.DurationSeconds)
 }
 
 func (a *App) handleOpenSubsonicGetLyrics(w http.ResponseWriter, r *http.Request, values url.Values) {
@@ -3743,6 +4411,33 @@ func (a *App) handleOpenSubsonicGetArtist(w http.ResponseWriter, r *http.Request
 	writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "artist not found", "")
 }
 
+func (a *App) handleOpenSubsonicGetArtistInfo(w http.ResponseWriter, r *http.Request, values url.Values, version2 bool) {
+	requestedID := strings.TrimSpace(values.Get("id"))
+	if requestedID == "" {
+		writeOpenSubsonicError(w, r, openSubsonicErrorMissingParameter, "required parameter is missing: id", "")
+		return
+	}
+	artistKey, ok := openSubsonicDecodeID(requestedID, openSubsonicIDKindArtist)
+	if !ok {
+		writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "artist not found", "")
+		return
+	}
+	browse := a.openSubsonicBrowseIndex()
+	if _, exists := browse.ArtistsByID[openSubsonicArtistID(artistKey)]; !exists {
+		writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "artist not found", "")
+		return
+	}
+
+	response := newOpenSubsonicBaseResponse()
+	info := &openSubsonicArtistInfo{}
+	if version2 {
+		response.ArtistInfo2 = info
+	} else {
+		response.ArtistInfo = info
+	}
+	writeOpenSubsonicResponse(w, r, response)
+}
+
 func (a *App) handleOpenSubsonicGetAlbum(w http.ResponseWriter, r *http.Request, values url.Values) {
 	requestedID := strings.TrimSpace(values.Get("id"))
 	if requestedID == "" {
@@ -3782,6 +4477,33 @@ func (a *App) handleOpenSubsonicGetAlbum(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "album not found", "")
+}
+
+func (a *App) handleOpenSubsonicGetAlbumInfo(w http.ResponseWriter, r *http.Request, values url.Values, version2 bool) {
+	requestedID := strings.TrimSpace(values.Get("id"))
+	if requestedID == "" {
+		writeOpenSubsonicError(w, r, openSubsonicErrorMissingParameter, "required parameter is missing: id", "")
+		return
+	}
+	albumKey, ok := openSubsonicDecodeID(requestedID, openSubsonicIDKindAlbum)
+	if !ok {
+		writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "album not found", "")
+		return
+	}
+	browse := a.openSubsonicBrowseIndex()
+	if _, exists := browse.AlbumsByID[openSubsonicAlbumID(albumKey)]; !exists {
+		writeOpenSubsonicError(w, r, openSubsonicErrorNotFound, "album not found", "")
+		return
+	}
+
+	response := newOpenSubsonicBaseResponse()
+	info := &openSubsonicAlbumInfo{}
+	if version2 {
+		response.AlbumInfo2 = info
+	} else {
+		response.AlbumInfo = info
+	}
+	writeOpenSubsonicResponse(w, r, response)
 }
 
 func (a *App) handleOpenSubsonicGetSong(w http.ResponseWriter, r *http.Request, values url.Values) {
@@ -4071,7 +4793,16 @@ func (a *App) handleOpenSubsonicStream(w http.ResponseWriter, r *http.Request, v
 		durationSeconds = trackSnapshot.Record.DurationSeconds
 	}
 
-	a.openSubsonicServeTrack(w, r, absoluteTrackPath, openSubsonicRequestedStreamOptions(values), durationSeconds)
+	options := openSubsonicRequestedStreamOptions(values)
+	logOpenSubsonicEvent(
+		"stream request track=%q requested_format=%q requested_bitrate_kbps=%d time_offset_seconds=%.3f requires_transcode=%t",
+		virtualTrackPath,
+		options.Format,
+		options.BitrateKbps,
+		options.TimeOffsetSeconds,
+		options.RequiresTranscode,
+	)
+	a.openSubsonicServeTrack(w, r, absoluteTrackPath, options, durationSeconds)
 }
 
 func (a *App) handleOpenSubsonicScrobble(w http.ResponseWriter, r *http.Request, values url.Values) {
@@ -4174,6 +4905,6 @@ func (a *App) handleOpenSubsonicDownload(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(absoluteTrackPath)))
+	openSubsonicSetContentDisposition(w, "attachment", filepath.Base(absoluteTrackPath))
 	http.ServeFile(w, r, absoluteTrackPath)
 }

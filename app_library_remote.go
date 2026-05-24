@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -33,11 +34,11 @@ type remoteLibraryTranscodeOptions struct {
 
 var remoteLibraryTranscodeSemaphore = make(chan struct{}, remoteLibraryTranscodeConcurrencyLimit)
 
-func tryAcquireRemoteLibraryTranscodeSlot() bool {
+func acquireRemoteLibraryTranscodeSlot(ctx context.Context) bool {
 	select {
 	case remoteLibraryTranscodeSemaphore <- struct{}{}:
 		return true
-	default:
+	case <-ctx.Done():
 		return false
 	}
 }

@@ -39,7 +39,7 @@ import {
 } from './utils/bridge-trace';
 import { formatPerfLogMessage } from './utils/perf-log';
 import { createPlaybackProgressEstimator } from './utils/playback-progress-estimator';
-import { playbackReconcileDelayMs } from './utils/playback-reconcile-delay';
+import { playbackReconcileDelayMs, playbackReconcileNearEndPollIntervalMs } from './utils/playback-reconcile-delay';
 import { createSerialAsyncPoller } from './utils/serial-async-poller';
 
 export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext) => {
@@ -48,6 +48,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     const settledTransitionMetadataRefreshProbeMs = 50;
     const playerCardTrackTransitionOutMs = 90;
     const nextTrackPreloadStartSeconds = 1;
+    const playbackEndSettleMaxReconcileAttempts = 4;
     const lyricsPanelWidthPx = 400;
     const lyricsVisibilityBufferPx = 120;
     const playbackProgressEstimator = createPlaybackProgressEstimator();
@@ -55,6 +56,9 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
     let playbackProgressAnimationFrameId = 0;
     let playbackProgressEndSyncRequested = false;
     let playbackStateSyncInFlight = false;
+    let playbackEndSettleReconcileHandle: number | undefined;
+    let playbackEndSettleTrackPathKey = '';
+    let playbackEndSettleReconcileAttempts = 0;
     let lastAudioStatePerfLogAtMs = 0;
     let lastPlayerCardHeightPx = 0;
     let lastLyricsVisibilityState: boolean | null = null;
@@ -392,12 +396,81 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
 
     const trackPathKey = (path: string): string => path.trim().toLowerCase();
 
+    const clearPlaybackEndSettleReconcile = (): void => {
+        if (playbackEndSettleReconcileHandle !== undefined) {
+            window.clearTimeout(playbackEndSettleReconcileHandle);
+            playbackEndSettleReconcileHandle = undefined;
+        }
+
+        playbackEndSettleTrackPathKey = '';
+        playbackEndSettleReconcileAttempts = 0;
+    };
+
+    const shouldKeepSettlingPlaybackEndState = (state: AudioPlaybackState): boolean => {
+        if (!state.loaded || state.playing) {
+            return false;
+        }
+
+        if (!Number.isFinite(state.duration) || state.duration <= 0) {
+            return false;
+        }
+
+        if (trackPathKey(state.sourcePath || '') === '') {
+            return false;
+        }
+
+        return state.currentTime >= state.duration - playbackProgressDomUpdateThresholdSeconds;
+    };
+
+    const schedulePlaybackEndSettleReconcile = (state: AudioPlaybackState): void => {
+        if (!shouldKeepSettlingPlaybackEndState(state)) {
+            clearPlaybackEndSettleReconcile();
+            return;
+        }
+
+        const sourcePathKey = trackPathKey(state.sourcePath || '');
+        if (sourcePathKey !== playbackEndSettleTrackPathKey) {
+            clearPlaybackEndSettleReconcile();
+            playbackEndSettleTrackPathKey = sourcePathKey;
+        }
+
+        if (
+            playbackEndSettleReconcileHandle !== undefined
+            || playbackEndSettleReconcileAttempts >= playbackEndSettleMaxReconcileAttempts
+        ) {
+            return;
+        }
+
+        playbackEndSettleReconcileAttempts += 1;
+        playbackEndSettleReconcileHandle = window.setTimeout(() => {
+            playbackEndSettleReconcileHandle = undefined;
+            requestPlaybackStateReconcile();
+        }, playbackReconcileNearEndPollIntervalMs);
+    };
+
+    const clearCoverImage = (image?: HTMLImageElement): void => {
+        if (!image) {
+            return;
+        }
+
+        image.removeAttribute('src');
+        image.classList.remove('is-visible');
+    };
+
+    const showCoverImage = (image: HTMLImageElement | undefined, coverSrc: string): void => {
+        if (!image) {
+            return;
+        }
+
+        image.src = coverSrc;
+        image.classList.add('is-visible');
+    };
+
     const clearVisibleCoverArt = (trackPath = ''): void => {
         visibleNowPlayingCoverTrackPathKey = trackPathKey(trackPath);
-        context.coverArtBackground.removeAttribute('src');
-        context.coverArtBackground.classList.remove('is-visible');
-        context.coverArt.removeAttribute('src');
-        context.coverArt.classList.remove('is-visible');
+        clearCoverImage(context.coverArtBackground);
+        clearCoverImage(context.coverArt);
+        clearCoverImage(context.taskbarCoverArt);
         context.setBackgroundCover();
     };
 
@@ -808,10 +881,9 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 return;
             }
 
-            context.coverArtBackground.src = coverSrc;
-            context.coverArtBackground.classList.add('is-visible');
-            context.coverArt.src = coverSrc;
-            context.coverArt.classList.add('is-visible');
+            showCoverImage(context.coverArtBackground, coverSrc);
+            showCoverImage(context.coverArt, coverSrc);
+            showCoverImage(context.taskbarCoverArt, coverSrc);
             visibleNowPlayingCoverTrackPathKey = requestedTrackPathKey;
             context.setBackgroundCover(coverSrc);
             return;
@@ -946,6 +1018,11 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
+        const gaplessPrepSequence = resolveGaplessPrepSequence(sequenceOverrideIndexes);
+        const gaplessPrepSequenceIndexes = gaplessPrepSequence.indexes;
+        const nextIndex = peekTrackIndexInSequence(gaplessPrepSequenceIndexes, gaplessPrepSequence.currentPosition);
+        const nextPath = nextIndex !== undefined ? context.tracks[nextIndex]?.path || '' : '';
+
         if (stateOverride !== undefined && sequenceOverrideIndexes === undefined) {
             if (!playbackState.playing || playbackState.currentTime < nextTrackPreloadStartSeconds) {
                 logPlaybackDebug(
@@ -960,6 +1037,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
                 activeTrackPath !== ''
                 && queuedGaplessEvaluationRequestVersion === context.gaplessQueueRequestVersion
                 && queuedGaplessEvaluationTrackPath === activeTrackPath
+                && nextPath === context.queuedGaplessTrackPath
             ) {
                 logPlaybackDebug(
                     `Trace NextTrackPrep skip reason=already-evaluated active="${activeTrack.path}" requestVersion=${context.gaplessQueueRequestVersion}`,
@@ -973,10 +1051,6 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             return;
         }
 
-        const gaplessPrepSequence = resolveGaplessPrepSequence(sequenceOverrideIndexes);
-        const gaplessPrepSequenceIndexes = gaplessPrepSequence.indexes;
-        const nextIndex = peekTrackIndexInSequence(gaplessPrepSequenceIndexes, gaplessPrepSequence.currentPosition);
-        const nextPath = nextIndex !== undefined ? context.tracks[nextIndex]?.path || '' : '';
         const requestVersion = ++context.gaplessQueueRequestVersion;
         logPlaybackDebug(
             `Trace NextTrackPrep candidate nextIndex=${nextIndex ?? -1} next="${nextPath}" `
@@ -1241,6 +1315,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
             context.queuedGaplessTrackPath = '';
             queuedGaplessReleaseTrackPaths = [];
             clearQueuedGaplessEvaluation();
+            clearPlaybackEndSettleReconcile();
             setActiveReplayGainReleaseTrackPaths();
             clearSettledTransitionMetadataRefresh();
             clearNowPlayingCard();
@@ -1252,6 +1327,7 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         updatePlayButton();
         context.visualizerController.setPlaybackState(nextState);
         scheduleDeferredPlaybackStateEffects(nextState);
+        schedulePlaybackEndSettleReconcile(nextState);
 
         if (transition.trackEnded) {
             context.goToTrack(1);

@@ -47,8 +47,8 @@ type App struct {
 	appLibraryState
 	appMusicBrainzTagState
 	scrobble         appScrobbleState
-	internalCoverArt appInternalCoverArtState
 	smtc             appSMTCState
+	internalCoverArt appInternalCoverArtState
 
 	openSubsonicMu          sync.Mutex
 	openSubsonicServer      *http.Server
@@ -145,9 +145,7 @@ type appLibraryScanState struct {
 	scanEntryMs                            float64
 	scanFinalizeMs                         float64
 	scanWatcherMs                          float64
-	asyncTaskMu                            sync.Mutex
-	asyncTaskCond                          *sync.Cond
-	asyncTaskCount                         int
+	scanAsyncTasks                         sync.WaitGroup
 }
 
 type appLibraryGenerationState struct {
@@ -505,6 +503,7 @@ func (a *App) startup(ctx context.Context) {
 	a.startSystemMediaTransportControls()
 	a.startMediaKeyWatcher()
 	a.startMusicBrainzTagWorker()
+	a.notifyMusicBrainzTagWorker()
 }
 
 func (a *App) shutdown(context.Context) {
@@ -567,35 +566,18 @@ func (a *App) libraryScanState() *appLibraryScanState {
 
 func (a *App) beginLibraryScanAsyncTask() func() {
 	scanState := a.libraryScanState()
-	scanState.asyncTaskMu.Lock()
-	if scanState.asyncTaskCond == nil {
-		scanState.asyncTaskCond = sync.NewCond(&scanState.asyncTaskMu)
-	}
-	scanState.asyncTaskCount++
-	scanState.asyncTaskMu.Unlock()
+	scanState.scanAsyncTasks.Add(1)
 
+	var once sync.Once
 	return func() {
-		scanState.asyncTaskMu.Lock()
-		if scanState.asyncTaskCount > 0 {
-			scanState.asyncTaskCount--
-		}
-		if scanState.asyncTaskCount == 0 && scanState.asyncTaskCond != nil {
-			scanState.asyncTaskCond.Broadcast()
-		}
-		scanState.asyncTaskMu.Unlock()
+		once.Do(func() {
+			scanState.scanAsyncTasks.Done()
+		})
 	}
 }
 
 func (a *App) waitForLibraryScanAsyncTasks() {
-	scanState := a.libraryScanState()
-	scanState.asyncTaskMu.Lock()
-	if scanState.asyncTaskCond == nil {
-		scanState.asyncTaskCond = sync.NewCond(&scanState.asyncTaskMu)
-	}
-	for scanState.asyncTaskCount > 0 {
-		scanState.asyncTaskCond.Wait()
-	}
-	scanState.asyncTaskMu.Unlock()
+	a.libraryScanState().scanAsyncTasks.Wait()
 }
 
 func (a *App) libraryGenerationState() *appLibraryGenerationState {
@@ -686,9 +668,6 @@ func (a *App) DisposeFrontendSessionState() {
 			if _, err := a.audioBackend().Stop(); err != nil {
 				log.Printf("failed to stop audio backend while disposing frontend session: %v", err)
 				a.audioBackend().stopWithoutInitialize()
-				a.syncSystemMediaTransportControlsState(a.audioBackend().State())
-			} else {
-				a.syncSystemMediaTransportControlsState(a.audioBackend().State())
 			}
 		}
 	})

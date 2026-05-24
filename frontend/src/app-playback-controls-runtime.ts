@@ -58,10 +58,6 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
             return;
         }
 
-        void context.applyCoverArtForTrack(index).catch((error: unknown) => {
-            console.error(error);
-        });
-
         context.libraryController().renderFolder('none');
 
         context.artistInfoRequestVersion += 1;
@@ -286,6 +282,9 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
 
         context.refreshNowPlayingLabel();
         updateMediaSessionMetadata();
+        void context.applyCoverArtForTrack(index).catch((error: unknown) => {
+            console.error(error);
+        });
         scheduleTrackHydration(index, postLoadTrackHydrationDelayMs);
     };
 

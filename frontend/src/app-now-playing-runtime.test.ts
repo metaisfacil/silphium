@@ -67,7 +67,7 @@ import {
 } from '../wailsjs/go/main/App';
 import type { AppNowPlayingRuntimeContext } from './app-runtime-setup';
 import { createPlaybackStateService } from './services/playback-state-service';
-import { playbackReconcileMaxPollIntervalMs } from './utils/playback-reconcile-delay';
+import { playbackReconcileMaxPollIntervalMs, playbackReconcileNearEndPollIntervalMs } from './utils/playback-reconcile-delay';
 import { runBackgroundBridgeCall, shouldDeferBackgroundBridgeCall } from './utils/bridge-load-gate';
 
 const createDeferred = <T>() => {
@@ -676,6 +676,74 @@ describe('createAppNowPlayingRuntime', () => {
         vi.useRealTimers();
     });
 
+    it('keeps reconciling briefly after a stale end snapshot so delayed auto-advance can surface', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentTrackIndex = -1;
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+                displayAlbum: 'Next Album',
+                displayArtist: 'Next Artist',
+            },
+        ];
+        context.playbackStateService = createPlaybackStateService() as never;
+
+        vi.mocked(InitializeAudioBackend).mockResolvedValue({
+            loaded: true,
+            playing: true,
+            currentTime: 178,
+            duration: 180,
+            volume: 0.8,
+            sourcePath: '/music/track.flac',
+            endEventId: 0,
+        });
+        vi.mocked(AudioGetState)
+            .mockResolvedValueOnce({
+                loaded: true,
+                playing: false,
+                currentTime: 180,
+                duration: 180,
+                volume: 0.8,
+                sourcePath: '/music/track.flac',
+                endEventId: 1,
+            })
+            .mockResolvedValueOnce({
+                loaded: true,
+                playing: true,
+                currentTime: 2.4,
+                duration: 240,
+                volume: 0.8,
+                sourcePath: '/music/next.flac',
+                endEventId: 1,
+            });
+
+        const runtime = createAppNowPlayingRuntime(context);
+        await runtime.initializeBackendPlayback();
+
+        await vi.advanceTimersByTimeAsync(playbackReconcileNearEndPollIntervalMs + 1);
+
+        expect(vi.mocked(AudioGetState)).toHaveBeenCalledTimes(1);
+        expect(context.currentTrackIndex).toBe(0);
+        expect(context.playPause.dataset.state).toBe('play');
+
+        await vi.advanceTimersByTimeAsync(playbackReconcileNearEndPollIntervalMs + 91);
+
+        expect(vi.mocked(AudioGetState)).toHaveBeenCalledTimes(2);
+        expect(context.currentTrackIndex).toBe(1);
+        expect(context.trackTitle.textContent).toBe('Next Track');
+        expect(context.playPause.dataset.state).toBe('pause');
+
+        vi.useRealTimers();
+    });
+
     it('re-pushes a current-track metadata refresh as soon as an automatic advance settles', async () => {
         vi.useFakeTimers();
 
@@ -1263,8 +1331,75 @@ describe('createAppNowPlayingRuntime', () => {
         await vi.runAllTimersAsync();
 
         expect(playlistController.peekNextTrackIndex).not.toHaveBeenCalled();
-        expect(context.playbackSequencingService.baseSequenceIndexes).toHaveBeenCalledTimes(1);
+        expect(context.playbackSequencingService.baseSequenceIndexes).toHaveBeenCalledTimes(2);
         expect(AudioQueueNextTrack).toHaveBeenCalledTimes(1);
+
+        vi.useRealTimers();
+    });
+
+    it('re-evaluates next-track prep when the next candidate changes for the same active track', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentSettings.audio.gaplessPlayback = true;
+        context.playbackSequencingService.baseSequenceIndexes = vi.fn(() => ({
+            indexes: [],
+            currentPosition: -1,
+        })) as never;
+        context.playbackStateService.getPlaybackState = vi.fn(() => ({
+            loaded: true,
+            playing: true,
+            currentTime: 3.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        })) as never;
+        context.playbackStateService.applyPlaybackState = vi.fn(() => ({ trackEnded: false })) as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 3.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+        await vi.runAllTimersAsync();
+
+        expect(AudioQueueNextTrack).not.toHaveBeenCalled();
+
+        context.tracks = [
+            context.tracks[0],
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+            },
+        ];
+        context.playbackSequencingService.baseSequenceIndexes = vi.fn(() => ({
+            indexes: [0, 1],
+            currentPosition: 0,
+        })) as never;
+
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 5.1,
+            duration: 180,
+            sourcePath: '/music/track.flac',
+            volume: 1,
+            endEventId: 0,
+        });
+        await vi.runAllTimersAsync();
+
+        expect(AudioQueueNextTrack).toHaveBeenCalledTimes(1);
+        expect(AudioQueueNextTrack).toHaveBeenCalledWith('/music/track.flac', '/music/next.flac');
 
         vi.useRealTimers();
     });
