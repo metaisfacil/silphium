@@ -417,8 +417,6 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         sidebarSectionOptionSocial.setAttribute('aria-checked', showingLibrary ? 'false' : 'true');
 
         libraryExpandToggle.hidden = !showingLibrary;
-        sidebarPaneLibrary.hidden = !showingLibrary;
-        sidebarPaneSocial.hidden = showingLibrary;
 
         if (lastErrorMessage !== '') {
             socialFeedStatus.textContent = socialEvents.length > 0 ? `Showing available results.\n${lastErrorMessage}` : '';
@@ -501,6 +499,14 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
         }
     };
 
+    const warmSocialFeed = (): void => {
+        if (!options.hasAnyProviderConfigured()) {
+            return;
+        }
+
+        void refreshSocialFeed(true);
+    };
+
     const showLibrary = (): void => {
         if (activeSection === 'library') {
             closeSocialFeedContextMenu();
@@ -553,7 +559,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
             return;
         }
 
-        render();
+        warmSocialFeed();
     };
 
     sidebarSectionTrigger.addEventListener('click', () => {
@@ -705,6 +711,7 @@ export const createListenBrainzSocialController = (options: ListenBrainzSocialCo
     });
 
     render();
+    warmSocialFeed();
 
     return {
         handleSettingsChanged,

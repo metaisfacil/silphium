@@ -101,6 +101,7 @@ export interface AppLibraryLoadRuntimeContext {
     refreshPlaylistOpenModal: () => void;
     scheduleLibraryIncrementalFolderRefresh: () => void;
     scheduleNowPlayingCoverRefresh: () => void;
+    refreshOverviewDashboard?: () => void;
     applyPlayerCardLayout: (layout: PlayerCardLayout) => void;
     getStoredLayout: () => PlayerCardLayout;
     resetListenBrainzFeedbackState: () => void;
@@ -321,6 +322,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         context.trackIndexByPath.clear();
         context.textFileIndexByPath.clear();
         context.imageFileIndexByPath.clear();
+        context.refreshOverviewDashboard?.();
 
         context.currentTrackIndex = -1;
         context.resetScrobbleState();
@@ -521,6 +523,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         context.rebuildTrackPathIndex();
         context.rebuildTextFilePathIndex();
         context.rebuildImageFilePathIndex();
+        context.refreshOverviewDashboard?.();
 
         if (preserveManualTrackPlayback) {
             const normalizedSourcePath = playbackStateBeforeScanSwap.sourcePath.trim().toLowerCase();

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"net/url"
 	pathpkg "path"
 	"strings"
@@ -113,6 +114,7 @@ func (a *App) systemMediaTransportControlsSnapshotForState(state AudioPlaybackSt
 	contentState.indexMu.RUnlock()
 	snapshot.Title, snapshot.Artist, snapshot.AlbumTitle, snapshot.AlbumArtist = a.systemMediaTransportControlsTextMetadata(snapshot.SourcePath, indexed, ok)
 	snapshot.CoverArtURL = a.systemMediaTransportControlsCoverArtURL(snapshot.SourcePath, indexed, ok)
+	snapshot.Duration = a.systemMediaTransportControlsDurationSeconds(snapshot.SourcePath, snapshot.Duration)
 
 	if snapshot.Title == "" {
 		snapshot.Title = fallbackTrackTitleFromPath(snapshot.SourcePath)
@@ -166,6 +168,19 @@ func (a *App) systemMediaTransportControlsTextMetadata(sourcePath string, indexe
 	return title, artist, albumTitle, albumArtist
 }
 
+func (a *App) systemMediaTransportControlsDurationSeconds(sourcePath string, playbackDuration float64) float64 {
+	if !math.IsNaN(playbackDuration) && !math.IsInf(playbackDuration, 0) && playbackDuration > 0 {
+		return playbackDuration
+	}
+
+	trackTags, ok := a.systemMediaTransportControlsTrackTags(sourcePath)
+	if !ok || math.IsNaN(trackTags.DurationSecs) || math.IsInf(trackTags.DurationSecs, 0) || trackTags.DurationSecs <= 0 {
+		return 0
+	}
+
+	return trackTags.DurationSecs
+}
+
 func (a *App) systemMediaTransportControlsTrackTags(path string) (TrackTags, bool) {
 	if path == "" || isRemoteLibraryPath(path) {
 		return TrackTags{}, false
@@ -194,6 +209,30 @@ func (a *App) systemMediaTransportControlsTrackTags(path string) (TrackTags, boo
 	}
 
 	return TrackTags{}, false
+}
+
+func normalizeSystemMediaTransportControlsSeekSeconds(seconds float64) (float64, bool) {
+	if math.IsNaN(seconds) || math.IsInf(seconds, 0) {
+		return 0, false
+	}
+	if seconds < 0 {
+		return 0, true
+	}
+
+	return seconds, true
+}
+
+func (a *App) handleSystemMediaTransportControlsSeekRequested(seconds float64) {
+	normalizedSeconds, ok := normalizeSystemMediaTransportControlsSeekSeconds(seconds)
+	if !ok {
+		return
+	}
+
+	go func() {
+		if _, err := a.AudioSeek(normalizedSeconds); err != nil {
+			log.Printf("failed to handle system media transport controls seek request: %v", err)
+		}
+	}()
 }
 
 func (a *App) systemMediaTransportControlsCoverArtURL(sourcePath string, indexed LibraryIndexedFile, indexedAvailable bool) string {

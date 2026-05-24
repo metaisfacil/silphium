@@ -450,12 +450,8 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
             context.suppressAutoSelectAfterFullLibraryScan = true;
         }
 
-        context.playlistController.activatePlaybackQueueSource();
-        if (remainingTrackIndexes.length > 0) {
-            context.playlistController.addToQueueNext(remainingTrackIndexes);
-        }
-
         await context.loadTrack(firstTrackIndex, true, trackIndexes, true);
+        context.playlistController.replacePlaybackQueue(trackIndexes, 0);
         if (remainingTrackIndexes.length > 0) {
             await context.queueGaplessNextTrack(undefined, trackIndexes);
         }

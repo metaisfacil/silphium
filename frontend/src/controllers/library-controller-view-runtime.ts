@@ -1,5 +1,3 @@
-import { sidebarToggleIconMarkup } from './library-controller-types';
-
 export interface LibraryControllerViewContext {
     app: HTMLElement;
     sidebarToggle: HTMLButtonElement;
@@ -24,6 +22,7 @@ export interface LibraryControllerViewContext {
 }
 
 export const createLibraryControllerViewRuntime = (context: LibraryControllerViewContext) => {
+    const sidebarToggleLoadingLabel = context.sidebarToggle.querySelector('.sidebar-toggle-loading-label') as HTMLSpanElement | null;
     const viewportLoadingIndicator = document.createElement('div');
     viewportLoadingIndicator.className = 'library-viewport-loading-indicator';
     viewportLoadingIndicator.setAttribute('aria-hidden', 'true');
@@ -140,13 +139,18 @@ export const createLibraryControllerViewRuntime = (context: LibraryControllerVie
     };
 
     const refreshSidebarToggleState = (): void => {
+        const backModeActive = context.sidebarOpen && context.app.classList.contains('sidebar-subview-active');
+
         context.app.classList.toggle('sidebar-expanded', context.sidebarOpen && context.sidebarExpanded);
         context.sidebarToggle.classList.toggle('is-loading', context.libraryLoading);
+        context.sidebarToggle.classList.toggle('is-back-mode', backModeActive);
         context.libraryScanYieldIndicator.classList.toggle('is-visible', context.libraryLoading);
         context.libraryScanYieldIndicator.setAttribute('aria-hidden', context.libraryLoading ? 'false' : 'true');
         const loadingEtaLabel = context.libraryLoading && !context.sidebarOpen ? loadingIndicatorLabel() : '';
         context.sidebarToggle.classList.toggle('has-loading-eta', loadingEtaLabel !== '');
-        context.sidebarToggle.innerHTML = context.libraryLoading ? loadingEtaLabel : sidebarToggleIconMarkup;
+        if (sidebarToggleLoadingLabel) {
+            sidebarToggleLoadingLabel.textContent = loadingEtaLabel;
+        }
 
         if (context.libraryLoading) {
             const ariaLabel = loadingEtaLabel
@@ -158,7 +162,7 @@ export const createLibraryControllerViewRuntime = (context: LibraryControllerVie
         }
 
         context.sidebarToggle.setAttribute('aria-busy', 'false');
-        context.sidebarToggle.setAttribute('aria-label', context.sidebarOpen ? 'Close sidebar' : 'Open sidebar');
+        context.sidebarToggle.setAttribute('aria-label', backModeActive ? 'Back to sidebar navigation' : context.sidebarOpen ? 'Close sidebar' : 'Open sidebar');
     };
 
     const refreshSidebarExpandedState = (): void => {

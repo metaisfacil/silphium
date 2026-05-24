@@ -163,6 +163,47 @@ describe('createAppQueueMenuRuntime addSidebarSelectionToPlaylist', () => {
     });
 });
 
+describe('createAppQueueMenuRuntime playSidebarQueueSelection', () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('replaces the playback queue with the played selection so the first chosen track becomes queue position 0', async () => {
+        const loadTrack = vi.fn(async () => undefined);
+        const replacePlaybackQueue = vi.fn();
+        const queueGaplessNextTrack = vi.fn(async () => undefined);
+        const playCurrentTrack = vi.fn(async () => undefined);
+
+        const context = {
+            currentTrackIndex: 0,
+            tracks: [
+                { path: '/music/startup.flac', folderPath: '/music' },
+                { path: '/music/album-1.flac', folderPath: '/music/album' },
+                { path: '/music/album-2.flac', folderPath: '/music/album' },
+                { path: '/music/album-3.flac', folderPath: '/music/album' },
+            ],
+            fullLibraryScanLoadActive: false,
+            suppressAutoSelectAfterFullLibraryScan: false,
+            playlistController: {
+                replacePlaybackQueue,
+            },
+            loadTrack,
+            queueGaplessNextTrack,
+            playCurrentTrack,
+        } as unknown as Parameters<typeof createAppQueueMenuRuntime>[0];
+
+        const runtime = createAppQueueMenuRuntime(context);
+        await runtime.playSidebarQueueSelection([1, 2, 3]);
+
+        expect(loadTrack).toHaveBeenCalledWith(1, true, [1, 2, 3], true);
+        expect(replacePlaybackQueue).toHaveBeenCalledWith([1, 2, 3], 0);
+        expect(queueGaplessNextTrack).toHaveBeenCalledWith(undefined, [1, 2, 3]);
+        expect(playCurrentTrack).toHaveBeenCalledTimes(1);
+        expect(loadTrack.mock.invocationCallOrder[0]).toBeLessThan(replacePlaybackQueue.mock.invocationCallOrder[0]);
+        expect(replacePlaybackQueue.mock.invocationCallOrder[0]).toBeLessThan(playCurrentTrack.mock.invocationCallOrder[0]);
+    });
+});
+
 describe('createAppQueueMenuRuntime menu positioning', () => {
     let animationFrameCallback: FrameRequestCallback | undefined;
 

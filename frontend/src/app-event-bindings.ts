@@ -2,7 +2,7 @@ import { BrowserOpenURL, EventsOn, OnFileDrop } from '../wailsjs/runtime/runtime
 import type { ListenBrainzFeedbackScore } from './controllers/listenbrainz-controller';
 import type { AppEventBindingsContext } from './app-bootstrap-setup';
 import { openMbLink } from './musicbrainz';
-import type { AudioPlaybackState, LibraryScanProgress, LibraryScanResult, MusicBrainzTagWorkerProgress, PlaybackOrderMode } from './types/app-types';
+import type { AudioPlaybackState, LibraryScanProgress, LibraryScanResult, MusicBrainzTagWorkerProgress, PlaybackOrderMode, Track } from './types/app-types';
 import { openMusicBrainzLibrarySearch } from './utils/musicbrainz-entity-helpers';
 import {
     logBridgeEvent,
@@ -41,6 +41,40 @@ type ExternalFileDropContext = Pick<
     | 'playDroppedTrackPath'
     | 'playlistControllerHandleExternalTrackDrop'
     | 'playlistControllerLoadPlaylistByPath'
+>;
+
+type SidebarShellBindingsContext = Pick<
+    AppEventBindingsContext,
+    | 'libraryController'
+    | 'sidebarController'
+    | 'sidebarToggle'
+    | 'sidebarNavLibrary'
+    | 'sidebarNavOverview'
+    | 'sidebarNavSocial'
+    | 'showOverviewPage'
+>;
+
+type OverviewAlbumActionContext = Pick<
+    AppEventBindingsContext,
+    | 'tracks'
+    | 'openSidebarQueueMenu'
+>;
+
+type TaskbarCoverToggleContext = Pick<
+    AppEventBindingsContext,
+    | 'app'
+    | 'libraryController'
+    | 'sidebarController'
+    | 'showOverviewPage'
+    | 'showNowPlayingPage'
+    | 'refreshCurrentTrackMetadata'
+>;
+
+type CoverFrameInteractionContext = Pick<
+    AppEventBindingsContext,
+    | 'app'
+    | 'coverArt'
+    | 'playerLane'
 >;
 
 const clampUnitVolume = (value: number): number => {
@@ -265,10 +299,129 @@ export const triggerTrackMetaArtistFilterAction = (
     openMusicBrainzLibrarySearch(query, openLibrarySearch);
 };
 
+export const setupSidebarShellBindings = (context: SidebarShellBindingsContext): void => {
+    const {
+        libraryController,
+        sidebarController,
+        sidebarToggle,
+        sidebarNavLibrary,
+        sidebarNavOverview,
+        sidebarNavSocial,
+        showOverviewPage,
+    } = context;
+
+    const openSidebarLibrary = (): void => {
+        libraryController.setSidebarOpen(true);
+        sidebarController.showLibrary();
+    };
+
+    const openSidebarSocial = (): void => {
+        libraryController.setSidebarOpen(true);
+        sidebarController.showSocial();
+    };
+
+    sidebarToggle.addEventListener('click', (event) => {
+        if (!libraryController.isSidebarOpen() || sidebarController.getActiveView() === 'nav') {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        sidebarController.showNavigation();
+    }, { capture: true });
+
+    sidebarNavOverview.addEventListener('click', () => {
+        showOverviewPage();
+        sidebarController.showNavigation();
+        libraryController.setSidebarOpen(false);
+    });
+
+    sidebarNavLibrary.addEventListener('click', () => {
+        openSidebarLibrary();
+    });
+
+    sidebarNavSocial.addEventListener('click', () => {
+        openSidebarSocial();
+    });
+};
+
+export const resolveOverviewAlbumTrackIndex = (container: HTMLElement, eventTarget: EventTarget | null): number | null => {
+    const targetElement = eventTarget instanceof Element
+        ? eventTarget
+        : eventTarget instanceof Node
+            ? eventTarget.parentElement
+            : null;
+    if (!targetElement) {
+        return null;
+    }
+
+    const trigger = targetElement.closest('[data-overview-track-index], [data-overview-grid-track-index]') as HTMLElement | null;
+    if (!trigger || !container.contains(trigger)) {
+        return null;
+    }
+
+    const trackIndex = Number(trigger.dataset.overviewTrackIndex || trigger.dataset.overviewGridTrackIndex || '');
+    if (!Number.isInteger(trackIndex) || trackIndex < 0) {
+        return null;
+    }
+
+    return trackIndex;
+};
+
+const trackPathForOverviewAlbum = (tracks: Track[], trackIndex: number): string => {
+    const track = tracks[trackIndex];
+    return typeof track?.path === 'string' ? track.path : '';
+};
+
+export const openOverviewAlbumContextMenu = (
+    context: OverviewAlbumActionContext,
+    container: HTMLElement,
+    event: MouseEvent,
+): void => {
+    const trackIndex = resolveOverviewAlbumTrackIndex(container, event.target);
+    if (trackIndex === null) {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    context.openSidebarQueueMenu(
+        event.clientX,
+        event.clientY,
+        [trackIndex],
+        trackIndex,
+        true,
+        trackPathForOverviewAlbum(context.tracks, trackIndex),
+    );
+};
+
+export const toggleTaskbarCoverView = (context: TaskbarCoverToggleContext): void => {
+    if (context.app.classList.contains('showing-overview')) {
+        context.libraryController.setSidebarOpen(false);
+        context.showNowPlayingPage();
+        void context.refreshCurrentTrackMetadata();
+        return;
+    }
+
+    context.showOverviewPage();
+    context.sidebarController.showNavigation();
+};
+
+export const canInteractWithCoverFrame = (context: CoverFrameInteractionContext): boolean => {
+    if (context.app.classList.contains('showing-overview') || context.playerLane.hidden) {
+        return false;
+    }
+
+    return context.coverArt.classList.contains('is-visible')
+        && (context.coverArt.getAttribute('src') || '').trim() !== '';
+};
+
 export const setupAppEventBindings = (context: AppEventBindingsContext): void => {
     const {
+        app,
         window,
         document,
+        tracks,
         coverArt,
         coverFrame,
         coverFront,
@@ -330,10 +483,16 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         libraryController,
         shareController,
         imageModalController,
+        sidebarController,
         librarySidebar,
         librarySearch,
         sidebarToggle,
+        sidebarNavOverview,
+        sidebarNavLibrary,
+        sidebarNavSocial,
         playerCard,
+        taskbarShowPlayer,
+        taskbarShowOverview,
         sidebarQueueMenu,
         queueConfirmModal,
         listenBrainzFeedbackMenu,
@@ -350,15 +509,22 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         trackTitleInline,
         trackReleaseAlbum,
         trackArtistHeader,
+        playerLane,
+        overviewLastPlayedList,
+        overviewLastAddedList,
+        overviewAlbumGrid,
         handleDroppedFolderPath,
         ensureTrackIndexForPath,
         playDroppedTrackPath,
+        loadTrack,
+        playCurrentTrack,
         openCoverImageModal,
         toggleCoverFlipFromSecondaryInput,
         toggleCoverFlipFromContextMenu,
         openTechnicalInfoModal,
         openAboutModal,
         captureSidebarQueueSelectionContext,
+        openSidebarQueueMenu,
         closeSidebarQueueMenu,
         resolveSidebarQueueTrackIndexesForAction,
         addSidebarSelectionToPlaylist,
@@ -381,6 +547,8 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         closeTrackMetaMenu,
         closeListenBrainzFeedbackMenu,
         openLibrarySearch,
+        showOverviewPage,
+        showNowPlayingPage,
         openPlayOrderMenu,
         setPlaybackOrderMode,
         savePlaybackOrderSetting,
@@ -402,6 +570,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         handleFocusedKeyboardShortcut,
         focusedShortcutBindingsUseCode,
         setCtrlHeldState,
+        refreshCurrentTrackMetadata,
         handleLibraryScanUpdatedEvent,
         updateLibraryLoadingEtaFromProgress,
         normalizeMusicBrainzTagWorkerProgress,
@@ -519,8 +688,14 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         });
     }, false);
 
+    const coverFrameInteractive = (): boolean => canInteractWithCoverFrame({
+        app,
+        coverArt,
+        playerLane,
+    });
+
     coverFront.addEventListener('click', (event: MouseEvent) => {
-        if (context.coverFlipped || event.ctrlKey || performance.now() < context.suppressCoverFrontClickUntil) {
+        if (!coverFrameInteractive() || context.coverFlipped || event.ctrlKey || performance.now() < context.suppressCoverFrontClickUntil) {
             return;
         }
 
@@ -528,14 +703,26 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     });
 
     coverFrame.addEventListener('mousedown', (event: MouseEvent) => {
+        if (!coverFrameInteractive()) {
+            return;
+        }
+
         toggleCoverFlipFromSecondaryInput(event);
     });
 
     coverFrame.addEventListener('pointerdown', (event: PointerEvent) => {
+        if (!coverFrameInteractive()) {
+            return;
+        }
+
         toggleCoverFlipFromSecondaryInput(event);
     });
 
     coverFrame.addEventListener('contextmenu', (event: MouseEvent) => {
+        if (!coverFrameInteractive()) {
+            return;
+        }
+
         toggleCoverFlipFromContextMenu(event);
     });
 
@@ -544,11 +731,11 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
             return;
         }
 
-        event.preventDefault();
-
-        if (!coverArt.classList.contains('is-visible') || !coverArt.src) {
+        if (!coverFrameInteractive()) {
             return;
         }
+
+        event.preventDefault();
 
         openCoverImageModal();
     });
@@ -564,6 +751,66 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
 
     libraryAbout.addEventListener('click', () => {
         openAboutModal();
+    });
+
+    const openOverviewAlbumTrack = (container: HTMLElement, eventTarget: EventTarget | null): void => {
+        const trackIndex = resolveOverviewAlbumTrackIndex(container, eventTarget);
+        if (trackIndex === null) {
+            return;
+        }
+
+        libraryController.setSidebarOpen(false);
+        showNowPlayingPage();
+        void (async () => {
+            await loadTrack(trackIndex, true, undefined, true);
+            await playCurrentTrack();
+        })();
+    };
+
+    overviewLastPlayedList.addEventListener('click', (event) => {
+        openOverviewAlbumTrack(overviewLastPlayedList, event.target);
+    });
+
+    overviewLastPlayedList.addEventListener('contextmenu', (event) => {
+        openOverviewAlbumContextMenu({ tracks, openSidebarQueueMenu }, overviewLastPlayedList, event);
+    });
+
+    overviewLastAddedList.addEventListener('click', (event) => {
+        openOverviewAlbumTrack(overviewLastAddedList, event.target);
+    });
+
+    overviewLastAddedList.addEventListener('contextmenu', (event) => {
+        openOverviewAlbumContextMenu({ tracks, openSidebarQueueMenu }, overviewLastAddedList, event);
+    });
+
+    overviewAlbumGrid.addEventListener('contextmenu', (event) => {
+        openOverviewAlbumContextMenu({ tracks, openSidebarQueueMenu }, overviewAlbumGrid, event);
+    });
+
+    taskbarShowPlayer.addEventListener('click', () => {
+        toggleTaskbarCoverView({
+            app,
+            libraryController,
+            sidebarController,
+            showOverviewPage,
+            showNowPlayingPage,
+            refreshCurrentTrackMetadata,
+        });
+    });
+
+    taskbarShowOverview.addEventListener('click', () => {
+        showOverviewPage();
+        sidebarController.showNavigation();
+    });
+
+    setupSidebarShellBindings({
+        libraryController,
+        sidebarController,
+        sidebarToggle,
+        sidebarNavLibrary,
+        sidebarNavOverview,
+        sidebarNavSocial,
+        showOverviewPage,
     });
 
     sidebarQueueAddNext.addEventListener('click', () => {

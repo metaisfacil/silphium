@@ -88,6 +88,16 @@ const testState = vi.hoisted(() => {
                 return coverFrame;
             }
 
+            if (key === 'playerTaskbar') {
+                const taskbar = document.createElement('section');
+                const primary = document.createElement('div');
+                const center = document.createElement('div');
+                primary.className = 'player-taskbar-primary';
+                center.className = 'player-taskbar-center';
+                taskbar.append(primary, center);
+                return taskbar;
+            }
+
             if (key === 'coverArt' || key === 'coverArtBackground') {
                 return document.createElement('img');
             }
@@ -182,9 +192,13 @@ vi.mock('./app-bootstrap-setup', () => ({
 
 vi.mock('./app-runtime-setup', () => ({
     setupCoreServicesRuntime: vi.fn(() => ({
+        applyRoonAccentTheme: vi.fn(),
+        applyShellTheme: vi.fn(),
         applyPlayerCardLayout: testState.applyPlayerCardLayout,
         defaultMusicBrainzServerUrl: 'https://musicbrainz.org',
         getStoredLayout: testState.getStoredLayout,
+        getStoredRoonAccentTheme: vi.fn(() => ({ color: '#68b4ff', saturation: 1 })),
+        getStoredShellTheme: vi.fn(() => 'roon'),
         openLibrarySearch: testState.openLibrarySearch,
         visualizerController: {
             setEnabled: testState.setLissajousEnabled,
@@ -316,13 +330,26 @@ vi.mock('../wailsjs/runtime/runtime', () => ({
 import { setupExplorationButton } from './components/media-controls-exploration';
 
 describe('main entrypoint runtime scope', () => {
+    let resizeObserverInstances: ResizeObserverCallback[];
+
+    const flushMicrotasks = async (): Promise<void> => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+    };
+
     beforeEach(() => {
         vi.resetModules();
         vi.clearAllMocks();
         testState.resetControllerScope();
         document.body.innerHTML = '<div id="app"></div>';
+        resizeObserverInstances = [];
 
         class ResizeObserverMock {
+            constructor(callback: ResizeObserverCallback) {
+                resizeObserverInstances.push(callback);
+            }
+
             disconnect(): void {
                 return undefined;
             }
@@ -357,6 +384,7 @@ describe('main entrypoint runtime scope', () => {
 
     it('applies the persisted lissajous scale during settings initialization', async () => {
         await import('./main');
+        await flushMicrotasks();
 
         expect(testState.setLissajousScale).toHaveBeenCalledWith(0.25);
     });
@@ -376,6 +404,39 @@ describe('main entrypoint runtime scope', () => {
         }
 
         expect(scope?.isSeeking).toBe(true);
+    });
+
+    it('tracks the rendered roon taskbar height for cover sizing', async () => {
+        await import('./main');
+
+        const appElement = document.querySelector('#app') as HTMLElement;
+        const scope = testState.getControllerScope() as {
+            playerTaskbar?: HTMLElement;
+        } | null;
+        const playerTaskbar = scope?.playerTaskbar as HTMLElement | undefined;
+
+        expect(playerTaskbar).toBeTruthy();
+        expect(resizeObserverInstances.length).toBeGreaterThan(1);
+
+        if (!playerTaskbar) {
+            throw new Error('playerTaskbar was not captured');
+        }
+
+        playerTaskbar.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 960,
+            bottom: 148,
+            width: 960,
+            height: 148,
+            toJSON: () => '',
+        })) as never;
+
+        resizeObserverInstances[1]?.([], {} as ResizeObserver);
+
+        expect(appElement.style.getPropertyValue('--roon-track-view-taskbar-height')).toBe('148px');
     });
 
     it('exposes audioReinitializeBackend on the runtime scope passed to controller setup', async () => {

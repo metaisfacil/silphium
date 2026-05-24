@@ -37,9 +37,11 @@ import { formatPerfLogMessage } from './utils/perf-log';
 import { lookupMusicBrainzTrackMetadata, musicBrainzMBIDSearchQuery, setMusicBrainzRequestLogServerResolver } from './utils/musicbrainz-entity-helpers';
 import { scheduleLastFmRequest } from './utils/lastfm-request-scheduler';
 import { scheduleListenBrainzRequest } from './utils/musicbrainz-request-scheduler';
-import type { AudioVisualizationFrame, ImageLibraryFile, LibraryIndexedFile, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
+import type { RoonAccentSettings } from './utils/roon-accent-theme';
+import { DEFAULT_ROON_ACCENT_COLOR, DEFAULT_ROON_ACCENT_SATURATION, resolveRoonAccentTheme } from './utils/roon-accent-theme';
+import type { AppShellTheme, AudioVisualizationFrame, ImageLibraryFile, LibraryIndexedFile, ListenBrainzSocialEvent, PlayerCardLayout, Track } from './types/app-types';
 import { activeSelectionTargetWithin, firstTagValue, normalizedTrackNumber } from './utils/display-helpers';
-import { folderKeyForPath } from './utils/main-helpers';
+import { folderKeyForPath, relativeFolderSegmentsForTrack, releaseFolderPathForTrackAtDepth } from './utils/main-helpers';
 
 type WindowWithOptionalReleaseFolderResolver = Window & {
     go?: {
@@ -73,6 +75,37 @@ type InternalCoverArtConfig = {
     baseUrl?: string;
     token?: string;
 };
+
+type OverviewRecencyEntry = {
+    title: string;
+    subtitle: string;
+    meta: string;
+    sortTimestamp: number;
+    trackIndex: number;
+    coverAlt: string;
+    openLabel: string;
+};
+
+type OverviewDashboardMode = 'recents' | 'albums';
+
+type OverviewAlbumGridEntry = {
+    title: string;
+    artist: string;
+    trackIndex: number;
+    coverAlt: string;
+    coverFolderPath: string;
+};
+
+const overviewAlbumGridRenderBatchSize = 80;
+const overviewAlbumGridCoverLoadConcurrency = 4;
+const overviewAlbumGridFallbackInitialCoverCount = 32;
+const overviewAlbumGridThumbnailMaxEdgePx = 220;
+const overviewAlbumGridAppendThresholdPx = 900;
+const overviewAlbumGridLoadedCoverLimit = 250;
+const overviewAlbumGridSeekAppendBurstSize = 2_400;
+const overviewAlbumGridBottomSeekAppendBurstSize = 8_000;
+const overviewAlbumGridViewStabilityDelayMs = 300;
+const overviewAlbumGridCoverInvalidationDelayMs = 30_000;
 
 const addListenHistoryEntry = async (
     trackPath: string,
@@ -166,7 +199,40 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     const defaultMusicBrainzServerUrl = 'https://musicbrainz.org';
     const defaultListenBrainzServerUrl = 'https://api.listenbrainz.org';
     const defaultLastFmServerUrl = 'https://ws.audioscrobbler.com/2.0';
+    const overviewAlbumGridSortCollator = new Intl.Collator(undefined, {
+        numeric: true,
+        sensitivity: 'base',
+    });
+    let cachedOverviewAlbumGridEntries: OverviewAlbumGridEntry[] | null = null;
+    let cachedOverviewAlbumGridSourceTracks: Track[] | null = null;
+    let overviewAlbumGridEntriesForRender: OverviewAlbumGridEntry[] = [];
+    let overviewAlbumGridRenderedCount = 0;
+    let overviewAlbumGridCoverObserver: IntersectionObserver | null = null;
+    let overviewAlbumGridVisibilityObserver: IntersectionObserver | null = null;
+    let overviewAlbumGridFallbackQueueHandle: number | null = null;
+    let overviewAlbumGridViewStabilityHandle: number | null = null;
+    let overviewAlbumGridScrollListener: ((event: Event) => void) | null = null;
+    let overviewAlbumGridScrollPillPointerId: number | null = null;
+    let overviewAlbumGridScrollPillGrabOffsetPx = 0;
+    let overviewAlbumGridRequestedScrollProgress: number | null = null;
+    let overviewAlbumGridLastViewChangeAtMs = 0;
+    let overviewAlbumGridCoverLoadsInFlight = 0;
+    let overviewAlbumGridQueuedImages: HTMLImageElement[] = [];
+    const overviewAlbumGridCoverSrcByTrackIndex = new Map<number, string | null>();
+    const overviewAlbumGridCoverElementByTrackIndex = new Map<number, HTMLImageElement>();
+    const overviewAlbumGridCoverLoadGenerationByTrackIndex = new Map<number, number>();
+    const overviewAlbumGridCoverResolveRequestIdByTrackIndex = new Map<number, number>();
+    const overviewAlbumGridLoadedCoverTrackIndexes: number[] = [];
+    const overviewAlbumGridImageByTrackIndex = new Map<number, HTMLImageElement>();
+    const overviewAlbumGridEntryByTrackIndex = new Map<number, OverviewAlbumGridEntry>();
+    const overviewAlbumGridVisibleTrackIndexes = new Set<number>();
+    const overviewAlbumGridPendingUnloadByTrackIndex = new Map<number, number>();
+    const overviewAlbumGridUnloadGenerationByTrackIndex = new Map<number, number>();
+    const overviewAlbumGridViewStabilityWaiters: Array<() => void> = [];
+    const shellThemeKey = 'appShellTheme';
     const playerCardLayoutKey = 'playerCardLayout';
+    const roonAccentColorKey = 'roonAccentColor';
+    const roonAccentSaturationKey = 'roonAccentSaturation';
     const localReleaseFolderByMBID = new Map<string, Promise<string>>();
     const devPerfLoggingEnabled = import.meta.env.DEV && typeof (globalThis as { vi?: unknown }).vi === 'undefined';
     const lastPerfLogAtByName = new Map<string, number>();
@@ -730,13 +796,25 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         },
     });
     const sidebarController = createSidebarController({
-        showLibrary: () => {
+        elements: {
+            app: context.app,
+            sidebarToggle: context.sidebarToggle,
+            libraryHeaderTitleText: context.libraryHeaderTitleText,
+            sidebarNavPane: context.sidebarNavPane,
+            sidebarModeBar: context.sidebarModeBar,
+            sidebarPaneLibrary: context.sidebarPaneLibrary,
+            sidebarPaneSocial: context.sidebarPaneSocial,
+        },
+        onShowNavigation: () => {
             socialController.showLibrary();
         },
-        showSocial: () => {
+        showLibrarySection: () => {
+            socialController.showLibrary();
+        },
+        showSocialSection: () => {
             socialController.showSocial();
         },
-        isSocialActive: () => socialController.isSocialActive(),
+        isSocialActiveSection: () => socialController.isSocialActive(),
     });
 
     const openMbOnCtrlClick = (event: MouseEvent, target: HTMLElement): void => {
@@ -762,14 +840,1362 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         context.app.classList.toggle('ctrl-held', held);
     };
 
+    const escapeHtml = (value: string): string => value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const normalizedTimestampMs = (value?: number): number => {
+        if (!value || !Number.isFinite(value) || value <= 0) {
+            return 0;
+        }
+
+        return value < 1_000_000_000_000 ? value * 1000 : value;
+    };
+
+    const formatOverviewRelativeTime = (timestampMs: number, prefix: string): string => {
+        if (timestampMs <= 0) {
+            return prefix;
+        }
+
+        const elapsedMs = Math.max(0, Date.now() - timestampMs);
+        const elapsedMinutes = Math.floor(elapsedMs / 60_000);
+        if (elapsedMinutes < 1) {
+            return `${prefix} just now`;
+        }
+
+        if (elapsedMinutes < 60) {
+            return `${prefix} ${elapsedMinutes}m ago`;
+        }
+
+        const elapsedHours = Math.floor(elapsedMinutes / 60);
+        if (elapsedHours < 48) {
+            return `${prefix} ${elapsedHours}h ago`;
+        }
+
+        const elapsedDays = Math.floor(elapsedHours / 24);
+        if (elapsedDays < 60) {
+            return `${prefix} ${elapsedDays}d ago`;
+        }
+
+        const elapsedMonths = Math.floor(elapsedDays / 30);
+        if (elapsedMonths < 24) {
+            return `${prefix} ${elapsedMonths}mo ago`;
+        }
+
+        const elapsedYears = Math.floor(elapsedDays / 365);
+        return `${prefix} ${elapsedYears}y ago`;
+    };
+
+    const normalizedOverviewAlbumGridLetter = (value: string): string => {
+        const match = value.trim().toUpperCase().match(/[A-Z0-9]/);
+        return match?.[0] || '#';
+    };
+
+    const overviewAlbumGridProgress = (): number => {
+        const maxScrollTop = Math.max(0, context.overviewAlbumGridView.scrollHeight - context.overviewAlbumGridView.clientHeight);
+        if (maxScrollTop <= 0) {
+            return 0;
+        }
+
+        return Math.min(1, Math.max(0, context.overviewAlbumGridView.scrollTop / maxScrollTop));
+    };
+
+    const overviewAlbumGridLetterForProgress = (progress: number): string => {
+        if (overviewAlbumGridEntriesForRender.length === 0) {
+            return '#';
+        }
+
+        const safeProgress = Math.min(1, Math.max(0, progress));
+        const entryIndex = Math.min(
+            overviewAlbumGridEntriesForRender.length - 1,
+            Math.max(0, Math.round(safeProgress * Math.max(0, overviewAlbumGridEntriesForRender.length - 1))),
+        );
+        const entry = overviewAlbumGridEntriesForRender[entryIndex];
+        return normalizedOverviewAlbumGridLetter(entry.artist || entry.title || '');
+    };
+
+    const setOverviewAlbumGridScrollHintVisible = (visible: boolean): void => {
+        context.overviewAlbumGridScrollHint.hidden = !visible;
+        context.overviewAlbumGridScrollHint.classList.toggle('is-visible', visible);
+        context.overviewAlbumGridScrollHint.setAttribute('aria-hidden', String(!visible));
+    };
+
+    const syncOverviewAlbumGridScrollPill = (options: { showHint?: boolean; forceLetter?: string } = {}): void => {
+        const maxScrollTop = Math.max(0, context.overviewAlbumGridView.scrollHeight - context.overviewAlbumGridView.clientHeight);
+        const rail = context.overviewAlbumGridScrollRail;
+        const pill = context.overviewAlbumGridScrollPill;
+        const hint = context.overviewAlbumGridScrollHint;
+
+        if (overviewDashboardMode !== 'albums' || maxScrollTop <= 0 || overviewAlbumGridEntriesForRender.length === 0) {
+            rail.hidden = true;
+            rail.setAttribute('aria-hidden', 'true');
+            rail.classList.remove('is-active');
+            setOverviewAlbumGridScrollHintVisible(false);
+            pill.style.transform = 'translate(-50%, 0px)';
+            hint.style.transform = 'translateY(0px)';
+            return;
+        }
+
+        rail.hidden = false;
+        rail.setAttribute('aria-hidden', 'false');
+        rail.classList.toggle('is-active', overviewAlbumGridScrollPillPointerId !== null);
+
+        const progress = overviewAlbumGridProgress();
+        const travel = Math.max(0, rail.clientHeight - pill.offsetHeight);
+        const offsetPx = travel * progress;
+        pill.style.transform = `translate(-50%, ${offsetPx}px)`;
+        hint.style.transform = `translateY(${offsetPx}px)`;
+        hint.textContent = options.forceLetter || overviewAlbumGridLetterForProgress(progress);
+
+        if (options.showHint === true) {
+            setOverviewAlbumGridScrollHintVisible(true);
+        } else if (options.showHint === false) {
+            setOverviewAlbumGridScrollHintVisible(false);
+        }
+    };
+
+    const scrollOverviewAlbumGridFromPointer = (clientY: number): void => {
+        const paneRect = context.overviewAlbumGridView.getBoundingClientRect();
+        const railStyles = window.getComputedStyle(context.overviewAlbumGridScrollRail);
+        const railTopInset = Number.parseFloat(railStyles.top || '0') || 0;
+        const railBottomInset = Number.parseFloat(railStyles.bottom || '0') || 0;
+        const railTop = paneRect.top + railTopInset;
+        const railHeight = Math.max(0, paneRect.height - railTopInset - railBottomInset);
+        const pillHeight = context.overviewAlbumGridScrollPill.offsetHeight || 0;
+        const travel = Math.max(0, railHeight - pillHeight);
+        const rawOffsetPx = (clientY - railTop) - overviewAlbumGridScrollPillGrabOffsetPx;
+        const offsetPx = Math.min(travel, Math.max(0, rawOffsetPx));
+        const progress = travel <= 0 ? 0 : offsetPx / travel;
+        overviewAlbumGridRequestedScrollProgress = progress;
+        realizeOverviewAlbumGridForRequestedProgress(context.overviewAlbumGridView, context.overviewAlbumGrid, overviewAlbumGridRequestVersion, progress);
+        const maxScrollTop = Math.max(0, context.overviewAlbumGridView.scrollHeight - context.overviewAlbumGridView.clientHeight);
+        context.overviewAlbumGridView.scrollTop = progress * maxScrollTop;
+        syncOverviewAlbumGridScrollPill({
+            showHint: true,
+            forceLetter: overviewAlbumGridLetterForProgress(progress),
+        });
+    };
+
+    const releaseOverviewAlbumGridScrollPill = (pointerId: number): void => {
+        if (overviewAlbumGridScrollPillPointerId !== pointerId) {
+            return;
+        }
+
+        overviewAlbumGridScrollPillPointerId = null;
+        overviewAlbumGridScrollPillGrabOffsetPx = 0;
+        overviewAlbumGridRequestedScrollProgress = null;
+        if (typeof context.overviewAlbumGridScrollPill.hasPointerCapture === 'function'
+            && context.overviewAlbumGridScrollPill.hasPointerCapture(pointerId)) {
+            context.overviewAlbumGridScrollPill.releasePointerCapture(pointerId);
+        }
+
+        syncOverviewAlbumGridScrollPill({ showHint: false });
+    };
+
+    const waitForNextAnimationFrame = async (): Promise<void> => {
+        await new Promise<void>((resolve) => {
+            if (typeof window.requestAnimationFrame === 'function') {
+                window.requestAnimationFrame(() => {
+                    resolve();
+                });
+                return;
+            }
+
+            window.setTimeout(() => {
+                resolve();
+            }, 0);
+        });
+    };
+
+    const overviewAlbumDescriptorForTrack = (track: Pick<Track, 'folderPath' | 'rootName' | 'rootPath' | 'path' | 'releaseDepth' | 'displayAlbum' | 'displayArtist' | 'allFileTags'>) => {
+        const releaseFolderPath = releaseFolderPathForTrackAtDepth(track, context.releaseDepthForTrack(track)).trim();
+        const releaseFolderKey = folderKeyForPath(releaseFolderPath);
+        const releaseRelativeSegments = relativeFolderSegmentsForTrack(releaseFolderPath, track.rootName || '');
+        const releaseFolderTitle = releaseRelativeSegments[releaseRelativeSegments.length - 1]?.trim() || '';
+        const releaseFolderArtist = releaseRelativeSegments.length >= 2
+            ? releaseRelativeSegments[releaseRelativeSegments.length - 2]?.trim() || ''
+            : '';
+        const album = firstTagValue(track, 'album') || (track.displayAlbum || '').trim() || releaseFolderTitle || 'Unknown Album';
+        const artist = (track.displayArtist || '').trim() || releaseFolderArtist || 'Unknown Artist';
+        const key = releaseFolderKey !== ''
+            ? [track.rootPath || '', releaseFolderKey].join('|').toLowerCase()
+            : [track.rootPath || '', album, artist].join('|').toLowerCase();
+
+        return {
+            album,
+            artist,
+            key,
+        };
+    };
+
+    const buildLastAddedAlbumEntries = (): OverviewRecencyEntry[] => {
+        const recentTracks = context.tracks
+            .map((track, trackIndex) => ({ track, trackIndex }))
+            .filter(({ track }) => normalizedTimestampMs(track.modifiedAtMs) > 0)
+            .sort((left, right) => normalizedTimestampMs(right.track.modifiedAtMs) - normalizedTimestampMs(left.track.modifiedAtMs));
+
+        const seenAlbumKeys = new Set<string>();
+        const entries: OverviewRecencyEntry[] = [];
+
+        for (const { track, trackIndex } of recentTracks) {
+            const descriptor = overviewAlbumDescriptorForTrack(track);
+            if (seenAlbumKeys.has(descriptor.key)) {
+                continue;
+            }
+
+            seenAlbumKeys.add(descriptor.key);
+            const timestampMs = normalizedTimestampMs(track.modifiedAtMs);
+            entries.push({
+                title: descriptor.album,
+                subtitle: descriptor.artist,
+                meta: formatOverviewRelativeTime(timestampMs, 'Added'),
+                sortTimestamp: timestampMs,
+                trackIndex,
+                coverAlt: `Album cover for ${descriptor.album}`,
+                openLabel: `Open listen view for ${descriptor.album}`,
+            });
+
+            if (entries.length >= 4) {
+                break;
+            }
+        }
+
+        return entries;
+    };
+
+    const buildLastPlayedTrackEntries = async (): Promise<OverviewRecencyEntry[]> => {
+        const loadedHistory = await context.loadListenHistoryData();
+        if (!loadedHistory || !loadedHistory.historyItems || loadedHistory.trackIndexes.length === 0 || loadedHistory.historyItems.length === 0) {
+            return [];
+        }
+
+        const indexedEntries = loadedHistory.trackIndexes.map((trackIndex, index) => ({
+            trackIndex,
+            track: context.tracks[trackIndex],
+            historyItem: loadedHistory.historyItems?.[index],
+        }));
+
+        indexedEntries.sort((left, right) => (
+            normalizedTimestampMs(right.historyItem?.listenedAt) - normalizedTimestampMs(left.historyItem?.listenedAt)
+        ));
+
+        const entries: OverviewRecencyEntry[] = [];
+
+        for (const entry of indexedEntries) {
+            const track = entry.track;
+            if (!track) {
+                continue;
+            }
+
+            const descriptor = overviewAlbumDescriptorForTrack(track);
+            const timestampMs = normalizedTimestampMs(entry.historyItem?.listenedAt);
+            const title = (track.displayTitle || track.title || track.name || '').trim() || 'Unknown Track';
+            const subtitle = descriptor.artist.trim() || 'Unknown Artist';
+            entries.push({
+                title,
+                subtitle,
+                meta: formatOverviewRelativeTime(timestampMs, 'Played'),
+                sortTimestamp: timestampMs,
+                trackIndex: entry.trackIndex,
+                coverAlt: `Cover art for ${title}`,
+                openLabel: `Open listen view for ${title}`,
+            });
+
+            if (entries.length >= 4) {
+                break;
+            }
+        }
+
+        return entries;
+    };
+
+    const buildOverviewAlbumGridEntries = (): OverviewAlbumGridEntry[] => {
+        if (cachedOverviewAlbumGridEntries && cachedOverviewAlbumGridSourceTracks === context.tracks) {
+            return cachedOverviewAlbumGridEntries;
+        }
+
+        const albumsByKey = new Map<string, OverviewAlbumGridEntry>();
+
+        context.tracks.forEach((track, trackIndex) => {
+            const descriptor = overviewAlbumDescriptorForTrack(track);
+            if (albumsByKey.has(descriptor.key)) {
+                return;
+            }
+
+            const coverFolderPath = releaseFolderPathForTrackAtDepth(track, context.releaseDepthForTrack(track)).trim()
+                || (track.folderPath || '').trim();
+
+            albumsByKey.set(descriptor.key, {
+                title: descriptor.album,
+                artist: descriptor.artist,
+                trackIndex,
+                coverAlt: `Album cover for ${descriptor.album}`,
+                coverFolderPath,
+            });
+        });
+
+        cachedOverviewAlbumGridEntries = Array.from(albumsByKey.values()).sort((left, right) => {
+            const artistComparison = overviewAlbumGridSortCollator.compare(left.artist, right.artist);
+            if (artistComparison !== 0) {
+                return artistComparison;
+            }
+
+            const titleComparison = overviewAlbumGridSortCollator.compare(left.title, right.title);
+            if (titleComparison !== 0) {
+                return titleComparison;
+            }
+
+            return left.trackIndex - right.trackIndex;
+        });
+
+        cachedOverviewAlbumGridSourceTracks = context.tracks;
+        return cachedOverviewAlbumGridEntries;
+    };
+
+    const renderOverviewRecencyEntries = (container: HTMLDivElement | undefined, entries: OverviewRecencyEntry[], emptyText: string): void => {
+        if (!container) {
+            return;
+        }
+
+        if (entries.length === 0) {
+            container.innerHTML = `<p class="overview-empty">${escapeHtml(emptyText)}</p>`;
+            return;
+        }
+
+        container.innerHTML = entries.map((entry) => {
+            const initials = entry.title
+                .split(/\s+/)
+                .filter((part) => part !== '')
+                .slice(0, 2)
+                .map((part) => part[0]?.toUpperCase() || '')
+                .join('') || 'AL';
+
+            return `
+                <button
+                    class="overview-album-card"
+                    type="button"
+                    data-overview-track-index="${String(entry.trackIndex)}"
+                    data-overview-timestamp="${String(entry.sortTimestamp)}"
+                    aria-label="${escapeHtml(entry.openLabel)}"
+                >
+                    <span class="overview-album-cover-shell">
+                        <img class="overview-album-cover" alt="${escapeHtml(entry.coverAlt)}">
+                        <span class="overview-album-avatar" aria-hidden="true">${escapeHtml(initials)}</span>
+                    </span>
+                    <span class="overview-album-body">
+                        <p class="overview-album-title">${escapeHtml(entry.title)}</p>
+                        <p class="overview-album-artist">${escapeHtml(entry.subtitle)}</p>
+                        <p class="overview-album-meta">${escapeHtml(entry.meta)}</p>
+                    </span>
+                </button>
+            `;
+        }).join('');
+    };
+
+    const hydrateOverviewAlbumCovers = async (
+        container: HTMLDivElement | undefined,
+        entries: OverviewRecencyEntry[],
+        requestVersion: number,
+    ): Promise<void> => {
+        if (!container) {
+            return;
+        }
+
+        for (const entry of entries) {
+            if (requestVersion !== overviewDashboardRequestVersion) {
+                return;
+            }
+
+            const track = context.tracks[entry.trackIndex];
+            if (!track) {
+                continue;
+            }
+
+            const coverSrc = await coverArtService.resolveForTrack(track);
+            if (!coverSrc || requestVersion !== overviewDashboardRequestVersion) {
+                continue;
+            }
+
+            const card = container.querySelector(`[data-overview-track-index="${String(entry.trackIndex)}"]`) as HTMLElement | null;
+            const coverImage = card?.querySelector('.overview-album-cover') as HTMLImageElement | null;
+            const coverShell = card?.querySelector('.overview-album-cover-shell') as HTMLSpanElement | null;
+            if (!coverImage || !coverShell) {
+                continue;
+            }
+
+            coverImage.src = coverSrc;
+            coverImage.classList.add('is-visible');
+            coverShell.classList.add('has-cover');
+        }
+    };
+
+    const createOverviewAlbumGridCard = (entry: OverviewAlbumGridEntry): HTMLDivElement => {
+        const card = document.createElement('div');
+        card.className = 'library-album-card overview-library-album-card';
+        card.dataset.overviewGridTrackIndex = String(entry.trackIndex);
+        card.title = `${entry.artist} - ${entry.title}`;
+
+        const cover = document.createElement('span');
+        cover.className = 'library-album-cover is-loading';
+
+        const fallback = document.createElement('span');
+        fallback.className = 'library-album-cover-fallback';
+        fallback.setAttribute('aria-hidden', 'true');
+        cover.append(fallback);
+
+        const skeleton = document.createElement('span');
+        skeleton.className = 'library-album-cover-skeleton';
+        skeleton.setAttribute('aria-hidden', 'true');
+        cover.append(skeleton);
+
+        const image = document.createElement('img');
+        image.className = 'library-album-cover-image';
+        image.alt = entry.coverAlt;
+        image.loading = 'lazy';
+        image.decoding = 'async';
+        image.dataset.overviewGridTrackIndex = String(entry.trackIndex);
+        cover.append(image);
+
+        card.append(cover);
+        return card;
+    };
+
+    const disconnectOverviewAlbumGridCoverObserver = (): void => {
+        overviewAlbumGridCoverObserver?.disconnect();
+        overviewAlbumGridCoverObserver = null;
+    };
+
+    const disconnectOverviewAlbumGridVisibilityObserver = (): void => {
+        overviewAlbumGridVisibilityObserver?.disconnect();
+        overviewAlbumGridVisibilityObserver = null;
+        overviewAlbumGridVisibleTrackIndexes.clear();
+    };
+
+    const disconnectOverviewAlbumGridPaneWatcher = (pane?: HTMLDivElement): void => {
+        if (pane && overviewAlbumGridScrollListener) {
+            pane.removeEventListener('scroll', overviewAlbumGridScrollListener);
+        }
+
+        overviewAlbumGridScrollListener = null;
+    };
+
+    const cancelOverviewAlbumGridFallbackQueue = (): void => {
+        if (overviewAlbumGridFallbackQueueHandle === null) {
+            return;
+        }
+
+        window.cancelAnimationFrame(overviewAlbumGridFallbackQueueHandle);
+        overviewAlbumGridFallbackQueueHandle = null;
+    };
+
+    const resolveOverviewAlbumGridViewStabilityWaiters = (): void => {
+        const waiters = overviewAlbumGridViewStabilityWaiters.splice(0, overviewAlbumGridViewStabilityWaiters.length);
+        waiters.forEach((resolve) => {
+            resolve();
+        });
+    };
+
+    const scheduleOverviewAlbumGridViewStabilityTimer = (): void => {
+        if (overviewAlbumGridViewStabilityHandle !== null) {
+            window.clearTimeout(overviewAlbumGridViewStabilityHandle);
+        }
+
+        const elapsedSinceViewChangeMs = Math.max(0, Date.now() - overviewAlbumGridLastViewChangeAtMs);
+        const remainingDelayMs = Math.max(0, overviewAlbumGridViewStabilityDelayMs - elapsedSinceViewChangeMs);
+        overviewAlbumGridViewStabilityHandle = window.setTimeout(() => {
+            overviewAlbumGridViewStabilityHandle = null;
+            pruneOverviewAlbumGridQueuedCoverLoadsOutsideCurrentView();
+            invalidateOverviewAlbumGridResolvingLoadsOutsideCurrentView();
+            resolveOverviewAlbumGridViewStabilityWaiters();
+        }, remainingDelayMs);
+    };
+
+    const markOverviewAlbumGridViewDirty = (): void => {
+        overviewAlbumGridLastViewChangeAtMs = Date.now();
+        scheduleOverviewAlbumGridViewStabilityTimer();
+    };
+
+    const waitForOverviewAlbumGridViewStability = async (): Promise<void> => {
+        if (Date.now() - overviewAlbumGridLastViewChangeAtMs >= overviewAlbumGridViewStabilityDelayMs
+            && overviewAlbumGridViewStabilityHandle === null) {
+            return;
+        }
+
+        await new Promise<void>((resolve) => {
+            overviewAlbumGridViewStabilityWaiters.push(resolve);
+            scheduleOverviewAlbumGridViewStabilityTimer();
+        });
+    };
+
+    const resetOverviewAlbumGridViewStabilityGate = (): void => {
+        if (overviewAlbumGridViewStabilityHandle !== null) {
+            window.clearTimeout(overviewAlbumGridViewStabilityHandle);
+            overviewAlbumGridViewStabilityHandle = null;
+        }
+
+        overviewAlbumGridLastViewChangeAtMs = 0;
+        resolveOverviewAlbumGridViewStabilityWaiters();
+    };
+
+    const clearOverviewAlbumGridPendingUnloadHandle = (trackIndex: number): void => {
+        const handle = overviewAlbumGridPendingUnloadByTrackIndex.get(trackIndex);
+        if (handle === undefined) {
+            return;
+        }
+
+        window.clearTimeout(handle);
+        overviewAlbumGridPendingUnloadByTrackIndex.delete(trackIndex);
+    };
+
+    const invalidateOverviewAlbumGridCoverInvalidation = (trackIndex: number): number => {
+        clearOverviewAlbumGridPendingUnloadHandle(trackIndex);
+        const nextGeneration = (overviewAlbumGridUnloadGenerationByTrackIndex.get(trackIndex) || 0) + 1;
+        overviewAlbumGridUnloadGenerationByTrackIndex.set(trackIndex, nextGeneration);
+        return nextGeneration;
+    };
+
+    const cancelAllOverviewAlbumGridPendingUnloads = (): void => {
+        overviewAlbumGridPendingUnloadByTrackIndex.forEach((handle) => {
+            window.clearTimeout(handle);
+        });
+        overviewAlbumGridPendingUnloadByTrackIndex.clear();
+        overviewAlbumGridUnloadGenerationByTrackIndex.clear();
+    };
+
+    const resetOverviewAlbumGridCoverQueue = (): void => {
+        overviewAlbumGridQueuedImages = [];
+        overviewAlbumGridCoverLoadsInFlight = 0;
+        overviewAlbumGridCoverElementByTrackIndex.clear();
+        overviewAlbumGridCoverLoadGenerationByTrackIndex.clear();
+        overviewAlbumGridCoverResolveRequestIdByTrackIndex.clear();
+        overviewAlbumGridLoadedCoverTrackIndexes.length = 0;
+        overviewAlbumGridImageByTrackIndex.clear();
+        disconnectOverviewAlbumGridCoverObserver();
+        disconnectOverviewAlbumGridVisibilityObserver();
+        cancelOverviewAlbumGridFallbackQueue();
+        cancelAllOverviewAlbumGridPendingUnloads();
+        resetOverviewAlbumGridViewStabilityGate();
+    };
+
+    const isOverviewAlbumGridTrackVisible = (trackIndex: number): boolean => overviewAlbumGridVisibilityObserver !== null
+        && overviewAlbumGridVisibleTrackIndexes.has(trackIndex);
+
+    const invalidateOverviewAlbumGridCoverLoad = (trackIndex: number): number => {
+        const nextGeneration = (overviewAlbumGridCoverLoadGenerationByTrackIndex.get(trackIndex) || 0) + 1;
+        overviewAlbumGridCoverLoadGenerationByTrackIndex.set(trackIndex, nextGeneration);
+        overviewAlbumGridCoverSrcByTrackIndex.delete(trackIndex);
+        return nextGeneration;
+    };
+
+    const pruneOverviewAlbumGridQueuedCoverLoadsOutsideCurrentView = (): void => {
+        overviewAlbumGridQueuedImages = overviewAlbumGridQueuedImages.filter((image) => {
+            if (!image.isConnected) {
+                delete image.dataset.coverQueued;
+                return false;
+            }
+
+            const trackIndex = Number(image.dataset.overviewGridTrackIndex || '');
+            if (!Number.isInteger(trackIndex) || trackIndex < 0 || isOverviewAlbumGridTrackVisible(trackIndex)) {
+                return true;
+            }
+
+            delete image.dataset.coverQueued;
+            return false;
+        });
+    };
+
+    const invalidateOverviewAlbumGridResolvingLoadsOutsideCurrentView = (): void => {
+        overviewAlbumGridCoverElementByTrackIndex.forEach((image, trackIndex) => {
+            if (!image.isConnected || image.dataset.coverResolving === undefined || isOverviewAlbumGridTrackVisible(trackIndex)) {
+                return;
+            }
+
+            invalidateOverviewAlbumGridCoverLoad(trackIndex);
+            delete image.dataset.coverResolving;
+        });
+    };
+
+    const unloadOverviewAlbumGridCoverImage = (trackIndex: number): void => {
+        const image = overviewAlbumGridImageByTrackIndex.get(trackIndex);
+        const coverShell = image?.closest('.library-album-cover') as HTMLSpanElement | null;
+
+        invalidateOverviewAlbumGridCoverInvalidation(trackIndex);
+        overviewAlbumGridVisibleTrackIndexes.delete(trackIndex);
+        overviewAlbumGridImageByTrackIndex.delete(trackIndex);
+        const cachedCoverSrc = overviewAlbumGridCoverSrcByTrackIndex.get(trackIndex);
+        if (cachedCoverSrc) {
+            overviewAlbumGridCoverSrcByTrackIndex.delete(trackIndex);
+        }
+
+        if (!image || !image.isConnected || !coverShell) {
+            return;
+        }
+
+        image.removeAttribute('src');
+        delete image.dataset.coverLoaded;
+        delete image.dataset.coverQueued;
+        delete image.dataset.coverResolving;
+        coverShell.classList.remove('has-image');
+        coverShell.classList.remove('is-unavailable');
+        coverShell.classList.add('is-loading');
+
+        if (overviewAlbumGridCoverObserver) {
+            overviewAlbumGridCoverObserver.observe(image);
+        }
+    };
+
+    const scheduleOverviewAlbumGridCoverInvalidation = (trackIndex: number): void => {
+        const generation = invalidateOverviewAlbumGridCoverInvalidation(trackIndex);
+
+        const image = overviewAlbumGridImageByTrackIndex.get(trackIndex);
+        if (!image || image.dataset.coverLoaded !== 'true' || isOverviewAlbumGridTrackVisible(trackIndex)) {
+            return;
+        }
+
+        const handle = window.setTimeout(() => {
+            overviewAlbumGridPendingUnloadByTrackIndex.delete(trackIndex);
+            void (async () => {
+                await waitForOverviewAlbumGridViewStability();
+                if (generation !== overviewAlbumGridUnloadGenerationByTrackIndex.get(trackIndex)) {
+                    return;
+                }
+
+                if (isOverviewAlbumGridTrackVisible(trackIndex)) {
+                    return;
+                }
+
+                unloadOverviewAlbumGridCoverImage(trackIndex);
+            })();
+        }, overviewAlbumGridCoverInvalidationDelayMs);
+        overviewAlbumGridPendingUnloadByTrackIndex.set(trackIndex, handle);
+    };
+
+    const enforceOverviewAlbumGridLoadedCoverLimit = (currentTrackIndex?: number): void => {
+        if (Number.isInteger(currentTrackIndex) && currentTrackIndex !== undefined) {
+            const existingIndex = overviewAlbumGridLoadedCoverTrackIndexes.indexOf(currentTrackIndex);
+            if (existingIndex >= 0) {
+                overviewAlbumGridLoadedCoverTrackIndexes.splice(existingIndex, 1);
+            }
+
+            overviewAlbumGridLoadedCoverTrackIndexes.push(currentTrackIndex);
+        }
+
+        while (overviewAlbumGridLoadedCoverTrackIndexes.length > overviewAlbumGridLoadedCoverLimit) {
+            const candidateIndex = overviewAlbumGridLoadedCoverTrackIndexes.findIndex((trackIndex) => (
+                Number.isInteger(trackIndex)
+                && trackIndex !== currentTrackIndex
+                && !isOverviewAlbumGridTrackVisible(trackIndex)
+            ));
+            if (candidateIndex < 0) {
+                break;
+            }
+
+            const [oldestTrackIndex] = overviewAlbumGridLoadedCoverTrackIndexes.splice(candidateIndex, 1);
+            if (!Number.isInteger(oldestTrackIndex)) {
+                continue;
+            }
+
+            unloadOverviewAlbumGridCoverImage(oldestTrackIndex);
+        }
+    };
+
+    const resolveOverviewAlbumGridCoverSrc = async (entry: OverviewAlbumGridEntry): Promise<string | null> => {
+        const cachedCoverSrc = overviewAlbumGridCoverSrcByTrackIndex.get(entry.trackIndex);
+        if (cachedCoverSrc !== undefined) {
+            return cachedCoverSrc;
+        }
+
+        let coverPath = coverArtService.getFolderCoverPath(entry.coverFolderPath)
+            || indexedFolderCoverPaths().get(folderKeyForPath(entry.coverFolderPath));
+        if (!coverPath && entry.coverFolderPath !== '') {
+            coverPath = (await coverArtService.resolveFolderCoverPath(entry.coverFolderPath)) || undefined;
+        }
+
+        if (!coverPath) {
+            overviewAlbumGridCoverSrcByTrackIndex.set(entry.trackIndex, null);
+            return null;
+        }
+
+        const thumbnail = await measureBridgeCall('ReadImageThumbnail', 60, async () => (
+            await ReadImageThumbnail(coverPath, overviewAlbumGridThumbnailMaxEdgePx) as { base64?: string; mimeType?: string }
+        ), {
+            background: true,
+            maxWaitMs: 600,
+            cooldownOnSlowMs: 350,
+        });
+        const base64 = (thumbnail.base64 || '').trim();
+        if (base64 === '') {
+            overviewAlbumGridCoverSrcByTrackIndex.set(entry.trackIndex, null);
+            return null;
+        }
+
+        const mimeType = thumbnail.mimeType && thumbnail.mimeType.startsWith('image/')
+            ? thumbnail.mimeType
+            : 'image/jpeg';
+        const dataUrl = `data:${mimeType};base64,${base64}`;
+        overviewAlbumGridCoverSrcByTrackIndex.set(entry.trackIndex, dataUrl);
+        return dataUrl;
+    };
+
+    const applyOverviewAlbumGridCover = (image: HTMLImageElement, coverSrc: string | null): void => {
+        const coverShell = image.closest('.library-album-cover') as HTMLSpanElement | null;
+        if (!coverShell || !image.isConnected) {
+            return;
+        }
+
+        const trackIndex = Number(image.dataset.overviewGridTrackIndex || '');
+
+        if (!coverSrc) {
+            coverShell.classList.remove('is-loading');
+            coverShell.classList.add('is-unavailable');
+            return;
+        }
+
+        image.src = coverSrc;
+        coverShell.classList.add('has-image');
+        coverShell.classList.remove('is-loading');
+        coverShell.classList.remove('is-unavailable');
+
+        if (Number.isInteger(trackIndex) && trackIndex >= 0) {
+            overviewAlbumGridImageByTrackIndex.set(trackIndex, image);
+            enforceOverviewAlbumGridLoadedCoverLimit(trackIndex);
+        }
+    };
+
+    const targetOverviewAlbumGridRenderedCountForProgress = (progress: number): number => {
+        if (overviewAlbumGridEntriesForRender.length === 0) {
+            return 0;
+        }
+
+        const safeProgress = Math.min(1, Math.max(0, progress));
+        if (safeProgress >= 0.999) {
+            return overviewAlbumGridEntriesForRender.length;
+        }
+
+        return Math.min(
+            overviewAlbumGridEntriesForRender.length,
+            Math.max(
+                overviewAlbumGridRenderedCount,
+                Math.ceil(safeProgress * overviewAlbumGridEntriesForRender.length) + (overviewAlbumGridRenderBatchSize * 4),
+            ),
+        );
+    };
+
+    const hydrateOverviewAlbumGridCoverImage = async (
+        image: HTMLImageElement,
+        requestVersion: number,
+    ): Promise<void> => {
+        if (requestVersion !== overviewAlbumGridRequestVersion || !image.isConnected) {
+            return;
+        }
+
+        if (image.dataset.coverLoaded === 'true' || image.dataset.coverResolving === 'true') {
+            return;
+        }
+
+        const trackIndex = Number(image.dataset.overviewGridTrackIndex || '');
+        if (!Number.isInteger(trackIndex) || trackIndex < 0) {
+            return;
+        }
+
+        const loadGeneration = overviewAlbumGridCoverLoadGenerationByTrackIndex.get(trackIndex) || 0;
+        const resolveRequestId = (overviewAlbumGridCoverResolveRequestIdByTrackIndex.get(trackIndex) || 0) + 1;
+        overviewAlbumGridCoverResolveRequestIdByTrackIndex.set(trackIndex, resolveRequestId);
+
+        const entry = overviewAlbumGridEntryByTrackIndex.get(trackIndex);
+        if (!entry) {
+            image.dataset.coverLoaded = 'true';
+            applyOverviewAlbumGridCover(image, null);
+            return;
+        }
+
+        image.dataset.coverResolving = String(resolveRequestId);
+        try {
+            const coverSrc = await resolveOverviewAlbumGridCoverSrc(entry);
+            if (requestVersion !== overviewAlbumGridRequestVersion || !image.isConnected) {
+                return;
+            }
+
+            await waitForOverviewAlbumGridViewStability();
+            if (requestVersion !== overviewAlbumGridRequestVersion || !image.isConnected) {
+                return;
+            }
+
+            if (loadGeneration !== (overviewAlbumGridCoverLoadGenerationByTrackIndex.get(trackIndex) || 0)) {
+                overviewAlbumGridCoverSrcByTrackIndex.delete(trackIndex);
+                return;
+            }
+
+            if (overviewAlbumGridVisibilityObserver && !isOverviewAlbumGridTrackVisible(trackIndex)) {
+                overviewAlbumGridCoverSrcByTrackIndex.delete(trackIndex);
+                return;
+            }
+
+            image.dataset.coverLoaded = 'true';
+            applyOverviewAlbumGridCover(image, coverSrc || null);
+        } finally {
+            if (image.dataset.coverResolving === String(resolveRequestId)) {
+                delete image.dataset.coverResolving;
+            }
+            if (overviewAlbumGridCoverResolveRequestIdByTrackIndex.get(trackIndex) === resolveRequestId) {
+                overviewAlbumGridCoverResolveRequestIdByTrackIndex.delete(trackIndex);
+            }
+        }
+    };
+
+    const drainOverviewAlbumGridCoverQueue = (requestVersion: number): void => {
+        while (overviewAlbumGridCoverLoadsInFlight < overviewAlbumGridCoverLoadConcurrency && overviewAlbumGridQueuedImages.length > 0) {
+            const nextImage = overviewAlbumGridQueuedImages.shift();
+            if (!nextImage || !nextImage.isConnected || nextImage.dataset.coverLoaded === 'true' || nextImage.dataset.coverQueued !== 'true') {
+                continue;
+            }
+
+            delete nextImage.dataset.coverQueued;
+            overviewAlbumGridCoverLoadsInFlight += 1;
+            void hydrateOverviewAlbumGridCoverImage(nextImage, requestVersion)
+                .finally(() => {
+                    overviewAlbumGridCoverLoadsInFlight = Math.max(0, overviewAlbumGridCoverLoadsInFlight - 1);
+                    drainOverviewAlbumGridCoverQueue(requestVersion);
+                });
+        }
+    };
+
+    const queueOverviewAlbumGridCoverImages = (images: HTMLImageElement[], requestVersion: number): void => {
+        images.forEach((image) => {
+            if (image.dataset.coverLoaded === 'true' || image.dataset.coverQueued === 'true' || image.dataset.coverResolving === 'true') {
+                return;
+            }
+
+            image.dataset.coverQueued = 'true';
+            overviewAlbumGridQueuedImages.push(image);
+        });
+
+        drainOverviewAlbumGridCoverQueue(requestVersion);
+    };
+
+    const ensureOverviewAlbumGridCoverObserver = (pane: HTMLDivElement, requestVersion: number): IntersectionObserver | null => {
+        if (typeof IntersectionObserver === 'undefined') {
+            return null;
+        }
+
+        if (overviewAlbumGridCoverObserver) {
+            return overviewAlbumGridCoverObserver;
+        }
+
+        overviewAlbumGridCoverObserver = new IntersectionObserver((entries) => {
+            const visibleImages: HTMLImageElement[] = [];
+            entries.forEach((entry) => {
+                if (!entry.isIntersecting || !(entry.target instanceof HTMLImageElement)) {
+                    return;
+                }
+
+                overviewAlbumGridCoverObserver?.unobserve(entry.target);
+                visibleImages.push(entry.target);
+            });
+
+            if (visibleImages.length > 0) {
+                queueOverviewAlbumGridCoverImages(visibleImages, requestVersion);
+            }
+        }, {
+            root: pane,
+            rootMargin: '220px 0px',
+        });
+
+        return overviewAlbumGridCoverObserver;
+    };
+
+    const ensureOverviewAlbumGridVisibilityObserver = (requestVersion: number): IntersectionObserver | null => {
+        if (typeof IntersectionObserver === 'undefined') {
+            return null;
+        }
+
+        if (overviewAlbumGridVisibilityObserver) {
+            return overviewAlbumGridVisibilityObserver;
+        }
+
+        overviewAlbumGridVisibilityObserver = new IntersectionObserver((entries) => {
+            const visibleImages: HTMLImageElement[] = [];
+            entries.forEach((entry) => {
+                if (!(entry.target instanceof HTMLImageElement)) {
+                    return;
+                }
+
+                const trackIndex = Number(entry.target.dataset.overviewGridTrackIndex || '');
+                if (!Number.isInteger(trackIndex) || trackIndex < 0) {
+                    return;
+                }
+
+                if (entry.isIntersecting) {
+                    invalidateOverviewAlbumGridCoverInvalidation(trackIndex);
+                    overviewAlbumGridVisibleTrackIndexes.add(trackIndex);
+                    if (entry.target.dataset.coverLoaded !== 'true'
+                        && entry.target.dataset.coverQueued !== 'true'
+                        && entry.target.dataset.coverResolving !== 'true') {
+                        visibleImages.push(entry.target);
+                    }
+                    return;
+                }
+
+                overviewAlbumGridVisibleTrackIndexes.delete(trackIndex);
+                scheduleOverviewAlbumGridCoverInvalidation(trackIndex);
+            });
+
+            if (visibleImages.length > 0) {
+                queueOverviewAlbumGridCoverImages(visibleImages, requestVersion);
+            }
+
+            enforceOverviewAlbumGridLoadedCoverLimit();
+        }, {
+            root: context.overviewAlbumGridView,
+            threshold: 0.01,
+        });
+
+        return overviewAlbumGridVisibilityObserver;
+    };
+
+    const queueOverviewAlbumGridCovers = (pane: HTMLDivElement, images: HTMLImageElement[], requestVersion: number): void => {
+        const pendingImages = images.filter((image) => image.dataset.coverLoaded !== 'true' && image.dataset.coverResolving !== 'true');
+        const visibilityObserver = ensureOverviewAlbumGridVisibilityObserver(requestVersion);
+        images.forEach((image) => {
+            visibilityObserver?.observe(image);
+        });
+
+        if (pendingImages.length === 0) {
+            return;
+        }
+
+        const observer = ensureOverviewAlbumGridCoverObserver(pane, requestVersion);
+        queueOverviewAlbumGridCoverImages(pendingImages.slice(0, overviewAlbumGridFallbackInitialCoverCount), requestVersion);
+        if (!observer) {
+            return;
+        }
+
+        pendingImages.forEach((image) => {
+            observer.observe(image);
+        });
+    };
+
+    const appendOverviewAlbumGridToCount = (
+        pane: HTMLDivElement | undefined,
+        container: HTMLDivElement | undefined,
+        requestVersion: number,
+        targetRenderedCount: number,
+    ): void => {
+        if (!container || overviewAlbumGridRenderedCount >= overviewAlbumGridEntriesForRender.length) {
+            return;
+        }
+
+        const batchEnd = Math.min(
+            Math.max(overviewAlbumGridRenderedCount, targetRenderedCount),
+            overviewAlbumGridEntriesForRender.length,
+        );
+        if (batchEnd <= overviewAlbumGridRenderedCount) {
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        const batchImages: HTMLImageElement[] = [];
+        overviewAlbumGridEntriesForRender.slice(overviewAlbumGridRenderedCount, batchEnd).forEach((entry) => {
+            const card = createOverviewAlbumGridCard(entry);
+            const image = card.querySelector('.library-album-cover-image') as HTMLImageElement | null;
+            if (image) {
+                overviewAlbumGridCoverElementByTrackIndex.set(entry.trackIndex, image);
+                batchImages.push(image);
+            }
+            fragment.append(card);
+        });
+        container.append(fragment);
+        overviewAlbumGridRenderedCount = batchEnd;
+
+        if (pane && batchImages.length > 0) {
+            queueOverviewAlbumGridCovers(pane, batchImages, requestVersion);
+        }
+
+        syncOverviewAlbumGridScrollPill();
+    };
+
+    const appendOverviewAlbumGridBatch = (
+        pane: HTMLDivElement | undefined,
+        container: HTMLDivElement | undefined,
+        requestVersion: number,
+    ): void => {
+        appendOverviewAlbumGridToCount(
+            pane,
+            container,
+            requestVersion,
+            overviewAlbumGridRenderedCount + overviewAlbumGridRenderBatchSize,
+        );
+    };
+
+    const syncOverviewAlbumGridToRequestedProgress = (pane: HTMLDivElement): void => {
+        if (overviewAlbumGridRequestedScrollProgress === null) {
+            return;
+        }
+
+        const maxScrollTop = Math.max(0, pane.scrollHeight - pane.clientHeight);
+        pane.scrollTop = overviewAlbumGridRequestedScrollProgress * maxScrollTop;
+    };
+
+    const realizeOverviewAlbumGridForRequestedProgress = (
+        pane: HTMLDivElement | undefined,
+        container: HTMLDivElement | undefined,
+        requestVersion: number,
+        progress: number,
+    ): void => {
+        if (!pane || !container || requestVersion !== overviewAlbumGridRequestVersion) {
+            return;
+        }
+
+        const targetRenderedCount = targetOverviewAlbumGridRenderedCountForProgress(progress);
+        if (targetRenderedCount <= overviewAlbumGridRenderedCount) {
+            syncOverviewAlbumGridToRequestedProgress(pane);
+            return;
+        }
+
+        const maxAdditionalEntries = progress >= 0.999
+            ? overviewAlbumGridBottomSeekAppendBurstSize
+            : overviewAlbumGridSeekAppendBurstSize;
+        appendOverviewAlbumGridToCount(
+            pane,
+            container,
+            requestVersion,
+            Math.min(targetRenderedCount, overviewAlbumGridRenderedCount + maxAdditionalEntries),
+        );
+        syncOverviewAlbumGridToRequestedProgress(pane);
+    };
+
+    const scheduleOverviewAlbumGridAppend = (
+        pane: HTMLDivElement | undefined,
+        container: HTMLDivElement | undefined,
+        requestVersion: number,
+    ): void => {
+        if (overviewAlbumGridFallbackQueueHandle !== null || requestVersion !== overviewAlbumGridRequestVersion) {
+            return;
+        }
+
+        overviewAlbumGridFallbackQueueHandle = window.requestAnimationFrame(() => {
+            overviewAlbumGridFallbackQueueHandle = null;
+            if (requestVersion !== overviewAlbumGridRequestVersion) {
+                return;
+            }
+
+            if (overviewAlbumGridRequestedScrollProgress !== null) {
+                realizeOverviewAlbumGridForRequestedProgress(
+                    pane,
+                    container,
+                    requestVersion,
+                    overviewAlbumGridRequestedScrollProgress,
+                );
+            } else {
+                appendOverviewAlbumGridBatch(pane, container, requestVersion);
+            }
+
+            if (pane && overviewAlbumGridRenderedCount < overviewAlbumGridEntriesForRender.length) {
+                if (overviewAlbumGridRequestedScrollProgress !== null) {
+                    const targetRenderedCount = targetOverviewAlbumGridRenderedCountForProgress(overviewAlbumGridRequestedScrollProgress);
+                    if (overviewAlbumGridRenderedCount < targetRenderedCount) {
+                        scheduleOverviewAlbumGridAppend(pane, container, requestVersion);
+                        return;
+                    }
+                }
+
+                const remainingScrollPx = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
+                if (remainingScrollPx <= overviewAlbumGridAppendThresholdPx) {
+                    scheduleOverviewAlbumGridAppend(pane, container, requestVersion);
+                }
+            }
+        });
+    };
+
+    const renderOverviewAlbumGridEntries = async (
+        pane: HTMLDivElement | undefined,
+        container: HTMLDivElement | undefined,
+        entries: OverviewAlbumGridEntry[],
+        requestVersion: number,
+    ): Promise<void> => {
+        if (!container) {
+            return;
+        }
+
+        disconnectOverviewAlbumGridPaneWatcher(pane);
+        resetOverviewAlbumGridCoverQueue();
+        container.replaceChildren();
+        overviewAlbumGridEntriesForRender = entries;
+        overviewAlbumGridRenderedCount = 0;
+        markOverviewAlbumGridViewDirty();
+
+        if (entries.length === 0) {
+            container.innerHTML = '<p class="library-album-grid-empty">No albums in library</p>';
+            syncOverviewAlbumGridScrollPill({ showHint: false });
+            return;
+        }
+
+        appendOverviewAlbumGridBatch(pane, container, requestVersion);
+
+        if (!pane || requestVersion !== overviewAlbumGridRequestVersion) {
+            return;
+        }
+
+        overviewAlbumGridScrollListener = () => {
+            markOverviewAlbumGridViewDirty();
+            const remainingScrollPx = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
+            syncOverviewAlbumGridScrollPill({ showHint: overviewAlbumGridScrollPillPointerId !== null });
+            if (remainingScrollPx <= overviewAlbumGridAppendThresholdPx) {
+                scheduleOverviewAlbumGridAppend(pane, container, requestVersion);
+            }
+        };
+        pane.addEventListener('scroll', overviewAlbumGridScrollListener, { passive: true });
+
+        await waitForNextAnimationFrame();
+        if (requestVersion !== overviewAlbumGridRequestVersion) {
+            return;
+        }
+
+        if (pane.scrollHeight - pane.clientHeight <= overviewAlbumGridAppendThresholdPx) {
+            scheduleOverviewAlbumGridAppend(pane, container, requestVersion);
+        }
+
+        syncOverviewAlbumGridScrollPill();
+    };
+
+    let overviewDashboardRequestVersion = 0;
+    let overviewAlbumGridRequestVersion = 0;
+    let overviewDashboardMode: OverviewDashboardMode = 'recents';
+
+    const syncOverviewDashboardMode = (): void => {
+        const recentsActive = overviewDashboardMode === 'recents';
+        const albumsActive = overviewDashboardMode === 'albums';
+        const overviewAlbumGridShell = context.overviewAlbumGridView.parentElement;
+
+        context.overviewRecentsView.hidden = !recentsActive;
+        context.overviewAlbumGridView.hidden = !albumsActive;
+        if (overviewAlbumGridShell instanceof HTMLElement) {
+            overviewAlbumGridShell.hidden = !albumsActive;
+        }
+        context.overviewShowRecents.setAttribute('aria-pressed', String(recentsActive));
+        context.overviewShowAlbums.setAttribute('aria-pressed', String(albumsActive));
+        context.overviewShowRecents.classList.toggle('is-active', recentsActive);
+        context.overviewShowAlbums.classList.toggle('is-active', albumsActive);
+    };
+
+    const refreshOverviewAlbumGrid = async (): Promise<void> => {
+        const requestVersion = ++overviewAlbumGridRequestVersion;
+        const albumGridEntries = buildOverviewAlbumGridEntries();
+        overviewAlbumGridEntryByTrackIndex.clear();
+        albumGridEntries.forEach((entry) => {
+            overviewAlbumGridEntryByTrackIndex.set(entry.trackIndex, entry);
+        });
+
+        await renderOverviewAlbumGridEntries(context.overviewAlbumGridView, context.overviewAlbumGrid, albumGridEntries, requestVersion);
+    };
+
+    const setOverviewDashboardMode = (mode: OverviewDashboardMode): void => {
+        overviewDashboardMode = mode;
+        syncOverviewDashboardMode();
+        context.overviewPage.scrollTop = 0;
+        context.overviewAlbumGridView.scrollTop = 0;
+
+        if (mode !== 'albums') {
+            disconnectOverviewAlbumGridPaneWatcher(context.overviewAlbumGridView);
+            resetOverviewAlbumGridCoverQueue();
+            overviewAlbumGridScrollPillPointerId = null;
+            overviewAlbumGridRequestedScrollProgress = null;
+            syncOverviewAlbumGridScrollPill({ showHint: false });
+        }
+
+        if (mode === 'albums') {
+            void refreshOverviewAlbumGrid();
+        }
+    };
+
+    const refreshOverviewRecencySections = async (): Promise<void> => {
+        const requestVersion = ++overviewDashboardRequestVersion;
+        const lastAddedEntries = buildLastAddedAlbumEntries();
+
+        renderOverviewRecencyEntries(context.overviewLastAddedList, lastAddedEntries, 'No recently added albums yet.');
+        void hydrateOverviewAlbumCovers(context.overviewLastAddedList, lastAddedEntries, requestVersion);
+
+        try {
+            const lastPlayedEntries = await buildLastPlayedTrackEntries();
+            if (requestVersion !== overviewDashboardRequestVersion) {
+                return;
+            }
+
+            renderOverviewRecencyEntries(context.overviewLastPlayedList, lastPlayedEntries, 'No listen history yet.');
+            void hydrateOverviewAlbumCovers(context.overviewLastPlayedList, lastPlayedEntries, requestVersion);
+        } catch {
+            if (requestVersion !== overviewDashboardRequestVersion) {
+                return;
+            }
+
+            renderOverviewRecencyEntries(context.overviewLastPlayedList, [], 'No listen history yet.');
+        }
+    };
+
+    const isRoonShellActive = (): boolean => context.app.classList.contains('shell-theme-roon');
+
+    const showOverviewPage = (): void => {
+        setOverviewDashboardMode('recents');
+        context.overviewPage.hidden = false;
+        context.playerLane.hidden = isRoonShellActive() ? false : true;
+        context.overviewPage.scrollTop = 0;
+        context.app.classList.add('showing-overview');
+        refreshOverviewDashboard();
+    };
+
+    const showNowPlayingPage = (): void => {
+        context.overviewPage.hidden = isRoonShellActive() ? false : true;
+        context.playerLane.hidden = false;
+        context.app.classList.remove('showing-overview');
+    };
+
+    const syncResponsiveOverviewScrollPosition = (): void => {
+        if (!isRoonShellActive() || !context.app.classList.contains('showing-overview')) {
+            return;
+        }
+
+        if (window.innerWidth <= 1100) {
+            context.overviewPage.scrollTop = 0;
+        }
+    };
+
+    window.addEventListener('resize', syncResponsiveOverviewScrollPosition, { passive: true });
+
+    const getStoredShellTheme = (): AppShellTheme =>
+        localStorage.getItem(shellThemeKey) === 'classic' ? 'classic' : 'roon';
+
+    function refreshOverviewDashboard(): void {
+        const trackCount = context.tracks.length;
+        const albumCount = buildOverviewAlbumGridEntries().length;
+        const artistCount = new Set(context.tracks.map((track) => (track.displayArtist || '').trim()).filter((value) => value !== '')).size;
+        const libraryCount = new Set(context.tracks.map((track) => (track.rootName || '').trim()).filter((value) => value !== '')).size;
+
+        if (context.overviewTracksCount) {
+            context.overviewTracksCount.textContent = String(trackCount);
+        }
+
+        if (context.overviewAlbumsCount) {
+            context.overviewAlbumsCount.textContent = String(albumCount);
+        }
+
+        if (context.overviewArtistsCount) {
+            context.overviewArtistsCount.textContent = String(artistCount);
+        }
+
+        if (context.overviewLibrariesCount) {
+            context.overviewLibrariesCount.textContent = String(libraryCount);
+        }
+
+        void refreshOverviewRecencySections();
+
+        if (overviewDashboardMode === 'albums') {
+            void refreshOverviewAlbumGrid();
+        }
+    }
+
+    context.overviewAlbumGridScrollPill.addEventListener('pointerdown', (event) => {
+        if (context.overviewAlbumGridScrollRail.hidden) {
+            return;
+        }
+
+        event.preventDefault();
+        overviewAlbumGridScrollPillPointerId = event.pointerId;
+        const pillRect = context.overviewAlbumGridScrollPill.getBoundingClientRect();
+        overviewAlbumGridScrollPillGrabOffsetPx = Math.min(
+            pillRect.height,
+            Math.max(0, event.clientY - pillRect.top),
+        );
+        if (typeof context.overviewAlbumGridScrollPill.setPointerCapture === 'function') {
+            context.overviewAlbumGridScrollPill.setPointerCapture(event.pointerId);
+        }
+
+        scrollOverviewAlbumGridFromPointer(event.clientY);
+    });
+
+    context.overviewAlbumGridScrollPill.addEventListener('pointermove', (event) => {
+        if (overviewAlbumGridScrollPillPointerId !== event.pointerId) {
+            return;
+        }
+
+        event.preventDefault();
+        scrollOverviewAlbumGridFromPointer(event.clientY);
+    });
+
+    context.overviewAlbumGridScrollPill.addEventListener('pointerup', (event) => {
+        releaseOverviewAlbumGridScrollPill(event.pointerId);
+    });
+
+    context.overviewAlbumGridScrollPill.addEventListener('pointercancel', (event) => {
+        releaseOverviewAlbumGridScrollPill(event.pointerId);
+    });
+
+    context.overviewAlbumGridScrollPill.addEventListener('lostpointercapture', (event) => {
+        releaseOverviewAlbumGridScrollPill(event.pointerId);
+    });
+
+    context.overviewShowAlbums.addEventListener('click', () => {
+        setOverviewDashboardMode('albums');
+    });
+
+    context.overviewShowRecents.addEventListener('click', () => {
+        setOverviewDashboardMode('recents');
+    });
+
+    syncOverviewDashboardMode();
+    syncOverviewAlbumGridScrollPill({ showHint: false });
+
     const getStoredLayout = (): PlayerCardLayout =>
         localStorage.getItem(playerCardLayoutKey) === 'release' ? 'release' : 'default';
 
+    const getStoredRoonAccentTheme = (): RoonAccentSettings => resolveRoonAccentTheme({
+        color: localStorage.getItem(roonAccentColorKey) ?? DEFAULT_ROON_ACCENT_COLOR,
+        saturation: localStorage.getItem(roonAccentSaturationKey) ?? String(DEFAULT_ROON_ACCENT_SATURATION),
+    });
+
     localStorage.removeItem('shareImageComment');
 
+    const syncRoonAccentCssVars = (theme: RoonAccentSettings): void => {
+        const resolvedTheme = resolveRoonAccentTheme(theme);
+        for (const [propertyName, propertyValue] of Object.entries(resolvedTheme.cssVars)) {
+            context.app.style.setProperty(propertyName, propertyValue);
+        }
+    };
+
+    const applyRoonAccentTheme = (theme: RoonAccentSettings): void => {
+        const resolvedTheme = resolveRoonAccentTheme(theme);
+        localStorage.setItem(roonAccentColorKey, resolvedTheme.color);
+        localStorage.setItem(roonAccentSaturationKey, String(resolvedTheme.saturation));
+        syncRoonAccentCssVars(resolvedTheme);
+    };
+
+    const syncPlayerCardLayoutClass = (layout: PlayerCardLayout): void => {
+        const classicThemeActive = context.app.classList.contains('shell-theme-classic');
+        context.playerCard.classList.toggle('layout-release', classicThemeActive && layout === 'release');
+    };
+
     const applyPlayerCardLayout = (layout: PlayerCardLayout): void => {
-        context.playerCard.classList.toggle('layout-release', layout === 'release');
         localStorage.setItem(playerCardLayoutKey, layout);
+        syncPlayerCardLayoutClass(layout);
+    };
+
+    const applyShellTheme = (theme: AppShellTheme): void => {
+        context.app.classList.toggle('shell-theme-classic', theme === 'classic');
+        context.app.classList.toggle('shell-theme-roon', theme === 'roon');
+        localStorage.setItem(shellThemeKey, theme);
+        syncPlayerCardLayoutClass(getStoredLayout());
+        syncRoonAccentCssVars(getStoredRoonAccentTheme());
+
+        if (theme === 'roon') {
+            showOverviewPage();
+            sidebarController.showNavigation();
+            return;
+        }
+
+        showNowPlayingPage();
+        sidebarController.showLibrary();
     };
 
     const trackMetaClickSuppressDurationMs = 280;
@@ -973,13 +2399,17 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     });
 
     return {
+        applyShellTheme,
         applyPlayerCardLayout,
+        applyRoonAccentTheme,
         closeListenBrainzFeedbackMenu,
         coverArtService,
         defaultLastFmServerUrl,
         defaultListenBrainzServerUrl,
         defaultMusicBrainzServerUrl,
+        getStoredShellTheme,
         getStoredLayout,
+        getStoredRoonAccentTheme,
         hasLastFmScrobbling,
         hasListenBrainzScrobbling,
         visualizerController,
@@ -989,10 +2419,13 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         openLibrarySearch,
         playbackSequencingService,
         playbackStateService,
+        refreshOverviewDashboard,
         refreshListenBrainzFeedbackForCurrentTrack,
         resetListenBrainzFeedbackState,
         scrobbleService,
         setCtrlHeldState,
+        showNowPlayingPage,
+        showOverviewPage,
         submitListenBrainzFeedbackForTrack,
         suppressTrackMetaClicks,
         trackMetadataService,

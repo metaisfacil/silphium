@@ -55,8 +55,12 @@ type AppControllerSetupScope = RuntimeScope<
     | 'updatePlayButton'
     | 'scanConfiguredLibraryFolders'
     | 'openErrorModal'
+    | 'getStoredShellTheme'
+    | 'applyShellTheme'
     | 'getStoredLayout'
     | 'applyPlayerCardLayout'
+    | 'getStoredRoonAccentTheme'
+    | 'applyRoonAccentTheme'
     | 'playlistBtn'
     | 'playlistMenuElements'
     | 'playlistModalElements'
@@ -119,8 +123,10 @@ type AppControllerSetupScope = RuntimeScope<
 >;
 
 type AppEventBindingsScope = RuntimeScope<
+    | 'app'
     | 'window'
     | 'document'
+    | 'tracks'
     | 'coverArt'
     | 'coverFrame'
     | 'coverFront'
@@ -186,6 +192,10 @@ type AppEventBindingsScope = RuntimeScope<
     | 'librarySidebar'
     | 'librarySearch'
     | 'sidebarToggle'
+    | 'sidebarNavOverview'
+    | 'sidebarNavLibrary'
+    | 'sidebarNavSocial'
+    | 'sidebarModeBack'
     | 'playerCard'
     | 'sidebarQueueMenu'
     | 'queueConfirmModal'
@@ -204,15 +214,26 @@ type AppEventBindingsScope = RuntimeScope<
     | 'trackReleaseAlbum'
     | 'trackArtistHeader'
     | 'playerLane'
+    | 'overviewLastPlayedList'
+    | 'overviewLastAddedList'
+    | 'overviewAlbumGrid'
     | 'handleDroppedFolderPath'
     | 'ensureTrackIndexForPath'
     | 'playDroppedTrackPath'
+    | 'sidebarController'
+    | 'taskbarShowPlayer'
+    | 'taskbarShowOverview'
+    | 'showOverviewPage'
+    | 'showNowPlayingPage'
+    | 'loadTrack'
+    | 'playCurrentTrack'
     | 'openCoverImageModal'
     | 'toggleCoverFlipFromSecondaryInput'
     | 'toggleCoverFlipFromContextMenu'
     | 'openTechnicalInfoModal'
     | 'openAboutModal'
     | 'captureSidebarQueueSelectionContext'
+    | 'openSidebarQueueMenu'
     | 'closeSidebarQueueMenu'
     | 'resolveSidebarQueueTrackIndexesForAction'
     | 'addSidebarSelectionToPlaylist'
@@ -400,8 +421,12 @@ const createControllerSetupContextFromScope = (scope: AppControllerSetupScope) =
         await scope.scanConfiguredLibraryFolders();
     },
     openErrorModal: scope.openErrorModal,
+    getShellTheme: scope.getStoredShellTheme,
+    setShellTheme: scope.applyShellTheme,
     getPlayerCardLayout: scope.getStoredLayout,
     setPlayerCardLayout: scope.applyPlayerCardLayout,
+    getRoonAccentTheme: scope.getStoredRoonAccentTheme,
+    setRoonAccentTheme: scope.applyRoonAccentTheme,
     playlistBtn: scope.playlistBtn,
     playlistMenuElements: scope.playlistMenuElements,
     playlistModalElements: scope.playlistModalElements,
@@ -503,8 +528,12 @@ export type AppControllerSetupContext = ReturnType<typeof createControllerSetupC
 export const setupControllersFromScope = (scope: AppControllerSetupScope) => setupAppControllers(createControllerSetupContextFromScope(scope));
 
 const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
+        app: scope.app,
         window: scope.window,
         document: scope.document,
+        get tracks() {
+            return scope.tracks;
+        },
         coverArt: scope.coverArt,
         coverFrame: scope.coverFrame,
         coverFront: scope.coverFront,
@@ -567,10 +596,17 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         libraryController: scope.libraryControllerRef,
         shareController: scope.shareControllerRef,
         imageModalController: scope.imageModalControllerRef,
+        sidebarController: scope.sidebarController,
         librarySidebar: scope.librarySidebar,
         librarySearch: scope.librarySearch,
         sidebarToggle: scope.sidebarToggle,
+        sidebarNavOverview: scope.sidebarNavOverview,
+        sidebarNavLibrary: scope.sidebarNavLibrary,
+        sidebarNavSocial: scope.sidebarNavSocial,
+        sidebarModeBack: scope.sidebarModeBack,
         playerCard: scope.playerCard,
+        taskbarShowPlayer: scope.taskbarShowPlayer,
+        taskbarShowOverview: scope.taskbarShowOverview,
         sidebarQueueMenu: scope.sidebarQueueMenu,
         queueConfirmModal: scope.queueConfirmModal,
         listenBrainzFeedbackMenu: scope.listenBrainzFeedbackMenu,
@@ -588,15 +624,25 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         trackReleaseAlbum: scope.trackReleaseAlbum,
         trackArtistHeader: scope.trackArtistHeader,
         playerLane: scope.playerLane,
+        overviewLastPlayedList: scope.overviewLastPlayedList,
+        overviewLastAddedList: scope.overviewLastAddedList,
+        overviewAlbumGrid: scope.overviewAlbumGrid,
         handleDroppedFolderPath: scope.handleDroppedFolderPath,
         ensureTrackIndexForPath: scope.ensureTrackIndexForPath,
         playDroppedTrackPath: scope.playDroppedTrackPath,
+        loadTrack: async (index: number, allowMissingTrackRecovery = true, replayGainSequenceOverrideIndexes?: number[], manualTrackSelection = false) => {
+            await scope.loadTrack(index, allowMissingTrackRecovery, replayGainSequenceOverrideIndexes, manualTrackSelection);
+        },
+        playCurrentTrack: async () => {
+            await scope.playCurrentTrack();
+        },
         openCoverImageModal: scope.openCoverImageModal,
         toggleCoverFlipFromSecondaryInput: scope.toggleCoverFlipFromSecondaryInput,
         toggleCoverFlipFromContextMenu: scope.toggleCoverFlipFromContextMenu,
         openTechnicalInfoModal: scope.openTechnicalInfoModal,
         openAboutModal: scope.openAboutModal,
         captureSidebarQueueSelectionContext: scope.captureSidebarQueueSelectionContext,
+        openSidebarQueueMenu: scope.openSidebarQueueMenu,
         closeSidebarQueueMenu: scope.closeSidebarQueueMenu,
         resolveSidebarQueueTrackIndexesForAction: scope.resolveSidebarQueueTrackIndexesForAction,
         addSidebarSelectionToPlaylist: scope.addSidebarSelectionToPlaylist,
@@ -620,6 +666,8 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         closeTrackMetaMenu: scope.closeTrackMetaMenu,
         closeListenBrainzFeedbackMenu: scope.closeListenBrainzFeedbackMenu,
         openLibrarySearch: scope.openLibrarySearch,
+        showOverviewPage: scope.showOverviewPage,
+        showNowPlayingPage: scope.showNowPlayingPage,
         openPlayOrderMenu: scope.openPlayOrderMenu,
         setPlaybackOrderMode: scope.setPlaybackOrderMode,
         savePlaybackOrderSetting: scope.savePlaybackOrderSetting,

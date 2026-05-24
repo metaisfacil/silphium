@@ -190,6 +190,7 @@ func (a *App) AudioQueueNextTrack(currentPath string, nextPath string) (AudioPla
 		}()
 
 		state, err = a.audioQueueNextTrackWithReplayGainContext(currentPath, nextPath, nil)
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, err)
 		return state, err
 	})
 }
@@ -207,6 +208,7 @@ func (a *App) AudioQueueNextTrackWithReplayGainContext(currentPath string, nextP
 		}()
 
 		state, err = a.audioQueueNextTrackWithReplayGainContext(currentPath, nextPath, replayGainReleasePaths)
+		a.syncSystemMediaTransportControlsAfterAudioCall(state, err)
 		return state, err
 	})
 }

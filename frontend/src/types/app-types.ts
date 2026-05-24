@@ -42,6 +42,7 @@ export type Track = {
     folderPath: string;
     rootPath: string;
     rootName: string;
+    modifiedAtMs?: number;
     releaseDepth?: number;
     displayTitle: string;
     displayAlbum: string;
@@ -285,6 +286,7 @@ export type ScrobbleRule = {
 
 export type CoverArtPrioritySource = 'file' | 'embedded' | 'musicbrainz';
 
+export type AppShellTheme = 'classic' | 'roon';
 export type PlayerCardLayout = 'default' | 'release';
 export type PlayerVisualizerMode = 'lissajous' | 'equalizer';
 export type PlayerEqualizerPosition = 'bottom' | 'top';

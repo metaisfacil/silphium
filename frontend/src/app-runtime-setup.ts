@@ -25,6 +25,22 @@ type AppCoreServicesRuntimeScope = RuntimeScope<
     | 'objectUrls'
     | 'playerVisualizerCanvas'
     | 'coverArt'
+    | 'overviewShowAlbums'
+    | 'overviewShowRecents'
+    | 'overviewTracksCount'
+    | 'overviewAlbumsCount'
+    | 'overviewArtistsCount'
+    | 'overviewLibrariesCount'
+    | 'overviewRecentsView'
+    | 'overviewAlbumGridView'
+    | 'overviewAlbumGrid'
+    | 'overviewAlbumGridScrollRail'
+    | 'overviewAlbumGridScrollPill'
+    | 'overviewAlbumGridScrollHint'
+    | 'overviewLastPlayedList'
+    | 'overviewLastAddedList'
+    | 'overviewPage'
+    | 'playerLane'
     | 'playerCard'
     | 'listenBrainzLoveBtn'
     | 'listenBrainzFeedbackMenu'
@@ -38,6 +54,9 @@ type AppCoreServicesRuntimeScope = RuntimeScope<
     | 'librarySearch'
     | 'sidebarToggle'
     | 'libraryExpandToggle'
+    | 'libraryHeaderTitleText'
+    | 'sidebarNavPane'
+    | 'sidebarModeBar'
     | 'sidebarSectionTrigger'
     | 'sidebarSectionTriggerLabel'
     | 'sidebarSectionMenu'
@@ -57,6 +76,7 @@ type AppCoreServicesRuntimeScope = RuntimeScope<
     | 'openMusicBrainzEntityForCurrentTrack'
     | 'trackMetaMenuTarget'
     | 'openTrackMetaMenu'
+    | 'loadListenHistoryData'
 >;
 
 type AppNowPlayingRuntimeScope = RuntimeScope<
@@ -103,6 +123,7 @@ type AppNowPlayingRuntimeScope = RuntimeScope<
     | 'playerShell'
     | 'playerLane'
     | 'playerCard'
+    | 'taskbarCoverArt'
     | 'lyricsPanel'
     | 'lyricsContent'
     | 'trackTechnical'
@@ -309,6 +330,7 @@ type AppLibraryLoadRuntimeScope = RuntimeScope<
     | 'updatePlayButton'
     | 'scheduleLibraryIncrementalFolderRefresh'
     | 'scheduleNowPlayingCoverRefresh'
+    | 'refreshOverviewDashboard'
     | 'applyPlayerCardLayout'
     | 'getStoredLayout'
     | 'resetListenBrainzFeedbackState'
@@ -408,7 +430,23 @@ const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) =>
 
         return scope.coverArt;
     },
+    overviewTracksCount: scope.overviewTracksCount,
+    overviewAlbumsCount: scope.overviewAlbumsCount,
+    overviewArtistsCount: scope.overviewArtistsCount,
+    overviewLibrariesCount: scope.overviewLibrariesCount,
+    overviewShowAlbums: scope.overviewShowAlbums,
+    overviewShowRecents: scope.overviewShowRecents,
+    overviewRecentsView: scope.overviewRecentsView,
+    overviewAlbumGridView: scope.overviewAlbumGridView,
+    overviewAlbumGrid: scope.overviewAlbumGrid,
+    overviewAlbumGridScrollRail: scope.overviewAlbumGridScrollRail,
+    overviewAlbumGridScrollPill: scope.overviewAlbumGridScrollPill,
+    overviewAlbumGridScrollHint: scope.overviewAlbumGridScrollHint,
+    overviewLastPlayedList: scope.overviewLastPlayedList,
+    overviewLastAddedList: scope.overviewLastAddedList,
     playerCard: scope.playerCard,
+    overviewPage: scope.overviewPage,
+    playerLane: scope.playerLane,
     listenBrainzLoveBtn: scope.listenBrainzLoveBtn,
     listenBrainzFeedbackMenu: scope.listenBrainzFeedbackMenu,
     listenBrainzFeedbackLoveBtn: scope.listenBrainzFeedbackLoveBtn,
@@ -427,6 +465,9 @@ const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) =>
     librarySearch: scope.librarySearch,
     sidebarToggle: scope.sidebarToggle,
     libraryExpandToggle: scope.libraryExpandToggle,
+    libraryHeaderTitleText: scope.libraryHeaderTitleText,
+    sidebarNavPane: scope.sidebarNavPane,
+    sidebarModeBar: scope.sidebarModeBar,
     sidebarSectionTrigger: scope.sidebarSectionTrigger,
     sidebarSectionTriggerLabel: scope.sidebarSectionTriggerLabel,
     sidebarSectionMenu: scope.sidebarSectionMenu,
@@ -452,6 +493,7 @@ const createCoreServicesRuntimeContext = (scope: AppCoreServicesRuntimeScope) =>
     openTrackMetaMenu: (clientX: number, clientY: number, includeCopyActions: boolean, actionScope: CustomSendToActionScope | null, actionKind: 'track' | 'album' | null, actionPath: string, artistFilterQuery?: string, showArtistFilterAction?: boolean) => {
         scope.openTrackMetaMenu(clientX, clientY, includeCopyActions, actionScope, actionKind, actionPath, artistFilterQuery, showArtistFilterAction);
     },
+    loadListenHistoryData: async () => await scope.loadListenHistoryData(),
 });
 
 export type AppCoreServicesRuntimeContext = ReturnType<typeof createCoreServicesRuntimeContext>;
@@ -587,6 +629,7 @@ const createNowPlayingRuntimeContext = (scope: AppNowPlayingRuntimeScope) => ({
     playerShell: scope.playerShell,
     playerLane: scope.playerLane,
     playerCard: scope.playerCard,
+    taskbarCoverArt: scope.taskbarCoverArt,
     lyricsPanel: scope.lyricsPanel,
     lyricsContent: scope.lyricsContent,
     trackTechnical: scope.trackTechnical,
@@ -1100,6 +1143,7 @@ export const setupLibraryLoadRuntime = (scope: AppLibraryLoadRuntimeScope) => cr
     },
     scheduleLibraryIncrementalFolderRefresh: scope.scheduleLibraryIncrementalFolderRefresh,
     scheduleNowPlayingCoverRefresh: scope.scheduleNowPlayingCoverRefresh,
+    refreshOverviewDashboard: scope.refreshOverviewDashboard,
     applyPlayerCardLayout: scope.applyPlayerCardLayout,
     getStoredLayout: scope.getStoredLayout,
     resetListenBrainzFeedbackState: scope.resetListenBrainzFeedbackState,

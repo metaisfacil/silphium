@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -79,6 +81,24 @@ func newOpenSubsonicPostRequest(t *testing.T, serverURL string, path string, val
 	return request
 }
 
+func newOpenSubsonicJSONPostRequest(t *testing.T, serverURL string, path string, apiKey string, body string) *http.Request {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodPost, serverURL+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest(%q POST json) error = %v", path, err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(apiKey) != "" {
+		query := request.URL.Query()
+		query.Set("apiKey", apiKey)
+		query.Set("v", openSubsonicAPIVersion)
+		query.Set("c", "SilphiumTests")
+		query.Set("f", "json")
+		request.URL.RawQuery = query.Encode()
+	}
+	return request
+}
+
 func TestNormalizeAppSettingsOpenSubsonic(t *testing.T) {
 	settings := normalizeAppSettings(AppSettings{
 		OpenSubsonicEnabled: true,
@@ -137,8 +157,22 @@ func TestOpenSubsonicExtensionsIsPublic(t *testing.T) {
 	if payload.Response.Status != "ok" {
 		t.Fatalf("status = %q, want ok", payload.Response.Status)
 	}
-	if len(payload.Response.OpenSubsonicExtensions) != 2 {
-		t.Fatalf("len(OpenSubsonicExtensions) = %d, want 2", len(payload.Response.OpenSubsonicExtensions))
+	if len(payload.Response.OpenSubsonicExtensions) != 4 {
+		t.Fatalf("len(OpenSubsonicExtensions) = %d, want 4", len(payload.Response.OpenSubsonicExtensions))
+	}
+	names := map[string]bool{}
+	for _, extension := range payload.Response.OpenSubsonicExtensions {
+		names[extension.Name] = true
+	}
+	for _, required := range []string{
+		openSubsonicExtensionTranscodeOffset,
+		openSubsonicExtensionAPIKeyAuth,
+		openSubsonicExtensionFormPost,
+		openSubsonicExtensionTranscoding,
+	} {
+		if !names[required] {
+			t.Fatalf("OpenSubsonicExtensions missing %q: %#v", required, payload.Response.OpenSubsonicExtensions)
+		}
 	}
 }
 
@@ -502,6 +536,12 @@ func TestOpenSubsonicDefaultsMissingCommonParams(t *testing.T) {
 
 func TestOpenSubsonicBrowseAndMediaEndpoints(t *testing.T) {
 	app, fixture, apiKey := newOpenSubsonicTestApp(t)
+	helperDir := t.TempDir()
+	helperPath := copyCurrentTestBinary(t, helperDir, toolExecutableName("ffmpeg"))
+	app.settings.FFmpegPath = helperPath
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", base64.StdEncoding.EncodeToString([]byte("transcoded mp3 payload")))
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDERR", "")
+	t.Setenv("SILPHIUM_TEST_FFMPEG_EXIT", "0")
 	server := httptest.NewServer(app.newOpenSubsonicServeMux())
 	defer server.Close()
 
@@ -581,8 +621,46 @@ func TestOpenSubsonicBrowseAndMediaEndpoints(t *testing.T) {
 	if track.ContentType != "audio/flac" {
 		t.Fatalf("track content type = %q, want %q", track.ContentType, "audio/flac")
 	}
+	if track.TranscodedContentType != "audio/mpeg" {
+		t.Fatalf("track transcoded content type = %q, want %q", track.TranscodedContentType, "audio/mpeg")
+	}
+	if track.TranscodedSuffix != "mp3" {
+		t.Fatalf("track transcoded suffix = %q, want %q", track.TranscodedSuffix, "mp3")
+	}
 	if song.Response.Song.ContentType != "audio/flac" {
 		t.Fatalf("song content type = %q, want %q", song.Response.Song.ContentType, "audio/flac")
+	}
+	if song.Response.Song.TranscodedContentType != "audio/mpeg" {
+		t.Fatalf("song transcoded content type = %q, want %q", song.Response.Song.TranscodedContentType, "audio/mpeg")
+	}
+	if song.Response.Song.TranscodedSuffix != "mp3" {
+		t.Fatalf("song transcoded suffix = %q, want %q", song.Response.Song.TranscodedSuffix, "mp3")
+	}
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getAlbumInfo2.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", track.AlbumID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getAlbumInfo2) error = %v", err)
+	}
+	albumInfo := decodeOpenSubsonicResponse(t, response)
+	if albumInfo.Response.AlbumInfo2 == nil {
+		t.Fatal("albumInfo2 = nil, want populated compatibility payload")
+	}
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getArtistInfo2.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", track.ArtistID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getArtistInfo2) error = %v", err)
+	}
+	artistInfo := decodeOpenSubsonicResponse(t, response)
+	if artistInfo.Response.ArtistInfo2 == nil {
+		t.Fatal("artistInfo2 = nil, want populated compatibility payload")
 	}
 
 	if track.CoverArt != "" {
@@ -620,14 +698,65 @@ func TestOpenSubsonicBrowseAndMediaEndpoints(t *testing.T) {
 	if acceptRanges := response.Header.Get("Accept-Ranges"); acceptRanges != "bytes" {
 		t.Fatalf("stream Accept-Ranges = %q, want %q", acceptRanges, "bytes")
 	}
-	if disposition := response.Header.Get("Content-Disposition"); disposition != "" {
-		t.Fatalf("stream Content-Disposition = %q, want empty", disposition)
+	expectedRawDisposition := mime.FormatMediaType("inline", map[string]string{"filename": "01 Intro.flac"})
+	if disposition := response.Header.Get("Content-Disposition"); disposition != expectedRawDisposition {
+		t.Fatalf("stream Content-Disposition = %q, want %q", disposition, expectedRawDisposition)
 	}
 	streamBody := make([]byte, 64)
 	readCount, _ := response.Body.Read(streamBody)
 	if string(streamBody[:readCount]) != "track one" {
 		t.Fatalf("stream body = %q, want %q", string(streamBody[:readCount]), "track one")
 	}
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/stream.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", track.ID)
+	query.Set("maxBitRate", "128")
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(stream transcode) error = %v", err)
+	}
+	defer response.Body.Close()
+	if contentType := response.Header.Get("Content-Type"); contentType != "audio/mpeg" {
+		t.Fatalf("stream transcode Content-Type = %q, want %q", contentType, "audio/mpeg")
+	}
+	if acceptRanges := response.Header.Get("Accept-Ranges"); acceptRanges != "none" {
+		t.Fatalf("stream transcode Accept-Ranges = %q, want %q", acceptRanges, "none")
+	}
+	expectedTranscodeDisposition := mime.FormatMediaType("inline", map[string]string{"filename": "01 Intro.mp3"})
+	if disposition := response.Header.Get("Content-Disposition"); disposition != expectedTranscodeDisposition {
+		t.Fatalf("stream transcode Content-Disposition = %q, want %q", disposition, expectedTranscodeDisposition)
+	}
+	transcodedBody := make([]byte, 64)
+	readCount, _ = response.Body.Read(transcodedBody)
+	if got := string(transcodedBody[:readCount]); got != "transcoded mp3 payload" {
+		t.Fatalf("stream transcode body = %q, want %q", got, "transcoded mp3 payload")
+	}
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/stream.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", track.ID)
+	query.Set("maxBitRate", "128")
+	query.Set("estimateContentLength", "true")
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(stream transcode estimate) error = %v", err)
+	}
+	if response.ContentLength <= 0 {
+		_ = response.Body.Close()
+		t.Fatalf("stream transcode estimate Content-Length = %d, want > 0", response.ContentLength)
+	}
+	if contentLengthHeader := strings.TrimSpace(response.Header.Get("Content-Length")); contentLengthHeader == "" {
+		_ = response.Body.Close()
+		t.Fatal("stream transcode estimate Content-Length header = empty, want populated estimate")
+	}
+	if len(response.TransferEncoding) != 0 {
+		_ = response.Body.Close()
+		t.Fatalf("stream transcode estimate Transfer-Encoding = %#v, want no chunked transfer encoding", response.TransferEncoding)
+	}
+	_ = response.Body.Close()
 
 	request = newOpenSubsonicRequest(t, server.URL, "/rest/stream.view", apiKey)
 	query = request.URL.Query()
@@ -664,6 +793,215 @@ func TestOpenSubsonicBrowseAndMediaEndpoints(t *testing.T) {
 		t.Fatalf("track artist = %q, want %q", track.Artist, "Artist One")
 	}
 	_ = fixture
+}
+
+func TestOpenSubsonicTranscodeDecisionAndStream(t *testing.T) {
+	app, _, apiKey := newOpenSubsonicTestApp(t)
+	helperDir := t.TempDir()
+	helperPath := copyCurrentTestBinary(t, helperDir, toolExecutableName("ffmpeg"))
+	app.settings.FFmpegPath = helperPath
+	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", base64.StdEncoding.EncodeToString([]byte("transcoded mp3 payload")))
+
+	server := httptest.NewServer(app.newOpenSubsonicServeMux())
+	defer server.Close()
+
+	request := newOpenSubsonicRequest(t, server.URL, "/rest/getMusicFolders.view", apiKey)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicFolders) error = %v", err)
+	}
+	folders := decodeOpenSubsonicResponse(t, response)
+	musicFolderID := folders.Response.MusicFolders.MusicFolder[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getIndexes.view", apiKey)
+	query := request.URL.Query()
+	query.Set("musicFolderId", musicFolderID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getIndexes) error = %v", err)
+	}
+	indexes := decodeOpenSubsonicResponse(t, response)
+	artistDirectoryID := indexes.Response.Indexes.Index[0].Artist[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getMusicDirectory.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", artistDirectoryID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicDirectory artist) error = %v", err)
+	}
+	artistDirectory := decodeOpenSubsonicResponse(t, response)
+	albumDirectoryID := artistDirectory.Response.Directory.Child[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getMusicDirectory.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", albumDirectoryID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicDirectory album) error = %v", err)
+	}
+	albumDirectory := decodeOpenSubsonicResponse(t, response)
+	track := albumDirectory.Response.Directory.Child[0]
+
+	body := `{"name":"mp3-only-client","maxTranscodingAudioBitrate":128000,"directPlayProfiles":[{"containers":["mp3"],"audioCodecs":["mp3"],"protocols":["http"]}],"transcodingProfiles":[{"container":"mp3","audioCodec":"mp3","protocol":"http"}]}`
+	request = newOpenSubsonicJSONPostRequest(t, server.URL, "/rest/getTranscodeDecision.view", apiKey, body)
+	query = request.URL.Query()
+	query.Set("mediaId", track.ID)
+	query.Set("mediaType", openSubsonicMediaTypeSong)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("POST(getTranscodeDecision) error = %v", err)
+	}
+	decisionPayload := decodeOpenSubsonicResponse(t, response)
+	decision := decisionPayload.Response.TranscodeDecision
+	if decision == nil {
+		t.Fatal("transcodeDecision = nil, want populated decision")
+	}
+	if decision.CanDirectPlay {
+		t.Fatal("transcodeDecision.CanDirectPlay = true, want false for FLAC on mp3-only client")
+	}
+	if !decision.CanTranscode {
+		t.Fatal("transcodeDecision.CanTranscode = false, want true")
+	}
+	if decision.SourceStream == nil || decision.SourceStream.Container != "flac" || decision.SourceStream.Codec != "flac" {
+		t.Fatalf("sourceStream = %#v, want FLAC details", decision.SourceStream)
+	}
+	if decision.TranscodeStream == nil || decision.TranscodeStream.Container != "mp3" || decision.TranscodeStream.Codec != "mp3" {
+		t.Fatalf("transcodeStream = %#v, want MP3 details", decision.TranscodeStream)
+	}
+	if decision.TranscodeStream.AudioBitrate != 128000 {
+		t.Fatalf("transcodeStream audioBitrate = %d, want %d", decision.TranscodeStream.AudioBitrate, 128000)
+	}
+	if decision.TranscodeParams == "" {
+		t.Fatal("transcodeDecision.TranscodeParams = empty, want token")
+	}
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getTranscodeStream.view", apiKey)
+	query = request.URL.Query()
+	query.Set("mediaId", track.ID)
+	query.Set("mediaType", openSubsonicMediaTypeSong)
+	query.Set("transcodeParams", decision.TranscodeParams)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getTranscodeStream) error = %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("getTranscodeStream status = %d, want %d", response.StatusCode, http.StatusOK)
+	}
+	if contentType := response.Header.Get("Content-Type"); contentType != "audio/mpeg" {
+		t.Fatalf("getTranscodeStream Content-Type = %q, want %q", contentType, "audio/mpeg")
+	}
+	if acceptRanges := response.Header.Get("Accept-Ranges"); acceptRanges != "none" {
+		t.Fatalf("getTranscodeStream Accept-Ranges = %q, want %q", acceptRanges, "none")
+	}
+	expectedDisposition := mime.FormatMediaType("inline", map[string]string{"filename": "01 Intro.mp3"})
+	if disposition := response.Header.Get("Content-Disposition"); disposition != expectedDisposition {
+		t.Fatalf("getTranscodeStream Content-Disposition = %q, want %q", disposition, expectedDisposition)
+	}
+	transcodedBody := make([]byte, 64)
+	readCount, _ := response.Body.Read(transcodedBody)
+	if got := string(transcodedBody[:readCount]); got != "transcoded mp3 payload" {
+		t.Fatalf("getTranscodeStream body = %q, want %q", got, "transcoded mp3 payload")
+	}
+}
+
+func TestOpenSubsonicTranscodeDecisionSupportsWildcardDirectPlayProfiles(t *testing.T) {
+	app, _, apiKey := newOpenSubsonicTestApp(t)
+	server := httptest.NewServer(app.newOpenSubsonicServeMux())
+	defer server.Close()
+
+	request := newOpenSubsonicRequest(t, server.URL, "/rest/getMusicFolders.view", apiKey)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicFolders) error = %v", err)
+	}
+	folders := decodeOpenSubsonicResponse(t, response)
+	musicFolderID := folders.Response.MusicFolders.MusicFolder[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getIndexes.view", apiKey)
+	query := request.URL.Query()
+	query.Set("musicFolderId", musicFolderID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getIndexes) error = %v", err)
+	}
+	indexes := decodeOpenSubsonicResponse(t, response)
+	artistDirectoryID := indexes.Response.Indexes.Index[0].Artist[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getMusicDirectory.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", artistDirectoryID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicDirectory artist) error = %v", err)
+	}
+	artistDirectory := decodeOpenSubsonicResponse(t, response)
+	albumDirectoryID := artistDirectory.Response.Directory.Child[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getMusicDirectory.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", albumDirectoryID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicDirectory album) error = %v", err)
+	}
+	albumDirectory := decodeOpenSubsonicResponse(t, response)
+	track := albumDirectory.Response.Directory.Child[0]
+
+	body := `{"name":"wildcard-client","platform":"test","directPlayProfiles":[{"containers":["*"],"audioCodecs":["*"],"protocols":["*"]}]}`
+	request = newOpenSubsonicJSONPostRequest(t, server.URL, "/rest/getTranscodeDecision.view", apiKey, body)
+	query = request.URL.Query()
+	query.Set("mediaId", track.ID)
+	query.Set("mediaType", openSubsonicMediaTypeSong)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("POST(getTranscodeDecision wildcard) error = %v", err)
+	}
+	decisionPayload := decodeOpenSubsonicResponse(t, response)
+	decision := decisionPayload.Response.TranscodeDecision
+	if decision == nil {
+		t.Fatal("transcodeDecision = nil, want populated decision")
+	}
+	if !decision.CanDirectPlay {
+		t.Fatal("transcodeDecision.CanDirectPlay = false, want true for wildcard direct play profile")
+	}
+	if decision.SourceStream == nil || decision.SourceStream.Container != "flac" {
+		t.Fatalf("sourceStream = %#v, want FLAC source details", decision.SourceStream)
+	}
+	if decision.TranscodeParams == "" {
+		t.Fatal("transcodeDecision.TranscodeParams = empty, want token for direct play path")
+	}
+}
+
+func TestOpenSubsonicGetTranscodeStreamRejectsInvalidToken(t *testing.T) {
+	app, _, apiKey := newOpenSubsonicTestApp(t)
+	server := httptest.NewServer(app.newOpenSubsonicServeMux())
+	defer server.Close()
+
+	request := newOpenSubsonicRequest(t, server.URL, "/rest/getTranscodeStream.view", apiKey)
+	query := request.URL.Query()
+	query.Set("mediaId", openSubsonicSongID("Artist One/Album One/01 Intro.flac"))
+	query.Set("mediaType", openSubsonicMediaTypeSong)
+	query.Set("transcodeParams", "not-a-valid-token")
+	request.URL.RawQuery = query.Encode()
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getTranscodeStream invalid token) error = %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusGone {
+		t.Fatalf("getTranscodeStream invalid token status = %d, want %d", response.StatusCode, http.StatusGone)
+	}
 }
 
 func TestOpenSubsonicPlaybackAuxiliaryEndpoints(t *testing.T) {
@@ -1692,8 +2030,187 @@ func TestOpenSubsonicStreamFallsBackToStaticTrackWhenTranscodeProducesNoBytes(t 
 	if nosniff := response.Header.Get("X-Content-Type-Options"); nosniff != "nosniff" {
 		t.Fatalf("stream fallback X-Content-Type-Options = %q, want %q", nosniff, "nosniff")
 	}
-	if disposition := response.Header.Get("Content-Disposition"); disposition != "" {
-		t.Fatalf("stream fallback Content-Disposition = %q, want empty", disposition)
+	expectedDisposition := mime.FormatMediaType("inline", map[string]string{"filename": "01 Intro.flac"})
+	if disposition := response.Header.Get("Content-Disposition"); disposition != expectedDisposition {
+		t.Fatalf("stream fallback Content-Disposition = %q, want %q", disposition, expectedDisposition)
+	}
+}
+
+func TestOpenSubsonicLegacySubStreamerFLACRequestsServeOriginalQuality(t *testing.T) {
+	app, _, apiKey := newOpenSubsonicTestApp(t)
+
+	server := httptest.NewServer(app.newOpenSubsonicServeMux())
+	defer server.Close()
+
+	request := newOpenSubsonicRequest(t, server.URL, "/rest/getMusicFolders.view", apiKey)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicFolders) error = %v", err)
+	}
+	folders := decodeOpenSubsonicResponse(t, response)
+	musicFolderID := folders.Response.MusicFolders.MusicFolder[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getIndexes.view", apiKey)
+	query := request.URL.Query()
+	query.Set("musicFolderId", musicFolderID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getIndexes) error = %v", err)
+	}
+	indexes := decodeOpenSubsonicResponse(t, response)
+	artistDirectoryID := indexes.Response.Indexes.Index[0].Artist[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getMusicDirectory.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", artistDirectoryID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicDirectory artist) error = %v", err)
+	}
+	artistDirectory := decodeOpenSubsonicResponse(t, response)
+	albumDirectoryID := artistDirectory.Response.Directory.Child[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getMusicDirectory.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", albumDirectoryID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicDirectory album) error = %v", err)
+	}
+	albumDirectory := decodeOpenSubsonicResponse(t, response)
+	track := albumDirectory.Response.Directory.Child[0]
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/stream.view", apiKey)
+	query = request.URL.Query()
+	query.Set("id", track.ID)
+	query.Set("c", "substreamer8")
+	query.Set("v", "1.15.0")
+	request.URL.RawQuery = query.Encode()
+	request.Header.Set("User-Agent", "substreamer8")
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(stream legacy substreamer) error = %v", err)
+	}
+	defer response.Body.Close()
+	if contentType := response.Header.Get("Content-Type"); contentType != "audio/flac" {
+		t.Fatalf("legacy substreamer stream Content-Type = %q, want %q", contentType, "audio/flac")
+	}
+	if acceptRanges := response.Header.Get("Accept-Ranges"); acceptRanges != "bytes" {
+		t.Fatalf("legacy substreamer stream Accept-Ranges = %q, want %q", acceptRanges, "bytes")
+	}
+	expectedDisposition := mime.FormatMediaType("inline", map[string]string{"filename": "01 Intro.flac"})
+	if disposition := response.Header.Get("Content-Disposition"); disposition != expectedDisposition {
+		t.Fatalf("legacy substreamer stream Content-Disposition = %q, want %q", disposition, expectedDisposition)
+	}
+	body := make([]byte, 64)
+	readCount, _ := response.Body.Read(body)
+	if got := string(body[:readCount]); got != "track one" {
+		t.Fatalf("legacy substreamer stream body = %q, want %q", got, "track one")
+	}
+}
+
+func TestOpenSubsonicDownloadFormatsUnicodeAttachmentFilename(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	unicodeFilename := "2-24 すてられぶね (2002~2005(AG)-M18).flac"
+	unicodeTrackPath := filepath.Join(fixture.albumOneFolder, unicodeFilename)
+	writeTestFile(t, unicodeTrackPath, "unicode track")
+
+	app := NewApp()
+	app.settingsLoaded = true
+	app.settings = normalizeAppSettings(AppSettings{
+		OpenSubsonicEnabled: true,
+		OpenSubsonicAPIKey:  "api-key-12345",
+	})
+	app.scanLibraryFolders([]AppLibraryFolder{{Path: fixture.rootOne}}, false)
+
+	server := httptest.NewServer(app.newOpenSubsonicServeMux())
+	defer server.Close()
+
+	request := newOpenSubsonicRequest(t, server.URL, "/rest/getMusicFolders.view", "api-key-12345")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicFolders) error = %v", err)
+	}
+	folders := decodeOpenSubsonicResponse(t, response)
+	musicFolderID := folders.Response.MusicFolders.MusicFolder[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getIndexes.view", "api-key-12345")
+	query := request.URL.Query()
+	query.Set("musicFolderId", musicFolderID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getIndexes) error = %v", err)
+	}
+	indexes := decodeOpenSubsonicResponse(t, response)
+	artistDirectoryID := indexes.Response.Indexes.Index[0].Artist[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getMusicDirectory.view", "api-key-12345")
+	query = request.URL.Query()
+	query.Set("id", artistDirectoryID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicDirectory artist) error = %v", err)
+	}
+	artistDirectory := decodeOpenSubsonicResponse(t, response)
+	albumDirectoryID := artistDirectory.Response.Directory.Child[0].ID
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/getMusicDirectory.view", "api-key-12345")
+	query = request.URL.Query()
+	query.Set("id", albumDirectoryID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(getMusicDirectory album) error = %v", err)
+	}
+	albumDirectory := decodeOpenSubsonicResponse(t, response)
+
+	var track openSubsonicChild
+	foundTrack := false
+	for _, child := range albumDirectory.Response.Directory.Child {
+		if child.Title == strings.TrimSuffix(unicodeFilename, filepath.Ext(unicodeFilename)) {
+			track = child
+			foundTrack = true
+			break
+		}
+	}
+	if !foundTrack {
+		t.Fatalf("album directory missing unicode track %q: %#v", unicodeFilename, albumDirectory.Response.Directory.Child)
+	}
+
+	request = newOpenSubsonicRequest(t, server.URL, "/rest/download.view", "api-key-12345")
+	query = request.URL.Query()
+	query.Set("id", track.ID)
+	request.URL.RawQuery = query.Encode()
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET(download) error = %v", err)
+	}
+	defer response.Body.Close()
+
+	expectedDisposition := mime.FormatMediaType("attachment", map[string]string{"filename": unicodeFilename})
+	if disposition := response.Header.Get("Content-Disposition"); disposition != expectedDisposition {
+		t.Fatalf("download Content-Disposition = %q, want %q", disposition, expectedDisposition)
+	}
+	body := make([]byte, 64)
+	readCount, _ := response.Body.Read(body)
+	if got := string(body[:readCount]); got != "unicode track" {
+		t.Fatalf("download body = %q, want %q", got, "unicode track")
+	}
+}
+
+func TestOpenSubsonicRequestedStreamOptionsLeavesBareBitrateUnset(t *testing.T) {
+	options := openSubsonicRequestedStreamOptions(url.Values{})
+
+	if options.BitrateKbps != 0 {
+		t.Fatalf("BitrateKbps = %d, want 0 when maxBitRate is omitted", options.BitrateKbps)
+	}
+	if options.RequiresTranscode {
+		t.Fatal("RequiresTranscode = true, want false when no stream options are requested")
 	}
 }
 

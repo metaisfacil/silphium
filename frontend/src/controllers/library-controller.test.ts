@@ -230,6 +230,7 @@ const mountLibraryController = (overrides?: {
     });
 
     return {
+        app,
         controller,
         librarySearch,
         librarySort,
@@ -239,6 +240,7 @@ const mountLibraryController = (overrides?: {
         loadFolderPage,
         onFolderQueueRequested,
         onSidebarClosed,
+        sidebarToggle,
         trackPath: searchTrackEntry.path,
     };
 };
@@ -1227,6 +1229,25 @@ describe('createLibraryController', () => {
         const clearedButton = libraryBrowser.querySelector(`[data-track-path="${trackPath}"]`) as HTMLButtonElement | null;
         expect(clearedButton?.classList.contains('is-loading')).toBe(false);
         expect(controller.getLoadingTrackPath()).toBe('');
+    });
+
+    it('keeps the toggle in back mode while a sidebar subview is open', async () => {
+        const { app, controller, sidebarToggle } = mountLibraryController({
+            state: createLibraryControllerState(),
+        });
+
+        app.classList.add('sidebar-subview-active');
+        controller.setSidebarOpen(true);
+        await flushPromises();
+
+        expect(sidebarToggle.classList.contains('is-back-mode')).toBe(true);
+        expect(sidebarToggle.getAttribute('aria-label')).toBe('Back to sidebar navigation');
+
+        controller.setSidebarOpen(false);
+        await flushPromises();
+
+        expect(sidebarToggle.classList.contains('is-back-mode')).toBe(false);
+        expect(sidebarToggle.getAttribute('aria-label')).toBe('Open sidebar');
     });
 
     it('preserves tree scroll position while search pages stream in', async () => {

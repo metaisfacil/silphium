@@ -410,6 +410,8 @@ describe('app-bootstrap-setup wrappers', () => {
         expect(context.window).toBe(window);
         expect(context.document).toBe(document);
         expect(context.librarySearch).toBe(scope.librarySearch);
+        expect(context.tracks).toBe(scope.tracks);
+        expect(context.openSidebarQueueMenu).toBe(scope.openSidebarQueueMenu);
         expect(context.sidebarQueueFeedbackTrackIndex()).toBe(3);
         expect(context.sidebarQueueSendToActionScope()).toBe('track');
         expect(context.sidebarQueueFileActionPath()).toBe('/music/current.flac');

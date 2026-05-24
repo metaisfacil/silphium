@@ -210,7 +210,7 @@ describe('createAppPlaybackControlsRuntime', () => {
         }));
     });
 
-    it('defers current-track hydration until after the post-load idle window', async () => {
+    it('updates cover art immediately while deferring current-track hydration until after the post-load idle window', async () => {
         vi.useFakeTimers();
 
         const coverDeferred = createDeferred();
@@ -220,12 +220,13 @@ describe('createAppPlaybackControlsRuntime', () => {
         await runtime.loadTrack(0);
 
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
-        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
         expect(context.libraryController().renderFolder).not.toHaveBeenCalled();
 
         await vi.advanceTimersByTimeAsync(299);
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
-        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
         expect(context.libraryController().renderFolder).not.toHaveBeenCalled();
 
         await vi.advanceTimersByTimeAsync(1);
@@ -247,13 +248,13 @@ describe('createAppPlaybackControlsRuntime', () => {
 
         await runtime.loadTrack(0);
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
-        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
 
         await runtime.playCurrentTrack();
 
         await vi.advanceTimersByTimeAsync(299);
         expect(context.hydrateCurrentTrackTag).not.toHaveBeenCalled();
-        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
 
         await vi.advanceTimersByTimeAsync(1);
         expect(context.hydrateCurrentTrackTag).toHaveBeenCalledWith(0, 1);
@@ -263,7 +264,7 @@ describe('createAppPlaybackControlsRuntime', () => {
         coverDeferred.resolve();
     });
 
-    it('keeps cover and folder refresh behind deferred metadata hydration after load', async () => {
+    it('keeps folder refresh behind deferred metadata hydration after load while cover art updates immediately', async () => {
         vi.useFakeTimers();
 
         const coverDeferred = createDeferred();
@@ -276,15 +277,16 @@ describe('createAppPlaybackControlsRuntime', () => {
         const runtime = createAppPlaybackControlsRuntime(context);
 
         await runtime.loadTrack(0);
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
+
         await vi.advanceTimersByTimeAsync(300);
 
         expect(context.hydrateCurrentTrackTag).toHaveBeenCalledWith(0, 1);
-        expect(context.applyCoverArtForTrack).not.toHaveBeenCalled();
+        expect(context.applyCoverArtForTrack).toHaveBeenCalledTimes(1);
         expect(context.libraryController().renderFolder).not.toHaveBeenCalled();
 
         hydrateDeferred.resolve();
         await vi.waitFor(() => {
-            expect(context.applyCoverArtForTrack).toHaveBeenCalledWith(0);
             expect(context.libraryController().renderFolder).toHaveBeenCalledWith('none');
         });
 

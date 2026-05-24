@@ -46,6 +46,7 @@ const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
     folderPath: file.folderPath || '',
     rootPath: file.rootPath || '',
     rootName: file.rootName || '',
+    modifiedAtMs: file.modifiedAtMs,
     releaseDepth: file.releaseDepth,
     displayTitle: file.cachedTrackTitle || file.name,
     displayAlbum: file.cachedAlbumTitle || 'Unknown Album',

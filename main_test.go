@@ -41,6 +41,12 @@ func TestMainBuildsWailsAppOptions(t *testing.T) {
 	if capturedOptions.Title != "Silphium" {
 		t.Fatalf("main() title = %q, want %q", capturedOptions.Title, "Silphium")
 	}
+	if capturedOptions.Width != 1180 || capturedOptions.Height != 780 {
+		t.Fatalf("main() window size = %dx%d, want %dx%d", capturedOptions.Width, capturedOptions.Height, 1180, 780)
+	}
+	if capturedOptions.MinWidth != 900 || capturedOptions.MinHeight != 640 {
+		t.Fatalf("main() min window size = %dx%d, want %dx%d", capturedOptions.MinWidth, capturedOptions.MinHeight, 900, 640)
+	}
 	if capturedOptions.OnStartup == nil || capturedOptions.OnBeforeClose == nil || capturedOptions.OnShutdown == nil {
 		t.Fatalf("main() lifecycle hooks = %#v, want non-nil hooks", capturedOptions)
 	}

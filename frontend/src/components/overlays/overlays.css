@@ -838,10 +838,64 @@
     align-items: start;
 }
 
-.settings-subfield {
+.settings-ui-layout-controls {
     display: grid;
-    gap: 0.40rem;
-    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.settings-ui-layout-controls > .settings-field:first-child {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+#settings-player-card-layout-field,
+#settings-roon-accent-field {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.settings-ui-layout-controls > [hidden] {
+    display: none !important;
+}
+
+.settings-accent-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.settings-color-input {
+    width: 2.35rem;
+    min-width: 2.35rem;
+    height: 2.35rem;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 0.75rem;
+    background: var(--settings-accent-color, #68b4ff);
+    cursor: pointer;
+}
+
+.settings-color-input::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.settings-color-input::-webkit-color-swatch {
+    border: none;
+    border-radius: 0.62rem;
+    opacity: 0;
+}
+
+.settings-color-input::-moz-color-swatch {
+    border: none;
+    border-radius: 0.62rem;
+    opacity: 0;
+}
+
+.settings-accent-range-input {
+    transform: translateY(-1px);
 }
 
 .settings-section-divider {
@@ -931,10 +985,16 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
+    .settings-ui-layout-controls {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .settings-visualizer-controls {
         grid-template-columns: minmax(0, 1fr);
     }
 
+    #settings-player-card-layout-field,
+    #settings-roon-accent-field,
     #settings-equalizer-position-field,
     #settings-lissajous-scale-field {
         grid-column: 1;

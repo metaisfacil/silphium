@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -20,23 +21,25 @@ import (
 )
 
 const (
-	roInitMultithreaded                                 = 1
-	systemMediaTransportControlsClassName               = "Windows.Media.SystemMediaTransportControls"
-	smtcInitializeRetryInterval                         = 200 * time.Millisecond
-	smtcMinTimelineSyncInterval                         = time.Second
-	smtcTypedEventHandlerGUID                           = "9de1c534-6ae1-11e0-84e1-18a905bcc53f"
-	smtcISystemMediaTransportControlsGUID               = "99fa3ff4-1742-42a6-902e-087d41f965ec"
-	smtcISystemMediaTransportControls2GUID              = "ea98d2f6-7f3c-4af2-a586-72889808efb1"
-	smtcISystemMediaTransportControlsInteropGUID        = "ddb0472d-c911-4a1f-86d9-dc3d71a95f5a"
-	smtcISystemMediaTransportControlsDisplayUpdaterGUID = "8abbc53e-fa55-4ecf-ad8e-c984e5dd1550"
-	smtcIUriRuntimeClassFactoryGUID                     = "44a9796f-723e-4fdf-a218-033e75b0c084"
-	smtcIRandomAccessStreamReferenceStaticsGUID         = "857309dc-3fbf-4e7d-986f-ef3b1a07a964"
-	smtcIMusicDisplayPropertiesGUID                     = "6bbf0c59-d0a0-4d26-92a0-f978e1d18e7b"
-	smtcIMusicDisplayProperties2GUID                    = "00368462-97d3-44b9-b00f-008afcefaf18"
-	smtcIButtonPressedEventArgsGUID                     = "b7f47116-a56f-4dc8-9e11-92031f4a87c2"
-	smtcSignatureSystemMediaTransportControls           = "rc(Windows.Media.SystemMediaTransportControls;{99fa3ff4-1742-42a6-902e-087d41f965ec})"
-	smtcSignatureButtonPressedEventArgs                 = "rc(Windows.Media.SystemMediaTransportControlsButtonPressedEventArgs;{b7f47116-a56f-4dc8-9e11-92031f4a87c2})"
-	gwOwner                                             = 4
+	roInitMultithreaded                                   = 1
+	systemMediaTransportControlsClassName                 = "Windows.Media.SystemMediaTransportControls"
+	smtcInitializeRetryInterval                           = 200 * time.Millisecond
+	smtcMinTimelineSyncInterval                           = time.Second
+	smtcTypedEventHandlerGUID                             = "9de1c534-6ae1-11e0-84e1-18a905bcc53f"
+	smtcISystemMediaTransportControlsGUID                 = "99fa3ff4-1742-42a6-902e-087d41f965ec"
+	smtcISystemMediaTransportControls2GUID                = "ea98d2f6-7f3c-4af2-a586-72889808efb1"
+	smtcISystemMediaTransportControlsInteropGUID          = "ddb0472d-c911-4a1f-86d9-dc3d71a95f5a"
+	smtcISystemMediaTransportControlsDisplayUpdaterGUID   = "8abbc53e-fa55-4ecf-ad8e-c984e5dd1550"
+	smtcIUriRuntimeClassFactoryGUID                       = "44a9796f-723e-4fdf-a218-033e75b0c084"
+	smtcIRandomAccessStreamReferenceStaticsGUID           = "857309dc-3fbf-4e7d-986f-ef3b1a07a964"
+	smtcIMusicDisplayPropertiesGUID                       = "6bbf0c59-d0a0-4d26-92a0-f978e1d18e7b"
+	smtcIMusicDisplayProperties2GUID                      = "00368462-97d3-44b9-b00f-008afcefaf18"
+	smtcIButtonPressedEventArgsGUID                       = "b7f47116-a56f-4dc8-9e11-92031f4a87c2"
+	smtcIPlaybackPositionChangeRequestedEventArgsGUID     = "b4493f88-eb28-4961-9c14-335e44f3e125"
+	smtcSignatureSystemMediaTransportControls             = "rc(Windows.Media.SystemMediaTransportControls;{99fa3ff4-1742-42a6-902e-087d41f965ec})"
+	smtcSignatureButtonPressedEventArgs                   = "rc(Windows.Media.SystemMediaTransportControlsButtonPressedEventArgs;{b7f47116-a56f-4dc8-9e11-92031f4a87c2})"
+	smtcSignaturePlaybackPositionChangeRequestedEventArgs = "rc(Windows.Media.PlaybackPositionChangeRequestedEventArgs;{b4493f88-eb28-4961-9c14-335e44f3e125})"
+	gwOwner                                               = 4
 
 	mediaPlaybackStatusClosed  = 0
 	mediaPlaybackStatusStopped = 2
@@ -73,6 +76,11 @@ var (
 		smtcSignatureSystemMediaTransportControls,
 		smtcSignatureButtonPressedEventArgs,
 	))
+	smtcPlaybackPositionChangeRequestedHandlerIID = ole.NewGUID(parameterizedInstanceGUID(
+		smtcTypedEventHandlerGUID,
+		smtcSignatureSystemMediaTransportControls,
+		smtcSignaturePlaybackPositionChangeRequestedEventArgs,
+	))
 )
 
 type windowsSystemMediaTransportControlsManager struct {
@@ -92,6 +100,9 @@ type windowsSystemMediaTransportControlsWorkerState struct {
 	buttonHandler      *typedEventHandler
 	buttonToken        eventRegistrationToken
 	hasButtonToken     bool
+	seekHandler        *typedEventHandler
+	seekToken          eventRegistrationToken
+	hasSeekToken       bool
 	lastSnapshot       systemMediaTransportControlsSnapshot
 	hasLastSnapshot    bool
 	lastMetadataKey    string
@@ -135,6 +146,10 @@ type systemMediaTransportControlsButtonPressedEventArgs struct {
 	ole.IUnknown
 }
 
+type playbackPositionChangeRequestedEventArgs struct {
+	ole.IUnknown
+}
+
 type systemMediaTransportControlsInterop struct {
 	ole.IInspectable
 }
@@ -172,6 +187,10 @@ type iSystemMediaTransportControlsTimelineProperties struct {
 }
 
 type iSystemMediaTransportControlsButtonPressedEventArgs struct {
+	ole.IInspectable
+}
+
+type iPlaybackPositionChangeRequestedEventArgs struct {
 	ole.IInspectable
 }
 
@@ -300,10 +319,16 @@ type iSystemMediaTransportControlsButtonPressedEventArgsVtbl struct {
 	GetButton uintptr
 }
 
+type iPlaybackPositionChangeRequestedEventArgsVtbl struct {
+	ole.IInspectableVtbl
+	GetRequestedPlaybackPosition uintptr
+}
+
 type typedEventHandler struct {
 	ole.IUnknown
-	refs     int32
-	callback func(uintptr)
+	refs         int32
+	interfaceIID *ole.GUID
+	invoke       func(uintptr) uintptr
 }
 
 type typedEventHandlerVtbl struct {
@@ -444,12 +469,14 @@ func (s *windowsSystemMediaTransportControlsWorkerState) tryInitialize() error {
 		return err
 	}
 
-	controls, updater, handler, token, err := createSystemMediaTransportControlsForWindow(hwnd, func(button uintptr) {
+	controls, updater, buttonHandler, buttonToken, seekHandler, seekToken, err := createSystemMediaTransportControlsForWindow(hwnd, func(button uintptr) {
 		action := mediaKeyActionForSMTCButton(button)
 		if action == "" {
 			return
 		}
 		s.app.emitMediaKeyAction(action)
+	}, func(seconds float64) {
+		s.app.handleSystemMediaTransportControlsSeekRequested(seconds)
 	})
 	if err != nil {
 		return err
@@ -457,18 +484,42 @@ func (s *windowsSystemMediaTransportControlsWorkerState) tryInitialize() error {
 
 	s.controls = controls
 	s.updater = updater
-	s.buttonHandler = handler
-	s.buttonToken = token
+	s.buttonHandler = buttonHandler
+	s.buttonToken = buttonToken
 	s.hasButtonToken = true
+	s.seekHandler = seekHandler
+	s.seekToken = seekToken
+	s.hasSeekToken = true
 	s.ready = true
 	return nil
 }
 
 func (s *windowsSystemMediaTransportControlsWorkerState) release() {
+	if s.controls != nil {
+		if err := s.controls.SetPlaybackStatus(systemMediaTransportControlsResetPlaybackStatus()); err != nil {
+			log.Printf("failed to reset system media transport controls playback status: %v", err)
+		}
+	}
+	if s.updater != nil {
+		if err := s.updater.ClearAll(); err != nil {
+			log.Printf("failed to clear system media transport controls metadata on release: %v", err)
+		} else if err := s.updater.Update(); err != nil {
+			log.Printf("failed to publish cleared system media transport controls metadata on release: %v", err)
+		}
+	}
+	if s.controls != nil && s.hasSeekToken {
+		if err := s.controls.RemovePlaybackPositionChangeRequested(s.seekToken); err != nil {
+			log.Printf("failed to detach system media transport controls seek handler: %v", err)
+		}
+	}
 	if s.controls != nil && s.hasButtonToken {
 		if err := s.controls.RemoveButtonPressed(s.buttonToken); err != nil {
 			log.Printf("failed to detach system media transport controls button handler: %v", err)
 		}
+	}
+	if s.seekHandler != nil {
+		s.seekHandler.Release()
+		s.seekHandler = nil
 	}
 	if s.buttonHandler != nil {
 		s.buttonHandler.Release()
@@ -479,10 +530,14 @@ func (s *windowsSystemMediaTransportControlsWorkerState) release() {
 		s.updater = nil
 	}
 	if s.controls != nil {
+		if err := s.controls.SetIsEnabled(false); err != nil {
+			log.Printf("failed to disable system media transport controls on release: %v", err)
+		}
 		s.controls.Release()
 		s.controls = nil
 	}
 	s.ready = false
+	s.hasSeekToken = false
 	s.hasButtonToken = false
 	s.lastMetadataKey = ""
 	s.hasLastSnapshot = false
@@ -602,23 +657,23 @@ func (s *windowsSystemMediaTransportControlsWorkerState) syncTimeline(snapshot s
 	return s.controls.UpdateTimelineProperties(timeline)
 }
 
-func createSystemMediaTransportControlsForWindow(hwnd windows.HWND, onButtonPressed func(button uintptr)) (*systemMediaTransportControls, *systemMediaTransportControlsDisplayUpdater, *typedEventHandler, eventRegistrationToken, error) {
+func createSystemMediaTransportControlsForWindow(hwnd windows.HWND, onButtonPressed func(button uintptr), onSeekRequested func(seconds float64)) (*systemMediaTransportControls, *systemMediaTransportControlsDisplayUpdater, *typedEventHandler, eventRegistrationToken, *typedEventHandler, eventRegistrationToken, error) {
 	inspectable, err := ole.RoGetActivationFactory(systemMediaTransportControlsClassName, ole.NewGUID(smtcISystemMediaTransportControlsInteropGUID))
 	if err != nil {
-		return nil, nil, nil, eventRegistrationToken{}, err
+		return nil, nil, nil, eventRegistrationToken{}, nil, eventRegistrationToken{}, err
 	}
 	interop := (*systemMediaTransportControlsInterop)(unsafe.Pointer(inspectable))
 	defer interop.Release()
 
 	controls, err := interop.GetForWindow(hwnd, ole.NewGUID(smtcISystemMediaTransportControlsGUID))
 	if err != nil {
-		return nil, nil, nil, eventRegistrationToken{}, err
+		return nil, nil, nil, eventRegistrationToken{}, nil, eventRegistrationToken{}, err
 	}
 
 	updater, err := controls.GetDisplayUpdater()
 	if err != nil {
 		controls.Release()
-		return nil, nil, nil, eventRegistrationToken{}, err
+		return nil, nil, nil, eventRegistrationToken{}, nil, eventRegistrationToken{}, err
 	}
 
 	for _, configure := range []func() error{
@@ -628,31 +683,43 @@ func createSystemMediaTransportControlsForWindow(hwnd windows.HWND, onButtonPres
 		func() error { return controls.SetIsNextEnabled(true) },
 		func() error { return controls.SetIsPreviousEnabled(true) },
 		func() error { return controls.SetIsStopEnabled(true) },
-		func() error { return controls.SetPlaybackStatus(mediaPlaybackStatusStopped) },
+		func() error { return controls.SetPlaybackStatus(systemMediaTransportControlsResetPlaybackStatus()) },
 		func() error { return updater.SetType(mediaPlaybackTypeMusic) },
 	} {
 		if configureErr := configure(); configureErr != nil {
 			updater.Release()
 			controls.Release()
-			return nil, nil, nil, eventRegistrationToken{}, configureErr
+			return nil, nil, nil, eventRegistrationToken{}, nil, eventRegistrationToken{}, configureErr
 		}
 	}
 
-	handler := newTypedEventHandler(onButtonPressed)
-	token, err := controls.AddButtonPressed(handler)
+	buttonHandler := newButtonPressedEventHandler(onButtonPressed)
+	buttonToken, err := controls.AddButtonPressed(buttonHandler)
 	if err != nil {
-		handler.Release()
+		buttonHandler.Release()
 		updater.Release()
 		controls.Release()
-		return nil, nil, nil, eventRegistrationToken{}, err
+		return nil, nil, nil, eventRegistrationToken{}, nil, eventRegistrationToken{}, err
 	}
 
-	return controls, updater, handler, token, nil
+	seekHandler := newPlaybackPositionChangeRequestedEventHandler(onSeekRequested)
+	seekToken, err := controls.AddPlaybackPositionChangeRequested(seekHandler)
+	if err != nil {
+		_ = controls.RemoveButtonPressed(buttonToken)
+		seekHandler.Release()
+		buttonHandler.Release()
+		updater.Release()
+		controls.Release()
+		return nil, nil, nil, eventRegistrationToken{}, nil, eventRegistrationToken{}, err
+	}
+
+	return controls, updater, buttonHandler, buttonToken, seekHandler, seekToken, nil
 }
 
 func findCurrentProcessMainWindow() (windows.HWND, error) {
 	targetPID := uint32(os.Getpid())
 	var found windows.HWND
+	bestTitleScore := -1
 
 	callback := syscall.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
 		var windowPID uint32
@@ -674,11 +741,18 @@ func findCurrentProcessMainWindow() (windows.HWND, error) {
 		}
 		buffer := make([]uint16, textLength+1)
 		_, _, _ = procGetWindowTextW.Call(hwnd, uintptr(unsafe.Pointer(&buffer[0])), textLength+1)
-		if windows.UTF16ToString(buffer) != "Silphium" {
+		titleScore := systemMediaTransportControlsWindowTitleScore(windows.UTF16ToString(buffer))
+		if titleScore < 0 {
 			return 1
 		}
-		found = windows.HWND(hwnd)
-		return 0
+		if found == 0 || titleScore > bestTitleScore {
+			found = windows.HWND(hwnd)
+			bestTitleScore = titleScore
+		}
+		if titleScore >= 2 {
+			return 0
+		}
+		return 1
 	})
 
 	ret, _, callErr := procEnumWindows.Call(callback, 0)
@@ -690,6 +764,21 @@ func findCurrentProcessMainWindow() (windows.HWND, error) {
 	}
 
 	return 0, errSystemMediaTransportControlsWindowNotFound
+}
+
+func systemMediaTransportControlsWindowTitleScore(title string) int {
+	trimmedTitle := strings.TrimSpace(title)
+	if trimmedTitle == "" {
+		return -1
+	}
+	if trimmedTitle == "Silphium" {
+		return 2
+	}
+	if strings.EqualFold(trimmedTitle, "Silphium") {
+		return 1
+	}
+
+	return 0
 }
 
 func mediaKeyActionForSMTCButton(button uintptr) string {
@@ -709,12 +798,16 @@ func mediaKeyActionForSMTCButton(button uintptr) string {
 
 func playbackStatusForSnapshot(snapshot systemMediaTransportControlsSnapshot) uintptr {
 	if !snapshot.Loaded || snapshot.SourcePath == "" {
-		return mediaPlaybackStatusClosed
+		return systemMediaTransportControlsResetPlaybackStatus()
 	}
 	if snapshot.Playing {
 		return mediaPlaybackStatusPlaying
 	}
 	return mediaPlaybackStatusPaused
+}
+
+func systemMediaTransportControlsResetPlaybackStatus() uintptr {
+	return mediaPlaybackStatusClosed
 }
 
 func secondsToTimeSpan(seconds float64) timeSpan {
@@ -729,6 +822,10 @@ func absFloat64(value float64) float64 {
 		return -value
 	}
 	return value
+}
+
+func timeSpanToSeconds(value timeSpan) float64 {
+	return float64(value.Duration) / float64(time.Second/100)
 }
 
 func parameterizedInstanceGUID(baseGUID string, signatures ...string) string {
@@ -765,12 +862,43 @@ func stringsJoin(parts []string, separator string) string {
 	return joined
 }
 
-func newTypedEventHandler(callback func(button uintptr)) *typedEventHandler {
+func newTypedEventHandler(interfaceIID *ole.GUID, invoke func(uintptr) uintptr) *typedEventHandler {
 	return &typedEventHandler{
-		IUnknown: ole.IUnknown{RawVTable: (*interface{})(unsafe.Pointer(&typedEventHandlerVTable))},
-		refs:     1,
-		callback: callback,
+		IUnknown:     ole.IUnknown{RawVTable: (*interface{})(unsafe.Pointer(&typedEventHandlerVTable))},
+		refs:         1,
+		interfaceIID: interfaceIID,
+		invoke:       invoke,
 	}
+}
+
+func newButtonPressedEventHandler(callback func(button uintptr)) *typedEventHandler {
+	return newTypedEventHandler(smtcButtonPressedHandlerIID, func(args uintptr) uintptr {
+		if callback == nil {
+			return sOk
+		}
+		eventArgs := (*systemMediaTransportControlsButtonPressedEventArgs)(unsafe.Pointer(args))
+		button, err := eventArgs.GetButton()
+		if err != nil {
+			return ole.E_FAIL
+		}
+		callback(button)
+		return sOk
+	})
+}
+
+func newPlaybackPositionChangeRequestedEventHandler(callback func(seconds float64)) *typedEventHandler {
+	return newTypedEventHandler(smtcPlaybackPositionChangeRequestedHandlerIID, func(args uintptr) uintptr {
+		if callback == nil {
+			return sOk
+		}
+		eventArgs := (*playbackPositionChangeRequestedEventArgs)(unsafe.Pointer(args))
+		position, err := eventArgs.GetRequestedPlaybackPosition()
+		if err != nil {
+			return ole.E_FAIL
+		}
+		callback(timeSpanToSeconds(position))
+		return sOk
+	})
 }
 
 func typedEventHandlerQueryInterface(this uintptr, iidPtr uintptr, object uintptr) uintptr {
@@ -779,7 +907,8 @@ func typedEventHandlerQueryInterface(this uintptr, iidPtr uintptr, object uintpt
 	}
 
 	iid := (*ole.GUID)(unsafe.Pointer(iidPtr))
-	if !ole.IsEqualGUID(iid, ole.IID_IUnknown) && !ole.IsEqualGUID(iid, ole.IID_IInspectable) && !ole.IsEqualGUID(iid, smtcButtonPressedHandlerIID) {
+	handler := (*typedEventHandler)(unsafe.Pointer(this))
+	if !ole.IsEqualGUID(iid, ole.IID_IUnknown) && !ole.IsEqualGUID(iid, ole.IID_IInspectable) && (handler.interfaceIID == nil || !ole.IsEqualGUID(iid, handler.interfaceIID)) {
 		*(*uintptr)(unsafe.Pointer(object)) = 0
 		return ole.E_NOINTERFACE
 	}
@@ -806,16 +935,10 @@ func typedEventHandlerRelease(this uintptr) uintptr {
 
 func typedEventHandlerInvoke(this uintptr, sender uintptr, args uintptr) uintptr {
 	handler := (*typedEventHandler)(unsafe.Pointer(this))
-	if handler.callback == nil {
+	if handler.invoke == nil {
 		return sOk
 	}
-	eventArgs := (*systemMediaTransportControlsButtonPressedEventArgs)(unsafe.Pointer(args))
-	button, err := eventArgs.GetButton()
-	if err != nil {
-		return ole.E_FAIL
-	}
-	handler.callback(button)
-	return sOk
+	return handler.invoke(args)
 }
 
 func (v *systemMediaTransportControlsInterop) VTable() *systemMediaTransportControlsInteropVtbl {
@@ -871,6 +994,10 @@ func (v *iSystemMediaTransportControlsTimelineProperties) VTable() *iSystemMedia
 
 func (v *iSystemMediaTransportControlsButtonPressedEventArgs) VTable() *iSystemMediaTransportControlsButtonPressedEventArgsVtbl {
 	return (*iSystemMediaTransportControlsButtonPressedEventArgsVtbl)(unsafe.Pointer(v.RawVTable))
+}
+
+func (v *iPlaybackPositionChangeRequestedEventArgs) VTable() *iPlaybackPositionChangeRequestedEventArgsVtbl {
+	return (*iPlaybackPositionChangeRequestedEventArgsVtbl)(unsafe.Pointer(v.RawVTable))
 }
 
 func (v *systemMediaTransportControls) SetPlaybackStatus(value uintptr) error {
@@ -954,6 +1081,34 @@ func (v *systemMediaTransportControls) RemoveButtonPressed(token eventRegistrati
 	defer itf.Release()
 	controls := (*iSystemMediaTransportControls)(unsafe.Pointer(itf))
 	hr, _, _ := syscall.SyscallN(controls.VTable().RemoveButtonPressed, uintptr(unsafe.Pointer(controls)), uintptr(unsafe.Pointer(&token)))
+	if hr != 0 {
+		return ole.NewError(hr)
+	}
+	return nil
+}
+
+func (v *systemMediaTransportControls) AddPlaybackPositionChangeRequested(handler *typedEventHandler) (eventRegistrationToken, error) {
+	itf := v.MustQueryInterface(ole.NewGUID(smtcISystemMediaTransportControls2GUID))
+	defer itf.Release()
+	controls := (*iSystemMediaTransportControls2)(unsafe.Pointer(itf))
+	var token eventRegistrationToken
+	hr, _, _ := syscall.SyscallN(
+		controls.VTable().AddPlaybackPositionChangeRequested,
+		uintptr(unsafe.Pointer(controls)),
+		uintptr(unsafe.Pointer(handler)),
+		uintptr(unsafe.Pointer(&token)),
+	)
+	if hr != 0 {
+		return eventRegistrationToken{}, ole.NewError(hr)
+	}
+	return token, nil
+}
+
+func (v *systemMediaTransportControls) RemovePlaybackPositionChangeRequested(token eventRegistrationToken) error {
+	itf := v.MustQueryInterface(ole.NewGUID(smtcISystemMediaTransportControls2GUID))
+	defer itf.Release()
+	controls := (*iSystemMediaTransportControls2)(unsafe.Pointer(itf))
+	hr, _, _ := syscall.SyscallN(controls.VTable().RemovePlaybackPositionChangeRequested, uintptr(unsafe.Pointer(controls)), uintptr(unsafe.Pointer(&token)))
 	if hr != 0 {
 		return ole.NewError(hr)
 	}
@@ -1182,11 +1337,15 @@ func (v *systemMediaTransportControlsTimelineProperties) setTimeSpanProperty(met
 	itf := v.MustQueryInterface(ole.NewGUID("5125316a-c3a2-475b-8507-93534dc88f15"))
 	defer itf.Release()
 	properties := (*iSystemMediaTransportControlsTimelineProperties)(unsafe.Pointer(itf))
-	hr, _, _ := syscall.SyscallN(method(properties), uintptr(unsafe.Pointer(properties)), uintptr(unsafe.Pointer(&value)))
+	hr, _, _ := syscall.SyscallN(method(properties), uintptr(unsafe.Pointer(properties)), timeSpanSyscallArg(value))
 	if hr != 0 {
 		return ole.NewError(hr)
 	}
 	return nil
+}
+
+func timeSpanSyscallArg(value timeSpan) uintptr {
+	return uintptr(value.Duration)
 }
 
 func (v *systemMediaTransportControlsButtonPressedEventArgs) GetButton() (uintptr, error) {
@@ -1199,4 +1358,16 @@ func (v *systemMediaTransportControlsButtonPressedEventArgs) GetButton() (uintpt
 		return smtcButtonPlay, ole.NewError(hr)
 	}
 	return uintptr(out), nil
+}
+
+func (v *playbackPositionChangeRequestedEventArgs) GetRequestedPlaybackPosition() (timeSpan, error) {
+	itf := v.MustQueryInterface(ole.NewGUID(smtcIPlaybackPositionChangeRequestedEventArgsGUID))
+	defer itf.Release()
+	args := (*iPlaybackPositionChangeRequestedEventArgs)(unsafe.Pointer(itf))
+	var out timeSpan
+	hr, _, _ := syscall.SyscallN(args.VTable().GetRequestedPlaybackPosition, uintptr(unsafe.Pointer(args)), uintptr(unsafe.Pointer(&out)))
+	if hr != 0 {
+		return timeSpan{}, ole.NewError(hr)
+	}
+	return out, nil
 }
