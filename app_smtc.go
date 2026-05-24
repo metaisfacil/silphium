@@ -222,19 +222,6 @@ func normalizeSystemMediaTransportControlsSeekSeconds(seconds float64) (float64,
 	return seconds, true
 }
 
-func (a *App) handleSystemMediaTransportControlsSeekRequested(seconds float64) {
-	normalizedSeconds, ok := normalizeSystemMediaTransportControlsSeekSeconds(seconds)
-	if !ok {
-		return
-	}
-
-	go func() {
-		if _, err := a.AudioSeek(normalizedSeconds); err != nil {
-			log.Printf("failed to handle system media transport controls seek request: %v", err)
-		}
-	}()
-}
-
 func (a *App) systemMediaTransportControlsCoverArtURL(sourcePath string, indexed LibraryIndexedFile, indexedAvailable bool) string {
 	if sourcePath == "" || isRemoteLibraryPath(sourcePath) {
 		return ""

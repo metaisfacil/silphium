@@ -59,10 +59,3 @@ func systemMediaTransportControlsWindowTitleScore(title string) int {
 
 	return 0
 }
-
-func absFloat64(value float64) float64 {
-	if value < 0 {
-		return -value
-	}
-	return value
-}

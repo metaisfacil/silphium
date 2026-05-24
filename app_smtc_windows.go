@@ -771,6 +771,26 @@ func mediaKeyActionForSMTCButton(button uintptr) string {
 	}
 }
 
+func (a *App) handleSystemMediaTransportControlsSeekRequested(seconds float64) {
+	normalizedSeconds, ok := normalizeSystemMediaTransportControlsSeekSeconds(seconds)
+	if !ok {
+		return
+	}
+
+	go func() {
+		if _, err := a.AudioSeek(normalizedSeconds); err != nil {
+			log.Printf("failed to handle system media transport controls seek request: %v", err)
+		}
+	}()
+}
+
+func absFloat64(value float64) float64 {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
 func parameterizedInstanceGUID(baseGUID string, signatures ...string) string {
 	return guidFromSignature("pinterface({" + baseGUID + "};" + stringsJoin(signatures, ";") + ")")
 }
