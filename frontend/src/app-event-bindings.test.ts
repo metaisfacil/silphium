@@ -6,7 +6,7 @@ vi.mock('../wailsjs/runtime/runtime', () => ({
     OnFileDrop: vi.fn(),
 }));
 
-import { canInteractWithCoverFrame, handleExternalFileDrop, openOverviewAlbumContextMenu, openOverviewTrackContextMenu, resolveOverviewAlbumTrackIndex, setupSidebarShellBindings, setupTrackNavigationBindings, setupVolumeControlBindings, toggleTaskbarCoverView, triggerSidebarOpenInBrowserAction, triggerTrackMetaArtistFilterAction } from './app-event-bindings';
+import { canInteractWithCoverFrame, handleExternalFileDrop, openOverviewAlbumContextMenu, openOverviewTrackContextMenu, resolveOverviewAlbumTrackIndex, resolveOverviewInlineTrackIndex, setupSidebarShellBindings, setupTrackNavigationBindings, setupVolumeControlBindings, toggleTaskbarCoverView, triggerSidebarOpenInBrowserAction, triggerTrackMetaArtistFilterAction } from './app-event-bindings';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -384,6 +384,28 @@ describe('overview album actions', () => {
 
         expect(resolveOverviewAlbumTrackIndex(container, nestedTitle)).toBe(7);
         expect(resolveOverviewAlbumTrackIndex(container, document.createElement('div'))).toBeNull();
+    });
+
+    it('resolves inline overview track indexes only from expanded track buttons', () => {
+        document.body.innerHTML = `
+            <div id="overview-grid">
+                <div class="library-album-card overview-library-album-card" data-overview-grid-track-index="2">
+                    <span class="library-album-cover"></span>
+                </div>
+                <div class="overview-album-inline-panel">
+                    <button class="overview-album-inline-track" data-overview-track-index="9" type="button">
+                        <span class="overview-album-inline-track-title">Inline Track</span>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const container = document.querySelector('#overview-grid') as HTMLDivElement;
+        const inlineTitle = document.querySelector('.overview-album-inline-track-title') as HTMLSpanElement;
+        const cover = document.querySelector('.library-album-cover') as HTMLSpanElement;
+
+        expect(resolveOverviewInlineTrackIndex(container, inlineTitle)).toBe(9);
+        expect(resolveOverviewInlineTrackIndex(container, cover)).toBeNull();
     });
 
     it('opens the shared queue menu for overview album cards', () => {

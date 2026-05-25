@@ -810,6 +810,72 @@ describe('createAppCoreServicesRuntime', () => {
         expect(context.overviewShowRecents.getAttribute('aria-pressed')).toBe('true');
     });
 
+    it('expands an overview album tile into an inline tracklist instead of treating the cover as an immediate play target', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = [
+            {
+                ...createTrack(),
+                path: '/music/album/01.flac',
+                relativePath: 'album/01.flac',
+                folderPath: '/music/album',
+                displayAlbum: 'Album A',
+                displayArtist: 'Artist A',
+                displayTitle: 'Intro',
+                displayTrackNumber: '1',
+                technicalDetails: { durationSeconds: 201 },
+            },
+            {
+                ...createTrack(),
+                path: '/music/album/02.flac',
+                relativePath: 'album/02.flac',
+                folderPath: '/music/album',
+                displayAlbum: 'Album A',
+                displayArtist: 'Artist A',
+                displayTitle: 'Second Song',
+                displayTrackNumber: '2',
+                technicalDetails: { durationSeconds: 185 },
+            },
+            {
+                ...createTrack(),
+                path: '/music/other/01.flac',
+                relativePath: 'other/01.flac',
+                folderPath: '/music/other',
+                displayAlbum: 'Album B',
+                displayArtist: 'Artist B',
+            },
+        ] as never;
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        document.body.append(context.overviewAlbumGridView);
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        const firstCard = context.overviewAlbumGrid.querySelector('[data-overview-grid-track-index="0"]') as HTMLDivElement | null;
+        expect(firstCard).not.toBeNull();
+
+        firstCard?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await flushPromises();
+
+        const inlinePanel = context.overviewAlbumGrid.querySelector('.overview-album-inline-panel') as HTMLDivElement | null;
+        expect(inlinePanel).not.toBeNull();
+        expect(inlinePanel?.querySelector('.overview-album-inline-title')?.textContent).toBe('Album A');
+        expect(inlinePanel?.querySelectorAll('.overview-album-inline-track')).toHaveLength(2);
+        expect(inlinePanel?.textContent).toContain('Intro');
+        expect(inlinePanel?.textContent).toContain('Second Song');
+        expect(inlinePanel?.textContent).toContain('3:21');
+        expect(firstCard?.getAttribute('aria-expanded')).toBe('true');
+
+        firstCard?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await flushPromises();
+
+        expect(context.overviewAlbumGrid.querySelector('.overview-album-inline-panel')).toBeNull();
+        expect(firstCard?.getAttribute('aria-expanded')).toBe('false');
+    });
+
     it('loads only an initial slice of album grid thumbnails on first open', async () => {
         const context = createContext();
         (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 48 }, (_, index) => ({

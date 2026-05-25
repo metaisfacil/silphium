@@ -370,6 +370,29 @@ export const resolveOverviewAlbumTrackIndex = (container: HTMLElement, eventTarg
     return trackIndex;
 };
 
+export const resolveOverviewInlineTrackIndex = (container: HTMLElement, eventTarget: EventTarget | null): number | null => {
+    const targetElement = eventTarget instanceof Element
+        ? eventTarget
+        : eventTarget instanceof Node
+            ? eventTarget.parentElement
+            : null;
+    if (!targetElement) {
+        return null;
+    }
+
+    const trigger = targetElement.closest('.overview-album-inline-track[data-overview-track-index]') as HTMLElement | null;
+    if (!trigger || !container.contains(trigger)) {
+        return null;
+    }
+
+    const trackIndex = Number(trigger.dataset.overviewTrackIndex || '');
+    if (!Number.isInteger(trackIndex) || trackIndex < 0) {
+        return null;
+    }
+
+    return trackIndex;
+};
+
 const resolveExplicitOverviewAlbumTrackIndexes = (container: HTMLElement, eventTarget: EventTarget | null): number[] | null => {
     const targetElement = eventTarget instanceof Element
         ? eventTarget
@@ -891,6 +914,20 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         })();
     };
 
+    const openOverviewInlineTrack = (container: HTMLElement, eventTarget: EventTarget | null): void => {
+        const trackIndex = resolveOverviewInlineTrackIndex(container, eventTarget);
+        if (trackIndex === null) {
+            return;
+        }
+
+        libraryController.setSidebarOpen(false);
+        showNowPlayingPage();
+        void (async () => {
+            await loadTrack(trackIndex, true, undefined, true);
+            await playCurrentTrack();
+        })();
+    };
+
     overviewLastPlayedList.addEventListener('click', (event) => {
         openOverviewAlbumTrack(overviewLastPlayedList, event.target);
     });
@@ -909,6 +946,10 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
 
     overviewAlbumGrid.addEventListener('contextmenu', (event) => {
         openOverviewAlbumContextMenu({ tracks, releaseDepthForTrack, openSidebarQueueMenu }, overviewAlbumGrid, event);
+    });
+
+    overviewAlbumGrid.addEventListener('click', (event) => {
+        openOverviewInlineTrack(overviewAlbumGrid, event.target);
     });
 
     taskbarShowPlayer.addEventListener('click', () => {

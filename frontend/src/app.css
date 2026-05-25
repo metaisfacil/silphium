@@ -2890,6 +2890,142 @@
     gap: 0.75rem;
 }
 
+.overview-library-album-card {
+    position: relative;
+    outline: none;
+}
+
+.overview-library-album-card:focus-visible .library-album-cover,
+.overview-library-album-card.is-expanded .library-album-cover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.24);
+    box-shadow: 0 18px 28px rgba(0, 0, 0, 0.32);
+}
+
+.overview-album-inline-panel {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 0.65rem;
+    padding: 0.8rem 0.9rem 0.85rem;
+    overflow: hidden;
+    border-radius: 22px;
+    background:
+        linear-gradient(120deg, rgba(232, 238, 246, 0.92), rgba(212, 228, 212, 0.9)),
+        rgba(244, 247, 251, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.36);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
+    color: rgba(26, 31, 39, 0.94);
+    transform-origin: top center;
+    will-change: height, opacity, transform;
+    transition:
+        height 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 180ms ease,
+        transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.overview-album-inline-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.overview-album-inline-heading {
+    min-width: 0;
+    display: grid;
+    gap: 0.12rem;
+    justify-items: start;
+    text-align: left;
+}
+
+.overview-album-inline-title,
+.overview-album-inline-subtitle {
+    margin: 0;
+}
+
+.overview-album-inline-title {
+    font-size: 1.18rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+}
+
+.overview-album-inline-subtitle {
+    font-size: 0.92rem;
+    color: rgba(47, 55, 67, 0.76);
+}
+
+.overview-album-inline-close {
+    appearance: none;
+    border: none;
+    border-radius: 999px;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    margin: 0;
+    background: rgba(18, 24, 33, 0.08);
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 140ms ease, transform 140ms ease;
+}
+
+.overview-album-inline-close:hover,
+.overview-album-inline-close:focus-visible {
+    background: rgba(18, 24, 33, 0.14);
+    transform: translateY(-1px);
+}
+
+.overview-album-inline-track-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.18rem 1rem;
+}
+
+.overview-album-inline-track {
+    appearance: none;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 0.55rem;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: inherit;
+    padding: 0.24rem 0.3rem;
+    margin: 0;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    transition: background 140ms ease, transform 140ms ease;
+}
+
+.overview-album-inline-track:hover,
+.overview-album-inline-track:focus-visible {
+    background: rgba(22, 31, 42, 0.08);
+    transform: translateX(1px);
+}
+
+.overview-album-inline-track-number,
+.overview-album-inline-track-duration {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.84rem;
+    color: rgba(50, 58, 69, 0.68);
+}
+
+.overview-album-inline-track-number {
+    min-width: 1.25rem;
+}
+
+.overview-album-inline-track-title {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.92rem;
+}
+
 .overview-album-grid-scroll-rail {
     position: absolute;
     top: 1rem;
@@ -3292,6 +3428,35 @@
     border-color: rgb(var(--roon-accent-rgb, 104 180 255) / 0.12);
 }
 
+#app.shell-theme-roon .overview-album-inline-panel {
+    background:
+        linear-gradient(120deg, rgb(var(--roon-accent-surface-rgb, 20 32 46) / 0.94), rgba(18, 24, 34, 0.92));
+    border-color: rgb(var(--roon-accent-rgb, 104 180 255) / 0.18);
+    box-shadow: 0 20px 38px rgb(var(--roon-accent-deep-rgb, 27 35 49) / 0.28);
+    color: rgba(244, 248, 255, 0.95);
+}
+
+#app.shell-theme-roon .overview-album-inline-subtitle {
+    color: rgb(var(--roon-accent-soft-rgb, 132 190 242) / 0.82);
+}
+
+#app.shell-theme-roon .overview-album-inline-track-number,
+#app.shell-theme-roon .overview-album-inline-track-duration {
+    color: rgba(218, 228, 244, 0.58);
+}
+
+#app.shell-theme-roon .overview-album-inline-close {
+    background: rgb(var(--roon-accent-rgb, 104 180 255) / 0.12);
+    color: rgb(var(--roon-accent-soft-rgb, 132 190 242) / 0.96);
+}
+
+#app.shell-theme-roon .overview-album-inline-close:hover,
+#app.shell-theme-roon .overview-album-inline-close:focus-visible,
+#app.shell-theme-roon .overview-album-inline-track:hover,
+#app.shell-theme-roon .overview-album-inline-track:focus-visible {
+    background: rgb(var(--roon-accent-rgb, 104 180 255) / 0.14);
+}
+
 #app.shell-theme-roon .overview-album-grid-scroll-rail {
     background: linear-gradient(180deg, rgb(var(--roon-accent-surface-rgb, 20 32 46) / 0.72), rgba(14, 18, 26, 0.6));
     border-color: rgb(var(--roon-accent-rgb, 104 180 255) / 0.14);
@@ -3624,9 +3789,18 @@
         align-self: center;
         justify-content: flex-end;
     }
+
+    .overview-album-inline-track-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.16rem;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .overview-album-inline-panel {
+        transition: none;
+    }
+
     #app.shell-theme-roon .bg-stage::after,
     #app.shell-theme-roon .overview-page,
     #app.shell-theme-roon .player-lane,

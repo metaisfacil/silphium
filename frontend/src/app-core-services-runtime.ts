@@ -98,6 +98,15 @@ type OverviewAlbumGridEntry = {
     coverFolderPath: string;
 };
 
+type OverviewAlbumInlineTrackEntry = {
+    trackIndex: number;
+    title: string;
+    durationLabel: string;
+    trackNumber: string;
+    sortDiscNumber: number;
+    sortTrackNumber: number;
+};
+
 const overviewAlbumGridRenderBatchSize = 80;
 const overviewAlbumGridCoverLoadConcurrency = 4;
 const overviewAlbumGridFallbackInitialCoverCount = 32;
@@ -108,6 +117,17 @@ const overviewAlbumGridSeekAppendBurstSize = 2_400;
 const overviewAlbumGridBottomSeekAppendBurstSize = 8_000;
 const overviewAlbumGridViewStabilityDelayMs = 300;
 const overviewAlbumGridCoverInvalidationDelayMs = 30_000;
+
+const formatOverviewInlineTrackDuration = (durationSeconds?: number): string => {
+    if (!Number.isFinite(durationSeconds) || durationSeconds === undefined || durationSeconds <= 0) {
+        return '';
+    }
+
+    const totalSeconds = Math.max(0, Math.round(durationSeconds));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes)}:${String(seconds).padStart(2, '0')}`;
+};
 
 const addListenHistoryEntry = async (
     trackPath: string,
@@ -230,7 +250,10 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     const overviewAlbumGridVisibleTrackIndexes = new Set<number>();
     const overviewAlbumGridPendingUnloadByTrackIndex = new Map<number, number>();
     const overviewAlbumGridUnloadGenerationByTrackIndex = new Map<number, number>();
+    const overviewAlbumInlinePanelAnimationTokenByElement = new WeakMap<HTMLDivElement, number>();
+    const overviewAlbumInlinePanelAnimationTimeoutByElement = new WeakMap<HTMLDivElement, number>();
     const overviewAlbumGridViewStabilityWaiters: Array<() => void> = [];
+    let expandedOverviewAlbumGridTrackIndex: number | null = null;
     const roonAccentColorKey = 'roonAccentColor';
     const roonAccentSaturationKey = 'roonAccentSaturation';
     const localReleaseFolderByMBID = new Map<string, Promise<string>>();
@@ -1270,6 +1293,9 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             card.dataset.overviewTrackIndexes = entry.trackIndexes.join(',');
         }
         card.title = `${entry.artist} - ${entry.title}`;
+        card.setAttribute('role', 'button');
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('aria-expanded', 'false');
 
         const cover = document.createElement('span');
         cover.className = 'library-album-cover is-loading';
@@ -1294,6 +1320,343 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
         card.append(cover);
         return card;
+    };
+
+    const overviewAlbumInlinePanelId = (trackIndex: number): string => `overview-album-inline-panel-${String(trackIndex)}`;
+
+    const parseCssDurationMs = (value: string): number => {
+        const trimmedValue = value.trim();
+        if (!trimmedValue) {
+            return 0;
+        }
+
+        if (trimmedValue.endsWith('ms')) {
+            return Number.parseFloat(trimmedValue.slice(0, -2)) || 0;
+        }
+
+        if (trimmedValue.endsWith('s')) {
+            return (Number.parseFloat(trimmedValue.slice(0, -1)) || 0) * 1000;
+        }
+
+        return Number.parseFloat(trimmedValue) || 0;
+    };
+
+    const overviewAlbumInlinePanelTransitionMs = (panel: HTMLDivElement): number => {
+        const computedStyles = window.getComputedStyle(panel);
+        const durations = computedStyles.transitionDuration
+            .split(',')
+            .map((value) => parseCssDurationMs(value));
+        const delays = computedStyles.transitionDelay
+            .split(',')
+            .map((value) => parseCssDurationMs(value));
+        const entryCount = Math.max(durations.length, delays.length);
+        let maxDurationMs = 0;
+
+        for (let index = 0; index < entryCount; index += 1) {
+            const durationMs = durations[index] ?? durations[durations.length - 1] ?? 0;
+            const delayMs = delays[index] ?? delays[delays.length - 1] ?? 0;
+            maxDurationMs = Math.max(maxDurationMs, durationMs + delayMs);
+        }
+
+        return maxDurationMs;
+    };
+
+    const clearOverviewAlbumInlinePanelAnimationTimeout = (panel: HTMLDivElement): void => {
+        const timeoutHandle = overviewAlbumInlinePanelAnimationTimeoutByElement.get(panel);
+        if (typeof timeoutHandle === 'number') {
+            window.clearTimeout(timeoutHandle);
+            overviewAlbumInlinePanelAnimationTimeoutByElement.delete(panel);
+        }
+    };
+
+    const nextOverviewAlbumInlinePanelAnimationToken = (panel: HTMLDivElement): number => {
+        clearOverviewAlbumInlinePanelAnimationTimeout(panel);
+        const nextToken = (overviewAlbumInlinePanelAnimationTokenByElement.get(panel) || 0) + 1;
+        overviewAlbumInlinePanelAnimationTokenByElement.set(panel, nextToken);
+        return nextToken;
+    };
+
+    const finishOverviewAlbumInlinePanelAnimation = (panel: HTMLDivElement): void => {
+        clearOverviewAlbumInlinePanelAnimationTimeout(panel);
+        panel.style.removeProperty('height');
+        panel.style.removeProperty('overflow');
+        panel.style.removeProperty('opacity');
+        panel.style.removeProperty('transform');
+        panel.style.removeProperty('pointer-events');
+    };
+
+    const animateOverviewAlbumInlinePanelOpen = async (panel: HTMLDivElement): Promise<void> => {
+        const transitionMs = overviewAlbumInlinePanelTransitionMs(panel);
+        if (transitionMs <= 0) {
+            return;
+        }
+
+        const animationToken = nextOverviewAlbumInlinePanelAnimationToken(panel);
+        const expandedHeightPx = panel.getBoundingClientRect().height || panel.scrollHeight;
+        panel.style.overflow = 'hidden';
+        panel.style.height = '0px';
+        panel.style.opacity = '0';
+        panel.style.transform = 'translateY(-8px) scale(0.985)';
+        panel.style.pointerEvents = 'none';
+        panel.getBoundingClientRect();
+
+        await waitForNextAnimationFrame();
+
+        if (overviewAlbumInlinePanelAnimationTokenByElement.get(panel) !== animationToken || !panel.isConnected) {
+            return;
+        }
+
+        panel.style.height = `${String(expandedHeightPx)}px`;
+        panel.style.opacity = '1';
+        panel.style.transform = 'translateY(0) scale(1)';
+
+        const completeAnimation = (): void => {
+            if (overviewAlbumInlinePanelAnimationTokenByElement.get(panel) !== animationToken) {
+                return;
+            }
+
+            finishOverviewAlbumInlinePanelAnimation(panel);
+        };
+
+        const onTransitionEnd = (event: TransitionEvent): void => {
+            if (event.target !== panel || event.propertyName !== 'height') {
+                return;
+            }
+
+            panel.removeEventListener('transitionend', onTransitionEnd);
+            completeAnimation();
+        };
+
+        panel.addEventListener('transitionend', onTransitionEnd);
+        const timeoutHandle = window.setTimeout(() => {
+            panel.removeEventListener('transitionend', onTransitionEnd);
+            completeAnimation();
+        }, transitionMs + 32);
+        overviewAlbumInlinePanelAnimationTimeoutByElement.set(panel, timeoutHandle);
+    };
+
+    const animateOverviewAlbumInlinePanelClose = (panel: HTMLDivElement): void => {
+        const transitionMs = overviewAlbumInlinePanelTransitionMs(panel);
+        if (transitionMs <= 0 || !panel.isConnected) {
+            panel.remove();
+            return;
+        }
+
+        const animationToken = nextOverviewAlbumInlinePanelAnimationToken(panel);
+        const collapsedHeightPx = panel.getBoundingClientRect().height || panel.scrollHeight;
+        panel.style.overflow = 'hidden';
+        panel.style.height = `${String(collapsedHeightPx)}px`;
+        panel.style.opacity = '1';
+        panel.style.transform = 'translateY(0) scale(1)';
+        panel.style.pointerEvents = 'none';
+        panel.getBoundingClientRect();
+
+        const completeAnimation = (): void => {
+            if (overviewAlbumInlinePanelAnimationTokenByElement.get(panel) !== animationToken) {
+                return;
+            }
+
+            finishOverviewAlbumInlinePanelAnimation(panel);
+            if (panel.isConnected) {
+                panel.remove();
+            }
+        };
+
+        const onTransitionEnd = (event: TransitionEvent): void => {
+            if (event.target !== panel || event.propertyName !== 'height') {
+                return;
+            }
+
+            panel.removeEventListener('transitionend', onTransitionEnd);
+            completeAnimation();
+        };
+
+        panel.addEventListener('transitionend', onTransitionEnd);
+        const timeoutHandle = window.setTimeout(() => {
+            panel.removeEventListener('transitionend', onTransitionEnd);
+            completeAnimation();
+        }, transitionMs + 32);
+        overviewAlbumInlinePanelAnimationTimeoutByElement.set(panel, timeoutHandle);
+
+        void waitForNextAnimationFrame().then(() => {
+            if (overviewAlbumInlinePanelAnimationTokenByElement.get(panel) !== animationToken || !panel.isConnected) {
+                return;
+            }
+
+            panel.style.height = '0px';
+            panel.style.opacity = '0';
+            panel.style.transform = 'translateY(-8px) scale(0.985)';
+        });
+    };
+
+    const overviewAlbumInlineTracks = (entry: OverviewAlbumGridEntry): OverviewAlbumInlineTrackEntry[] => {
+        return (entry.trackIndexes || [entry.trackIndex])
+            .map((trackIndex) => {
+                const track = context.tracks[trackIndex];
+                if (!track) {
+                    return null;
+                }
+
+                const normalizedDiscNumber = Number.parseInt(firstTagValue(track, 'discnumber', 'disc number', 'disc') || '1', 10);
+                const normalizedTrackNo = Number.parseInt(normalizedTrackNumber(track) || '', 10);
+                const fileNameTitle = (track.name || '').replace(/\.[^.]+$/, '').trim();
+                return {
+                    trackIndex,
+                    title: (track.displayTitle || track.title || fileNameTitle || 'Unknown Track').trim(),
+                    durationLabel: formatOverviewInlineTrackDuration(track.technicalDetails?.durationSeconds),
+                    trackNumber: normalizedTrackNumber(track) || '0',
+                    sortDiscNumber: Number.isFinite(normalizedDiscNumber) ? normalizedDiscNumber : 1,
+                    sortTrackNumber: Number.isFinite(normalizedTrackNo) ? normalizedTrackNo : Number.MAX_SAFE_INTEGER,
+                };
+            })
+            .filter((entryValue): entryValue is OverviewAlbumInlineTrackEntry => entryValue !== null)
+            .sort((left, right) => {
+                if (left.sortDiscNumber !== right.sortDiscNumber) {
+                    return left.sortDiscNumber - right.sortDiscNumber;
+                }
+
+                if (left.sortTrackNumber !== right.sortTrackNumber) {
+                    return left.sortTrackNumber - right.sortTrackNumber;
+                }
+
+                return left.trackIndex - right.trackIndex;
+            });
+    };
+
+    const createOverviewAlbumInlinePanel = (entry: OverviewAlbumGridEntry): HTMLDivElement => {
+        const panel = document.createElement('div');
+        panel.className = 'overview-album-inline-panel';
+        panel.id = overviewAlbumInlinePanelId(entry.trackIndex);
+        panel.dataset.overviewInlinePanelTrackIndex = String(entry.trackIndex);
+
+        const inlineTracks = overviewAlbumInlineTracks(entry);
+
+        panel.innerHTML = `
+            <div class="overview-album-inline-header">
+                <div class="overview-album-inline-heading">
+                    <p class="overview-album-inline-title">${escapeHtml(entry.title)}</p>
+                    <p class="overview-album-inline-subtitle">${escapeHtml(entry.artist)}</p>
+                </div>
+                <button class="overview-album-inline-close" type="button" aria-label="Collapse album track list">X</button>
+            </div>
+            <div class="overview-album-inline-track-grid"></div>
+        `;
+
+        const trackGrid = panel.querySelector('.overview-album-inline-track-grid') as HTMLDivElement | null;
+        if (!trackGrid) {
+            return panel;
+        }
+
+        const fragment = document.createDocumentFragment();
+        inlineTracks.forEach((trackEntry) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'overview-album-inline-track';
+            button.dataset.overviewTrackIndex = String(trackEntry.trackIndex);
+            button.setAttribute('aria-label', `Play ${trackEntry.title}`);
+            button.innerHTML = `
+                <span class="overview-album-inline-track-number">${escapeHtml(trackEntry.trackNumber)}</span>
+                <span class="overview-album-inline-track-title">${escapeHtml(trackEntry.title)}</span>
+                <span class="overview-album-inline-track-duration">${escapeHtml(trackEntry.durationLabel)}</span>
+            `;
+            fragment.append(button);
+        });
+        trackGrid.append(fragment);
+
+        return panel;
+    };
+
+    const syncOverviewAlbumGridExpandedRow = (container: HTMLDivElement | undefined): void => {
+        if (!container) {
+            return;
+        }
+
+        const children = Array.from(container.children);
+        children.forEach((child) => {
+            if (child instanceof HTMLElement && child.classList.contains('overview-album-inline-panel')) {
+                animateOverviewAlbumInlinePanelClose(child as HTMLDivElement);
+            }
+        });
+
+        const cards = children.filter((child): child is HTMLDivElement => (
+            child instanceof HTMLDivElement && child.classList.contains('overview-library-album-card')
+        ));
+        cards.forEach((card) => {
+            card.classList.remove('is-expanded');
+            card.setAttribute('aria-expanded', 'false');
+            card.removeAttribute('aria-controls');
+        });
+
+        if (expandedOverviewAlbumGridTrackIndex === null) {
+            return;
+        }
+
+        const expandedEntry = overviewAlbumGridEntryByTrackIndex.get(expandedOverviewAlbumGridTrackIndex);
+        const expandedCard = cards.find((card) => Number(card.dataset.overviewGridTrackIndex || '') === expandedOverviewAlbumGridTrackIndex) || null;
+        if (!expandedEntry || !expandedCard) {
+            expandedOverviewAlbumGridTrackIndex = null;
+            return;
+        }
+
+        const gridTemplateColumns = window.getComputedStyle(container).gridTemplateColumns;
+        const columnCount = Math.max(1, gridTemplateColumns && gridTemplateColumns !== 'none'
+            ? gridTemplateColumns.split(' ').filter((value) => value.trim() !== '').length
+            : 1);
+        const expandedCardIndex = cards.indexOf(expandedCard);
+        if (expandedCardIndex < 0) {
+            expandedOverviewAlbumGridTrackIndex = null;
+            return;
+        }
+
+        const rowEndIndex = Math.min(cards.length - 1, (Math.floor(expandedCardIndex / columnCount) * columnCount) + (columnCount - 1));
+        const anchorCard = cards[rowEndIndex];
+        if (!anchorCard) {
+            return;
+        }
+
+        expandedCard.classList.add('is-expanded');
+        expandedCard.setAttribute('aria-expanded', 'true');
+        expandedCard.setAttribute('aria-controls', overviewAlbumInlinePanelId(expandedEntry.trackIndex));
+
+        const panel = createOverviewAlbumInlinePanel(expandedEntry);
+        container.insertBefore(panel, anchorCard.nextSibling);
+        void animateOverviewAlbumInlinePanelOpen(panel);
+    };
+
+    const toggleOverviewAlbumGridExpandedRow = (eventTarget: EventTarget | null): void => {
+        const targetElement = eventTarget instanceof Element
+            ? eventTarget
+            : eventTarget instanceof Node
+                ? eventTarget.parentElement
+                : null;
+        if (!targetElement) {
+            return;
+        }
+
+        const trackButton = targetElement.closest('.overview-album-inline-track');
+        if (trackButton && context.overviewAlbumGrid.contains(trackButton)) {
+            return;
+        }
+
+        const closeButton = targetElement.closest('.overview-album-inline-close');
+        if (closeButton && context.overviewAlbumGrid.contains(closeButton)) {
+            expandedOverviewAlbumGridTrackIndex = null;
+            syncOverviewAlbumGridExpandedRow(context.overviewAlbumGrid);
+            return;
+        }
+
+        const card = targetElement.closest('.overview-library-album-card') as HTMLDivElement | null;
+        if (!card || !context.overviewAlbumGrid.contains(card)) {
+            return;
+        }
+
+        const trackIndex = Number(card.dataset.overviewGridTrackIndex || '');
+        if (!Number.isInteger(trackIndex) || trackIndex < 0) {
+            return;
+        }
+
+        expandedOverviewAlbumGridTrackIndex = expandedOverviewAlbumGridTrackIndex === trackIndex ? null : trackIndex;
+        syncOverviewAlbumGridExpandedRow(context.overviewAlbumGrid);
     };
 
     const disconnectOverviewAlbumGridCoverObserver = (): void => {
@@ -1843,6 +2206,8 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         container.append(fragment);
         overviewAlbumGridRenderedCount = batchEnd;
 
+        syncOverviewAlbumGridExpandedRow(container);
+
         if (pane && batchImages.length > 0) {
             queueOverviewAlbumGridCovers(pane, batchImages, requestVersion);
         }
@@ -2032,6 +2397,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         context.overviewAlbumGridView.scrollTop = 0;
 
         if (mode !== 'albums') {
+            expandedOverviewAlbumGridTrackIndex = null;
             disconnectOverviewAlbumGridPaneWatcher(context.overviewAlbumGridView);
             resetOverviewAlbumGridCoverQueue();
             overviewAlbumGridScrollPillPointerId = null;
@@ -2172,6 +2538,24 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
     context.overviewShowRecents.addEventListener('click', () => {
         setOverviewDashboardMode('recents');
+    });
+
+    context.overviewAlbumGrid.addEventListener('click', (event: MouseEvent) => {
+        toggleOverviewAlbumGridExpandedRow(event.target);
+    });
+
+    context.overviewAlbumGrid.addEventListener('keydown', (event: KeyboardEvent) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+
+        const targetElement = event.target instanceof Element ? event.target : null;
+        if (!targetElement?.closest('.overview-library-album-card, .overview-album-inline-close')) {
+            return;
+        }
+
+        event.preventDefault();
+        toggleOverviewAlbumGridExpandedRow(event.target);
     });
 
     syncOverviewDashboardMode();
