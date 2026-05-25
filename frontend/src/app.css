@@ -2905,6 +2905,9 @@
 .overview-album-inline-panel {
     grid-column: 1 / -1;
     display: grid;
+    box-sizing: border-box;
+    align-content: start;
+    align-items: start;
     gap: 0.65rem;
     padding: 0.8rem 0.9rem 0.85rem;
     overflow: hidden;
@@ -2978,6 +2981,8 @@
 
 .overview-album-inline-track-grid {
     display: grid;
+    align-content: start;
+    align-items: start;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.18rem 1rem;
 }
