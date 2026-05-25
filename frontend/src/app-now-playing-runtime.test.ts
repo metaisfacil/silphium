@@ -599,6 +599,77 @@ describe('createAppNowPlayingRuntime', () => {
         vi.useRealTimers();
     });
 
+    it('keeps automatic advance aligned when the finishing path has dropped out of the indexed library', () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        context.currentTrackIndex = 1;
+        context.currentSettings = {
+            ...context.currentSettings,
+            libraryFolders: [{ path: '/music', label: 'Library', releaseDepth: 0 }],
+        } as never;
+        context.tracks = [
+            {
+                ...context.tracks[0],
+                title: 'First Track',
+                name: 'first.flac',
+                path: '/music/first.flac',
+                relativePath: 'first.flac',
+                displayTitle: 'First Track',
+            },
+            {
+                ...context.tracks[0],
+                title: 'Next Track',
+                name: 'next.flac',
+                path: '/music/next.flac',
+                relativePath: 'next.flac',
+                displayTitle: 'Next Track',
+                displayAlbum: 'Next Album',
+                displayArtist: 'Next Artist',
+            },
+        ];
+        context.playbackStateService = createPlaybackStateService() as never;
+
+        let autoAdvanceTargetPath = '';
+        const goToTrack = vi.fn((direction: -1 | 1) => {
+            const sequence = context.playbackSequencingService.baseSequenceIndexes();
+            const nextPosition = (sequence.currentPosition + direction + sequence.indexes.length) % sequence.indexes.length;
+            autoAdvanceTargetPath = context.tracks[sequence.indexes[nextPosition]]?.path || '';
+        });
+        context.goToTrack = goToTrack as never;
+
+        const runtime = createAppNowPlayingRuntime(context);
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: true,
+            currentTime: 178,
+            duration: 180,
+            volume: 0.8,
+            sourcePath: '/music/removed.flac',
+            endEventId: 0,
+        });
+        runtime.applyPlaybackState({
+            loaded: true,
+            playing: false,
+            currentTime: 180,
+            duration: 180,
+            volume: 0.8,
+            sourcePath: '/music/removed.flac',
+            endEventId: 1,
+        });
+
+        expect(context.tracks.map((track) => track.path)).toEqual([
+            '/music/first.flac',
+            '/music/removed.flac',
+            '/music/next.flac',
+        ]);
+        expect(context.currentTrackIndex).toBe(1);
+        expect(goToTrack).toHaveBeenCalledWith(1);
+        expect(autoAdvanceTargetPath).toBe('/music/next.flac');
+
+        vi.useRealTimers();
+    });
+
     it('resets the flipped player card when refreshing a track without MusicBrainz IDs', () => {
         const context = createContext();
         context.coverFlipped = true;

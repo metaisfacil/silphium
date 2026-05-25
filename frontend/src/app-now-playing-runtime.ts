@@ -710,6 +710,14 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         };
     };
 
+    const placeholderInsertionIndexForPlaybackPath = (): number | null => {
+        if (context.currentTrackIndex < 0 || context.currentTrackIndex > context.tracks.length) {
+            return null;
+        }
+
+        return context.currentTrackIndex;
+    };
+
     const ensureTrackIndexForPath = (path: string): number => {
         const existingIndex = trackIndexForPath(path);
         if (existingIndex >= 0) {
@@ -722,10 +730,17 @@ export const createAppNowPlayingRuntime = (context: AppNowPlayingRuntimeContext)
         }
 
         const placeholderTrack = createPlaceholderTrackForPath(normalizedPath);
-        context.tracks.push(placeholderTrack);
-        const createdIndex = context.tracks.length - 1;
-        context.trackIndexByPath.set(normalizedPath.toLowerCase(), createdIndex);
-        return createdIndex;
+        const insertionIndex = placeholderInsertionIndexForPlaybackPath();
+        if (insertionIndex === null) {
+            context.tracks.push(placeholderTrack);
+            const createdIndex = context.tracks.length - 1;
+            context.trackIndexByPath.set(normalizedPath.toLowerCase(), createdIndex);
+            return createdIndex;
+        }
+
+        context.tracks.splice(insertionIndex, 0, placeholderTrack);
+        rebuildTrackPathIndex();
+        return insertionIndex;
     };
 
     const ensureTextFileIndexForPath = (path: string): number => {
