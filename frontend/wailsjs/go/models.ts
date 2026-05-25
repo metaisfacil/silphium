@@ -520,6 +520,7 @@ export namespace main {
 	export class LibraryScanResult {
 	    rootPath: string;
 	    rootName: string;
+	    scanGeneration?: number;
 	    trackFiles: LibraryIndexedFile[];
 	    textFiles: LibraryIndexedFile[];
 	    imageFiles: LibraryIndexedFile[];
@@ -540,6 +541,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.rootPath = source["rootPath"];
 	        this.rootName = source["rootName"];
+	        this.scanGeneration = source["scanGeneration"];
 	        this.trackFiles = this.convertValues(source["trackFiles"], LibraryIndexedFile);
 	        this.textFiles = this.convertValues(source["textFiles"], LibraryIndexedFile);
 	        this.imageFiles = this.convertValues(source["imageFiles"], LibraryIndexedFile);

@@ -23,6 +23,7 @@ const createIndexedFile = (path: string, name: string, overrides: Partial<Librar
 const createScanResult = (overrides: Partial<LibraryScanResult> = {}): LibraryScanResult => ({
     rootPath: '',
     rootName: '',
+    scanGeneration: 1,
     trackFiles: [],
     textFiles: [],
     imageFiles: [],

@@ -399,6 +399,7 @@ func (a *App) applyIncrementalLibraryChanges(changedPaths []string) (LibraryScan
 	notification := LibraryScanResult{
 		RootPath:       contentState.libraryScan.RootPath,
 		RootName:       contentState.libraryScan.RootName,
+		ScanGeneration: contentState.libraryScan.ScanGeneration,
 		TotalEntries:   contentState.libraryScan.TotalEntries,
 		TrackCount:     contentState.libraryScan.TrackCount,
 		TextFileCount:  contentState.libraryScan.TextFileCount,

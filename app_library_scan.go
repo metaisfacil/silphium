@@ -74,6 +74,7 @@ func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWat
 		return LibraryScanResult{
 			RootPath:       contentState.libraryScan.RootPath,
 			RootName:       contentState.libraryScan.RootName,
+			ScanGeneration: contentState.libraryScan.ScanGeneration,
 			TotalEntries:   contentState.libraryScan.TotalEntries,
 			TrackCount:     contentState.libraryScan.TrackCount,
 			TextFileCount:  contentState.libraryScan.TextFileCount,
@@ -87,6 +88,7 @@ func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWat
 	result := LibraryScanResult{
 		RootPath:          rootPath,
 		RootName:          rootName,
+		ScanGeneration:    scanGeneration,
 		TrackFiles:        []LibraryIndexedFile{},
 		TextFiles:         []LibraryIndexedFile{},
 		ImageFiles:        []LibraryIndexedFile{},
@@ -152,6 +154,7 @@ func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWat
 	contentState.libraryScan = LibraryScanResult{
 		RootPath:          result.RootPath,
 		RootName:          result.RootName,
+		ScanGeneration:    result.ScanGeneration,
 		TrackFiles:        []LibraryIndexedFile{},
 		TextFiles:         []LibraryIndexedFile{},
 		ImageFiles:        []LibraryIndexedFile{},
@@ -345,6 +348,7 @@ func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWat
 		payload := LibraryScanResult{
 			RootPath:       contentState.libraryScan.RootPath,
 			RootName:       contentState.libraryScan.RootName,
+			ScanGeneration: contentState.libraryScan.ScanGeneration,
 			TotalEntries:   contentState.libraryScan.TotalEntries,
 			TrackCount:     contentState.libraryScan.TrackCount,
 			TextFileCount:  contentState.libraryScan.TextFileCount,
@@ -708,6 +712,9 @@ func cloneCoverPathByFolder(input map[string]string) map[string]string {
 
 func (a *App) setLibraryIndexFromScan(scan LibraryScanResult, expectedScanGeneration uint64) bool {
 	setStartTime := time.Now()
+	if expectedScanGeneration > 0 && scan.ScanGeneration == 0 {
+		scan.ScanGeneration = expectedScanGeneration
+	}
 	scan.TrackFiles = a.applyStoredMetadataToIndexedTracks(scan.TrackFiles)
 	a.logRescanEvent("setLibraryIndexFromScan START: %d tracks, %d text, %d images",
 		len(scan.TrackFiles), len(scan.TextFiles), len(scan.ImageFiles))

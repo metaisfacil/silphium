@@ -215,6 +215,7 @@ export const summarizeAudioOutputDevicesForBridge = (devices: AudioOutputDevice[
 export const summarizeLibraryScanResultForBridge = (scanResult: LibraryScanResult | null | undefined): BridgeTraceDetails => ({
     rootPath: scanResult?.rootPath || undefined,
     rootName: scanResult?.rootName || undefined,
+    scanGeneration: scanResult?.scanGeneration,
     totalEntries: scanResult?.totalEntries,
     trackCount: scanResult?.trackCount,
     textFileCount: scanResult?.textFileCount,

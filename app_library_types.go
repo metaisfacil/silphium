@@ -24,6 +24,7 @@ type LibraryIndexedFile struct {
 type LibraryScanResult struct {
 	RootPath          string               `json:"rootPath"`
 	RootName          string               `json:"rootName"`
+	ScanGeneration    uint64               `json:"scanGeneration,omitempty"`
 	TrackFiles        []LibraryIndexedFile `json:"trackFiles"`
 	TextFiles         []LibraryIndexedFile `json:"textFiles"`
 	ImageFiles        []LibraryIndexedFile `json:"imageFiles"`

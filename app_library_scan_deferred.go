@@ -36,10 +36,11 @@ func libraryScanRunningUnderGoTest() bool {
 	return strings.Contains(programName, ".test")
 }
 
-func newDeferredScanResult(rootPath string, rootName string) LibraryScanResult {
+func newDeferredScanResult(rootPath string, rootName string, scanGeneration uint64) LibraryScanResult {
 	return LibraryScanResult{
 		RootPath:          rootPath,
 		RootName:          rootName,
+		ScanGeneration:    scanGeneration,
 		TrackFiles:        []LibraryIndexedFile{},
 		TextFiles:         []LibraryIndexedFile{},
 		ImageFiles:        []LibraryIndexedFile{},
@@ -353,7 +354,7 @@ func countLibraryFolderTracksFromFilesystem(roots []libraryRootConfig, folderPat
 func buildFilesystemQuickScan(roots []libraryRootConfig, isScanCanceled func() bool) (libraryQuickScanBuildResult, error) {
 	rootPath, rootName := aggregateLibraryScanRootInfo(roots)
 	build := libraryQuickScanBuildResult{
-		ScanResult:                     newDeferredScanResult(rootPath, rootName),
+		ScanResult:                     newDeferredScanResult(rootPath, rootName, 0),
 		DiscoveredChildFoldersByParent: make(map[string]map[string]struct{}, len(roots)+1),
 		DirectoryPaths:                 make([]string, 0, len(roots)),
 	}
@@ -558,6 +559,7 @@ func compactLibraryScanResult(scan LibraryScanResult) LibraryScanResult {
 	return LibraryScanResult{
 		RootPath:       scan.RootPath,
 		RootName:       scan.RootName,
+		ScanGeneration: scan.ScanGeneration,
 		DeferredFiles:  scan.DeferredFiles,
 		TotalEntries:   scan.TotalEntries,
 		TrackCount:     scan.TrackCount,
@@ -691,6 +693,7 @@ func (a *App) buildDeferredHydrationScan(roots []libraryRootConfig, hints librar
 	if err != nil {
 		return LibraryScanResult{}, err
 	}
+	result.ScanGeneration = expectedScanGeneration
 	result.DeferredFiles = false
 	return result, nil
 }
@@ -800,6 +803,7 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 		return LibraryScanResult{
 			RootPath:       contentState.libraryScan.RootPath,
 			RootName:       contentState.libraryScan.RootName,
+			ScanGeneration: contentState.libraryScan.ScanGeneration,
 			DeferredFiles:  contentState.libraryScan.DeferredFiles,
 			TotalEntries:   contentState.libraryScan.TotalEntries,
 			TrackCount:     contentState.libraryScan.TrackCount,
@@ -812,7 +816,7 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 
 	roots := resolveLibraryRootConfigs(normalizeLibraryFolders(folders, "", 0))
 	rootPath, rootName := aggregateLibraryScanRootInfo(roots)
-	result := newDeferredScanResult(rootPath, rootName)
+	result := newDeferredScanResult(rootPath, rootName, scanGeneration)
 
 	if len(roots) == 0 {
 		if restartWatcher {
@@ -867,6 +871,7 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 	if a.localLibraryFilesDatabaseLoadOnStartupEnabled() {
 		if snapshot, ok := loadLibraryFilesDatabaseSnapshot(a.libraryFilesDatabasePath(), roots); ok {
 			persistedResult := snapshot.scanResult()
+			persistedResult.ScanGeneration = scanGeneration
 			if !a.setLibraryIndexFromScan(persistedResult, scanGeneration) {
 				return scanCanceledResponse()
 			}
@@ -910,6 +915,7 @@ func (a *App) scanLibraryFoldersDeferred(folders []AppLibraryFolder, restartWatc
 	}
 
 	quickBuild.ScanResult.DeferredFiles = true
+	quickBuild.ScanResult.ScanGeneration = scanGeneration
 	folderChildPathsByFolder := buildFolderChildPathsFromDiscovered(quickBuild.DiscoveredChildFoldersByParent)
 	searchFolderEntries := buildFolderSearchEntriesFromChildPaths(folderChildPathsByFolder)
 

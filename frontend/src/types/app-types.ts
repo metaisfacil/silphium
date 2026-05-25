@@ -161,6 +161,7 @@ export type LibraryIndexedFile = {
 export type LibraryScanResult = {
     rootPath: string;
     rootName: string;
+    scanGeneration?: number;
     trackFiles: LibraryIndexedFile[];
     textFiles: LibraryIndexedFile[];
     imageFiles: LibraryIndexedFile[];
