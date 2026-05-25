@@ -14,11 +14,22 @@ import type {
 export const defaultLibrarySharingPort = 41637;
 
 export const asPlaybackOrderMode = (value: string): PlaybackOrderMode => {
-    if (value === 'ordered-album' || value === 'ordered-library' || value === 'shuffle-album' || value === 'shuffle-library') {
+    switch (value) {
+    case 'ordered-release':
+    case 'shuffle-release':
+    case 'ordered-source':
+    case 'shuffle-source':
+    case 'ordered-library':
+    case 'shuffle-library':
         return value;
-    }
 
-    return 'ordered-library';
+    case 'ordered-album':
+        return 'ordered-release';
+    case 'shuffle-album':
+        return 'shuffle-release';
+    default:
+        return 'ordered-source';
+    }
 };
 
 export const asScrobbleFilterMode = (value: string): ScrobbleFilterMode => {

@@ -178,7 +178,7 @@ export const createAppPlaybackControlsRuntime = (context: AppPlaybackControlsRun
         context.queuedGaplessTrackPath = '';
         clearPendingTrackHydration();
         const sequenceOverride = manualTrackSelection ? context.playlistController().getSequenceOverride() : null;
-        if (manualTrackSelection && context.playbackSequencingService.getPlaybackOrderMode() === 'shuffle-library') {
+        if (manualTrackSelection && context.playbackSequencingService.getPlaybackOrderMode() === 'shuffle-source') {
             if (!sequenceOverride) {
                 context.playlistController().activatePlaybackQueueSource();
             }

@@ -60,7 +60,7 @@ const createSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
     musicBrainzRequestRateMs: 1000,
     listenBrainzServerUrl: 'https://api.listenbrainz.org',
     listenBrainzRequestRateMs: 1000,
-    playbackOrder: 'ordered-library',
+    playbackOrder: 'ordered-source',
     releaseDepth: 2,
     favoritePlaylists: ['/playlists/favorites.m3u8'],
     savePlaylistsOnAddRemove: false,
@@ -134,7 +134,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             currentSettings: createSettings(),
             playbackSequencingService: {
                 setPlaybackOrderMode,
-                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-source'),
             },
             resetShuffleHistory: vi.fn(),
             playlistController: {
@@ -145,25 +145,25 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
 
         const runtime = createPlaybackOrderPlaylistRuntime(context);
 
-        runtime.setPlaybackOrderMode('ordered-library');
+        runtime.setPlaybackOrderMode('ordered-source');
 
-        expect(context.currentSettings.playbackOrder).toBe('ordered-library');
+        expect(context.currentSettings.playbackOrder).toBe('ordered-source');
         expect(context.playlistController.redrawPlaybackQueueFollowingCurrent).toHaveBeenCalledTimes(1);
         expect(context.resetShuffleHistory).not.toHaveBeenCalled();
         expect(context.updatePlayOrderMenuState).not.toHaveBeenCalled();
 
-        runtime.setPlaybackOrderMode('shuffle-library');
+        runtime.setPlaybackOrderMode('shuffle-source');
 
-        expect(context.currentSettings.playbackOrder).toBe('shuffle-library');
+        expect(context.currentSettings.playbackOrder).toBe('shuffle-source');
         expect(context.playlistController.redrawPlaybackQueueFollowingCurrent).toHaveBeenCalledTimes(2);
         expect(context.updatePlayOrderMenuState).toHaveBeenCalledTimes(1);
     });
 
     it('forces a fresh shuffle redraw when the active mode is clicked again', () => {
         const context = {
-            currentSettings: createSettings({ playbackOrder: 'shuffle-library' }),
+            currentSettings: createSettings({ playbackOrder: 'shuffle-source' }),
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-source'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => false),
             },
             resetShuffleHistory: vi.fn(),
@@ -175,7 +175,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
 
         const runtime = createPlaybackOrderPlaylistRuntime(context);
 
-        runtime.setPlaybackOrderMode('shuffle-library');
+        runtime.setPlaybackOrderMode('shuffle-source');
 
         expect(context.resetShuffleHistory).toHaveBeenCalledTimes(1);
         expect(context.playlistController.redrawPlaybackQueueFollowingCurrent).toHaveBeenCalledTimes(1);
@@ -184,7 +184,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
 
     it('persists playback-order settings and reapplies normalized UI state', async () => {
         const normalizedSettings = createSettings({
-            playbackOrder: 'shuffle-library',
+            playbackOrder: 'shuffle-source',
             lissajousEnabled: false,
             lissajousScale: 0.45,
             visualizerMode: 'equalizer',
@@ -197,7 +197,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         const context = {
             currentSettings: createSettings(),
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'shuffle-source'),
                 setPlaybackOrderMode: vi.fn(() => true),
             },
             resetShuffleHistory: vi.fn(),
@@ -219,7 +219,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
         await runtime.savePlaybackOrderSetting();
 
         expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({
-            playbackOrder: 'shuffle-library',
+            playbackOrder: 'shuffle-source',
             releaseDepth: 2,
             libraryFolders: context.currentSettings.libraryFolders,
             savePlaylistsOnAddRemove: false,
@@ -255,7 +255,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             tracks: [createTrack({ path: '/music/existing.flac', name: 'Existing', title: 'Existing', relativePath: 'Library/existing.flac' })],
             trackIndexByPath: new Map<string, number>([['/music/existing.flac', 0]]),
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-source'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
             resetShuffleHistory: vi.fn(),
@@ -302,7 +302,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             tracks: [],
             trackIndexByPath: new Map<string, number>(),
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-source'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
             resetShuffleHistory: vi.fn(),
@@ -346,7 +346,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             tracks: [],
             trackIndexByPath: new Map<string, number>(),
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-source'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
             resetShuffleHistory: vi.fn(),
@@ -383,7 +383,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             currentSettings: createSettings(),
             tracks: [],
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-source'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
             resetShuffleHistory: vi.fn(),
@@ -419,7 +419,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             tracks: [],
             trackIndexByPath: new Map<string, number>(),
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-source'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
             resetShuffleHistory: vi.fn(),
@@ -454,7 +454,7 @@ describe('createPlaybackOrderPlaylistRuntime', () => {
             tracks: [],
             trackIndexByPath: new Map<string, number>(),
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-library'),
+                getPlaybackOrderMode: vi.fn<[], PlaybackOrderMode>(() => 'ordered-source'),
                 setPlaybackOrderMode: vi.fn<[PlaybackOrderMode], boolean>(() => true),
             },
             resetShuffleHistory: vi.fn(),

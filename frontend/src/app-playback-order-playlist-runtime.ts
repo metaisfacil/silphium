@@ -74,7 +74,7 @@ export const createPlaybackOrderPlaylistRuntime = (context: PlaybackOrderPlaylis
 
     const setPlaybackOrderMode = (nextMode: PlaybackOrderMode): void => {
         const changed = context.playbackSequencingService.setPlaybackOrderMode(nextMode);
-        if (!changed && (nextMode === 'shuffle-album' || nextMode === 'shuffle-library')) {
+        if (!changed && (nextMode === 'shuffle-release' || nextMode === 'shuffle-source' || nextMode === 'shuffle-library')) {
             context.resetShuffleHistory();
         }
 

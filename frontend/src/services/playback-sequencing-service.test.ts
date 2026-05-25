@@ -76,7 +76,7 @@ describe('createPlaybackSequencingService', () => {
         expect(service.nextTrackIndexForDirection(1)).toBe(0);
     });
 
-    it('keeps ordered-album navigation scoped to the current release depth', () => {
+    it('keeps ordered-release navigation scoped to the current release depth', () => {
         const tracks = [
             createTrack('02 Song', 'Library/Artist/Album One/Disc 1'),
             createTrack('01 Elsewhere', 'Library/Artist/Album Two'),
@@ -88,7 +88,7 @@ describe('createPlaybackSequencingService', () => {
             getTracks: () => tracks,
             getCurrentTrackIndex: () => currentTrackIndex,
             getReleaseDepthForTrack: () => 2,
-            initialPlaybackOrderMode: 'ordered-album',
+            initialPlaybackOrderMode: 'ordered-release',
         });
 
         expect(service.baseSequenceIndexes()).toEqual({
@@ -99,7 +99,7 @@ describe('createPlaybackSequencingService', () => {
         expect(service.peekNextTrackIndexForDirection(-1)).toBe(2);
     });
 
-    it('keeps playlist sources in their supplied order for ordered-library mode', () => {
+    it('keeps playlist sources in their supplied order for ordered-source mode', () => {
         const tracks = [
             createTrack('01 Alpha', 'Library/Album A'),
             createTrack('02 Beta', 'Library/Album B'),
@@ -111,7 +111,7 @@ describe('createPlaybackSequencingService', () => {
             getTracks: () => tracks,
             getCurrentTrackIndex: () => currentTrackIndex,
             getReleaseDepthForTrack: () => 0,
-            initialPlaybackOrderMode: 'ordered-library',
+            initialPlaybackOrderMode: 'ordered-source',
         });
 
         const playlistSource = { key: 'playlist::demo', indexes: [2, 0] };
@@ -138,7 +138,7 @@ describe('createPlaybackSequencingService', () => {
             getTracks: () => tracks,
             getCurrentTrackIndex: () => currentTrackIndex,
             getReleaseDepthForTrack: () => 2,
-            initialPlaybackOrderMode: 'ordered-album',
+            initialPlaybackOrderMode: 'ordered-release',
         });
 
         const playlistSource = { key: 'playlist::demo', indexes: [1, 2, 0] };
@@ -161,13 +161,13 @@ describe('createPlaybackSequencingService', () => {
             createTrack('03 Gamma', 'Library/Album C'),
         ];
         let currentTrackIndex = 0;
-        const state = createPlaybackSequencingState('shuffle-library');
+        const state = createPlaybackSequencingState('shuffle-source');
 
         const service = createPlaybackSequencingService({
             getTracks: () => tracks,
             getCurrentTrackIndex: () => currentTrackIndex,
             getReleaseDepthForTrack: () => 0,
-            initialPlaybackOrderMode: 'shuffle-library',
+            initialPlaybackOrderMode: 'shuffle-source',
         }, state);
 
         expect(service.peekNextTrackIndexForDirection(1, { key: 'playlist::first', indexes: [0, 1, 2] })).toBe(1);
@@ -279,7 +279,7 @@ describe('createPlaybackSequencingService', () => {
             createTrack('03 Gamma', 'Library/Album C'),
         ];
         let currentTrackIndex = 0;
-        const state = createPlaybackSequencingState('ordered-library');
+        const state = createPlaybackSequencingState('ordered-source');
 
         const service = createPlaybackSequencingService({
             getTracks: () => tracks,
@@ -287,8 +287,8 @@ describe('createPlaybackSequencingService', () => {
             getReleaseDepthForTrack: () => 0,
         }, state);
 
-        expect(service.setPlaybackOrderMode('shuffle-library')).toBe(true);
-        expect(state.playbackOrderMode).toBe('shuffle-library');
+        expect(service.setPlaybackOrderMode('shuffle-source')).toBe(true);
+        expect(state.playbackOrderMode).toBe('shuffle-source');
         expect(state.shuffleHistory).toEqual([]);
         expect(state.shuffleCursor).toBe(-1);
         expect(state.shuffleScopeKey).toBe('');

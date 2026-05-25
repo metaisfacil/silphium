@@ -4,12 +4,13 @@ import type { AppEventBindingsContext } from './app-bootstrap-setup';
 import { openMbLink } from './musicbrainz';
 import type { AudioPlaybackState, LibraryScanProgress, LibraryScanResult, MusicBrainzTagWorkerProgress, PlaybackOrderMode, Track } from './types/app-types';
 import { openMusicBrainzLibrarySearch } from './utils/musicbrainz-entity-helpers';
+import { firstTagValue } from './utils/display-helpers';
 import {
     logBridgeEvent,
     summarizeLibraryScanProgressForBridge,
     summarizeLibraryScanResultForBridge,
 } from './utils/bridge-trace';
-import { hasExternalFileDragPayload, isSupportedAudioFilePath } from './utils/main-helpers';
+import { hasExternalFileDragPayload, isSupportedAudioFilePath, releaseFolderPathForTrackAtDepth } from './utils/main-helpers';
 import { formatPerfLogMessage } from './utils/perf-log';
 
 type VolumeControlBindingsContext = {
@@ -57,6 +58,7 @@ type SidebarShellBindingsContext = Pick<
 type OverviewAlbumActionContext = Pick<
     AppEventBindingsContext,
     | 'tracks'
+    | 'releaseDepthForTrack'
     | 'openSidebarQueueMenu'
 >;
 
@@ -368,13 +370,93 @@ export const resolveOverviewAlbumTrackIndex = (container: HTMLElement, eventTarg
     return trackIndex;
 };
 
+const resolveExplicitOverviewAlbumTrackIndexes = (container: HTMLElement, eventTarget: EventTarget | null): number[] | null => {
+    const targetElement = eventTarget instanceof Element
+        ? eventTarget
+        : eventTarget instanceof Node
+            ? eventTarget.parentElement
+            : null;
+    if (!targetElement) {
+        return null;
+    }
+
+    const trigger = targetElement.closest('[data-overview-track-index], [data-overview-grid-track-index]') as HTMLElement | null;
+    if (!trigger || !container.contains(trigger)) {
+        return null;
+    }
+
+    const explicitTrackIndexes = (trigger.dataset.overviewTrackIndexes || '').split(',')
+        .map((value) => Number(value.trim()))
+        .filter((value) => Number.isInteger(value) && value >= 0);
+    if (explicitTrackIndexes.length > 0) {
+        return explicitTrackIndexes;
+    }
+
+    return null;
+};
+
 const trackPathForOverviewAlbum = (tracks: Track[], trackIndex: number): string => {
     const track = tracks[trackIndex];
     return typeof track?.path === 'string' ? track.path : '';
 };
 
-export const openOverviewAlbumContextMenu = (
+const overviewAlbumSelectionForTrack = (
     context: OverviewAlbumActionContext,
+    trackIndex: number,
+): {
+    fileActionPath: string;
+    trackIndexes: number[];
+} => {
+    const track = context.tracks[trackIndex];
+    if (!track) {
+        return {
+            fileActionPath: '',
+            trackIndexes: [],
+        };
+    }
+
+    const representativePath = trackPathForOverviewAlbum(context.tracks, trackIndex);
+    const releaseFolderPath = releaseFolderPathForTrackAtDepth(track, context.releaseDepthForTrack(track)).trim();
+    const normalizedReleaseFolderPath = releaseFolderPath.toLowerCase();
+    const normalizedAlbum = (track.displayAlbum || '').trim().toLowerCase();
+    const normalizedAlbumArtist = (
+        firstTagValue(track, 'albumartist', 'album artist', 'album_artist')
+        || (track.displayArtist || '').trim()
+    ).toLowerCase();
+    const matchingTrackIndexes = context.tracks.flatMap((candidateTrack, candidateTrackIndex) => {
+        if (!candidateTrack) {
+            return [];
+        }
+
+        const candidateReleaseFolderPath = releaseFolderPathForTrackAtDepth(
+            candidateTrack,
+            context.releaseDepthForTrack(candidateTrack),
+        ).trim().toLowerCase();
+        if (normalizedReleaseFolderPath !== '') {
+            return candidateReleaseFolderPath === normalizedReleaseFolderPath ? [candidateTrackIndex] : [];
+        }
+
+        if (normalizedAlbum === '') {
+            return candidateTrackIndex === trackIndex ? [candidateTrackIndex] : [];
+        }
+
+        return (candidateTrack.displayAlbum || '').trim().toLowerCase() === normalizedAlbum
+            && (
+                firstTagValue(candidateTrack, 'albumartist', 'album artist', 'album_artist')
+                || (candidateTrack.displayArtist || '').trim()
+            ).toLowerCase() === normalizedAlbumArtist
+            ? [candidateTrackIndex]
+            : [];
+    });
+
+    return {
+        fileActionPath: representativePath,
+        trackIndexes: matchingTrackIndexes.length > 0 ? matchingTrackIndexes : [trackIndex],
+    };
+};
+
+export const openOverviewTrackContextMenu = (
+    context: Pick<OverviewAlbumActionContext, 'tracks' | 'openSidebarQueueMenu'>,
     container: HTMLElement,
     event: MouseEvent,
 ): void => {
@@ -392,6 +474,47 @@ export const openOverviewAlbumContextMenu = (
         trackIndex,
         true,
         trackPathForOverviewAlbum(context.tracks, trackIndex),
+    );
+};
+
+export const openOverviewAlbumContextMenu = (
+    context: OverviewAlbumActionContext,
+    container: HTMLElement,
+    event: MouseEvent,
+): void => {
+    const trackIndex = resolveOverviewAlbumTrackIndex(container, event.target);
+    if (trackIndex === null) {
+        return;
+    }
+
+    const explicitTrackIndexes = resolveExplicitOverviewAlbumTrackIndexes(container, event.target);
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (explicitTrackIndexes && explicitTrackIndexes.length > 0) {
+        context.openSidebarQueueMenu(
+            event.clientX,
+            event.clientY,
+            explicitTrackIndexes,
+            trackIndex,
+            true,
+            trackPathForOverviewAlbum(context.tracks, trackIndex),
+        );
+        return;
+    }
+
+    const selection = overviewAlbumSelectionForTrack(context, trackIndex);
+    if (selection.trackIndexes.length === 0) {
+        return;
+    }
+
+    context.openSidebarQueueMenu(
+        event.clientX,
+        event.clientY,
+        selection.trackIndexes,
+        trackIndex,
+        true,
+        selection.fileActionPath,
     );
 };
 
@@ -513,6 +636,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         overviewLastPlayedList,
         overviewLastAddedList,
         overviewAlbumGrid,
+        releaseDepthForTrack,
         handleDroppedFolderPath,
         ensureTrackIndexForPath,
         playDroppedTrackPath,
@@ -772,7 +896,7 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     });
 
     overviewLastPlayedList.addEventListener('contextmenu', (event) => {
-        openOverviewAlbumContextMenu({ tracks, openSidebarQueueMenu }, overviewLastPlayedList, event);
+        openOverviewTrackContextMenu({ tracks, openSidebarQueueMenu }, overviewLastPlayedList, event);
     });
 
     overviewLastAddedList.addEventListener('click', (event) => {
@@ -780,11 +904,11 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
     });
 
     overviewLastAddedList.addEventListener('contextmenu', (event) => {
-        openOverviewAlbumContextMenu({ tracks, openSidebarQueueMenu }, overviewLastAddedList, event);
+        openOverviewAlbumContextMenu({ tracks, releaseDepthForTrack, openSidebarQueueMenu }, overviewLastAddedList, event);
     });
 
     overviewAlbumGrid.addEventListener('contextmenu', (event) => {
-        openOverviewAlbumContextMenu({ tracks, openSidebarQueueMenu }, overviewAlbumGrid, event);
+        openOverviewAlbumContextMenu({ tracks, releaseDepthForTrack, openSidebarQueueMenu }, overviewAlbumGrid, event);
     });
 
     taskbarShowPlayer.addEventListener('click', () => {

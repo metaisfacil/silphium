@@ -652,9 +652,10 @@ describe('createAppCoreServicesRuntime', () => {
                 rootPath: '/music/library',
                 rootName: 'Library',
                 displayAlbum: 'Disc 1',
-                displayArtist: 'Artist One',
+                displayArtist: 'Guest Performer',
                 allFileTags: {
                     album: ['Tagged Album Title'],
+                    albumartist: ['Album Artist'],
                 },
                 modifiedAtMs: 1_700_000_000_000,
             },
@@ -666,9 +667,10 @@ describe('createAppCoreServicesRuntime', () => {
                 rootPath: '/music/library',
                 rootName: 'Library',
                 displayAlbum: 'Disc 2',
-                displayArtist: 'Artist One',
+                displayArtist: 'Featured Vocalist',
                 allFileTags: {
                     album: ['Tagged Album Title'],
+                    albumartist: ['Album Artist'],
                 },
                 modifiedAtMs: 1_700_000_100_000,
             },
@@ -683,8 +685,9 @@ describe('createAppCoreServicesRuntime', () => {
         const cards = context.overviewLastAddedList.querySelectorAll('.overview-album-card');
         expect(cards).toHaveLength(1);
         expect((cards[0] as HTMLElement).dataset.overviewTrackIndex).toBe('1');
+        expect((cards[0] as HTMLElement).dataset.overviewTrackIndexes).toBe('0,1');
         expect(context.overviewLastAddedList.querySelector('.overview-album-title')?.textContent).toBe('Tagged Album Title');
-        expect(context.overviewLastAddedList.querySelector('.overview-album-artist')?.textContent).toBe('Artist One');
+        expect(context.overviewLastAddedList.querySelector('.overview-album-artist')?.textContent).toBe('Album Artist');
     });
 
     it('renders last played overview cards as track entries with track titles', async () => {
@@ -740,6 +743,7 @@ describe('createAppCoreServicesRuntime', () => {
         const cards = context.overviewLastPlayedList.querySelectorAll('.overview-album-card');
         expect(cards).toHaveLength(2);
         expect((cards[0] as HTMLElement).dataset.overviewTrackIndex).toBe('1');
+        expect((cards[0] as HTMLElement).dataset.overviewTrackIndexes).toBeUndefined();
         expect(context.overviewLastPlayedList.querySelector('.overview-album-title')?.textContent).toBe('Outro');
         expect(context.overviewLastPlayedList.querySelector('.overview-album-artist')?.textContent).toBe('Artist One');
     });

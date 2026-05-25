@@ -22,20 +22,20 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
     let pendingTrackMetaMenuPositionFrame = 0;
     let pendingPlayOrderMenuPositionFrame = 0;
 
-    const playbackOrderScopeLabel = (): string => {
-        return context.playlistController.getPlaybackOrderScopeLabel?.() || 'Library';
-    };
-
-    const playbackOrderMenuItemLabel = (mode: PlaybackOrderMode, scopeLabel: string): string => {
+    const playbackOrderMenuItemLabel = (mode: PlaybackOrderMode): string => {
         switch (mode) {
-            case 'ordered-album':
-                return 'Ordered: Album';
+            case 'ordered-release':
+                return 'Ordered: Release';
+            case 'shuffle-release':
+                return 'Shuffle: Release';
+            case 'ordered-source':
+                return 'Ordered: Current Source';
+            case 'shuffle-source':
+                return 'Shuffle: Current Source';
             case 'ordered-library':
-                return `Ordered: ${scopeLabel}`;
-            case 'shuffle-album':
-                return 'Shuffle: Album';
+                return 'Ordered: Full Library';
             case 'shuffle-library':
-                return `Shuffle: ${scopeLabel}`;
+                return 'Shuffle: Full Library';
         }
     };
 
@@ -678,7 +678,6 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
 
     const updatePlayOrderMenuState = (): void => {
         const playbackOrderMode = context.playbackSequencingService.getPlaybackOrderMode();
-        const scopeLabel = playbackOrderScopeLabel();
         const items = context.playOrderMenu.querySelectorAll('.play-order-item');
         items.forEach((item: Element) => {
             if (!(item instanceof HTMLButtonElement)) {
@@ -687,14 +686,14 @@ export const createAppQueueMenuRuntime = (context: AppQueueMenuRuntimeContext) =
 
             const mode = item.dataset.playOrder as PlaybackOrderMode | undefined;
             if (mode) {
-                item.textContent = playbackOrderMenuItemLabel(mode, scopeLabel);
+                item.textContent = playbackOrderMenuItemLabel(mode);
             }
             const selected = mode === playbackOrderMode;
             item.setAttribute('aria-checked', selected ? 'true' : 'false');
             item.dataset.selected = selected ? 'true' : 'false';
         });
 
-        context.playPause.title = `Playback order: ${playbackOrderMenuItemLabel(playbackOrderMode, scopeLabel)} (right-click to change)`;
+        context.playPause.title = `Playback order: ${playbackOrderMenuItemLabel(playbackOrderMode)} (right-click to change)`;
     };
 
     const openPlayOrderMenu = (clientX: number, clientY: number): void => {

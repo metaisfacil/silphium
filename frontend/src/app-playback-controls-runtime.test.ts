@@ -117,7 +117,7 @@ const createContext = (coverPromise: Promise<void>): AppPlaybackControlsRuntimeC
             },
         } as never,
         playbackSequencingService: {
-            getPlaybackOrderMode: vi.fn(() => 'ordered-library'),
+            getPlaybackOrderMode: vi.fn(() => 'ordered-source'),
         } as never,
         playlistController: () => ({
             activatePlaybackQueueSource: vi.fn(),
@@ -401,7 +401,7 @@ describe('createAppPlaybackControlsRuntime', () => {
         const context = createContext(coverDeferred.promise);
         const activatePlaybackQueueSource = vi.fn();
         const getSequenceOverride = vi.fn(() => ({ indexes: [0], currentPosition: 0 }));
-        context.playbackSequencingService.getPlaybackOrderMode = vi.fn(() => 'shuffle-library') as never;
+        context.playbackSequencingService.getPlaybackOrderMode = vi.fn(() => 'shuffle-source') as never;
         context.playlistController = () => ({
             activatePlaybackQueueSource,
             getSequenceOverride,

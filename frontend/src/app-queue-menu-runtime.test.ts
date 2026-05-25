@@ -18,7 +18,7 @@ import { createAppQueueMenuRuntime } from './app-queue-menu-runtime';
 
 const createPlayOrderMenu = (): HTMLDivElement => {
     const menu = document.createElement('div');
-    for (const mode of ['ordered-album', 'ordered-library', 'shuffle-album', 'shuffle-library']) {
+    for (const mode of ['ordered-release', 'shuffle-release', 'ordered-source', 'shuffle-source', 'ordered-library', 'shuffle-library']) {
         const item = document.createElement('button');
         item.className = 'play-order-item';
         item.dataset.playOrder = mode;
@@ -279,7 +279,7 @@ describe('createAppQueueMenuRuntime menu positioning', () => {
         expect(playOrderMenu.style.top).toBe('200px');
     });
 
-    it('relabels source-wide playback-order menu items for playlist playback', () => {
+    it('renders fixed playback-order menu labels', () => {
         const playOrderMenu = createPlayOrderMenu();
         const playPause = document.createElement('button');
         const context = {
@@ -301,7 +301,7 @@ describe('createAppQueueMenuRuntime menu positioning', () => {
                 getPlaybackOrderScopeLabel: () => 'Playlist',
             },
             playbackSequencingService: {
-                getPlaybackOrderMode: vi.fn(() => 'shuffle-library'),
+                getPlaybackOrderMode: vi.fn(() => 'shuffle-source'),
             },
         } as unknown as Parameters<typeof createAppQueueMenuRuntime>[0];
 
@@ -310,13 +310,15 @@ describe('createAppQueueMenuRuntime menu positioning', () => {
 
         const labels = Array.from(playOrderMenu.querySelectorAll<HTMLButtonElement>('.play-order-item')).map((item) => item.textContent);
         expect(labels).toEqual([
-            'Ordered: Album',
-            'Ordered: Playlist',
-            'Shuffle: Album',
-            'Shuffle: Playlist',
+            'Ordered: Release',
+            'Shuffle: Release',
+            'Ordered: Current Source',
+            'Shuffle: Current Source',
+            'Ordered: Full Library',
+            'Shuffle: Full Library',
         ]);
-        expect(playPause.title).toBe('Playback order: Shuffle: Playlist (right-click to change)');
-        expect(playOrderMenu.querySelector<HTMLButtonElement>('[data-play-order="shuffle-library"]')?.dataset.selected).toBe('true');
+        expect(playPause.title).toBe('Playback order: Shuffle: Current Source (right-click to change)');
+        expect(playOrderMenu.querySelector<HTMLButtonElement>('[data-play-order="shuffle-source"]')?.dataset.selected).toBe('true');
     });
 });
 

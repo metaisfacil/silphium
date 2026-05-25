@@ -82,6 +82,7 @@ type OverviewRecencyEntry = {
     meta: string;
     sortTimestamp: number;
     trackIndex: number;
+    trackIndexes?: number[];
     coverAlt: string;
     openLabel: string;
 };
@@ -92,6 +93,7 @@ type OverviewAlbumGridEntry = {
     title: string;
     artist: string;
     trackIndex: number;
+    trackIndexes?: number[];
     coverAlt: string;
     coverFolderPath: string;
 };
@@ -1017,19 +1019,34 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             ? releaseRelativeSegments[releaseRelativeSegments.length - 2]?.trim() || ''
             : '';
         const album = firstTagValue(track, 'album') || (track.displayAlbum || '').trim() || releaseFolderTitle || 'Unknown Album';
-        const artist = (track.displayArtist || '').trim() || releaseFolderArtist || 'Unknown Artist';
+        const albumArtist = firstTagValue(track, 'albumartist', 'album artist', 'album_artist')
+            || (track.displayArtist || '').trim()
+            || releaseFolderArtist
+            || 'Unknown Artist';
         const key = releaseFolderKey !== ''
             ? [track.rootPath || '', releaseFolderKey].join('|').toLowerCase()
-            : [track.rootPath || '', album, artist].join('|').toLowerCase();
+            : [track.rootPath || '', album, albumArtist].join('|').toLowerCase();
 
         return {
             album,
-            artist,
+            albumArtist,
             key,
         };
     };
 
     const buildLastAddedAlbumEntries = (): OverviewRecencyEntry[] => {
+        const albumTrackIndexesByKey = new Map<string, number[]>();
+        context.tracks.forEach((track, trackIndex) => {
+            const descriptor = overviewAlbumDescriptorForTrack(track);
+            const existingTrackIndexes = albumTrackIndexesByKey.get(descriptor.key);
+            if (existingTrackIndexes) {
+                existingTrackIndexes.push(trackIndex);
+                return;
+            }
+
+            albumTrackIndexesByKey.set(descriptor.key, [trackIndex]);
+        });
+
         const recentTracks = context.tracks
             .map((track, trackIndex) => ({ track, trackIndex }))
             .filter(({ track }) => normalizedTimestampMs(track.modifiedAtMs) > 0)
@@ -1048,10 +1065,11 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             const timestampMs = normalizedTimestampMs(track.modifiedAtMs);
             entries.push({
                 title: descriptor.album,
-                subtitle: descriptor.artist,
+                subtitle: descriptor.albumArtist,
                 meta: formatOverviewRelativeTime(timestampMs, 'Added'),
                 sortTimestamp: timestampMs,
                 trackIndex,
+                trackIndexes: albumTrackIndexesByKey.get(descriptor.key) || [trackIndex],
                 coverAlt: `Album cover for ${descriptor.album}`,
                 openLabel: `Open listen view for ${descriptor.album}`,
             });
@@ -1091,7 +1109,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             const descriptor = overviewAlbumDescriptorForTrack(track);
             const timestampMs = normalizedTimestampMs(entry.historyItem?.listenedAt);
             const title = (track.displayTitle || track.title || track.name || '').trim() || 'Unknown Track';
-            const subtitle = descriptor.artist.trim() || 'Unknown Artist';
+            const subtitle = (track.displayArtist || '').trim() || descriptor.albumArtist.trim() || 'Unknown Artist';
             entries.push({
                 title,
                 subtitle,
@@ -1116,6 +1134,18 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         }
 
         const albumsByKey = new Map<string, OverviewAlbumGridEntry>();
+        const albumTrackIndexesByKey = new Map<string, number[]>();
+
+        context.tracks.forEach((track, trackIndex) => {
+            const descriptor = overviewAlbumDescriptorForTrack(track);
+            const existingTrackIndexes = albumTrackIndexesByKey.get(descriptor.key);
+            if (existingTrackIndexes) {
+                existingTrackIndexes.push(trackIndex);
+                return;
+            }
+
+            albumTrackIndexesByKey.set(descriptor.key, [trackIndex]);
+        });
 
         context.tracks.forEach((track, trackIndex) => {
             const descriptor = overviewAlbumDescriptorForTrack(track);
@@ -1128,8 +1158,9 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
             albumsByKey.set(descriptor.key, {
                 title: descriptor.album,
-                artist: descriptor.artist,
+                artist: descriptor.albumArtist,
                 trackIndex,
+                trackIndexes: albumTrackIndexesByKey.get(descriptor.key) || [trackIndex],
                 coverAlt: `Album cover for ${descriptor.album}`,
                 coverFolderPath,
             });
@@ -1176,6 +1207,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
                     class="overview-album-card"
                     type="button"
                     data-overview-track-index="${String(entry.trackIndex)}"
+                    ${entry.trackIndexes && entry.trackIndexes.length > 0 ? `data-overview-track-indexes="${escapeHtml(entry.trackIndexes.join(','))}"` : ''}
                     data-overview-timestamp="${String(entry.sortTimestamp)}"
                     aria-label="${escapeHtml(entry.openLabel)}"
                 >
@@ -1234,6 +1266,9 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         const card = document.createElement('div');
         card.className = 'library-album-card overview-library-album-card';
         card.dataset.overviewGridTrackIndex = String(entry.trackIndex);
+        if (entry.trackIndexes && entry.trackIndexes.length > 0) {
+            card.dataset.overviewTrackIndexes = entry.trackIndexes.join(',');
+        }
         card.title = `${entry.artist} - ${entry.title}`;
 
         const cover = document.createElement('span');

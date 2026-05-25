@@ -214,6 +214,7 @@ type AppEventBindingsScope = RuntimeScope<
     | 'overviewLastPlayedList'
     | 'overviewLastAddedList'
     | 'overviewAlbumGrid'
+    | 'releaseDepthForTrack'
     | 'handleDroppedFolderPath'
     | 'ensureTrackIndexForPath'
     | 'playDroppedTrackPath'
@@ -620,6 +621,7 @@ const createEventBindingsContextFromScope = (scope: AppEventBindingsScope) => ({
         overviewLastPlayedList: scope.overviewLastPlayedList,
         overviewLastAddedList: scope.overviewLastAddedList,
         overviewAlbumGrid: scope.overviewAlbumGrid,
+        releaseDepthForTrack: scope.releaseDepthForTrack,
         handleDroppedFolderPath: scope.handleDroppedFolderPath,
         ensureTrackIndexForPath: scope.ensureTrackIndexForPath,
         playDroppedTrackPath: scope.playDroppedTrackPath,

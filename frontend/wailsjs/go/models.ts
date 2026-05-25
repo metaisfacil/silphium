@@ -447,6 +447,7 @@ export namespace main {
 	    releaseDepth?: number;
 	    cachedTrackTitle?: string;
 	    cachedAlbumTitle?: string;
+	    cachedAlbumArtist?: string;
 	    cachedArtistName?: string;
 	    cachedTrackNumber?: string;
 	    cachedTrackTotal?: string;
@@ -469,6 +470,7 @@ export namespace main {
 	        this.releaseDepth = source["releaseDepth"];
 	        this.cachedTrackTitle = source["cachedTrackTitle"];
 	        this.cachedAlbumTitle = source["cachedAlbumTitle"];
+	        this.cachedAlbumArtist = source["cachedAlbumArtist"];
 	        this.cachedArtistName = source["cachedArtistName"];
 	        this.cachedTrackNumber = source["cachedTrackNumber"];
 	        this.cachedTrackTotal = source["cachedTrackTotal"];

@@ -11,6 +11,7 @@ type LibraryIndexedFile struct {
 	ReleaseDepth      int    `json:"releaseDepth,omitempty"`
 	CachedTrackTitle  string `json:"cachedTrackTitle,omitempty"`
 	CachedAlbumTitle  string `json:"cachedAlbumTitle,omitempty"`
+	CachedAlbumArtist string `json:"cachedAlbumArtist,omitempty"`
 	CachedArtistName  string `json:"cachedArtistName,omitempty"`
 	CachedTrackNumber string `json:"cachedTrackNumber,omitempty"`
 	CachedTrackTotal  string `json:"cachedTrackTotal,omitempty"`

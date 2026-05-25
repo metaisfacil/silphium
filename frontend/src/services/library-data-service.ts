@@ -38,6 +38,11 @@ const BATCH_SIZES = {
     playlistFiles: 200,
 } as const;
 
+const cachedAlbumArtistTags = (file: LibraryIndexedFile): Record<string, string[]> => {
+    const cachedAlbumArtist = (file.cachedAlbumArtist || '').trim();
+    return cachedAlbumArtist === '' ? {} : { albumartist: [cachedAlbumArtist] };
+};
+
 const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
     title: file.cachedTrackTitle || file.name,
     name: file.name,
@@ -58,7 +63,7 @@ const createPlaceholderTrack = (file: LibraryIndexedFile): Track => ({
     tagsResolved: false,
     mbMetadataResolved: false,
     technicalDetails: {},
-    allFileTags: {},
+    allFileTags: cachedAlbumArtistTags(file),
     mbIds: {},
     artistMbids: [],
     mbArtistCredits: [],
@@ -77,6 +82,10 @@ const applyCachedHistoryMetadata = (track: Track, file: LibraryIndexedFile): Tra
         displayArtist: file.cachedArtistName || track.displayArtist,
         displayTrackNumber: file.cachedTrackNumber || track.displayTrackNumber,
         displayTrackTotal: file.cachedTrackTotal || track.displayTrackTotal,
+        allFileTags: {
+            ...track.allFileTags,
+            ...cachedAlbumArtistTags(file),
+        },
     };
 };
 

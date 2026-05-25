@@ -121,7 +121,7 @@ type AppSettings struct {
 	KeyboardShortcuts                                      FocusedKeyboardShortcuts `json:"keyboardShortcuts"`
 }
 
-const defaultPlaybackOrder = "ordered-library"
+const defaultPlaybackOrder = "ordered-source"
 const defaultVisualizerMode = "lissajous"
 const defaultEqualizerPosition = "bottom"
 const defaultLissajousScale = 0.25
@@ -266,8 +266,12 @@ func normalizeNetworkPasswordHashForSettings(password string, existingHash strin
 
 func normalizePlaybackOrder(value string) string {
 	switch strings.TrimSpace(value) {
-	case "ordered-album", "ordered-library", "shuffle-album", "shuffle-library":
+	case "ordered-release", "shuffle-release", "ordered-source", "shuffle-source", "ordered-library", "shuffle-library":
 		return strings.TrimSpace(value)
+	case "ordered-album":
+		return "ordered-release"
+	case "shuffle-album":
+		return "shuffle-release"
 	default:
 		return defaultPlaybackOrder
 	}

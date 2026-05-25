@@ -274,7 +274,7 @@ describe('app-controller-setup', () => {
     it('wires controller factories and settings flows through the app context', async () => {
         const playlistController = {
             refreshFavorites: vi.fn(),
-            activatePlaybackQueueSource: vi.fn(),
+            activateLibraryPlaybackSource: vi.fn(),
         };
         const imageModalController = {
             openImageFile: vi.fn(),
@@ -490,7 +490,7 @@ describe('app-controller-setup', () => {
         expect(context.ensureTrackTagsResolved).toHaveBeenCalledWith(0);
         expect(context.lookupMusicBrainzRecordingURLs).toHaveBeenCalledWith('recording-id');
         expect(context.lookupArtistByMBID).toHaveBeenCalledWith('artist-id');
-        expect(playlistController.activatePlaybackQueueSource).toHaveBeenCalledTimes(2);
+        expect(playlistController.activateLibraryPlaybackSource).toHaveBeenCalledTimes(2);
         expect(context.suppressAutoSelectAfterFullLibraryScan).toBe(true);
         expect(context.openTextFileModal).toHaveBeenCalledWith(context.textFiles[0]);
         expect(imageModalController.openImageFile).toHaveBeenCalledWith(context.imageFiles[0]);
@@ -504,7 +504,7 @@ describe('app-controller-setup', () => {
         createSettingsControllerMock.mockImplementation((config) => ({ config }));
         createPlaylistControllerMock.mockReturnValue({
             refreshFavorites: vi.fn(),
-            activatePlaybackQueueSource: vi.fn(),
+            activateLibraryPlaybackSource: vi.fn(),
         });
         createPlaylistTargetModalControllerMock.mockReturnValue({ modal: true });
         createShareControllerMock.mockReturnValue({ share: true });

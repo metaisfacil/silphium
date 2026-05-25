@@ -1170,9 +1170,10 @@ func trackTagsFromStoredTrackRecord(path string, signature trackTagsFileSignatur
 	return tags, true
 }
 
-func cachedIndexedTrackMetadataFromStoredTrackRecord(record musicBrainzTagTrackRecord) (string, string, string, string, bool) {
+func cachedIndexedTrackMetadataFromStoredTrackRecord(record musicBrainzTagTrackRecord) (string, string, string, string, string, bool) {
 	title := strings.TrimSpace(record.Title)
 	album := strings.TrimSpace(record.AlbumTitle)
+	albumArtist := strings.TrimSpace(record.AlbumArtist)
 	artist := strings.TrimSpace(record.TrackArtist)
 	trackNumber := ""
 	trackTotal := ""
@@ -1183,11 +1184,11 @@ func cachedIndexedTrackMetadataFromStoredTrackRecord(record musicBrainzTagTrackR
 		trackTotal = strconv.Itoa(record.TrackTotal)
 	}
 
-	if title == "" && album == "" && artist == "" && trackNumber == "" && trackTotal == "" {
-		return "", "", "", "", false
+	if title == "" && album == "" && albumArtist == "" && artist == "" && trackNumber == "" && trackTotal == "" {
+		return "", "", "", "", "", false
 	}
 
-	return title, album, artist, trackNumber, trackTotal != "" || trackNumber != "" || title != "" || album != "" || artist != ""
+	return title, album, albumArtist, artist, trackNumber, trackTotal != "" || trackNumber != "" || title != "" || album != "" || albumArtist != "" || artist != ""
 }
 
 func (a *App) applyStoredMetadataToIndexedTracks(entries []LibraryIndexedFile) []LibraryIndexedFile {
@@ -1208,7 +1209,7 @@ func (a *App) applyStoredMetadataToIndexedTracks(entries []LibraryIndexedFile) [
 			continue
 		}
 
-		title, album, artist, trackNumber, hasMetadata := cachedIndexedTrackMetadataFromStoredTrackRecord(record)
+		title, album, albumArtist, artist, trackNumber, hasMetadata := cachedIndexedTrackMetadataFromStoredTrackRecord(record)
 		if !hasMetadata {
 			continue
 		}
@@ -1218,6 +1219,9 @@ func (a *App) applyStoredMetadataToIndexedTracks(entries []LibraryIndexedFile) [
 		}
 		if album != "" {
 			enriched[index].CachedAlbumTitle = album
+		}
+		if albumArtist != "" {
+			enriched[index].CachedAlbumArtist = albumArtist
 		}
 		if artist != "" {
 			enriched[index].CachedArtistName = artist

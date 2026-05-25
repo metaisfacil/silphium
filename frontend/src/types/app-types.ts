@@ -149,6 +149,7 @@ export type LibraryIndexedFile = {
     releaseDepth?: number;
     cachedTrackTitle?: string;
     cachedAlbumTitle?: string;
+    cachedAlbumArtist?: string;
     cachedArtistName?: string;
     cachedTrackNumber?: string;
     cachedTrackTotal?: string;
@@ -271,7 +272,13 @@ export type AudioPlaybackState = {
     endEventId: number;
 };
 
-export type PlaybackOrderMode = 'ordered-album' | 'ordered-library' | 'shuffle-album' | 'shuffle-library';
+export type PlaybackOrderMode =
+    | 'ordered-release'
+    | 'shuffle-release'
+    | 'ordered-source'
+    | 'shuffle-source'
+    | 'ordered-library'
+    | 'shuffle-library';
 export type ScrobbleFilterMode = 'blacklist' | 'whitelist';
 export type ScrobbleRuleField = 'path' | 'albumArtist' | 'trackArtist' | 'albumTitle' | 'trackTitle' | 'genre' | 'anyTag' | 'artistMbid' | 'albumMbid' | 'trackLength';
 export type ScrobbleTextRuleOperator = 'contains' | 'equals' | 'starts_with' | 'regex';

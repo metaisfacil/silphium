@@ -10,10 +10,12 @@ type PlaybackSequencingServiceOptions = {
 };
 
 const playbackOrderLabelByMode: Record<PlaybackOrderMode, string> = {
-    'ordered-album': 'Ordered: Album',
-    'ordered-library': 'Ordered: Library',
-    'shuffle-album': 'Shuffle: Album',
-    'shuffle-library': 'Shuffle: Library',
+    'ordered-release': 'Ordered: Release',
+    'shuffle-release': 'Shuffle: Release',
+    'ordered-source': 'Ordered: Current Source',
+    'shuffle-source': 'Shuffle: Current Source',
+    'ordered-library': 'Ordered: Full Library',
+    'shuffle-library': 'Shuffle: Full Library',
 };
 
 export type PlaybackSequencingState = {
@@ -28,7 +30,7 @@ export type PlaybackSequenceSource = {
     indexes: number[];
 };
 
-export const createPlaybackSequencingState = (initialPlaybackOrderMode: PlaybackOrderMode = 'ordered-library'): PlaybackSequencingState => ({
+export const createPlaybackSequencingState = (initialPlaybackOrderMode: PlaybackOrderMode = 'ordered-source'): PlaybackSequencingState => ({
     playbackOrderMode: initialPlaybackOrderMode,
     shuffleHistory: [],
     shuffleCursor: -1,
@@ -66,14 +68,26 @@ export const createPlaybackSequencingService = (
         });
     };
 
+    const isLibraryMode = (): boolean => (
+        state.playbackOrderMode === 'ordered-library' || state.playbackOrderMode === 'shuffle-library'
+    );
+
+    const isSourceMode = (): boolean => (
+        state.playbackOrderMode === 'ordered-source' || state.playbackOrderMode === 'shuffle-source'
+    );
+
     const orderedTrackIndexesForScope = (source?: PlaybackSequenceSource): number[] => {
         if (source) {
+            if (isLibraryMode()) {
+                return orderedTrackIndexesForScope();
+            }
+
             const eligibleIndexes = queueEligibleTrackIndexesForSource(source);
             if (eligibleIndexes.length === 0) {
                 return [];
             }
 
-            if (state.playbackOrderMode === 'ordered-library' || state.playbackOrderMode === 'shuffle-library') {
+            if (isSourceMode()) {
                 return eligibleIndexes;
             }
 
@@ -96,7 +110,7 @@ export const createPlaybackSequencingService = (
             return [];
         }
 
-        if (state.playbackOrderMode === 'ordered-library' || state.playbackOrderMode === 'shuffle-library') {
+        if (isLibraryMode() || isSourceMode()) {
             return eligibleTracks.map(({ index }) => index);
         }
 
@@ -120,11 +134,19 @@ export const createPlaybackSequencingService = (
             .map(({ index }) => index);
     };
 
-    const isShuffleMode = (): boolean => state.playbackOrderMode === 'shuffle-album' || state.playbackOrderMode === 'shuffle-library';
+    const isShuffleMode = (): boolean => (
+        state.playbackOrderMode === 'shuffle-release'
+            || state.playbackOrderMode === 'shuffle-source'
+            || state.playbackOrderMode === 'shuffle-library'
+    );
 
     const currentShuffleScopeKey = (source?: PlaybackSequenceSource): string => {
         if (source) {
             if (state.playbackOrderMode === 'shuffle-library') {
+                return 'library';
+            }
+
+            if (state.playbackOrderMode === 'shuffle-source') {
                 return `source::${source.key}`;
             }
 
@@ -138,7 +160,7 @@ export const createPlaybackSequencingService = (
             return `source::${source.key}::album::${albumScopeKeyForTrack(current)}`;
         }
 
-        if (state.playbackOrderMode === 'shuffle-library') {
+        if (state.playbackOrderMode === 'shuffle-library' || state.playbackOrderMode === 'shuffle-source') {
             return 'library';
         }
 

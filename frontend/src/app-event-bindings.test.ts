@@ -6,7 +6,7 @@ vi.mock('../wailsjs/runtime/runtime', () => ({
     OnFileDrop: vi.fn(),
 }));
 
-import { canInteractWithCoverFrame, handleExternalFileDrop, openOverviewAlbumContextMenu, resolveOverviewAlbumTrackIndex, setupSidebarShellBindings, setupTrackNavigationBindings, setupVolumeControlBindings, toggleTaskbarCoverView, triggerSidebarOpenInBrowserAction, triggerTrackMetaArtistFilterAction } from './app-event-bindings';
+import { canInteractWithCoverFrame, handleExternalFileDrop, openOverviewAlbumContextMenu, openOverviewTrackContextMenu, resolveOverviewAlbumTrackIndex, setupSidebarShellBindings, setupTrackNavigationBindings, setupVolumeControlBindings, toggleTaskbarCoverView, triggerSidebarOpenInBrowserAction, triggerTrackMetaArtistFilterAction } from './app-event-bindings';
 
 const flushPromises = async (): Promise<void> => {
     await Promise.resolve();
@@ -389,7 +389,7 @@ describe('overview album actions', () => {
     it('opens the shared queue menu for overview album cards', () => {
         document.body.innerHTML = `
             <div id="overview-list">
-                <button class="overview-album-card" data-overview-track-index="1" type="button">
+                <button class="overview-album-card" data-overview-track-index="1" data-overview-track-indexes="1,2" type="button">
                     <span class="overview-album-title">Second Album</span>
                 </button>
             </div>
@@ -409,21 +409,30 @@ describe('overview album actions', () => {
 
         openOverviewAlbumContextMenu({
             tracks: [
-                { path: '/music/library/first.flac' },
-                { path: '/music/library/second.flac' },
+                { path: '/music/library/other/first.flac', folderPath: 'Library/Other Album', rootName: 'Library', displayAlbum: 'Other Album', displayArtist: 'Elsewhere' },
+                { path: '/music/library/album/01.flac', folderPath: 'Library/Artist/Album', rootName: 'Library', displayAlbum: 'Album', displayArtist: 'Artist' },
+                { path: '/music/library/album/02.flac', folderPath: 'Library/Artist/Album', rootName: 'Library', displayAlbum: 'Album', displayArtist: 'Artist' },
             ] as never,
+            releaseDepthForTrack: () => 2,
             openSidebarQueueMenu,
         }, container, event);
 
         expect(event.defaultPrevented).toBe(true);
         expect(stopPropagationSpy).toHaveBeenCalledTimes(1);
-        expect(openSidebarQueueMenu).toHaveBeenCalledWith(44, 88, [1], 1, true, '/music/library/second.flac');
+        expect(openSidebarQueueMenu).toHaveBeenCalledWith(
+            44,
+            88,
+            [1, 2],
+            1,
+            true,
+            '/music/library/album/01.flac',
+        );
     });
 
     it('opens the shared queue menu for overview album grid cards', () => {
         document.body.innerHTML = `
             <div id="overview-grid">
-                <div class="library-album-card overview-library-album-card" data-overview-grid-track-index="2">
+                <div class="library-album-card overview-library-album-card" data-overview-grid-track-index="2" data-overview-track-indexes="1,2">
                     <span class="library-album-cover">
                         <img class="library-album-cover-image" alt="Album cover">
                     </span>
@@ -445,16 +454,98 @@ describe('overview album actions', () => {
 
         openOverviewAlbumContextMenu({
             tracks: [
-                { path: '/music/library/first.flac' },
-                { path: '/music/library/second.flac' },
-                { path: '/music/library/third.flac' },
+                { path: '/music/library/other/first.flac', folderPath: 'Library/Other Album', rootName: 'Library', displayAlbum: 'Other Album', displayArtist: 'Elsewhere' },
+                { path: '/music/library/album/disc-1/01.flac', folderPath: 'Library/Artist/Album/Disc 1', rootName: 'Library', displayAlbum: 'Album', displayArtist: 'Artist' },
+                { path: '/music/library/album/disc-2/01.flac', folderPath: 'Library/Artist/Album/Disc 2', rootName: 'Library', displayAlbum: 'Album', displayArtist: 'Artist' },
+            ] as never,
+            releaseDepthForTrack: () => 2,
+            openSidebarQueueMenu,
+        }, container, event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(stopPropagationSpy).toHaveBeenCalledTimes(1);
+        expect(openSidebarQueueMenu).toHaveBeenCalledWith(
+            52,
+            96,
+            [1, 2],
+            2,
+            true,
+            '/music/library/album/disc-2/01.flac',
+        );
+    });
+
+    it('uses precomputed overview album track indexes when present on the card', () => {
+        document.body.innerHTML = `
+            <div id="overview-list">
+                <button class="overview-album-card" data-overview-track-index="4" data-overview-track-indexes="4,8,9" type="button">
+                    <span class="overview-album-title">Compiled Album</span>
+                </button>
+            </div>
+        `;
+
+        const container = document.querySelector('#overview-list') as HTMLDivElement;
+        const target = document.querySelector('.overview-album-title') as HTMLSpanElement;
+        const openSidebarQueueMenu = vi.fn();
+        const event = new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 12,
+            clientY: 18,
+        });
+        Object.defineProperty(event, 'target', { value: target });
+
+        openOverviewAlbumContextMenu({
+            tracks: [
+                { path: '/music/0.flac' },
+                { path: '/music/1.flac' },
+                { path: '/music/2.flac' },
+                { path: '/music/3.flac' },
+                { path: '/music/4.flac' },
+                { path: '/music/5.flac' },
+                { path: '/music/6.flac' },
+                { path: '/music/7.flac' },
+                { path: '/music/8.flac' },
+                { path: '/music/9.flac' },
+            ] as never,
+            releaseDepthForTrack: () => 2,
+            openSidebarQueueMenu,
+        }, container, event);
+
+        expect(openSidebarQueueMenu).toHaveBeenCalledWith(12, 18, [4, 8, 9], 4, true, '/music/4.flac');
+    });
+
+    it('keeps last played overview context menus scoped to the selected track', () => {
+        document.body.innerHTML = `
+            <div id="overview-list">
+                <button class="overview-album-card" data-overview-track-index="1" type="button">
+                    <span class="overview-album-title">Played Track</span>
+                </button>
+            </div>
+        `;
+
+        const container = document.querySelector('#overview-list') as HTMLDivElement;
+        const target = document.querySelector('.overview-album-title') as HTMLSpanElement;
+        const openSidebarQueueMenu = vi.fn();
+        const event = new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: 20,
+            clientY: 30,
+        });
+        const stopPropagationSpy = vi.spyOn(event, 'stopPropagation');
+        Object.defineProperty(event, 'target', { value: target });
+
+        openOverviewTrackContextMenu({
+            tracks: [
+                { path: '/music/library/album/01.flac', folderPath: 'Library/Artist/Album', rootName: 'Library', displayAlbum: 'Album', displayArtist: 'Artist' },
+                { path: '/music/library/album/02.flac', folderPath: 'Library/Artist/Album', rootName: 'Library', displayAlbum: 'Album', displayArtist: 'Artist' },
             ] as never,
             openSidebarQueueMenu,
         }, container, event);
 
         expect(event.defaultPrevented).toBe(true);
         expect(stopPropagationSpy).toHaveBeenCalledTimes(1);
-        expect(openSidebarQueueMenu).toHaveBeenCalledWith(52, 96, [2], 2, true, '/music/library/third.flac');
+        expect(openSidebarQueueMenu).toHaveBeenCalledWith(20, 30, [1], 1, true, '/music/library/album/02.flac');
     });
 });
 

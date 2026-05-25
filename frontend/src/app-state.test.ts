@@ -42,6 +42,7 @@ describe('createAppState', () => {
             loadedPlaylistCachedItems: null,
             editableQueueTrackIndexes: null,
             editableQueueCurrentPosition: null,
+            editableQueueDerivedFromBaseSequence: false,
             selectedSource: 'queue',
             selectedFavoriteIndex: null,
             playbackSource: 'queue',

@@ -276,7 +276,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
                 context.suppressAutoSelectAfterFullLibraryScan = true;
             }
 
-            playlistController.activatePlaybackQueueSource();
+            playlistController.activateLibraryPlaybackSource();
             void context.loadTrack(index, true, undefined, true).then(() => {
                 void context.playCurrentTrack();
             });
@@ -291,7 +291,7 @@ export const setupAppControllers = (context: AppControllerSetupContext) => {
                 return;
             }
 
-            playlistController.activatePlaybackQueueSource();
+            playlistController.activateLibraryPlaybackSource();
             void context.loadTrack(resolvedIndex, true, undefined, true).then(() => {
                 void context.playCurrentTrack();
             });

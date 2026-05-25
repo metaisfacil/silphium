@@ -73,7 +73,7 @@ export const defaultAppSettings: AppSettings = {
     musicBrainzRequestRateMs: 1000,
     listenBrainzServerUrl: '',
     listenBrainzRequestRateMs: 1000,
-    playbackOrder: 'ordered-library',
+    playbackOrder: 'ordered-source',
     releaseDepth: 0,
     favoritePlaylists: [],
     savePlaylistsOnAddRemove: false,

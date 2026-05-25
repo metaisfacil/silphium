@@ -91,7 +91,9 @@ describe('library data service', () => {
         expect(scanCollections.imageFiles).toEqual([]);
 
         await appendIndexedFilesToScanCollections(scanCollections, 'track', Array.from({ length: 400 }, (_, index) => (
-            createIndexedFile(`/music/track-${index}.flac`, `track-${index}.flac`)
+            index === 0
+                ? createIndexedFile(`/music/track-${index}.flac`, `track-${index}.flac`, { cachedAlbumArtist: 'Various Artists' })
+                : createIndexedFile(`/music/track-${index}.flac`, `track-${index}.flac`)
         )));
         await appendIndexedFilesToScanCollections(scanCollections, 'text-file', Array.from({ length: 400 }, (_, index) => (
             index === 0
@@ -109,6 +111,7 @@ describe('library data service', () => {
             title: 'track-0.flac',
             displayAlbum: 'Unknown Album',
             displayArtist: 'Unknown Artist',
+            allFileTags: { albumartist: ['Various Artists'] },
             tagsResolved: false,
         }));
         expect(scanCollections.textFiles[0]).toEqual(expect.objectContaining({ path: '/music/readme-0.txt', rootName: '', rootPath: '' }));
@@ -204,6 +207,7 @@ describe('library data service', () => {
             createIndexedFile('/music/history-track.flac', 'history-track.flac', {
                 cachedTrackTitle: 'Cached History Title',
                 cachedAlbumTitle: 'Cached History Album',
+                cachedAlbumArtist: 'Various Artists',
                 cachedArtistName: 'Cached History Artist',
                 cachedTrackNumber: '7',
                 cachedTrackTotal: '12',
@@ -217,6 +221,7 @@ describe('library data service', () => {
             displayTitle: 'Cached History Title',
             displayAlbum: 'Cached History Album',
             displayArtist: 'Cached History Artist',
+            allFileTags: { albumartist: ['Various Artists'] },
             displayTrackNumber: '7',
             displayTrackTotal: '12',
         }));

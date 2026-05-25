@@ -536,6 +536,7 @@ func TestSetLibraryIndexFromScanUsesStoredMetadataForIndexedTracks(t *testing.T)
 	app.upsertMusicBrainzTagTrackRecordLocked(fixture.trackOne, musicBrainzTagTrackRecord{
 		Title:       "Database Title",
 		AlbumTitle:  "Database Album",
+		AlbumArtist: "Database Album Artist",
 		TrackArtist: "Database Artist",
 		TrackNumber: 3,
 		TrackTotal:  11,
@@ -547,13 +548,13 @@ func TestSetLibraryIndexFromScanUsesStoredMetadataForIndexedTracks(t *testing.T)
 	}
 
 	indexed := app.trackByPath[fixture.trackOne]
-	if indexed.CachedTrackTitle != "Database Title" || indexed.CachedAlbumTitle != "Database Album" || indexed.CachedArtistName != "Database Artist" {
-		t.Fatalf("cached indexed metadata = %#v, want stored title/album/artist", indexed)
+	if indexed.CachedTrackTitle != "Database Title" || indexed.CachedAlbumTitle != "Database Album" || indexed.CachedAlbumArtist != "Database Album Artist" || indexed.CachedArtistName != "Database Artist" {
+		t.Fatalf("cached indexed metadata = %#v, want stored title/album/album-artist/artist", indexed)
 	}
 	if indexed.CachedTrackNumber != "3" || indexed.CachedTrackTotal != "11" {
 		t.Fatalf("cached indexed positions = %#v, want stored track numbering", indexed)
 	}
-	if got := app.libraryScan.TrackFiles[0]; got.CachedTrackTitle != "Database Title" || got.CachedAlbumTitle != "Database Album" || got.CachedArtistName != "Database Artist" {
+	if got := app.libraryScan.TrackFiles[0]; got.CachedTrackTitle != "Database Title" || got.CachedAlbumTitle != "Database Album" || got.CachedAlbumArtist != "Database Album Artist" || got.CachedArtistName != "Database Artist" {
 		t.Fatalf("libraryScan track cache = %#v, want stored metadata copied to scan", got)
 	}
 }

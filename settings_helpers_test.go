@@ -12,8 +12,14 @@ func TestSettingsHelperNormalizers(t *testing.T) {
 		runtimeNumCPU = originalRuntimeNumCPU
 	})
 
-	if got := normalizePlaybackOrder("ordered-library"); got != "ordered-library" {
-		t.Fatalf("normalizePlaybackOrder(ordered-library) = %q, want %q", got, "ordered-library")
+	if got := normalizePlaybackOrder("ordered-album"); got != "ordered-release" {
+		t.Fatalf("normalizePlaybackOrder(ordered-album) = %q, want %q", got, "ordered-release")
+	}
+	if got := normalizePlaybackOrder("shuffle-album"); got != "shuffle-release" {
+		t.Fatalf("normalizePlaybackOrder(shuffle-album) = %q, want %q", got, "shuffle-release")
+	}
+	if got := normalizePlaybackOrder("ordered-source"); got != "ordered-source" {
+		t.Fatalf("normalizePlaybackOrder(ordered-source) = %q, want %q", got, "ordered-source")
 	}
 	if got := normalizePlaybackOrder("bad"); got != defaultPlaybackOrder {
 		t.Fatalf("normalizePlaybackOrder(bad) = %q, want %q", got, defaultPlaybackOrder)

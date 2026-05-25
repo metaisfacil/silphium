@@ -629,6 +629,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const clearEditableQueueState = (): void => {
         controllerState.editableQueueTrackIndexes = null;
         controllerState.editableQueueCurrentPosition = null;
+        controllerState.editableQueueDerivedFromBaseSequence = false;
     };
 
     const clampEditableQueuePosition = (queueIndexes: number[], position: number | null): number => {
@@ -643,7 +644,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         return Math.min(Math.max(position as number, 0), queueIndexes.length - 1);
     };
 
-    const setEditableQueueState = (queueIndexes: number[], currentPosition: number): number[] => {
+    const setEditableQueueState = (queueIndexes: number[], currentPosition: number, derivedFromBaseSequence = false): number[] => {
         if (queueIndexes.length === 0) {
             clearEditableQueueState();
             return [];
@@ -651,6 +652,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
         controllerState.editableQueueTrackIndexes = queueIndexes;
         controllerState.editableQueueCurrentPosition = clampEditableQueuePosition(queueIndexes, currentPosition);
+        controllerState.editableQueueDerivedFromBaseSequence = derivedFromBaseSequence;
         return queueIndexes;
     };
 
@@ -705,7 +707,11 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     const isShuffleQueuePlayback = (): boolean => {
         const playbackOrderMode = options.playbackSequencingService?.getPlaybackOrderMode?.();
         return controllerState.playbackSource === 'queue'
-            && (playbackOrderMode === 'shuffle-library' || playbackOrderMode === 'shuffle-album');
+            && (
+                playbackOrderMode === 'shuffle-release'
+                || playbackOrderMode === 'shuffle-source'
+                || playbackOrderMode === 'shuffle-library'
+            );
     };
 
     const redrawPlaybackQueueFromBaseSequence = (currentPositionOverride?: number): boolean => {
@@ -725,7 +731,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
         const nextPosition = clampEditableQueuePosition(nextIndexes, currentPositionOverride ?? nextSequence.currentPosition);
 
         controllerState.playbackSource = 'queue';
-        setEditableQueueState(nextIndexes, nextPosition);
+        setEditableQueueState(nextIndexes, nextPosition, true);
         return !queueIndexesEqual(previousQueue, nextIndexes) || previousPosition !== nextPosition;
     };
 
@@ -2393,7 +2399,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
             }
 
             if (direction > 0 && controllerState.editableQueueTrackIndexes && currentPosition >= queueIndexes.length - 1) {
-                if (isShuffleQueuePlayback()) {
+                if (isShuffleQueuePlayback() && controllerState.editableQueueDerivedFromBaseSequence) {
                     const nextQueue = options.getBaseSequence();
                     const nextPosition = nextQueue.currentPosition + 1;
                     if (nextPosition < nextQueue.indexes.length) {
@@ -2501,6 +2507,12 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
     };
 
     const activatePlaybackQueueSource = (): void => {
+        controllerState.playbackSource = 'queue';
+        clearEditableQueueState();
+        scheduleRender();
+    };
+
+    const activateLibraryPlaybackSource = (): void => {
         controllerState.playbackSource = 'queue';
         clearEditableQueueState();
         scheduleRender();
@@ -3192,6 +3204,7 @@ export const createPlaylistController = (options: PlaylistControllerOptions) => 
 
     return {
         activatePlaybackQueueSource,
+        activateLibraryPlaybackSource,
         clearEditableQueue,
         closeMenu,
         closeModal,
