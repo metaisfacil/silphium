@@ -1454,19 +1454,48 @@
     white-space: nowrap;
 }
 
-.player-shell {
+.player-shell-stage {
+    --player-shell-inline-pad: 1rem;
+    --player-shell-block-pad: 2rem;
+    --player-visualizer-bottom-reserve: 0px;
+    --player-visualizer-inline-size: 100%;
+    --player-visualizer-lissajous-idle-scale: 3;
+    --player-visualizer-lissajous-active-scale: 4.7;
+    --player-visualizer-lissajous-idle-y: -50%;
+    --player-visualizer-lissajous-active-y: -64.8%;
+    --player-visualizer-lissajous-blur: 6.4px;
+    --player-visualizer-lissajous-opacity: 0.79;
+    --player-visualizer-equalizer-idle-scale-x: 1;
+    --player-visualizer-equalizer-idle-scale-y: 1;
+    --player-visualizer-equalizer-active-scale-x: 1.2;
+    --player-visualizer-equalizer-active-scale-y: 1.3;
+    --player-visualizer-equalizer-idle-y: -50%;
+    --player-visualizer-equalizer-active-y: -53%;
+    --player-visualizer-equalizer-blur: 1.1px;
+    --player-visualizer-equalizer-opacity: 0.48;
     height: 100vh;
     display: grid;
     place-items: center;
-    padding: 2rem 1rem;
+    padding: var(--player-shell-block-pad) var(--player-shell-inline-pad);
     box-sizing: border-box;
     transform: translateX(0);
     transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
+    overflow: hidden;
+    z-index: 1;
+    isolation: isolate;
+}
+
+.player-shell {
+    height: 100%;
+    width: 100%;
+    display: grid;
+    place-items: center;
+    position: relative;
     z-index: 1;
 }
 
-#app.sidebar-open .player-shell {
+#app.sidebar-open .player-shell-stage {
     transform: translateX(calc(var(--active-sidebar-width) / 2));
 }
 
@@ -1530,9 +1559,11 @@
 .player-visualizer-canvas {
     position: absolute;
     left: 50%;
-    top: 50%;
-    width: 100%;
-    height: 100%;
+    top: calc((100% - var(--player-visualizer-bottom-reserve)) * 0.5);
+    width: var(--player-visualizer-inline-size);
+    height: calc(100% - var(--player-visualizer-bottom-reserve));
+    max-width: 100%;
+    max-height: calc(100% - var(--player-visualizer-bottom-reserve));
     z-index: 0;
     pointer-events: none;
     opacity: 0;
@@ -1542,34 +1573,34 @@
 .player-visualizer-canvas:not([data-visualizer-mode="equalizer"]),
 .player-visualizer-canvas[data-visualizer-mode="lissajous"] {
     transform-origin: center;
-    transform: translate(-50%, -50%) rotate(-45deg) scale(3);
+    transform: translate(-50%, var(--player-visualizer-lissajous-idle-y)) rotate(-45deg) scale(var(--player-visualizer-lissajous-idle-scale));
     mix-blend-mode: screen;
-    filter: blur(6.4px) saturate(1.16);
+    filter: blur(var(--player-visualizer-lissajous-blur)) saturate(1.16);
 }
 
 .player-visualizer-canvas:not([data-visualizer-mode="equalizer"]).is-active,
 .player-visualizer-canvas:not([data-visualizer-mode="equalizer"]).is-visualizer-active,
 .player-visualizer-canvas[data-visualizer-mode="lissajous"].is-active,
 .player-visualizer-canvas[data-visualizer-mode="lissajous"].is-visualizer-active {
-    opacity: 0.79;
-    transform: translate(-50%, -64.8%) rotate(45deg) scale(4.7);
+    opacity: var(--player-visualizer-lissajous-opacity);
+    transform: translate(-50%, var(--player-visualizer-lissajous-active-y)) rotate(45deg) scale(var(--player-visualizer-lissajous-active-scale));
 }
 
 .player-visualizer-canvas[data-visualizer-mode="equalizer"] {
-    transform: translate(-50%, -50%) scale(1);
+    transform: translate(-50%, var(--player-visualizer-equalizer-idle-y)) scale(var(--player-visualizer-equalizer-idle-scale-x), var(--player-visualizer-equalizer-idle-scale-y));
     mix-blend-mode: screen;
-    filter: blur(1.1px) saturate(1.14);
+    filter: blur(var(--player-visualizer-equalizer-blur)) saturate(1.14);
 }
 
 .player-visualizer-canvas[data-visualizer-mode="equalizer"].is-active,
 .player-visualizer-canvas[data-visualizer-mode="equalizer"].is-visualizer-active {
-    opacity: 0.48;
-    transform: translate(-50%, -53%) scale(1.2, 1.30);
+    opacity: var(--player-visualizer-equalizer-opacity);
+    transform: translate(-50%, var(--player-visualizer-equalizer-active-y)) scale(var(--player-visualizer-equalizer-active-scale-x), var(--player-visualizer-equalizer-active-scale-y));
 }
 
 .player-visualizer-canvas[data-visualizer-mode="equalizer"][data-equalizer-position="top"].is-active,
 .player-visualizer-canvas[data-visualizer-mode="equalizer"][data-equalizer-position="top"].is-visualizer-active {
-    transform: translate(-50%, -46%) scale(1.2, -1.30);
+    transform: translate(-50%, calc(var(--player-visualizer-equalizer-idle-y) - (var(--player-visualizer-equalizer-active-y) - var(--player-visualizer-equalizer-idle-y)))) scale(var(--player-visualizer-equalizer-active-scale-x), calc(var(--player-visualizer-equalizer-active-scale-y) * -1));
 }
 
 .lyrics-panel {
@@ -3141,7 +3172,7 @@
     outline-color: rgb(var(--roon-accent-rgb, 104 180 255) / 0.42);
 }
 
-#app.shell-theme-roon .player-shell {
+#app.shell-theme-roon .player-shell-stage {
     --roon-shell-inline-pad: 4.2rem;
     --roon-shell-block-pad: 0;
     --roon-taskbar-edge-pad: 1.25rem;
@@ -3151,15 +3182,33 @@
     --roon-track-view-art-height-limit: calc(100dvh - var(--roon-track-view-taskbar-height, var(--roon-track-view-taskbar-reserve)) - (var(--roon-track-view-outer-margin) * 2));
     --roon-track-view-art-max-size: var(--roon-track-view-art-height-limit);
     --roon-track-view-art-size: min(var(--roon-track-view-art-max-size), var(--roon-track-view-art-height-limit));
+    --player-shell-inline-pad: var(--roon-shell-inline-pad);
+    --player-shell-block-pad: var(--roon-shell-block-pad);
+    --player-visualizer-bottom-reserve: var(--roon-track-view-taskbar-height, var(--roon-track-view-taskbar-reserve));
+    --player-visualizer-inline-size: min(100%, calc((var(--roon-track-view-art-size) * 2.2) + min(var(--lyrics-panel-width, 0px), 24rem)));
+    --player-visualizer-lissajous-idle-scale: 2.05;
+    --player-visualizer-lissajous-active-scale: 3.1;
+    --player-visualizer-lissajous-active-y: -58%;
+    --player-visualizer-lissajous-blur: 4.8px;
+    --player-visualizer-lissajous-opacity: 0.68;
+    --player-visualizer-equalizer-active-scale-x: 1.12;
+    --player-visualizer-equalizer-active-scale-y: 1.18;
+    --player-visualizer-equalizer-active-y: -51%;
+    --player-visualizer-equalizer-blur: 0.9px;
+    --player-visualizer-equalizer-opacity: 0.42;
     min-height: 100vh;
+    padding: 0 var(--roon-shell-inline-pad);
+}
+
+#app.shell-theme-roon .player-shell {
+    min-height: 100%;
     grid-template-rows: minmax(0, 1fr) auto;
     align-items: stretch;
     place-items: stretch;
     gap: var(--roon-track-view-row-gap);
-    padding: 0 var(--roon-shell-inline-pad);
 }
 
-#app.shell-theme-roon.sidebar-open .player-shell {
+#app.shell-theme-roon.sidebar-open .player-shell-stage {
     transform: translateX(calc(var(--active-sidebar-width) * 0.28));
 }
 
@@ -3480,7 +3529,7 @@
 }
 
 @media (max-width: 1100px) {
-    #app.shell-theme-roon .player-shell {
+    #app.shell-theme-roon .player-shell-stage {
         --roon-shell-inline-pad: clamp(1.6rem, 3vw, 2.4rem);
         --roon-taskbar-edge-pad: 1rem;
         --roon-track-view-outer-margin: 2rem;
@@ -3589,7 +3638,7 @@
 }
 
 @media (max-width: 720px) {
-    #app.shell-theme-roon .player-shell {
+    #app.shell-theme-roon .player-shell-stage {
         --roon-shell-inline-pad: 0.8rem;
         --roon-taskbar-edge-pad: 0.8rem;
         --roon-track-view-outer-margin: 1rem;
@@ -3630,19 +3679,19 @@
 }
 
 @media (max-width: 560px) {
-    #app.shell-theme-roon .player-shell {
+    #app.shell-theme-roon .player-shell-stage {
         --roon-track-view-art-max-size: clamp(13rem, 54dvh, 22rem);
     }
 }
 
 @media (max-width: 420px) {
-    #app.shell-theme-roon .player-shell {
+    #app.shell-theme-roon .player-shell-stage {
         --roon-track-view-art-max-size: clamp(11rem, 46dvh, 17rem);
     }
 }
 
 @media (max-width: 360px) {
-    #app.shell-theme-roon .player-shell {
+    #app.shell-theme-roon .player-shell-stage {
         --roon-track-view-art-max-size: clamp(9.5rem, 40dvh, 14rem);
     }
 }

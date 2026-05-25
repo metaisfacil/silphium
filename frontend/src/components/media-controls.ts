@@ -93,7 +93,9 @@ export const renderPlayPauseIcon = (state: 'play' | 'pause'): string =>
     state === 'pause' ? renderPauseIcon() : renderPlayIcon();
 
 export const renderMediaControls = (): string => `
-    <main class="player-shell">
+    <div class="player-shell-stage">
+      <canvas id="player-visualizer" class="player-visualizer-canvas" aria-hidden="true"></canvas>
+      <main class="player-shell">
       <section id="overview-page" class="overview-page">
         <div class="overview-stats-grid">
           <article class="overview-stat-card">
@@ -145,7 +147,6 @@ export const renderMediaControls = (): string => `
       </section>
       <div id="player-lane" class="player-lane">
       <section id="player-card" class="player-card">
-        <canvas id="player-visualizer" class="player-visualizer-canvas" aria-hidden="true"></canvas>
         <p id="track-artist-header" class="track-artist-header"></p>
         <div id="cover-frame" class="cover-frame" role="button" tabindex="0" aria-label="Flip cover art">
           <div id="cover-flipper" class="cover-flipper">
@@ -229,7 +230,8 @@ export const renderMediaControls = (): string => `
           <button id="taskbar-show-overview" class="control-btn player-taskbar-overview-btn" type="button" aria-label="Show overview" title="Show overview">${renderHomeIcon()}</button>
         </div>
       </section>
-    </main>
+      </main>
+    </div>
 `;
 
 export const getMediaControlsElements = (root: ParentNode): MediaControlsElements => ({
