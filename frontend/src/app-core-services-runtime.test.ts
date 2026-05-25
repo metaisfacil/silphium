@@ -491,6 +491,47 @@ describe('createAppCoreServicesRuntime', () => {
         });
     });
 
+    it('opens the library sidebar view before social feed search actions run', () => {
+        const context = createContext();
+
+        createAppCoreServicesRuntime(context);
+
+        const socialCalls = createListenBrainzSocialControllerMock.mock.calls as unknown as Array<[ListenBrainzSocialControllerOptions]>;
+        const socialOptions = socialCalls[0]?.[0];
+        const sidebarController = createSidebarControllerMock.mock.results[0]?.value as {
+            showLibrary: ReturnType<typeof vi.fn>;
+        } | undefined;
+
+        expect(socialOptions).toBeDefined();
+        expect(sidebarController).toBeDefined();
+
+        socialOptions?.openLibrarySearch('Track');
+
+        expect(sidebarController?.showLibrary).toHaveBeenCalledTimes(1);
+        expect(context.libraryController().setSidebarOpen).toHaveBeenCalledWith(true);
+        expect(context.libraryController().startLibrarySearch).toHaveBeenCalledWith('Track', undefined);
+    });
+
+    it('opens the library sidebar view before navigating to a local social release folder', async () => {
+        const context = createContext();
+
+        createAppCoreServicesRuntime(context);
+
+        const socialCalls = createListenBrainzSocialControllerMock.mock.calls as unknown as Array<[ListenBrainzSocialControllerOptions]>;
+        const socialOptions = socialCalls[0]?.[0];
+        const sidebarController = createSidebarControllerMock.mock.results[0]?.value as {
+            showLibrary: ReturnType<typeof vi.fn>;
+        } | undefined;
+
+        expect(socialOptions).toBeDefined();
+        expect(sidebarController).toBeDefined();
+
+        await socialOptions?.openLocalReleaseFolder('/music/Artist/Album');
+
+        expect(sidebarController?.showLibrary).toHaveBeenCalledTimes(1);
+        expect(context.libraryController().navigateToFolder).toHaveBeenCalledWith('/music/Artist/Album');
+    });
+
     it('keeps the player-card album title while Last.fm feedback uses the tagged album title', async () => {
         const context = createContext();
         context.currentSettings.lastFmApiKey = 'lfm-key';

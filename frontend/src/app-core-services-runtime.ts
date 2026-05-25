@@ -641,13 +641,19 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         }));
     };
 
+    let sidebarController: ReturnType<typeof createSidebarController> | null = null;
+
+    const showLibrarySidebar = (): void => {
+        sidebarController?.showLibrary();
+    };
+
     const openLocalReleaseFolder = async (folderPath: string): Promise<void> => {
         const cleanFolderPath = folderPath.trim();
         if (cleanFolderPath === '') {
             return;
         }
 
-        socialController.showLibrary();
+        showLibrarySidebar();
         context.libraryController().navigateToFolder(cleanFolderPath);
     };
 
@@ -657,7 +663,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
-        socialController.showLibrary();
+        showLibrarySidebar();
 
         const libraryController = context.libraryController();
         if (!libraryController.isSidebarOpen()) {
@@ -819,7 +825,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             context.libraryController().setSidebarExpanded(false);
         },
     });
-    const sidebarController = createSidebarController({
+    sidebarController = createSidebarController({
         elements: {
             app: context.app,
             sidebarToggle: context.sidebarToggle,
