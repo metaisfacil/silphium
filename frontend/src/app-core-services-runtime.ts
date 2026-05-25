@@ -117,6 +117,7 @@ const overviewAlbumGridSeekAppendBurstSize = 2_400;
 const overviewAlbumGridBottomSeekAppendBurstSize = 8_000;
 const overviewAlbumGridViewStabilityDelayMs = 300;
 const overviewAlbumGridCoverInvalidationDelayMs = 30_000;
+const overviewCountNumberFormatter = new Intl.NumberFormat('en-US');
 
 const formatOverviewInlineTrackDuration = (durationSeconds?: number): string => {
     if (!Number.isFinite(durationSeconds) || durationSeconds === undefined || durationSeconds <= 0) {
@@ -2461,6 +2462,8 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         }
     };
 
+    const formatOverviewCount = (value: number): string => overviewCountNumberFormatter.format(value);
+
     window.addEventListener('resize', syncResponsiveOverviewScrollPosition, { passive: true });
 
     function refreshOverviewDashboard(): void {
@@ -2470,19 +2473,19 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         const libraryCount = new Set(context.tracks.map((track) => (track.rootName || '').trim()).filter((value) => value !== '')).size;
 
         if (context.overviewTracksCount) {
-            context.overviewTracksCount.textContent = String(trackCount);
+            context.overviewTracksCount.textContent = formatOverviewCount(trackCount);
         }
 
         if (context.overviewAlbumsCount) {
-            context.overviewAlbumsCount.textContent = String(albumCount);
+            context.overviewAlbumsCount.textContent = formatOverviewCount(albumCount);
         }
 
         if (context.overviewArtistsCount) {
-            context.overviewArtistsCount.textContent = String(artistCount);
+            context.overviewArtistsCount.textContent = formatOverviewCount(artistCount);
         }
 
         if (context.overviewLibrariesCount) {
-            context.overviewLibrariesCount.textContent = String(libraryCount);
+            context.overviewLibrariesCount.textContent = formatOverviewCount(libraryCount);
         }
 
         void refreshOverviewRecencySections();

@@ -810,6 +810,30 @@ describe('createAppCoreServicesRuntime', () => {
         expect(context.overviewShowRecents.getAttribute('aria-pressed')).toBe('true');
     });
 
+    it('formats overview dashboard counts with grouped digits', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 1234 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/library-${String(index + 1)}/01.flac`,
+            relativePath: `library-${String(index + 1)}/01.flac`,
+            folderPath: `/music/library-${String(index + 1)}`,
+            rootName: `Library ${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+
+        runtime.refreshOverviewDashboard();
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewTracksCount.textContent).toBe('1,234');
+        expect(context.overviewAlbumsCount.textContent).toBe('1,234');
+        expect(context.overviewArtistsCount.textContent).toBe('1,234');
+        expect(context.overviewLibrariesCount.textContent).toBe('1,234');
+    });
+
     it('expands an overview album tile into an inline tracklist instead of treating the cover as an immediate play target', async () => {
         const context = createContext();
         (context as unknown as { tracks: unknown[] }).tracks = [
