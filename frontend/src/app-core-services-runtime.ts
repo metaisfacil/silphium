@@ -253,8 +253,10 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     const overviewAlbumGridUnloadGenerationByTrackIndex = new Map<number, number>();
     const overviewAlbumInlinePanelAnimationTokenByElement = new WeakMap<HTMLDivElement, number>();
     const overviewAlbumInlinePanelAnimationTimeoutByElement = new WeakMap<HTMLDivElement, number>();
+    const overviewAlbumInlinePanelClosePromiseByElement = new WeakMap<HTMLDivElement, Promise<void>>();
     const overviewAlbumGridViewStabilityWaiters: Array<() => void> = [];
     let expandedOverviewAlbumGridTrackIndex: number | null = null;
+    let overviewAlbumGridExpansionSyncToken = 0;
     const roonAccentColorKey = 'roonAccentColor';
     const roonAccentSaturationKey = 'roonAccentSaturation';
     const localReleaseFolderByMBID = new Map<string, Promise<string>>();
@@ -1442,58 +1444,71 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         overviewAlbumInlinePanelAnimationTimeoutByElement.set(panel, timeoutHandle);
     };
 
-    const animateOverviewAlbumInlinePanelClose = (panel: HTMLDivElement): void => {
+    const animateOverviewAlbumInlinePanelClose = (panel: HTMLDivElement): Promise<void> => {
+        const existingClosePromise = overviewAlbumInlinePanelClosePromiseByElement.get(panel);
+        if (existingClosePromise) {
+            return existingClosePromise;
+        }
+
         const transitionMs = overviewAlbumInlinePanelTransitionMs(panel);
         if (transitionMs <= 0 || !panel.isConnected) {
             panel.remove();
-            return;
+            return Promise.resolve();
         }
 
-        const animationToken = nextOverviewAlbumInlinePanelAnimationToken(panel);
-        const collapsedHeightPx = panel.getBoundingClientRect().height || panel.scrollHeight;
-        panel.style.overflow = 'hidden';
-        panel.style.height = `${String(collapsedHeightPx)}px`;
-        panel.style.opacity = '1';
-        panel.style.transform = 'translateY(0) scale(1)';
-        panel.style.pointerEvents = 'none';
-        panel.getBoundingClientRect();
+        const closePromise = new Promise<void>((resolve) => {
+            const animationToken = nextOverviewAlbumInlinePanelAnimationToken(panel);
+            const collapsedHeightPx = panel.getBoundingClientRect().height || panel.scrollHeight;
+            panel.style.overflow = 'hidden';
+            panel.style.height = `${String(collapsedHeightPx)}px`;
+            panel.style.opacity = '1';
+            panel.style.transform = 'translateY(0) scale(1)';
+            panel.style.pointerEvents = 'none';
+            panel.getBoundingClientRect();
 
-        const completeAnimation = (): void => {
-            if (overviewAlbumInlinePanelAnimationTokenByElement.get(panel) !== animationToken) {
-                return;
-            }
+            const completeAnimation = (): void => {
+                if (overviewAlbumInlinePanelAnimationTokenByElement.get(panel) !== animationToken) {
+                    resolve();
+                    return;
+                }
 
-            finishOverviewAlbumInlinePanelAnimation(panel);
-            if (panel.isConnected) {
-                panel.remove();
-            }
-        };
+                finishOverviewAlbumInlinePanelAnimation(panel);
+                overviewAlbumInlinePanelClosePromiseByElement.delete(panel);
+                if (panel.isConnected) {
+                    panel.remove();
+                }
+                resolve();
+            };
 
-        const onTransitionEnd = (event: TransitionEvent): void => {
-            if (event.target !== panel || event.propertyName !== 'height') {
-                return;
-            }
+            const onTransitionEnd = (event: TransitionEvent): void => {
+                if (event.target !== panel || event.propertyName !== 'height') {
+                    return;
+                }
 
-            panel.removeEventListener('transitionend', onTransitionEnd);
-            completeAnimation();
-        };
+                panel.removeEventListener('transitionend', onTransitionEnd);
+                completeAnimation();
+            };
 
-        panel.addEventListener('transitionend', onTransitionEnd);
-        const timeoutHandle = window.setTimeout(() => {
-            panel.removeEventListener('transitionend', onTransitionEnd);
-            completeAnimation();
-        }, transitionMs + 32);
-        overviewAlbumInlinePanelAnimationTimeoutByElement.set(panel, timeoutHandle);
+            panel.addEventListener('transitionend', onTransitionEnd);
+            const timeoutHandle = window.setTimeout(() => {
+                panel.removeEventListener('transitionend', onTransitionEnd);
+                completeAnimation();
+            }, transitionMs + 32);
+            overviewAlbumInlinePanelAnimationTimeoutByElement.set(panel, timeoutHandle);
 
-        void waitForNextAnimationFrame().then(() => {
-            if (overviewAlbumInlinePanelAnimationTokenByElement.get(panel) !== animationToken || !panel.isConnected) {
-                return;
-            }
+            void waitForNextAnimationFrame().then(() => {
+                if (overviewAlbumInlinePanelAnimationTokenByElement.get(panel) !== animationToken || !panel.isConnected) {
+                    return;
+                }
 
-            panel.style.height = '0px';
-            panel.style.opacity = '0';
-            panel.style.transform = 'translateY(-8px) scale(0.985)';
+                panel.style.height = '0px';
+                panel.style.opacity = '0';
+                panel.style.transform = 'translateY(-8px) scale(0.985)';
+            });
         });
+
+        overviewAlbumInlinePanelClosePromiseByElement.set(panel, closePromise);
+        return closePromise;
     };
 
     const overviewAlbumInlineTracks = (entry: OverviewAlbumGridEntry): OverviewAlbumInlineTrackEntry[] => {
@@ -1573,17 +1588,18 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         return panel;
     };
 
-    const syncOverviewAlbumGridExpandedRow = (container: HTMLDivElement | undefined): void => {
+    const syncOverviewAlbumGridExpandedRow = async (container: HTMLDivElement | undefined): Promise<void> => {
         if (!container) {
             return;
         }
 
+        const syncToken = ++overviewAlbumGridExpansionSyncToken;
         const children = Array.from(container.children);
-        children.forEach((child) => {
-            if (child instanceof HTMLElement && child.classList.contains('overview-album-inline-panel')) {
-                animateOverviewAlbumInlinePanelClose(child as HTMLDivElement);
-            }
-        });
+        const closePromises = children.flatMap((child) => (
+            child instanceof HTMLDivElement && child.classList.contains('overview-album-inline-panel')
+                ? [animateOverviewAlbumInlinePanelClose(child)]
+                : []
+        ));
 
         const cards = children.filter((child): child is HTMLDivElement => (
             child instanceof HTMLDivElement && child.classList.contains('overview-library-album-card')
@@ -1594,12 +1610,24 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             card.removeAttribute('aria-controls');
         });
 
+        if (closePromises.length > 0) {
+            await Promise.all(closePromises);
+        }
+
+        if (syncToken !== overviewAlbumGridExpansionSyncToken || !container.isConnected) {
+            return;
+        }
+
         if (expandedOverviewAlbumGridTrackIndex === null) {
             return;
         }
 
+        const currentCards = Array.from(container.children).filter((child): child is HTMLDivElement => (
+            child instanceof HTMLDivElement && child.classList.contains('overview-library-album-card')
+        ));
+
         const expandedEntry = overviewAlbumGridEntryByTrackIndex.get(expandedOverviewAlbumGridTrackIndex);
-        const expandedCard = cards.find((card) => Number(card.dataset.overviewGridTrackIndex || '') === expandedOverviewAlbumGridTrackIndex) || null;
+        const expandedCard = currentCards.find((card) => Number(card.dataset.overviewGridTrackIndex || '') === expandedOverviewAlbumGridTrackIndex) || null;
         if (!expandedEntry || !expandedCard) {
             expandedOverviewAlbumGridTrackIndex = null;
             return;
@@ -1609,14 +1637,14 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         const columnCount = Math.max(1, gridTemplateColumns && gridTemplateColumns !== 'none'
             ? gridTemplateColumns.split(' ').filter((value) => value.trim() !== '').length
             : 1);
-        const expandedCardIndex = cards.indexOf(expandedCard);
+        const expandedCardIndex = currentCards.indexOf(expandedCard);
         if (expandedCardIndex < 0) {
             expandedOverviewAlbumGridTrackIndex = null;
             return;
         }
 
-        const rowEndIndex = Math.min(cards.length - 1, (Math.floor(expandedCardIndex / columnCount) * columnCount) + (columnCount - 1));
-        const anchorCard = cards[rowEndIndex];
+        const rowEndIndex = Math.min(currentCards.length - 1, (Math.floor(expandedCardIndex / columnCount) * columnCount) + (columnCount - 1));
+        const anchorCard = currentCards[rowEndIndex];
         if (!anchorCard) {
             return;
         }
@@ -1648,7 +1676,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         const closeButton = targetElement.closest('.overview-album-inline-close');
         if (closeButton && context.overviewAlbumGrid.contains(closeButton)) {
             expandedOverviewAlbumGridTrackIndex = null;
-            syncOverviewAlbumGridExpandedRow(context.overviewAlbumGrid);
+            void syncOverviewAlbumGridExpandedRow(context.overviewAlbumGrid);
             return;
         }
 
@@ -1663,7 +1691,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         }
 
         expandedOverviewAlbumGridTrackIndex = expandedOverviewAlbumGridTrackIndex === trackIndex ? null : trackIndex;
-        syncOverviewAlbumGridExpandedRow(context.overviewAlbumGrid);
+        void syncOverviewAlbumGridExpandedRow(context.overviewAlbumGrid);
     };
 
     const disconnectOverviewAlbumGridCoverObserver = (): void => {
@@ -2213,7 +2241,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         container.append(fragment);
         overviewAlbumGridRenderedCount = batchEnd;
 
-        syncOverviewAlbumGridExpandedRow(container);
+        void syncOverviewAlbumGridExpandedRow(container);
 
         if (pane && batchImages.length > 0) {
             queueOverviewAlbumGridCovers(pane, batchImages, requestVersion);

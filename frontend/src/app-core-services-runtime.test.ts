@@ -941,6 +941,92 @@ describe('createAppCoreServicesRuntime', () => {
         expect(firstCard?.getAttribute('aria-expanded')).toBe('false');
     });
 
+    it('waits for the current inline panel to finish closing before opening the next album panel', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = [
+            {
+                ...createTrack(),
+                path: '/music/album-a/01.flac',
+                relativePath: 'album-a/01.flac',
+                folderPath: '/music/album-a',
+                displayAlbum: 'Album A',
+                displayArtist: 'Artist A',
+                displayTitle: 'Intro',
+                displayTrackNumber: '1',
+                technicalDetails: { durationSeconds: 201 },
+            },
+            {
+                ...createTrack(),
+                path: '/music/album-b/01.flac',
+                relativePath: 'album-b/01.flac',
+                folderPath: '/music/album-b',
+                displayAlbum: 'Album B',
+                displayArtist: 'Artist B',
+                displayTitle: 'Other Intro',
+                displayTrackNumber: '1',
+                technicalDetails: { durationSeconds: 185 },
+            },
+        ] as never;
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        document.body.append(context.overviewAlbumGridView);
+
+        const originalGetComputedStyle = window.getComputedStyle.bind(window);
+        vi.spyOn(window, 'getComputedStyle').mockImplementation((element: Element) => {
+            const styles = originalGetComputedStyle(element);
+            if (element instanceof HTMLDivElement && element.classList.contains('overview-album-inline-panel')) {
+                return new Proxy(styles, {
+                    get(target, property, receiver) {
+                        if (property === 'transitionDuration') {
+                            return '180ms';
+                        }
+
+                        if (property === 'transitionDelay') {
+                            return '0ms';
+                        }
+
+                        return Reflect.get(target, property, receiver);
+                    },
+                }) as CSSStyleDeclaration;
+            }
+
+            return styles;
+        });
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        const cards = Array.from(context.overviewAlbumGrid.querySelectorAll('.overview-library-album-card')) as HTMLDivElement[];
+        expect(cards).toHaveLength(2);
+
+        cards[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await flushPromises();
+        await vi.advanceTimersByTimeAsync(212);
+        await flushPromises();
+
+        expect(context.overviewAlbumGrid.querySelector('.overview-album-inline-title')?.textContent).toBe('Album A');
+
+        cards[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await flushPromises();
+
+        expect(context.overviewAlbumGrid.querySelectorAll('.overview-album-inline-panel')).toHaveLength(1);
+        expect(context.overviewAlbumGrid.querySelector('.overview-album-inline-title')?.textContent).toBe('Album A');
+
+        await vi.advanceTimersByTimeAsync(211);
+        await flushPromises();
+        expect(context.overviewAlbumGrid.querySelector('.overview-album-inline-title')?.textContent).toBe('Album A');
+
+        await vi.advanceTimersByTimeAsync(1);
+        await flushPromises();
+        expect(context.overviewAlbumGrid.querySelectorAll('.overview-album-inline-panel')).toHaveLength(1);
+        expect(context.overviewAlbumGrid.querySelector('.overview-album-inline-title')?.textContent).toBe('Album B');
+    });
+
     it('loads only an initial slice of album grid thumbnails on first open', async () => {
         const context = createContext();
         (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 48 }, (_, index) => ({
