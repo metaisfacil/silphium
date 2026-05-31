@@ -29,6 +29,15 @@ export type SidebarElements = {
     socialFeedList: HTMLDivElement;
 };
 
+  const detachedLibraryExpandToggle = (): HTMLButtonElement => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.hidden = true;
+    button.disabled = true;
+    button.setAttribute('aria-hidden', 'true');
+    return button;
+  };
+
 export const renderSidebar = (): string => `
     <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Open sidebar">
       <span class="sidebar-toggle-content" aria-hidden="true">
@@ -54,7 +63,6 @@ export const renderSidebar = (): string => `
           </div>
         </div>
         <div class="library-header-actions">
-          <button id="library-expand-toggle" class="library-expand-toggle" type="button" aria-label="Expand album view" aria-pressed="false" title="Expand album view"><svg class="library-expand-toggle-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M4 9V4H9V6H6V9H4ZM18 9V6H15V4H20V9H18ZM4 15H6V18H9V20H4V15ZM18 15H20V20H15V18H18V15Z"/></svg></button>
           <button id="library-settings" class="upload-btn" type="button" aria-label="Settings" title="Settings"><svg class="library-settings-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M10.76 2.74C11.44 1.75 12.56 1.75 13.24 2.74L14.11 4.02C14.39 4.43 14.9 4.59 15.37 4.42L16.85 3.89C17.99 3.48 18.87 4.13 18.94 5.32L19.03 6.85C19.06 7.34 19.4 7.76 19.88 7.89L21.35 8.29C22.49 8.6 22.84 9.66 22.12 10.61L21.2 11.8C20.9 12.18 20.9 12.72 21.2 13.1L22.12 14.39C22.84 15.34 22.49 16.4 21.35 16.71L19.88 17.11C19.4 17.24 19.06 17.66 19.03 18.15L18.94 19.68C18.87 20.87 17.99 21.52 16.85 21.11L15.37 20.58C14.9 20.41 14.39 20.57 14.11 20.98L13.24 22.26C12.56 23.25 11.44 23.25 10.76 22.26L9.89 20.98C9.61 20.57 9.1 20.41 8.63 20.58L7.15 21.11C6.01 21.52 5.13 20.87 5.06 19.68L4.97 18.15C4.94 17.66 4.6 17.24 4.12 17.11L2.65 16.71C1.51 16.4 1.16 15.34 1.88 14.39L2.8 13.1C3.1 12.72 3.1 12.18 2.8 11.8L1.88 10.61C1.16 9.66 1.51 8.6 2.65 8.29L4.12 7.89C4.6 7.76 4.94 7.34 4.97 6.85L5.06 5.32C5.13 4.13 6.01 3.48 7.15 3.89L8.63 4.42C9.1 4.59 9.61 4.43 9.89 4.02L10.76 2.74ZM12 8.25C9.93 8.25 8.25 9.93 8.25 12C8.25 14.07 9.93 15.75 12 15.75C14.07 15.75 15.75 14.07 15.75 12C15.75 9.93 14.07 8.25 12 8.25Z"/></svg></button>
         </div>
       </div>
@@ -107,7 +115,7 @@ export const getSidebarElements = (root: ParentNode): SidebarElements => ({
   libraryHeaderTitleText: root.querySelector('#library-header-title-text') as HTMLSpanElement,
     libraryScanYieldIndicator: root.querySelector('#library-scan-yield-indicator') as HTMLSpanElement,
   libraryShareConnectionsIndicator: root.querySelector('#library-share-connections-indicator') as HTMLSpanElement,
-  libraryExpandToggle: root.querySelector('#library-expand-toggle') as HTMLButtonElement,
+  libraryExpandToggle: (root.querySelector('#library-expand-toggle') as HTMLButtonElement | null) || detachedLibraryExpandToggle(),
     librarySettings: root.querySelector('#library-settings') as HTMLButtonElement,
     libraryAbout: root.querySelector('#library-about') as HTMLButtonElement,
     sidebarNavPane: root.querySelector('#sidebar-nav-pane') as HTMLElement,

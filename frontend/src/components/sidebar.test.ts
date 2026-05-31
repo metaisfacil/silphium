@@ -34,4 +34,11 @@ describe('sidebar share connections indicator', () => {
         expect(searchButton?.querySelector('svg')).not.toBeNull();
         expect(librarySearch.id).toBe('library-search');
     });
+
+    it('does not render the removed expand album view button', () => {
+        document.body.innerHTML = renderSidebar();
+
+        expect(document.querySelector('#library-expand-toggle')).toBeNull();
+        expect(getSidebarElements(document).libraryExpandToggle.isConnected).toBe(false);
+    });
 });

@@ -701,43 +701,6 @@
     cursor: default;
 }
 
-.library-expand-toggle {
-    border: none;
-    background: transparent;
-    color: inherit;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 999px;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 150ms ease, transform 140ms ease, opacity 140ms ease;
-}
-
-.library-expand-toggle:hover:not(:disabled) {
-    background: rgba(0, 0, 0, 0.2);
-}
-
-.library-expand-toggle:active:not(:disabled) {
-    transform: scale(0.96);
-}
-
-.library-expand-toggle:disabled {
-    opacity: 0.34;
-    cursor: default;
-}
-
-.library-expand-toggle.is-active {
-    background: rgba(255, 255, 255, 0.12);
-}
-
-.library-expand-toggle-icon {
-    width: 0.88rem;
-    height: 0.88rem;
-    display: block;
-}
-
 .library-browser {
     position: relative;
     flex: 1;
