@@ -7,6 +7,63 @@ import (
 	"time"
 )
 
+func TestLoadLibraryFilesDatabaseSnapshotUsesStoredTrackMetadata(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithLoadedSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled: boolPointer(true),
+	})
+	app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)
+	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
+	snapshot := libraryFilesDatabaseSnapshot{
+		Roots:        roots,
+		TotalEntries: 1,
+		TrackFiles: []LibraryIndexedFile{{
+			Name:         filepath.Base(fixture.trackOne),
+			Path:         fixture.trackOne,
+			RelativePath: "Library/Artist One/Album One/01 Intro.flac",
+			FolderPath:   "Library/Artist One/Album One",
+			RootPath:     fixture.rootOne,
+			RootName:     "Library",
+		}},
+	}
+	if err := writeLibraryFilesDatabaseSnapshotToSQLite(app.libraryFilesDatabasePath(), snapshot); err != nil {
+		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite() error = %v", err)
+	}
+
+	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
+	}
+	store := newMusicBrainzTagDatabaseStore()
+	store.Tracks[fixture.trackOne] = musicBrainzTagTrackRecord{
+		Signature:   signature,
+		Title:       "Stored Title",
+		AlbumTitle:  "Stored Album",
+		AlbumArtist: "Stored Album Artist",
+		TrackArtist: "Stored Artist",
+		TrackNumber: 2,
+		TrackTotal:  9,
+	}
+	if err := writeMusicBrainzTagDatabaseStoreToSQLite(app.musicBrainzTagDatabasePath(), store); err != nil {
+		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite() error = %v", err)
+	}
+
+	loaded, ok := loadLibraryFilesDatabaseSnapshot(app.libraryFilesDatabasePath(), roots)
+	if !ok {
+		t.Fatal("loadLibraryFilesDatabaseSnapshot() = false, want true")
+	}
+	if len(loaded.TrackFiles) != 1 {
+		t.Fatalf("loaded track count = %d, want 1", len(loaded.TrackFiles))
+	}
+	loadedTrack := loaded.TrackFiles[0]
+	if loadedTrack.CachedTrackTitle != "Stored Title" || loadedTrack.CachedAlbumTitle != "Stored Album" || loadedTrack.CachedAlbumArtist != "Stored Album Artist" || loadedTrack.CachedArtistName != "Stored Artist" {
+		t.Fatalf("loaded cached metadata = %#v, want stored title/album/album-artist/artist", loadedTrack)
+	}
+	if loadedTrack.CachedTrackNumber != "2" || loadedTrack.CachedTrackTotal != "9" {
+		t.Fatalf("loaded cached numbering = %#v, want stored track numbering", loadedTrack)
+	}
+}
+
 func TestLibraryFilesDatabaseSnapshotRoundTrip(t *testing.T) {
 	fixture := createLibraryTestFixture(t)
 	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library One", ReleaseDepth: 0}, {Path: fixture.rootTwo, Name: "Library Two", ReleaseDepth: 0}}

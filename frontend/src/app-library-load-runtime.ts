@@ -561,6 +561,21 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         context.rebuildTrackPathIndex();
         context.rebuildTextFilePathIndex();
         context.rebuildImageFilePathIndex();
+
+        if (!options?.preserveFolderView) {
+            context.resetShuffleHistory();
+
+            const playbackStateAfterScanSwap = context.getPlaybackState();
+            const hasActivePlaybackAfterScanSwap = playbackStateAfterScanSwap.loaded
+                && playbackStateAfterScanSwap.playing
+                && playbackStateAfterScanSwap.sourcePath.trim() !== '';
+
+            if (context.tracks.length > 0 && options?.autoSelectStartingTrack !== false && !context.suppressAutoSelectAfterFullLibraryScan && !hasActivePlaybackAfterScanSwap) {
+                const startingTrackIndex = context.firstTrackIndexFromRandomAlbumFolder();
+                void context.loadTrack(startingTrackIndex);
+            }
+        }
+
         context.refreshOverviewDashboard?.();
 
         if (preserveManualTrackPlayback) {
@@ -680,20 +695,6 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             } else {
                 context.setCurrentFolderPath('');
                 context.renderLibraryFolder();
-            }
-        }
-
-        if (!options?.preserveFolderView) {
-            context.resetShuffleHistory();
-
-            const playbackStateAfterScanSwap = context.getPlaybackState();
-            const hasActivePlaybackAfterScanSwap = playbackStateAfterScanSwap.loaded
-                && playbackStateAfterScanSwap.playing
-                && playbackStateAfterScanSwap.sourcePath.trim() !== '';
-
-            if (context.tracks.length > 0 && options?.autoSelectStartingTrack !== false && !context.suppressAutoSelectAfterFullLibraryScan && !hasActivePlaybackAfterScanSwap) {
-                const startingTrackIndex = context.firstTrackIndexFromRandomAlbumFolder();
-                void context.loadTrack(startingTrackIndex);
             }
         }
 

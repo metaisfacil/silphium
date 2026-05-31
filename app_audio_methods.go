@@ -25,10 +25,21 @@ func (a *App) audioLoadDecodeHints(path string) audioDecodeHints {
 	}
 
 	a.musicBrainzTagMu.Lock()
-	defer a.musicBrainzTagMu.Unlock()
+	if a.musicBrainzTagStoreLoaded {
+		record, exists := a.musicBrainzTagStore.Tracks[path]
+		a.musicBrainzTagMu.Unlock()
+		if !exists || record.Signature != signature || record.DurationSeconds <= 0 {
+			return hints
+		}
 
-	a.ensureMusicBrainzTagDatabaseLoadedLocked()
-	record, exists := a.musicBrainzTagStore.Tracks[path]
+		return audioDecodeHints{
+			ExpectedDurationSeconds: record.DurationSeconds,
+			Progressive:             true,
+		}
+	}
+	a.musicBrainzTagMu.Unlock()
+
+	record, exists := loadMusicBrainzTagTrackRecordFromSQLite(a.musicBrainzTagDatabasePath(), path)
 	if !exists || record.Signature != signature || record.DurationSeconds <= 0 {
 		return hints
 	}

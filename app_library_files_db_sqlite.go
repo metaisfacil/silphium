@@ -19,6 +19,12 @@ type libraryFilesDatabaseRecord struct {
 	Kind         string
 	Size         int64
 	ModUnixNs    int64
+	TrackTitle   string
+	TrackArtist  string
+	AlbumTitle   string
+	AlbumArtist  string
+	TrackNumber  int
+	TrackTotal   int
 }
 
 type libraryListenHistoryRecord struct {
@@ -169,6 +175,9 @@ func loadLibraryFilesDatabaseRecordsFromSQLiteWithLockTimeout(databasePath strin
 	if err := initializeLibraryFilesSQLite(database); err != nil {
 		return nil, 0, false
 	}
+	if err := initializeMusicBrainzTagSQLite(database); err != nil {
+		return nil, 0, false
+	}
 
 	storedRoots := make(map[string]int, len(roots))
 	rootRows, err := database.Query(`SELECT path, release_depth FROM roots ORDER BY path`)
@@ -213,7 +222,12 @@ func loadLibraryFilesDatabaseRecordsFromSQLiteWithLockTimeout(databasePath strin
 		}
 	}
 
-	rows, err := database.Query(`SELECT path, root_path, relative_path, kind, size, mod_unix_ns FROM files ORDER BY kind, relative_path, path`)
+	rows, err := database.Query(`SELECT files.path, files.root_path, files.relative_path, files.kind, files.size, files.mod_unix_ns,
+		COALESCE(track_scans.title, ''), COALESCE(track_scans.track_artist, ''), COALESCE(track_scans.album_title, ''), COALESCE(track_scans.album_artist, ''),
+		COALESCE(track_scans.track_number, 0), COALESCE(track_scans.track_total, 0)
+		FROM files
+		LEFT JOIN track_scans ON track_scans.path = files.path
+		ORDER BY files.kind, files.relative_path, files.path`)
 	if err != nil {
 		return nil, 0, false
 	}
@@ -221,7 +235,20 @@ func loadLibraryFilesDatabaseRecordsFromSQLiteWithLockTimeout(databasePath strin
 	records := make([]libraryFilesDatabaseRecord, 0)
 	for rows.Next() {
 		var record libraryFilesDatabaseRecord
-		if err := rows.Scan(&record.Path, &record.RootPath, &record.RelativePath, &record.Kind, &record.Size, &record.ModUnixNs); err != nil {
+		if err := rows.Scan(
+			&record.Path,
+			&record.RootPath,
+			&record.RelativePath,
+			&record.Kind,
+			&record.Size,
+			&record.ModUnixNs,
+			&record.TrackTitle,
+			&record.TrackArtist,
+			&record.AlbumTitle,
+			&record.AlbumArtist,
+			&record.TrackNumber,
+			&record.TrackTotal,
+		); err != nil {
 			rows.Close()
 			return nil, 0, false
 		}

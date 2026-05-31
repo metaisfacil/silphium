@@ -415,6 +415,36 @@ describe('app-library-load-runtime', () => {
         expect(context.markLibraryScanResolved).toHaveBeenCalledTimes(1);
     });
 
+    it('starts the initial track load before the library tree rebuild finishes', async () => {
+        const quickScanResult = createScanResult({
+            totalEntries: 1,
+            trackCount: 1,
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const rebuildDeferred = createDeferred<undefined>();
+        const context = createContext(quickScanResult, trackEntry);
+        context.rebuildLibraryTree = vi.fn(async () => await rebuildDeferred.promise);
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+        const scanPromise = runtime.scanConfiguredLibraryFolders();
+
+        await vi.waitFor(() => {
+            expect(context.rebuildLibraryTree).toHaveBeenCalledTimes(1);
+        });
+
+        expect(context.loadTrack).toHaveBeenCalledWith(0);
+
+        rebuildDeferred.resolve(undefined);
+        await scanPromise;
+    });
+
     it('keeps the historical ETA running for deferred scans until hydration completes', async () => {
         vi.useFakeTimers();
         let nowMs = 0;

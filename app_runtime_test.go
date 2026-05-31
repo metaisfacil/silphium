@@ -199,6 +199,9 @@ func TestAppStartupAndShutdown(t *testing.T) {
 	if app.musicBrainzTagWorkerState().wakeCh == nil {
 		t.Fatal("startup() should initialize the MusicBrainz background worker")
 	}
+	if generation := app.musicBrainzTagWorkerState().generation.Load(); generation != 0 {
+		t.Fatalf("startup() musicBrainz generation = %d, want 0 before the library index is ready", generation)
+	}
 	if app.systemMediaTransportControlsState().manager == nil {
 		t.Fatal("startup() should initialize system media transport controls")
 	}

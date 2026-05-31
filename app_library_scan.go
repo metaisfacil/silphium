@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -38,6 +40,20 @@ func aggregateLibraryScanRootInfo(roots []libraryRootConfig) (string, string) {
 	}
 
 	return "", "Selected folders"
+}
+
+func configuredLibraryScanRequestKey(folders []AppLibraryFolder) string {
+	roots := resolveLibraryRootConfigs(normalizeLibraryFolders(folders, "", 0))
+	if len(roots) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(roots))
+	for _, root := range roots {
+		parts = append(parts, normalizePath(root.Path)+"|"+root.Name+"|"+strconv.Itoa(root.ReleaseDepth))
+	}
+
+	return strings.Join(parts, "\n")
 }
 
 func (a *App) scanLibraryFolder(path string, restartWatcher bool) LibraryScanResult {
@@ -695,7 +711,44 @@ func (a *App) ScanConfiguredLibraryFolders() LibraryScanResult {
 		trace := a.beginBridgeTrace("library", "ScanConfiguredLibraryFolders", "")
 		a.ensureSettingsLoaded()
 		localFolders, _ := partitionConfiguredLibraryFolders(a.settings.LibraryFolders)
+		requestKey := configuredLibraryScanRequestKey(localFolders)
+		scanState := a.libraryScanState()
+
+		scanState.configuredScanMu.Lock()
+		if scanState.configuredScanCond == nil {
+			scanState.configuredScanCond = sync.NewCond(&scanState.configuredScanMu)
+		}
+		for scanState.configuredScanInFlight {
+			if scanState.configuredScanRequestKey != requestKey {
+				scanState.configuredScanCond.Wait()
+				continue
+			}
+
+			a.logRescanEvent("Coalescing overlapping configured library rescan")
+			for scanState.configuredScanInFlight && scanState.configuredScanRequestKey == requestKey {
+				scanState.configuredScanCond.Wait()
+			}
+
+			if scanState.configuredScanRequestKey == requestKey {
+				result := scanState.configuredScanResult
+				scanState.configuredScanMu.Unlock()
+				trace.finish(libraryScanResultForLog(result), nil)
+				return result
+			}
+		}
+		scanState.configuredScanInFlight = true
+		scanState.configuredScanRequestKey = requestKey
+		scanState.configuredScanMu.Unlock()
+
 		result := a.scanLibraryFoldersWithDeferredOption(localFolders, true, true)
+
+		scanState.configuredScanMu.Lock()
+		scanState.configuredScanInFlight = false
+		scanState.configuredScanRequestKey = requestKey
+		scanState.configuredScanResult = result
+		scanState.configuredScanCond.Broadcast()
+		scanState.configuredScanMu.Unlock()
+
 		trace.finish(libraryScanResultForLog(result), nil)
 		return result
 	})

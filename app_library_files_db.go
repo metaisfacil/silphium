@@ -5,6 +5,7 @@ import (
 	pathpkg "path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -349,7 +350,16 @@ func indexedFileFromDatabaseRecord(root libraryRootConfig, record libraryFilesDa
 		absolutePath = filepath.Join(root.Path, filepath.FromSlash(relativePath))
 	}
 
-	return LibraryIndexedFile{
+	storedTrackRecord := musicBrainzTagTrackRecord{
+		Title:       record.TrackTitle,
+		TrackArtist: record.TrackArtist,
+		AlbumTitle:  record.AlbumTitle,
+		AlbumArtist: record.AlbumArtist,
+		TrackNumber: record.TrackNumber,
+		TrackTotal:  record.TrackTotal,
+	}
+	title, album, albumArtist, artist, trackNumber, hasMetadata := cachedIndexedTrackMetadataFromStoredTrackRecord(storedTrackRecord)
+	indexed := LibraryIndexedFile{
 		Name:         name,
 		Path:         absolutePath,
 		RelativePath: buildVirtualLibraryPath(root.Name, relativePath),
@@ -357,7 +367,19 @@ func indexedFileFromDatabaseRecord(root libraryRootConfig, record libraryFilesDa
 		RootPath:     root.Path,
 		RootName:     root.Name,
 		ModifiedAtMs: timeFromUnixNanoValue(record.ModUnixNs).UnixMilli(),
-	}, true
+	}
+	if hasMetadata {
+		indexed.CachedTrackTitle = title
+		indexed.CachedAlbumTitle = album
+		indexed.CachedAlbumArtist = albumArtist
+		indexed.CachedArtistName = artist
+		indexed.CachedTrackNumber = trackNumber
+		if record.TrackTotal > 0 {
+			indexed.CachedTrackTotal = strconv.Itoa(record.TrackTotal)
+		}
+	}
+
+	return indexed, true
 }
 
 func loadLibraryFilesDatabaseSnapshot(databasePath string, roots []libraryRootConfig) (libraryFilesDatabaseSnapshot, bool) {

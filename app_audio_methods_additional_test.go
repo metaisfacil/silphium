@@ -270,6 +270,35 @@ func TestAudioLoadTrackUsesProgressiveDecodeWhenCachedDurationAvailable(t *testi
 	t.Fatal("progressive cached decode did not finish before timeout")
 }
 
+func TestAudioLoadDecodeHintsUsesStoredTrackRowWithoutLoadingMetadataStore(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithLoadedSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled: boolPointer(true),
+	})
+	app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)
+
+	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
+	}
+	store := newMusicBrainzTagDatabaseStore()
+	store.Tracks[normalizePath(fixture.trackOne)] = musicBrainzTagTrackRecord{
+		Signature:       signature,
+		DurationSeconds: 7.5,
+	}
+	if err := writeMusicBrainzTagDatabaseStoreToSQLite(app.musicBrainzTagDatabasePath(), store); err != nil {
+		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite() error = %v", err)
+	}
+
+	hints := app.audioLoadDecodeHints(normalizePath(fixture.trackOne))
+	if !hints.Progressive || hints.ExpectedDurationSeconds != 7.5 {
+		t.Fatalf("audioLoadDecodeHints() = %#v, want progressive 7.5s hint", hints)
+	}
+	if app.musicBrainzTagStoreLoaded {
+		t.Fatal("audioLoadDecodeHints() loaded the metadata store, want selective SQLite fallback")
+	}
+}
+
 func TestAudioQueueNextTrackSyncsSystemMediaTransportControls(t *testing.T) {
 	pcmBytes := make([]byte, audioBytesPerFrame*8)
 	t.Setenv("SILPHIUM_TEST_FFMPEG_STDOUT_BASE64", base64.StdEncoding.EncodeToString(pcmBytes))

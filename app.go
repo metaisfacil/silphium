@@ -146,6 +146,11 @@ type appLibraryScanState struct {
 	scanFinalizeMs                         float64
 	scanWatcherMs                          float64
 	scanAsyncTasks                         sync.WaitGroup
+	configuredScanMu                       sync.Mutex
+	configuredScanCond                     *sync.Cond
+	configuredScanInFlight                 bool
+	configuredScanRequestKey               string
+	configuredScanResult                   LibraryScanResult
 }
 
 type appLibraryGenerationState struct {
@@ -503,7 +508,6 @@ func (a *App) startup(ctx context.Context) {
 	a.startSystemMediaTransportControls()
 	a.startMediaKeyWatcher()
 	a.startMusicBrainzTagWorker()
-	a.notifyMusicBrainzTagWorker()
 }
 
 func (a *App) shutdown(context.Context) {

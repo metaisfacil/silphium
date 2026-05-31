@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -121,6 +123,113 @@ func TestScanLibraryFoldersBuildsQueryableIndexAcrossDuplicateLabels(t *testing.
 		"Road Trip (2)/Artist Two/Album Two/02 Outro.flac",
 	}) {
 		t.Fatalf("GetLibraryIndexedFilePage(track) relativePaths = %#v", got)
+	}
+}
+
+func TestScanConfiguredLibraryFoldersCoalescesConcurrentCalls(t *testing.T) {
+	originalRuntimeEventsEmit := runtimeEventsEmit
+	t.Cleanup(func() {
+		runtimeEventsEmit = originalRuntimeEventsEmit
+	})
+
+	fixture := createLibraryTestFixture(t)
+	firstProgressSeen := make(chan struct{})
+	coalescedScanSeen := make(chan struct{})
+	releaseFirstProgress := make(chan struct{})
+	var progressEventCount atomic.Int32
+	runtimeEventsEmit = func(_ context.Context, eventName string, optionalData ...interface{}) {
+		if len(optionalData) == 0 {
+			return
+		}
+		if eventName == libraryRescanLogEvent {
+			logLine, ok := optionalData[0].(string)
+			if ok && strings.Contains(logLine, "Coalescing overlapping configured library rescan") {
+				select {
+				case <-coalescedScanSeen:
+				default:
+					close(coalescedScanSeen)
+				}
+			}
+			return
+		}
+		if eventName != libraryScanProgressEvent {
+			return
+		}
+
+		payload, ok := optionalData[0].(LibraryScanProgress)
+		if !ok || payload.Phase != "scanning" {
+			return
+		}
+
+		switch progressEventCount.Add(1) {
+		case 1:
+			close(firstProgressSeen)
+			<-releaseFirstProgress
+		}
+	}
+
+	app := NewApp()
+	t.Cleanup(func() {
+		app.stopLibraryWatcher()
+	})
+	app.ctx = context.Background()
+	app.settingsLoaded = true
+	app.settings.LibraryFolders = []AppLibraryFolder{{Path: fixture.rootOne, Label: "Large Library", ReleaseDepth: 0}}
+
+	firstResultCh := make(chan LibraryScanResult, 1)
+	go func() {
+		firstResultCh <- app.ScanConfiguredLibraryFolders()
+	}()
+
+	select {
+	case <-firstProgressSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the first configured scan to start")
+	}
+
+	secondResultCh := make(chan LibraryScanResult, 1)
+	go func() {
+		secondResultCh <- app.ScanConfiguredLibraryFolders()
+	}()
+
+	select {
+	case <-coalescedScanSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the overlapping configured scan to coalesce")
+	}
+	close(releaseFirstProgress)
+
+	var firstResult LibraryScanResult
+	select {
+	case firstResult = <-firstResultCh:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the first configured scan to finish")
+	}
+
+	var secondResult LibraryScanResult
+	select {
+	case secondResult = <-secondResultCh:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the second configured scan to finish")
+	}
+
+	if firstResult.ScanGeneration == 0 || secondResult.ScanGeneration == 0 {
+		t.Fatalf("configured scan generations = %d/%d, want both non-zero", firstResult.ScanGeneration, secondResult.ScanGeneration)
+	}
+	if firstResult.ScanGeneration != secondResult.ScanGeneration {
+		t.Fatalf("configured scan generations = %d/%d, want one coalesced generation", firstResult.ScanGeneration, secondResult.ScanGeneration)
+	}
+	if firstResult.TotalEntries != secondResult.TotalEntries || firstResult.TrackCount != secondResult.TrackCount {
+		t.Fatalf("configured scan counts differ: first=%#v second=%#v", firstResult, secondResult)
+	}
+	if firstResult.TrackCount != 1 || firstResult.TextFileCount != 1 || firstResult.ImageFileCount != 2 || firstResult.TotalEntries != 6 {
+		t.Fatalf(
+			"configured scan counts = tracks:%d text:%d images:%d total:%d, want 1/1/2/6",
+			firstResult.TrackCount,
+			firstResult.TextFileCount,
+			firstResult.ImageFileCount,
+			firstResult.TotalEntries,
+		)
 	}
 }
 

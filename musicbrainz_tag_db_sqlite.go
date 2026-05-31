@@ -618,6 +618,70 @@ func loadMusicBrainzTagDatabaseStoreFromLegacySQLite(path string) (musicBrainzTa
 	return loadMusicBrainzTagDatabaseStoreFromSQLiteConnection(database)
 }
 
+func loadMusicBrainzTagTrackRecordFromSQLite(databasePath string, trackPath string) (musicBrainzTagTrackRecord, bool) {
+	unlock := lockMetadataDatabasePath(databasePath)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(databasePath); err != nil {
+		return musicBrainzTagTrackRecord{}, false
+	}
+	if !musicBrainzTagDatabaseFileExists(databasePath) {
+		return musicBrainzTagTrackRecord{}, false
+	}
+
+	database, err := openMetadataSQLiteNoMigration(databasePath)
+	if err != nil {
+		return musicBrainzTagTrackRecord{}, false
+	}
+	defer database.Close()
+
+	if err := initializeMusicBrainzTagSQLite(database); err != nil {
+		return musicBrainzTagTrackRecord{}, false
+	}
+
+	return loadMusicBrainzTagTrackRecordFromSQLiteConnection(database, trackPath)
+}
+
+func loadMusicBrainzTagTrackRecordFromSQLiteConnection(database *sql.DB, trackPath string) (musicBrainzTagTrackRecord, bool) {
+	var size int64
+	var modUnixNs int64
+	var title string
+	var trackArtist string
+	var albumTitle string
+	var albumArtist string
+	var trackNumber int
+	var trackTotal int
+	var durationSeconds float64
+	err := database.QueryRow(`SELECT size, mod_unix_ns, title, track_artist, album_title, album_artist, track_number, track_total, duration_seconds FROM track_scans WHERE path = ?`, trackPath).Scan(
+		&size,
+		&modUnixNs,
+		&title,
+		&trackArtist,
+		&albumTitle,
+		&albumArtist,
+		&trackNumber,
+		&trackTotal,
+		&durationSeconds,
+	)
+	if err != nil {
+		return musicBrainzTagTrackRecord{}, false
+	}
+
+	return musicBrainzTagTrackRecord{
+		Signature: trackTagsFileSignature{
+			Size:      size,
+			ModUnixNs: modUnixNs,
+		},
+		Title:           title,
+		TrackArtist:     trackArtist,
+		AlbumTitle:      albumTitle,
+		AlbumArtist:     albumArtist,
+		TrackNumber:     trackNumber,
+		TrackTotal:      trackTotal,
+		DurationSeconds: durationSeconds,
+	}, true
+}
+
 func musicBrainzTagTrackRecordsEqual(left musicBrainzTagTrackRecord, right musicBrainzTagTrackRecord) bool {
 	return left.Signature == right.Signature &&
 		left.Title == right.Title &&
