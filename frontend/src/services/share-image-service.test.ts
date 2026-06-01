@@ -287,13 +287,32 @@ describe('share image preview text fitting', () => {
         expect(albumLines.length).toBeLessThanOrEqual(2);
 
         expect(titleReduction).toBeGreaterThan(0);
-        expect(titleReduction).toBe(artistReduction);
-        expect(titleReduction).toBe(albumReduction);
-        expect(titleReduction).toBeLessThanOrEqual(5);
+        expect(titleReduction).toBe(artistReduction + 2);
+        expect(titleReduction).toBe(albumReduction + 2);
+        expect(titleReduction).toBeLessThanOrEqual(7);
 
         expect(titleLines.some((line) => line.text.includes('...'))).toBe(true);
         expect(artistLines.some((line) => line.text.includes('...'))).toBe(true);
         expect(albumLines.some((line) => line.text.includes('...'))).toBe(true);
+    });
+
+    it('slightly shrinks a title when it still needs three lines', () => {
+        const { canvas, drawCalls } = createTextContext();
+
+        renderShareImagePreview(canvas, {
+            title: 'extraordinarilylongword extraordinarilylongword extraordinarilylongword extraordinarilylongword',
+            album: 'Album',
+            artist: 'Artist',
+            comment: '',
+        });
+
+        const titleLines = drawCalls.filter((call) => call.font.startsWith('700 ') && call.x >= 262 && call.y >= 61 && call.y < 260);
+        const titleSize = titleLines[0]?.font.match(/\s(\d+)px\s/)?.[1];
+
+        expect(titleLines.length).toBe(3);
+        expect(titleSize).toBeDefined();
+        expect(Number(titleSize)).toBeLessThan(31);
+        expect(titleLines.some((line) => line.text.includes('...'))).toBe(true);
     });
 
     it('keeps metadata block above the quote panel when content is dense', () => {

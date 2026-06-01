@@ -96,6 +96,20 @@ const fitTextWithEllipsis = (ctx: CanvasRenderingContext2D, text: string, maxWid
     return `${next}...`;
 };
 
+const truncateTextWithEllipsis = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string => {
+    const trimmed = text.trim();
+    if (trimmed === '') {
+        return '...';
+    }
+
+    let next = trimmed;
+    while (next.length > 1 && ctx.measureText(`${next}...`).width > maxWidth) {
+        next = next.slice(0, -1).trimEnd();
+    }
+
+    return `${next}...`;
+};
+
 const splitTokenByWidth = (ctx: CanvasRenderingContext2D, token: string, maxWidth: number): string[] => {
     const graphemes = Array.from(token);
     if (graphemes.length === 0) {
@@ -169,11 +183,13 @@ const wrapTextLinesDetailed = (ctx: CanvasRenderingContext2D, text: string, maxW
 
     const lines: string[] = [];
     let truncated = false;
-    for (const paragraph of paragraphs) {
+    for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex += 1) {
+        const paragraph = paragraphs[paragraphIndex];
         const words = paragraph.split(' ');
         let currentLine = '';
 
-        for (const word of words) {
+        for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+            const word = words[wordIndex];
             let remaining = word;
             let tokenNeedsSpace = currentLine !== '';
             while (remaining !== '') {
@@ -232,6 +248,15 @@ const wrapTextLinesDetailed = (ctx: CanvasRenderingContext2D, text: string, maxW
         if (currentLine) {
             lines.push(currentLine);
             if (lines.length === maxLines) {
+                if (paragraphIndex < paragraphs.length - 1) {
+                    lines[maxLines - 1] = truncateTextWithEllipsis(ctx, lines[maxLines - 1], maxWidth);
+                    truncated = true;
+                    return {
+                        lines,
+                        truncated,
+                    };
+                }
+
                 continue;
             }
         }
@@ -783,10 +808,11 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
         sharedReduction = bestThatFitsVertically;
     }
 
-    const titleFontSize = textFieldConfigs[0].baseSize - sharedReduction;
+    const titleBaseFontSize = textFieldConfigs[0].baseSize - sharedReduction;
     const artistFontSize = textFieldConfigs[1].baseSize - sharedReduction;
     const albumFontSize = textFieldConfigs[2].baseSize - sharedReduction;
 
+    let titleFontSize = titleBaseFontSize;
     const titleLineHeight = 34 - sharedReduction;
     const artistLineHeight = 27 - sharedReduction;
     const albumLineHeight = 22 - sharedReduction;
@@ -798,7 +824,12 @@ export const renderShareImagePreview = (canvas: HTMLCanvasElement, data: ShareIm
     ctx.textBaseline = 'top';
 
     ctx.font = textFieldConfigs[0].font(titleFontSize);
-    const titleLines = wrapTextLines(ctx, trackTitle, textWidth, 3);
+    let titleLines = wrapTextLines(ctx, trackTitle, textWidth, 3);
+    if (titleLines.length === 3) {
+        titleFontSize = Math.max(1, titleFontSize - 2);
+        ctx.font = textFieldConfigs[0].font(titleFontSize);
+        titleLines = wrapTextLines(ctx, trackTitle, textWidth, 3);
+    }
     let cursorY = metadataStartY;
     for (const line of titleLines) {
         ctx.fillText(line, textX, cursorY);
