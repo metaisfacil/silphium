@@ -25,6 +25,17 @@ const waitForCondition = async (assertion: () => void): Promise<void> => {
     throw lastError;
 };
 
+const createDeferred = <T>() => {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+
+    return { promise, resolve, reject };
+};
+
 const createTrack = (overrides: Partial<Track> = {}): Track => ({
     title: 'Track 0',
     name: 'Track 0',
@@ -1300,6 +1311,31 @@ describe('createLibraryController', () => {
         expect(updatedPane).not.toBeNull();
         expect(updatedPane).toBe(firstPane);
         expect(updatedPane!.scrollTop).toBe(240);
+    });
+
+    it('waits for the current pane request already in flight', async () => {
+        const pageDeferred = createDeferred<LibraryFolderPage>();
+        const loadFolderPage = vi.fn(async () => await pageDeferred.promise);
+        const { controller } = mountLibraryController({ loadFolderPage });
+
+        controller.setLibraryRootName('Library');
+        controller.setCurrentFolderPath('Library/Artist One');
+        controller.renderFolder('none');
+
+        const waitPromise = controller.waitForCurrentPaneData();
+        let settled = false;
+        void waitPromise.then(() => {
+            settled = true;
+        });
+
+        await flushPromises();
+        expect(settled).toBe(false);
+
+        pageDeferred.resolve(createFolderPage('Library/Artist One', []));
+        await waitPromise;
+
+        expect(settled).toBe(true);
+        expect(loadFolderPage).toHaveBeenCalledTimes(1);
     });
 
     it('persists library/search state through an injected controller substate', async () => {

@@ -642,6 +642,57 @@ func loadMusicBrainzTagTrackRecordFromSQLite(databasePath string, trackPath stri
 	return loadMusicBrainzTagTrackRecordFromSQLiteConnection(database, trackPath)
 }
 
+func loadMusicBrainzTagTrackRecordsFromSQLite(databasePath string, trackPaths []string) map[string]musicBrainzTagTrackRecord {
+	if len(trackPaths) == 0 {
+		return nil
+	}
+
+	unlock := lockMetadataDatabasePath(databasePath)
+	defer unlock()
+
+	if err := ensureMetadataDatabaseMigratedLocked(databasePath); err != nil {
+		return nil
+	}
+	if !musicBrainzTagDatabaseFileExists(databasePath) {
+		return nil
+	}
+
+	database, err := openMetadataSQLiteNoMigration(databasePath)
+	if err != nil {
+		return nil
+	}
+	defer database.Close()
+
+	if err := initializeMusicBrainzTagSQLite(database); err != nil {
+		return nil
+	}
+
+	recordByPath := make(map[string]musicBrainzTagTrackRecord, len(trackPaths))
+	seenPaths := make(map[string]struct{}, len(trackPaths))
+	for _, trackPath := range trackPaths {
+		cleanPath := strings.TrimSpace(trackPath)
+		if cleanPath == "" {
+			continue
+		}
+		if _, exists := seenPaths[cleanPath]; exists {
+			continue
+		}
+		seenPaths[cleanPath] = struct{}{}
+
+		record, ok := loadDetailedMusicBrainzTagTrackRecordFromSQLiteConnection(database, cleanPath)
+		if !ok {
+			continue
+		}
+		recordByPath[cleanPath] = record
+	}
+
+	if len(recordByPath) == 0 {
+		return nil
+	}
+
+	return recordByPath
+}
+
 func loadMusicBrainzTagTrackRecordFromSQLiteConnection(database *sql.DB, trackPath string) (musicBrainzTagTrackRecord, bool) {
 	var size int64
 	var modUnixNs int64
@@ -680,6 +731,134 @@ func loadMusicBrainzTagTrackRecordFromSQLiteConnection(database *sql.DB, trackPa
 		TrackTotal:      trackTotal,
 		DurationSeconds: durationSeconds,
 	}, true
+}
+
+func loadDetailedMusicBrainzTagTrackRecordFromSQLiteConnection(database *sql.DB, trackPath string) (musicBrainzTagTrackRecord, bool) {
+	var size int64
+	var modUnixNs int64
+	var title string
+	var trackArtist string
+	var albumTitle string
+	var albumArtist string
+	var dateText string
+	var recordLabel string
+	var catalogNumber string
+	var trackNumber int
+	var trackTotal int
+	var discNumber int
+	var discTotal int
+	var durationSeconds float64
+	var bitRate int
+	var bitDepth int
+	var sampleRate int
+	var channels int
+	var fileSizeBytes int64
+	var recordingID string
+	var releaseID string
+	var releaseFolderPath string
+	var lastScannedUnixNs int64
+	err := database.QueryRow(`SELECT size, mod_unix_ns, title, track_artist, album_title, album_artist, date_text, record_label, catalog_number, track_number, track_total, disc_number, disc_total, duration_seconds, bit_rate, bit_depth, sample_rate, channels, file_size_bytes, recording_id, release_id, release_folder_path, last_scanned_unix_ns FROM track_scans WHERE path = ?`, trackPath).Scan(
+		&size,
+		&modUnixNs,
+		&title,
+		&trackArtist,
+		&albumTitle,
+		&albumArtist,
+		&dateText,
+		&recordLabel,
+		&catalogNumber,
+		&trackNumber,
+		&trackTotal,
+		&discNumber,
+		&discTotal,
+		&durationSeconds,
+		&bitRate,
+		&bitDepth,
+		&sampleRate,
+		&channels,
+		&fileSizeBytes,
+		&recordingID,
+		&releaseID,
+		&releaseFolderPath,
+		&lastScannedUnixNs,
+	)
+	if err != nil {
+		return musicBrainzTagTrackRecord{}, false
+	}
+
+	artistIDs, ok := loadMusicBrainzTagTrackRecordStringValues(database, `SELECT artist_id FROM track_scan_artist_ids WHERE path = ? ORDER BY position`, trackPath)
+	if !ok {
+		return musicBrainzTagTrackRecord{}, false
+	}
+	albumArtistIDs, ok := loadMusicBrainzTagTrackRecordStringValues(database, `SELECT artist_id FROM track_scan_album_artist_ids WHERE path = ? ORDER BY position`, trackPath)
+	if !ok {
+		return musicBrainzTagTrackRecord{}, false
+	}
+	artistFolderPaths, ok := loadMusicBrainzTagTrackRecordStringValues(database, `SELECT folder_path FROM track_scan_artist_folders WHERE path = ? ORDER BY position`, trackPath)
+	if !ok {
+		return musicBrainzTagTrackRecord{}, false
+	}
+	genres, ok := loadMusicBrainzTagTrackRecordStringValues(database, `SELECT genre FROM track_scan_genres WHERE path = ? ORDER BY position`, trackPath)
+	if !ok {
+		return musicBrainzTagTrackRecord{}, false
+	}
+
+	return musicBrainzTagTrackRecord{
+		Signature: trackTagsFileSignature{
+			Size:      size,
+			ModUnixNs: modUnixNs,
+		},
+		Title:             title,
+		TrackArtist:       trackArtist,
+		AlbumTitle:        albumTitle,
+		AlbumArtist:       albumArtist,
+		Date:              dateText,
+		RecordLabel:       recordLabel,
+		CatalogNumber:     catalogNumber,
+		Genres:            genres,
+		TrackNumber:       trackNumber,
+		TrackTotal:        trackTotal,
+		DiscNumber:        discNumber,
+		DiscTotal:         discTotal,
+		DurationSeconds:   durationSeconds,
+		BitRate:           bitRate,
+		BitDepth:          bitDepth,
+		SampleRate:        sampleRate,
+		Channels:          channels,
+		FileSizeBytes:     fileSizeBytes,
+		RecordingID:       recordingID,
+		ReleaseID:         releaseID,
+		ArtistIDs:         artistIDs,
+		AlbumArtistIDs:    albumArtistIDs,
+		ReleaseFolderPath: releaseFolderPath,
+		ArtistFolderPaths: artistFolderPaths,
+		LastScannedAt:     timeFromUnixNanoValue(lastScannedUnixNs),
+	}, true
+}
+
+func loadMusicBrainzTagTrackRecordStringValues(database *sql.DB, query string, trackPath string) ([]string, bool) {
+	rows, err := database.Query(query, trackPath)
+	if err != nil {
+		return nil, false
+	}
+	defer rows.Close()
+
+	values := make([]string, 0)
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, false
+		}
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false
+	}
+	if len(values) == 0 {
+		return nil, true
+	}
+
+	return values, true
 }
 
 func musicBrainzTagTrackRecordsEqual(left musicBrainzTagTrackRecord, right musicBrainzTagTrackRecord) bool {

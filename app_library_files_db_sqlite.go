@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -10,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const libraryFilesDatabaseVersion = 4
+const libraryFilesDatabaseVersion = 5
 
 type libraryFilesDatabaseRecord struct {
 	Path         string
@@ -68,14 +69,28 @@ func writeLibraryFilesDatabaseEntries(runner sqliteExecRunner, kind string, entr
 		}
 
 		modUnixNs := entry.ModifiedAtMs * int64(time.Millisecond)
+		trackNumber := 0
+		if parsed, err := strconv.Atoi(strings.TrimSpace(entry.CachedTrackNumber)); err == nil && parsed > 0 {
+			trackNumber = parsed
+		}
+		trackTotal := 0
+		if parsed, err := strconv.Atoi(strings.TrimSpace(entry.CachedTrackTotal)); err == nil && parsed > 0 {
+			trackTotal = parsed
+		}
 		if _, err := runner.Exec(
-			`INSERT INTO files (path, root_path, relative_path, kind, size, mod_unix_ns) VALUES (?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO files (path, root_path, relative_path, kind, size, mod_unix_ns, track_title, track_artist, album_title, album_artist, track_number, track_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			entry.Path,
 			entry.RootPath,
 			relativePath,
 			kind,
 			int64(0),
 			modUnixNs,
+			strings.TrimSpace(entry.CachedTrackTitle),
+			strings.TrimSpace(entry.CachedArtistName),
+			strings.TrimSpace(entry.CachedAlbumTitle),
+			strings.TrimSpace(entry.CachedAlbumArtist),
+			trackNumber,
+			trackTotal,
 		); err != nil {
 			return err
 		}
@@ -99,7 +114,13 @@ var libraryFilesSQLiteSchemaStatements = []string{
 		relative_path TEXT NOT NULL,
 		kind TEXT NOT NULL,
 		size INTEGER NOT NULL DEFAULT 0,
-		mod_unix_ns INTEGER NOT NULL DEFAULT 0
+		mod_unix_ns INTEGER NOT NULL DEFAULT 0,
+		track_title TEXT NOT NULL DEFAULT '',
+		track_artist TEXT NOT NULL DEFAULT '',
+		album_title TEXT NOT NULL DEFAULT '',
+		album_artist TEXT NOT NULL DEFAULT '',
+		track_number INTEGER NOT NULL DEFAULT 0,
+		track_total INTEGER NOT NULL DEFAULT 0
 	)`,
 	`CREATE TABLE IF NOT EXISTS listen_history (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,6 +154,205 @@ func openLibraryFilesSQLite(path string) (*sql.DB, error) {
 	return openMetadataSQLiteNoMigration(path)
 }
 
+// ensureLibraryFilesDatabaseMigratedLocked is the temporary upgrade bridge from the
+// former shared metadata DB layout to the dedicated library snapshot DB.
+func ensureLibraryFilesDatabaseMigratedLocked(path string) error {
+	cleanPath := strings.TrimSpace(path)
+	if cleanPath == "" || libraryFilesDatabaseFileExists(cleanPath) {
+		return nil
+	}
+
+	metadataDatabaseMigrationMu.Lock()
+	defer metadataDatabaseMigrationMu.Unlock()
+
+	if libraryFilesDatabaseFileExists(cleanPath) {
+		return nil
+	}
+
+	directory := filepath.Dir(cleanPath)
+	legacyLibraryPath := filepath.Join(directory, legacyLibraryFilesDatabaseFileName)
+	if legacyLibraryPath != cleanPath && libraryFilesDatabaseFileExists(legacyLibraryPath) {
+		return migrateLibraryFilesSnapshotToSeparateDatabase(cleanPath, legacyLibraryPath)
+	}
+
+	sharedMetadataPath := filepath.Join(directory, metadataDatabaseFileName)
+	if sharedMetadataPath != cleanPath && libraryFilesDatabaseFileExists(sharedMetadataPath) {
+		return migrateLibraryFilesSnapshotToSeparateDatabase(cleanPath, sharedMetadataPath)
+	}
+
+	return nil
+}
+
+func migrateLibraryFilesSnapshotToSeparateDatabase(targetPath string, sourcePath string) error {
+	sourceUnlock := lockMetadataDatabasePath(sourcePath)
+	defer sourceUnlock()
+
+	sourceDatabase, err := openMetadataSQLiteNoMigration(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer sourceDatabase.Close()
+
+	totalEntriesRaw := ""
+	hasTotalEntries := false
+	err = sourceDatabase.QueryRow(`SELECT value FROM meta WHERE key = ?`, libraryFilesMetaTotalEntriesKey).Scan(&totalEntriesRaw)
+	if err == sql.ErrNoRows {
+		err = sourceDatabase.QueryRow(`SELECT value FROM meta WHERE key = 'total_entries'`).Scan(&totalEntriesRaw)
+	}
+	if err == nil {
+		hasTotalEntries = true
+	} else if err != sql.ErrNoRows {
+		if strings.Contains(strings.ToLower(err.Error()), "no such table") {
+			return nil
+		}
+		return err
+	}
+
+	roots := make([]libraryRootConfig, 0)
+	rootRows, err := sourceDatabase.Query(`SELECT path, release_depth FROM roots ORDER BY path`)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no such table") {
+			return nil
+		}
+		return err
+	}
+	for rootRows.Next() {
+		var root libraryRootConfig
+		if err := rootRows.Scan(&root.Path, &root.ReleaseDepth); err != nil {
+			rootRows.Close()
+			return err
+		}
+		roots = append(roots, root)
+	}
+	if err := rootRows.Err(); err != nil {
+		rootRows.Close()
+		return err
+	}
+	rootRows.Close()
+
+	if err := initializeMusicBrainzTagSQLite(sourceDatabase); err != nil {
+		return err
+	}
+
+	records := make([]libraryFilesDatabaseRecord, 0)
+	fileRows, err := sourceDatabase.Query(`SELECT files.path, files.root_path, files.relative_path, files.kind, files.size, files.mod_unix_ns,
+		COALESCE(NULLIF(files.track_title, ''), track_scans.title, ''),
+		COALESCE(NULLIF(files.track_artist, ''), track_scans.track_artist, ''),
+		COALESCE(NULLIF(files.album_title, ''), track_scans.album_title, ''),
+		COALESCE(NULLIF(files.album_artist, ''), track_scans.album_artist, ''),
+		CASE WHEN files.track_number > 0 THEN files.track_number ELSE COALESCE(track_scans.track_number, 0) END,
+		CASE WHEN files.track_total > 0 THEN files.track_total ELSE COALESCE(track_scans.track_total, 0) END
+		FROM files
+		LEFT JOIN track_scans ON track_scans.path = files.path
+		ORDER BY files.path`)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no such column") {
+			fileRows, err = sourceDatabase.Query(`SELECT files.path, files.root_path, files.relative_path, files.kind, files.size, files.mod_unix_ns,
+				COALESCE(track_scans.title, ''), COALESCE(track_scans.track_artist, ''), COALESCE(track_scans.album_title, ''), COALESCE(track_scans.album_artist, ''),
+				COALESCE(track_scans.track_number, 0), COALESCE(track_scans.track_total, 0)
+				FROM files
+				LEFT JOIN track_scans ON track_scans.path = files.path
+				ORDER BY files.path`)
+		}
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "no such table") {
+				return nil
+			}
+			return err
+		}
+	}
+	for fileRows.Next() {
+		var record libraryFilesDatabaseRecord
+		if err := fileRows.Scan(&record.Path, &record.RootPath, &record.RelativePath, &record.Kind, &record.Size, &record.ModUnixNs, &record.TrackTitle, &record.TrackArtist, &record.AlbumTitle, &record.AlbumArtist, &record.TrackNumber, &record.TrackTotal); err != nil {
+			fileRows.Close()
+			return err
+		}
+		records = append(records, record)
+	}
+	if err := fileRows.Err(); err != nil {
+		fileRows.Close()
+		return err
+	}
+	fileRows.Close()
+
+	if !hasTotalEntries && len(roots) == 0 && len(records) == 0 {
+		return nil
+	}
+
+	targetDatabase, err := openMetadataSQLiteNoMigration(targetPath)
+	if err != nil {
+		return err
+	}
+	defer targetDatabase.Close()
+
+	if err := initializeLibraryFilesSQLite(targetDatabase); err != nil {
+		return err
+	}
+
+	transaction, err := targetDatabase.Begin()
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		_ = transaction.Rollback()
+	}()
+
+	if _, err := transaction.Exec(`DELETE FROM meta WHERE key IN (?, ?)`, libraryFilesMetaVersionKey, libraryFilesMetaTotalEntriesKey); err != nil {
+		return err
+	}
+	if _, err := transaction.Exec(`DELETE FROM roots`); err != nil {
+		return err
+	}
+	if _, err := transaction.Exec(`DELETE FROM files`); err != nil {
+		return err
+	}
+	if _, err := transaction.Exec(`INSERT INTO meta (key, value) VALUES (?, ?)`, libraryFilesMetaVersionKey, strconv.Itoa(libraryFilesDatabaseVersion)); err != nil {
+		return err
+	}
+	if hasTotalEntries {
+		if _, err := transaction.Exec(`INSERT INTO meta (key, value) VALUES (?, ?)`, libraryFilesMetaTotalEntriesKey, totalEntriesRaw); err != nil {
+			return err
+		}
+	}
+
+	for _, root := range roots {
+		if _, err := transaction.Exec(`INSERT INTO roots (path, release_depth) VALUES (?, ?)`, root.Path, root.ReleaseDepth); err != nil {
+			return err
+		}
+	}
+
+	for _, record := range records {
+		if _, err := transaction.Exec(
+			`INSERT INTO files (path, root_path, relative_path, kind, size, mod_unix_ns, track_title, track_artist, album_title, album_artist, track_number, track_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			record.Path,
+			record.RootPath,
+			record.RelativePath,
+			record.Kind,
+			record.Size,
+			record.ModUnixNs,
+			record.TrackTitle,
+			record.TrackArtist,
+			record.AlbumTitle,
+			record.AlbumArtist,
+			record.TrackNumber,
+			record.TrackTotal,
+		); err != nil {
+			return err
+		}
+	}
+
+	if err := transaction.Commit(); err != nil {
+		return err
+	}
+	committed = true
+
+	return nil
+}
+
 func initializeLibraryFilesSQLite(database *sql.DB) error {
 	for _, statement := range libraryFilesSQLiteSchemaStatements {
 		if _, err := database.Exec(statement); err != nil {
@@ -142,6 +362,12 @@ func initializeLibraryFilesSQLite(database *sql.DB) error {
 
 	for _, statement := range []string{
 		`ALTER TABLE listen_history ADD COLUMN played_percent INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE files ADD COLUMN track_title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE files ADD COLUMN track_artist TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE files ADD COLUMN album_title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE files ADD COLUMN album_artist TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE files ADD COLUMN track_number INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE files ADD COLUMN track_total INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := database.Exec(statement); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
 			return err
@@ -158,7 +384,7 @@ func loadLibraryFilesDatabaseRecordsFromSQLiteWithLockTimeout(databasePath strin
 	}
 	defer unlock()
 
-	if err := ensureMetadataDatabaseMigratedLocked(databasePath); err != nil {
+	if err := ensureLibraryFilesDatabaseMigratedLocked(databasePath); err != nil {
 		return nil, 0, false
 	}
 
@@ -175,10 +401,6 @@ func loadLibraryFilesDatabaseRecordsFromSQLiteWithLockTimeout(databasePath strin
 	if err := initializeLibraryFilesSQLite(database); err != nil {
 		return nil, 0, false
 	}
-	if err := initializeMusicBrainzTagSQLite(database); err != nil {
-		return nil, 0, false
-	}
-
 	storedRoots := make(map[string]int, len(roots))
 	rootRows, err := database.Query(`SELECT path, release_depth FROM roots ORDER BY path`)
 	if err != nil {
@@ -223,10 +445,8 @@ func loadLibraryFilesDatabaseRecordsFromSQLiteWithLockTimeout(databasePath strin
 	}
 
 	rows, err := database.Query(`SELECT files.path, files.root_path, files.relative_path, files.kind, files.size, files.mod_unix_ns,
-		COALESCE(track_scans.title, ''), COALESCE(track_scans.track_artist, ''), COALESCE(track_scans.album_title, ''), COALESCE(track_scans.album_artist, ''),
-		COALESCE(track_scans.track_number, 0), COALESCE(track_scans.track_total, 0)
+		files.track_title, files.track_artist, files.album_title, files.album_artist, files.track_number, files.track_total
 		FROM files
-		LEFT JOIN track_scans ON track_scans.path = files.path
 		ORDER BY files.kind, files.relative_path, files.path`)
 	if err != nil {
 		return nil, 0, false
@@ -267,7 +487,7 @@ func writeLibraryFilesDatabaseSnapshotToSQLite(path string, snapshot libraryFile
 	unlock := lockMetadataDatabasePath(path)
 	defer unlock()
 
-	if err := ensureMetadataDatabaseMigratedLocked(path); err != nil {
+	if err := ensureLibraryFilesDatabaseMigratedLocked(path); err != nil {
 		return err
 	}
 
@@ -342,7 +562,7 @@ func writeLibraryFilesDatabaseIncrementalChangesToSQLite(path string, changes []
 	unlock := lockMetadataDatabasePath(path)
 	defer unlock()
 
-	if err := ensureMetadataDatabaseMigratedLocked(path); err != nil {
+	if err := ensureLibraryFilesDatabaseMigratedLocked(path); err != nil {
 		return err
 	}
 

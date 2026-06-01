@@ -429,6 +429,88 @@ func TestReadTrackTagsUsesMetadataDatabaseBeforeReadingFiles(t *testing.T) {
 	}
 }
 
+func TestReadTrackTagsUsesSelectiveMetadataDatabaseFallbackWithoutLoadingStore(t *testing.T) {
+	originalReadTaglibTags := readTaglibTags
+	t.Cleanup(func() {
+		readTaglibTags = originalReadTaglibTags
+	})
+
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithLoadedSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled: boolPointer(true),
+	})
+	app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)
+	app.activeLibraryRoots = []libraryRootConfig{{
+		Path: fixture.rootOne,
+		Name: "Library",
+	}}
+
+	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
+	}
+
+	readCalls := 0
+	readTaglibTags = func(_ string) (map[string][]string, error) {
+		readCalls++
+		return map[string][]string{"TITLE": {"File Title"}}, nil
+	}
+
+	store := newMusicBrainzTagDatabaseStore()
+	store.Tracks[fixture.trackOne] = musicBrainzTagTrackRecord{
+		Signature:       signature,
+		Title:           "Database Title",
+		TrackArtist:     "Database Artist",
+		AlbumTitle:      "Database Album",
+		AlbumArtist:     "Database Album Artist",
+		Genres:          []string{"Electronic", "Ambient"},
+		TrackNumber:     2,
+		TrackTotal:      10,
+		DiscNumber:      1,
+		DiscTotal:       1,
+		DurationSeconds: 123.5,
+		BitRate:         900000,
+		BitDepth:        24,
+		SampleRate:      96000,
+		Channels:        2,
+		FileSizeBytes:   signature.Size,
+		RecordingID:     "11111111-1111-4111-8111-111111111111",
+		ReleaseID:       "22222222-2222-4222-8222-222222222222",
+		ArtistIDs:       []string{"33333333-3333-4333-8333-333333333333"},
+		AlbumArtistIDs:  []string{"44444444-4444-4444-8444-444444444444"},
+	}
+	if err := writeMusicBrainzTagDatabaseStoreToSQLite(app.musicBrainzTagDatabasePath(), store); err != nil {
+		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite() error = %v", err)
+	}
+
+	results := app.ReadTrackTags([]string{fixture.trackOne})
+	tags, exists := results[fixture.trackOne]
+	if !exists {
+		t.Fatalf("ReadTrackTags(selective database hit) = %#v, want result for %q", results, fixture.trackOne)
+	}
+	if readCalls != 0 {
+		t.Fatalf("readTaglibTags() calls = %d, want 0 when selective metadata database lookup has the tags", readCalls)
+	}
+	if app.musicBrainzTagStoreLoaded {
+		t.Fatal("ReadTrackTags() loaded the full metadata store, want selective SQLite fallback")
+	}
+	if tags.Title != "Database Title" || tags.Artist != "Database Artist" || tags.Album != "Database Album" {
+		t.Fatalf("ReadTrackTags(selective database title/artist/album) = %#v, want stored metadata", tags)
+	}
+	if tags.TrackNumber != "2" || tags.TrackTotal != "10" || tags.DiscNumber != "1" || tags.DiscTotal != "1" {
+		t.Fatalf("ReadTrackTags(selective database positions) = %#v, want numeric fields converted to strings", tags)
+	}
+	if tags.Genre != "Electronic" || len(tags.Genres) != 2 {
+		t.Fatalf("ReadTrackTags(selective database genres) = %#v, want stored genres", tags)
+	}
+	if tags.Codec != "FLAC" || tags.Container != "flac" || tags.ChannelLayout != "stereo" {
+		t.Fatalf("ReadTrackTags(selective database technical metadata) = %#v, want derived codec/container/layout", tags)
+	}
+	if tags.FileSizeBytes != signature.Size || tags.ArtistID != "33333333-3333-4333-8333-333333333333" || tags.AlbumArtistID != "44444444-4444-4444-8444-444444444444" {
+		t.Fatalf("ReadTrackTags(selective database IDs/file size) = %#v, want stored IDs and signature size", tags)
+	}
+}
+
 func TestReadTrackTagsFallsBackToFileReadWhenDatabaseMetadataIsEmpty(t *testing.T) {
 	originalReadTaglibTags := readTaglibTags
 	t.Cleanup(func() {

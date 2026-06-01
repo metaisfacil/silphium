@@ -18,34 +18,22 @@ func TestLoadLibraryFilesDatabaseSnapshotUsesStoredTrackMetadata(t *testing.T) {
 		Roots:        roots,
 		TotalEntries: 1,
 		TrackFiles: []LibraryIndexedFile{{
-			Name:         filepath.Base(fixture.trackOne),
-			Path:         fixture.trackOne,
-			RelativePath: "Library/Artist One/Album One/01 Intro.flac",
-			FolderPath:   "Library/Artist One/Album One",
-			RootPath:     fixture.rootOne,
-			RootName:     "Library",
+			Name:              filepath.Base(fixture.trackOne),
+			Path:              fixture.trackOne,
+			RelativePath:      "Library/Artist One/Album One/01 Intro.flac",
+			FolderPath:        "Library/Artist One/Album One",
+			RootPath:          fixture.rootOne,
+			RootName:          "Library",
+			CachedTrackTitle:  "Stored Title",
+			CachedAlbumTitle:  "Stored Album",
+			CachedAlbumArtist: "Stored Album Artist",
+			CachedArtistName:  "Stored Artist",
+			CachedTrackNumber: "2",
+			CachedTrackTotal:  "9",
 		}},
 	}
 	if err := writeLibraryFilesDatabaseSnapshotToSQLite(app.libraryFilesDatabasePath(), snapshot); err != nil {
 		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite() error = %v", err)
-	}
-
-	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
-	if !ok {
-		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
-	}
-	store := newMusicBrainzTagDatabaseStore()
-	store.Tracks[fixture.trackOne] = musicBrainzTagTrackRecord{
-		Signature:   signature,
-		Title:       "Stored Title",
-		AlbumTitle:  "Stored Album",
-		AlbumArtist: "Stored Album Artist",
-		TrackArtist: "Stored Artist",
-		TrackNumber: 2,
-		TrackTotal:  9,
-	}
-	if err := writeMusicBrainzTagDatabaseStoreToSQLite(app.musicBrainzTagDatabasePath(), store); err != nil {
-		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite() error = %v", err)
 	}
 
 	loaded, ok := loadLibraryFilesDatabaseSnapshot(app.libraryFilesDatabasePath(), roots)
@@ -525,22 +513,25 @@ func TestMetadataDatabaseMigratesLegacyMusicBrainzAndLibraryFilesData(t *testing
 		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite(legacy) error = %v", err)
 	}
 
-	if got, want := app.libraryFilesDatabasePath(), app.musicBrainzTagDatabasePath(); got != want {
-		t.Fatalf("libraryFilesDatabasePath() = %q, want %q", got, want)
+	if got, want := app.libraryFilesDatabasePath(), app.musicBrainzTagDatabasePath(); got == want {
+		t.Fatalf("libraryFilesDatabasePath() = %q, want a dedicated snapshot database path", got)
 	}
-	if got := filepath.Base(app.libraryFilesDatabasePath()); got != metadataDatabaseFileName {
+	if got := filepath.Base(app.libraryFilesDatabasePath()); got != libraryFilesDatabaseFileName {
+		t.Fatalf("library snapshot database file name = %q, want %q", got, libraryFilesDatabaseFileName)
+	}
+	if got := filepath.Base(app.musicBrainzTagDatabasePath()); got != metadataDatabaseFileName {
 		t.Fatalf("metadata database file name = %q, want %q", got, metadataDatabaseFileName)
 	}
 
 	loadedSnapshot, ok := loadLibraryFilesDatabaseSnapshot(app.libraryFilesDatabasePath(), roots)
 	if !ok {
-		t.Fatal("loadLibraryFilesDatabaseSnapshot(metadata) = false, want true")
+		t.Fatal("loadLibraryFilesDatabaseSnapshot(snapshot) = false, want true")
 	}
 	if loadedSnapshot.TotalEntries != snapshot.TotalEntries || len(loadedSnapshot.TrackFiles) != 1 || len(loadedSnapshot.TextFiles) != 1 || len(loadedSnapshot.ImageFiles) != 1 {
 		t.Fatalf("loaded migrated snapshot = %#v, want legacy counts preserved", loadedSnapshot)
 	}
-	if !musicBrainzTagDatabaseFileExists(app.metadataDatabasePath()) {
-		t.Fatalf("expected migrated metadata database at %q", app.metadataDatabasePath())
+	if !libraryFilesDatabaseFileExists(app.libraryFilesDatabasePath()) {
+		t.Fatalf("expected migrated snapshot database at %q", app.libraryFilesDatabasePath())
 	}
 
 	history := app.LoadListenHistoryPlaylist()
@@ -551,19 +542,89 @@ func TestMetadataDatabaseMigratesLegacyMusicBrainzAndLibraryFilesData(t *testing
 		t.Fatalf("migrated history played percent = %d, want 84", got)
 	}
 
-	cacheByPath := loadPlaylistTrackCacheRecordsFromSQLite(app.libraryFilesDatabasePath(), []string{fixture.trackOne})
+	cacheByPath := loadPlaylistTrackCacheRecordsFromSQLite(app.metadataDatabasePath(), []string{fixture.trackOne})
 	cacheRecord, ok := cacheByPath[fixture.trackOne]
 	if !ok || cacheRecord.TrackName != "Intro" || cacheRecord.ArtistName != "Artist One" {
 		t.Fatalf("playlist track cache after migration = %#v, want migrated cache for %q", cacheByPath, fixture.trackOne)
 	}
 
 	loadedStore := loadMusicBrainzTagDatabaseStore(app.musicBrainzTagDatabasePath())
+	if !musicBrainzTagDatabaseFileExists(app.metadataDatabasePath()) {
+		t.Fatalf("expected migrated metadata database at %q", app.metadataDatabasePath())
+	}
 	loadedTrack, ok := loadedStore.Tracks[fixture.trackOne]
 	if !ok || loadedTrack.ReleaseID != releaseID || loadedTrack.Title != "Intro" {
 		t.Fatalf("loaded migrated MusicBrainz track = %#v, want release %q title Intro", loadedTrack, releaseID)
 	}
 	if loadedRelease, ok := loadedStore.Entities[musicBrainzTagEntityKey("release", releaseID)]; !ok || loadedRelease.Title != "Album One" {
 		t.Fatalf("loaded migrated MusicBrainz release = %#v, want Album One", loadedRelease)
+	}
+}
+
+func TestLibraryFilesDatabaseMigratesFromSharedMetadataDatabase(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithLoadedSettings(AppSettings{
+		LocalLibraryFilesDatabaseEnabled: boolPointer(true),
+	})
+	app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)
+	roots := []libraryRootConfig{{Path: fixture.rootOne, Name: "Library", ReleaseDepth: 0}}
+	sharedMetadataPath := app.metadataDatabasePath()
+	snapshotPath := app.libraryFilesDatabasePath()
+	snapshot := libraryFilesDatabaseSnapshot{
+		Roots:        roots,
+		TotalEntries: 3,
+		TrackFiles: []LibraryIndexedFile{{
+			Name:         filepath.Base(fixture.trackOne),
+			Path:         fixture.trackOne,
+			RelativePath: "Library/Artist One/Album One/01 Intro.flac",
+			FolderPath:   "Library/Artist One/Album One",
+			RootPath:     fixture.rootOne,
+			RootName:     "Library",
+		}},
+	}
+
+	if err := writeLibraryFilesDatabaseSnapshotToSQLite(sharedMetadataPath, snapshot); err != nil {
+		t.Fatalf("writeLibraryFilesDatabaseSnapshotToSQLite(shared metadata) error = %v", err)
+	}
+
+	store := newMusicBrainzTagDatabaseStore()
+	store.Tracks[fixture.trackOne] = musicBrainzTagTrackRecord{
+		Signature:   trackTagsFileSignature{Size: 1, ModUnixNs: 2},
+		Title:       "Intro",
+		AlbumTitle:  "Album One",
+		AlbumArtist: "Artist One",
+		TrackArtist: "Artist One",
+		TrackNumber: 1,
+		TrackTotal:  8,
+	}
+	if err := writeMusicBrainzTagDatabaseStoreToSQLite(sharedMetadataPath, store); err != nil {
+		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite(shared metadata) error = %v", err)
+	}
+
+	if libraryFilesDatabaseFileExists(snapshotPath) {
+		t.Fatalf("snapshot database already exists at %q before migration", snapshotPath)
+	}
+
+	loadedSnapshot, ok := loadLibraryFilesDatabaseSnapshot(snapshotPath, roots)
+	if !ok {
+		t.Fatal("loadLibraryFilesDatabaseSnapshot(migrated shared metadata) = false, want true")
+	}
+	if loadedSnapshot.TotalEntries != snapshot.TotalEntries || len(loadedSnapshot.TrackFiles) != 1 {
+		t.Fatalf("loaded snapshot from shared metadata = %#v, want migrated snapshot counts", loadedSnapshot)
+	}
+	if loadedTrack := loadedSnapshot.TrackFiles[0]; loadedTrack.CachedTrackTitle != "Intro" || loadedTrack.CachedAlbumTitle != "Album One" || loadedTrack.CachedAlbumArtist != "Artist One" || loadedTrack.CachedArtistName != "Artist One" || loadedTrack.CachedTrackNumber != "1" || loadedTrack.CachedTrackTotal != "8" {
+		t.Fatalf("loaded snapshot metadata from shared metadata = %#v, want migrated cached track metadata", loadedTrack)
+	}
+	if !libraryFilesDatabaseFileExists(snapshotPath) {
+		t.Fatalf("expected migrated snapshot database at %q", snapshotPath)
+	}
+	if !musicBrainzTagDatabaseFileExists(sharedMetadataPath) {
+		t.Fatalf("expected shared metadata database to remain at %q", sharedMetadataPath)
+	}
+
+	loadedStore := loadMusicBrainzTagDatabaseStore(app.musicBrainzTagDatabasePath())
+	if loadedTrack, exists := loadedStore.Tracks[fixture.trackOne]; !exists || loadedTrack.Title != "Intro" {
+		t.Fatalf("shared metadata MusicBrainz track after snapshot migration = %#v, want Intro", loadedTrack)
 	}
 }
 

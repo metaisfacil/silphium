@@ -330,7 +330,7 @@ type AppLibraryLoadRuntimeScope = RuntimeScope<
     | 'updatePlayButton'
     | 'scheduleLibraryIncrementalFolderRefresh'
     | 'scheduleNowPlayingCoverRefresh'
-    | 'refreshOverviewDashboard'
+    | 'scheduleOverviewDashboardRefresh'
     | 'initializeRoonShell'
     | 'resetListenBrainzFeedbackState'
     | 'listAudioOutputDevices'
@@ -1090,6 +1090,9 @@ export const setupLibraryLoadRuntime = (scope: AppLibraryLoadRuntimeScope) => cr
     renderLibraryFolder: () => {
         scope.libraryControllerRef.renderFolder('none');
     },
+    waitForCurrentLibraryBrowser: async () => {
+        await scope.libraryControllerRef.waitForCurrentPaneData();
+    },
     updateMediaSessionMetadata: scope.updateMediaSessionMetadata,
     beginLibraryLoadTracking: scope.beginLibraryLoadTracking,
     markLibraryScanResolved: scope.markLibraryScanResolved,
@@ -1142,7 +1145,7 @@ export const setupLibraryLoadRuntime = (scope: AppLibraryLoadRuntimeScope) => cr
     },
     scheduleLibraryIncrementalFolderRefresh: scope.scheduleLibraryIncrementalFolderRefresh,
     scheduleNowPlayingCoverRefresh: scope.scheduleNowPlayingCoverRefresh,
-    refreshOverviewDashboard: scope.refreshOverviewDashboard,
+    scheduleOverviewDashboardRefresh: scope.scheduleOverviewDashboardRefresh,
     resetListenBrainzFeedbackState: scope.resetListenBrainzFeedbackState,
     listAudioOutputDevices: async () => await scope.listAudioOutputDevices(),
     getSettings: async () => await scope.getSettings(),

@@ -74,6 +74,7 @@ export interface AppLibraryLoadRuntimeContext {
     setCoverFlipped: (flipped: boolean) => void;
     resetArtistInfoPanel: () => void;
     renderLibraryFolder: () => void;
+    waitForCurrentLibraryBrowser: () => Promise<void>;
     updateMediaSessionMetadata: () => void;
     beginLibraryLoadTracking: () => void;
     markLibraryScanResolved: () => void;
@@ -100,7 +101,7 @@ export interface AppLibraryLoadRuntimeContext {
     refreshPlaylistOpenModal: () => void;
     scheduleLibraryIncrementalFolderRefresh: () => void;
     scheduleNowPlayingCoverRefresh: () => void;
-    refreshOverviewDashboard?: () => void;
+    scheduleOverviewDashboardRefresh?: () => void;
     resetListenBrainzFeedbackState: () => void;
     listAudioOutputDevices: () => Promise<AudioOutputDevice[]>;
     getSettings: () => Promise<AppSettings>;
@@ -360,7 +361,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         context.trackIndexByPath.clear();
         context.textFileIndexByPath.clear();
         context.imageFileIndexByPath.clear();
-        context.refreshOverviewDashboard?.();
+        context.scheduleOverviewDashboardRefresh?.();
 
         context.currentTrackIndex = -1;
         context.resetScrobbleState();
@@ -576,7 +577,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
             }
         }
 
-        context.refreshOverviewDashboard?.();
+        context.scheduleOverviewDashboardRefresh?.();
 
         if (preserveManualTrackPlayback) {
             const normalizedSourcePath = playbackStateBeforeScanSwap.sourcePath.trim().toLowerCase();
@@ -680,6 +681,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
                 context.restoreLibrarySearchState(searchStateBeforeSwap);
             } else {
                 context.renderLibraryFolder();
+                await context.waitForCurrentLibraryBrowser();
             }
             context.refreshPlaylistOpenModal();
             context.logRescan('loadLibraryScan END: total time %.2fms (no tracks)', performance.now() - startTime);
@@ -697,6 +699,8 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
                 context.renderLibraryFolder();
             }
         }
+
+        await context.waitForCurrentLibraryBrowser();
 
         context.updatePlayButton();
         context.refreshPlaylistOpenModal();
@@ -809,6 +813,7 @@ export const createAppLibraryLoadRuntime = (context: AppLibraryLoadRuntimeContex
         context.setLibraryRootName(nextRootName);
         context.setLibraryIndexTruncated(!!scanResult.truncated);
         context.clearResolvedCoverArtCache();
+        context.scheduleOverviewDashboardRefresh?.();
         const playbackState = context.getPlaybackState();
         if (!(playbackState.loaded && playbackState.playing)) {
             context.scheduleLibraryIncrementalFolderRefresh();

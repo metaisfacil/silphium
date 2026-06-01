@@ -218,7 +218,7 @@ func (a *App) LoadPlaylistFile(path string) PlaylistLoadResult {
 		for _, trackFile := range result.TrackFiles {
 			trackPaths = append(trackPaths, trackFile.Path)
 		}
-		cacheByPath := loadPlaylistTrackCacheRecordsFromSQLite(a.libraryFilesDatabasePath(), trackPaths)
+		cacheByPath := loadPlaylistTrackCacheRecordsFromSQLite(a.metadataDatabasePath(), trackPaths)
 		for index := range result.TrackFiles {
 			cacheRecord, ok := cacheByPath[result.TrackFiles[index].Path]
 			if !ok {
@@ -244,7 +244,7 @@ func (a *App) SavePlaylistTrackMetadataCache(entries []PlaylistTrackMetadataCach
 			records = append(records, playlistTrackCacheRecord(entry))
 		}
 
-		if err := savePlaylistTrackCacheRecordsToSQLite(a.libraryFilesDatabasePath(), records); err != nil {
+		if err := savePlaylistTrackCacheRecordsToSQLite(a.metadataDatabasePath(), records); err != nil {
 			return false
 		}
 

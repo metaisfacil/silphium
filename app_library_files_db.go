@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const libraryFilesDatabaseFileName = legacyLibraryFilesDatabaseFileName
+const libraryFilesDatabaseFileName = "silphium.library.snapshot.sqlite3"
 const libraryFilesDatabaseStartupSnapshotLockTimeout = 100 * time.Millisecond
 
 type libraryFilesDatabaseSnapshot struct {
@@ -121,7 +121,8 @@ func (a *App) localLibraryFilesDatabaseListenHistoryLimit() int {
 }
 
 func (a *App) libraryFilesDatabasePath() string {
-	return a.metadataDatabasePath()
+	settingsPath := a.ensureSettingsPath()
+	return filepath.Join(filepath.Dir(settingsPath), libraryFilesDatabaseFileName)
 }
 
 func (a *App) snapshotLibraryFilesDatabaseState() (libraryFilesDatabaseSnapshot, bool) {

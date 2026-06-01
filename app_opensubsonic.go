@@ -1016,16 +1016,16 @@ func openSubsonicDecodeIDWithAliases(id string, expectedKinds ...string) (string
 
 func (a *App) openSubsonicLibraryVersion() uint64 {
 	contentState := a.libraryContentState()
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
+	contentState.indexMu.RLock()
+	defer contentState.indexMu.RUnlock()
 
 	return a.libraryIndexState().libraryDerivedIndexGeneration
 }
 
 func (a *App) openSubsonicLocalRootsSnapshot() []libraryRootConfig {
 	contentState := a.libraryContentState()
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
+	contentState.indexMu.RLock()
+	defer contentState.indexMu.RUnlock()
 
 	roots := make([]libraryRootConfig, 0, len(contentState.activeLibraryRoots))
 	for _, root := range contentState.activeLibraryRoots {
@@ -2407,8 +2407,8 @@ func (a *App) openSubsonicTrackCoverIDForPath(folderPath string, virtualTrackPat
 
 func (a *App) openSubsonicLibrarySnapshot() openSubsonicLibrarySnapshot {
 	contentState := a.libraryContentState()
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
+	contentState.indexMu.RLock()
+	defer contentState.indexMu.RUnlock()
 
 	snapshot := openSubsonicLibrarySnapshot{
 		LibraryVersion: a.libraryIndexState().libraryDerivedIndexGeneration,
@@ -2450,8 +2450,8 @@ func (a *App) openSubsonicLibrarySnapshot() openSubsonicLibrarySnapshot {
 
 func (a *App) openSubsonicAlbumListLibrarySnapshot() openSubsonicAlbumListLibrarySnapshot {
 	contentState := a.libraryContentState()
-	contentState.indexMu.Lock()
-	defer contentState.indexMu.Unlock()
+	contentState.indexMu.RLock()
+	defer contentState.indexMu.RUnlock()
 	indexState := a.libraryIndexState()
 
 	rootsByName := make(map[string]libraryRootConfig, len(contentState.activeLibraryRoots))

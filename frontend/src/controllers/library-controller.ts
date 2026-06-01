@@ -1451,76 +1451,91 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
     const fetchPageForPane = async (pane: HTMLUListElement, pageIndex: number, forceRefresh = false): Promise<void> => {
         const state = paneStateByElement.get(pane);
-        if (!state || state.loadingPages.has(pageIndex) || (!forceRefresh && state.loadedPages.has(pageIndex))) {
+        if (!state) {
             return;
         }
 
-        const hasCachedPage = state.loadedPages.has(pageIndex);
-        const showLoadingState = !(forceRefresh && hasCachedPage);
-        let shouldScheduleUpdate = false;
-
-        if (showLoadingState) {
-            state.loadingPages.add(pageIndex);
-            shouldScheduleUpdate = true;
-            schedulePaneUpdate(pane);
+        if (state.loadingPages.has(pageIndex)) {
+            await state.pageRequests.get(pageIndex);
+            return;
         }
 
-        try {
-            const offset = pageIndex * serverPageSize;
-            const page = state.source.kind === 'folder'
-                ? await options.loadFolderPage(state.source.folderPath, state.source.sortMode, offset, serverPageSize)
-                : await options.searchLibrary(state.source.query, offset, serverPageSize);
+        if (!forceRefresh && state.loadedPages.has(pageIndex)) {
+            return;
+        }
 
-            const latestState = paneStateByElement.get(pane);
-            if (!latestState || latestState.version !== state.version) {
-                return;
-            }
+        const requestPromise = (async () => {
+            const hasCachedPage = state.loadedPages.has(pageIndex);
+            const showLoadingState = !(forceRefresh && hasCachedPage);
+            let shouldScheduleUpdate = false;
 
-            const nextEntries = page.entries || [];
-            const previousEntries = latestState.loadedPages.get(pageIndex) || [];
-            if (latestState.totalEntries !== page.totalEntries || !areEntryPagesEquivalent(previousEntries, nextEntries)) {
+            if (showLoadingState) {
+                state.loadingPages.add(pageIndex);
                 shouldScheduleUpdate = true;
+                schedulePaneUpdate(pane);
             }
 
-            latestState.totalEntries = page.totalEntries;
-            latestState.loadedPages.set(pageIndex, nextEntries);
-            if (Number.isFinite(page.totalEntries) && page.totalEntries >= 0) {
-                const pageCount = Math.max(1, Math.ceil(page.totalEntries / serverPageSize));
-                for (const loadedPageIndex of Array.from(latestState.loadedPages.keys())) {
-                    if (loadedPageIndex >= pageCount) {
-                        latestState.loadedPages.delete(loadedPageIndex);
-                        shouldScheduleUpdate = true;
-                    }
+            try {
+                const offset = pageIndex * serverPageSize;
+                const page = state.source.kind === 'folder'
+                    ? await options.loadFolderPage(state.source.folderPath, state.source.sortMode, offset, serverPageSize)
+                    : await options.searchLibrary(state.source.query, offset, serverPageSize);
+
+                const latestState = paneStateByElement.get(pane);
+                if (!latestState || latestState.version !== state.version) {
+                    return;
                 }
-            }
-            if (latestState.errorMessage) {
-                shouldScheduleUpdate = true;
-            }
-            latestState.errorMessage = null;
-        } catch (error) {
-            const latestState = paneStateByElement.get(pane);
-            if (!latestState || latestState.version !== state.version) {
-                return;
-            }
 
-            console.error(error);
-            if (latestState.errorMessage !== 'Unable to load library entries.') {
-                shouldScheduleUpdate = true;
-                latestState.errorMessage = 'Unable to load library entries.';
-            }
-        } finally {
-            const latestState = paneStateByElement.get(pane);
-            if (latestState && latestState.version === state.version) {
-                if (showLoadingState && latestState.loadingPages.has(pageIndex)) {
-                    latestState.loadingPages.delete(pageIndex);
+                const nextEntries = page.entries || [];
+                const previousEntries = latestState.loadedPages.get(pageIndex) || [];
+                if (latestState.totalEntries !== page.totalEntries || !areEntryPagesEquivalent(previousEntries, nextEntries)) {
                     shouldScheduleUpdate = true;
                 }
 
-                if (shouldScheduleUpdate) {
-                    schedulePaneUpdate(pane);
+                latestState.totalEntries = page.totalEntries;
+                latestState.loadedPages.set(pageIndex, nextEntries);
+                if (Number.isFinite(page.totalEntries) && page.totalEntries >= 0) {
+                    const pageCount = Math.max(1, Math.ceil(page.totalEntries / serverPageSize));
+                    for (const loadedPageIndex of Array.from(latestState.loadedPages.keys())) {
+                        if (loadedPageIndex >= pageCount) {
+                            latestState.loadedPages.delete(loadedPageIndex);
+                            shouldScheduleUpdate = true;
+                        }
+                    }
+                }
+                if (latestState.errorMessage) {
+                    shouldScheduleUpdate = true;
+                }
+                latestState.errorMessage = null;
+            } catch (error) {
+                const latestState = paneStateByElement.get(pane);
+                if (!latestState || latestState.version !== state.version) {
+                    return;
+                }
+
+                console.error(error);
+                if (latestState.errorMessage !== 'Unable to load library entries.') {
+                    shouldScheduleUpdate = true;
+                    latestState.errorMessage = 'Unable to load library entries.';
+                }
+            } finally {
+                const latestState = paneStateByElement.get(pane);
+                if (latestState && latestState.version === state.version) {
+                    latestState.pageRequests.delete(pageIndex);
+                    if (showLoadingState && latestState.loadingPages.has(pageIndex)) {
+                        latestState.loadingPages.delete(pageIndex);
+                        shouldScheduleUpdate = true;
+                    }
+
+                    if (shouldScheduleUpdate) {
+                        schedulePaneUpdate(pane);
+                    }
                 }
             }
-        }
+        })();
+
+        state.pageRequests.set(pageIndex, requestPromise);
+        await requestPromise;
     };
 
     const requestPagesForPane = async (pane: HTMLUListElement, forceRefresh = false): Promise<void> => {
@@ -1552,6 +1567,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
             totalEntries: null,
             loadedPages: new Map<number, LibraryBrowserEntry[]>(),
             loadingPages: new Set<number>(),
+            pageRequests: new Map<number, Promise<void>>(),
             rowHeightEstimate: initialRowHeightEstimatePx,
             updateScheduled: false,
             errorMessage: null,
@@ -1683,6 +1699,21 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
 
         const nextPane = createPagedPane(source);
         mountPane(nextPane, direction);
+    };
+
+    const waitForCurrentPaneData = async (): Promise<void> => {
+        const pane = currentPane();
+        const source = activeSource();
+        if (!pane || !source) {
+            return;
+        }
+
+        const state = paneStateByElement.get(pane);
+        if (!state || sourceKey(state.source) !== sourceKey(source)) {
+            return;
+        }
+
+        await requestPagesForPane(pane);
     };
 
     const navigateToFolder = (nextFolderPath: string): void => {
@@ -2020,6 +2051,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
                     totalEntries: null,
                     loadedPages: new Map<number, LibraryBrowserEntry[]>(),
                     loadingPages: new Set<number>(),
+                    pageRequests: new Map<number, Promise<void>>(),
                     rowHeightEstimate: state.rowHeightEstimate,
                     updateScheduled: false,
                     errorMessage: null,
@@ -2053,6 +2085,7 @@ export const createLibraryController = (options: LibraryControllerOptions) => {
         refreshSidebarToggleState,
         rebuildLibraryTree,
         renderFolder,
+        waitForCurrentPaneData,
         resetLibraryState,
         setCurrentFolderPath: (path: string) => {
             controllerState.currentFolderPath = path;

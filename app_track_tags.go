@@ -1243,13 +1243,40 @@ func (a *App) readTrackTagsFromMetadataDatabase(jobs []readTrackTagsJob) map[str
 	}
 
 	a.musicBrainzTagMu.Lock()
-	defer a.musicBrainzTagMu.Unlock()
+	if a.musicBrainzTagStoreLoaded {
+		defer a.musicBrainzTagMu.Unlock()
 
-	a.ensureMusicBrainzTagDatabaseLoadedLocked()
+		var tagByPath map[string]TrackTags
+		for _, job := range jobs {
+			record, exists := a.musicBrainzTagStore.Tracks[job.path]
+			if !exists {
+				continue
+			}
+
+			tags, ok := trackTagsFromStoredTrackRecord(job.path, job.signature, record)
+			if !ok {
+				continue
+			}
+
+			if tagByPath == nil {
+				tagByPath = make(map[string]TrackTags, len(jobs))
+			}
+			tagByPath[job.path] = tags
+		}
+
+		return tagByPath
+	}
+	a.musicBrainzTagMu.Unlock()
+
+	paths := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		paths = append(paths, job.path)
+	}
+	recordByPath := loadMusicBrainzTagTrackRecordsFromSQLite(a.musicBrainzTagDatabasePath(), paths)
 
 	var tagByPath map[string]TrackTags
 	for _, job := range jobs {
-		record, exists := a.musicBrainzTagStore.Tracks[job.path]
+		record, exists := recordByPath[job.path]
 		if !exists {
 			continue
 		}

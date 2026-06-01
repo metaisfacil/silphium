@@ -66,7 +66,7 @@ func (a *App) trimLocalLibraryListenHistory() {
 		return
 	}
 
-	if err := trimLibraryListenHistoryToLimitInSQLite(a.libraryFilesDatabasePath(), a.localLibraryFilesDatabaseListenHistoryLimit()); err != nil {
+	if err := trimLibraryListenHistoryToLimitInSQLite(a.metadataDatabasePath(), a.localLibraryFilesDatabaseListenHistoryLimit()); err != nil {
 		logpkg.Printf("failed to trim local library listen history: %v", err)
 	}
 }
@@ -99,7 +99,7 @@ func (a *App) AddListenHistoryEntry(trackPath string, trackName string, artistNa
 			ListenedAt:    listenedAt,
 			PlayedPercent: clampListenHistoryPlayedPercent(playedPercent),
 		}
-		if err := appendLibraryListenHistoryRecordToSQLite(a.libraryFilesDatabasePath(), record, a.localLibraryFilesDatabaseListenHistoryLimit()); err != nil {
+		if err := appendLibraryListenHistoryRecordToSQLite(a.metadataDatabasePath(), record, a.localLibraryFilesDatabaseListenHistoryLimit()); err != nil {
 			logpkg.Printf("failed to append local library listen history: %v", err)
 			return false
 		}
@@ -119,7 +119,7 @@ func (a *App) LoadListenHistoryPlaylist() PlaylistLoadResult {
 			return result
 		}
 
-		records, ok := loadLibraryListenHistoryRecordsFromSQLite(a.libraryFilesDatabasePath())
+		records, ok := loadLibraryListenHistoryRecordsFromSQLite(a.metadataDatabasePath())
 		if !ok {
 			return result
 		}

@@ -119,6 +119,7 @@ type ReturnedRuntimeMethods = {
     showOverviewPage: () => void;
     showNowPlayingPage: () => void;
     refreshOverviewDashboard: () => void;
+    scheduleOverviewDashboardRefresh: () => void;
     setCtrlHeldState: (held: boolean) => void;
     suppressTrackMetaClicks: () => void;
     applyCoverArtForTrack: (index: number) => Promise<void>;

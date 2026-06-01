@@ -195,9 +195,13 @@ func (a *App) systemMediaTransportControlsTrackTags(path string) (TrackTags, boo
 		return cachedTags, true
 	}
 
-	if a.localLibraryFilesDatabaseEnabled() {
-		a.musicBrainzTagMu.Lock()
-		a.ensureMusicBrainzTagDatabaseLoadedLocked()
+	if !a.localLibraryFilesDatabaseEnabled() {
+		return TrackTags{}, false
+	}
+
+	a.musicBrainzTagMu.Lock()
+	storeLoaded := a.musicBrainzTagStoreLoaded
+	if storeLoaded {
 		record, exists := a.musicBrainzTagStore.Tracks[path]
 		a.musicBrainzTagMu.Unlock()
 		if exists {
@@ -206,9 +210,18 @@ func (a *App) systemMediaTransportControlsTrackTags(path string) (TrackTags, boo
 				return databaseTags, true
 			}
 		}
+		return TrackTags{}, false
+	}
+	a.musicBrainzTagMu.Unlock()
+
+	// Avoid loading the full metadata store on first-track SMTC sync. This row is
+	// intentionally not cached because it may omit auxiliary metadata tables.
+	record, exists := loadMusicBrainzTagTrackRecordFromSQLite(a.musicBrainzTagDatabasePath(), path)
+	if !exists {
+		return TrackTags{}, false
 	}
 
-	return TrackTags{}, false
+	return trackTagsFromStoredTrackRecord(path, signature, record)
 }
 
 func normalizeSystemMediaTransportControlsSeekSeconds(seconds float64) (float64, bool) {

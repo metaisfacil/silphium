@@ -118,6 +118,13 @@ const overviewAlbumGridBottomSeekAppendBurstSize = 8_000;
 const overviewAlbumGridViewStabilityDelayMs = 300;
 const overviewAlbumGridCoverInvalidationDelayMs = 30_000;
 const overviewCountNumberFormatter = new Intl.NumberFormat('en-US');
+const overviewUnknownAlbumLabel = 'Unknown Album';
+const overviewUnknownArtistLabel = 'Unknown Artist';
+
+const overviewPlaceholderMetadataValue = (value: string | undefined, placeholder: string): string => {
+    const trimmed = (value || '').trim();
+    return trimmed.toLowerCase() === placeholder.toLowerCase() ? '' : trimmed;
+};
 
 const formatOverviewInlineTrackDuration = (durationSeconds?: number): string => {
     if (!Number.isFinite(durationSeconds) || durationSeconds === undefined || durationSeconds <= 0) {
@@ -1042,6 +1049,14 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         });
     };
 
+    const waitForUiYield = async (): Promise<void> => {
+        await new Promise<void>((resolve) => {
+            window.setTimeout(() => {
+                resolve();
+            }, 0);
+        });
+    };
+
     const overviewAlbumDescriptorForTrack = (track: Pick<Track, 'folderPath' | 'rootName' | 'rootPath' | 'path' | 'releaseDepth' | 'displayAlbum' | 'displayArtist' | 'allFileTags'>) => {
         const releaseFolderPath = releaseFolderPathForTrackAtDepth(track, context.releaseDepthForTrack(track)).trim();
         const releaseFolderKey = folderKeyForPath(releaseFolderPath);
@@ -1050,11 +1065,13 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         const releaseFolderArtist = releaseRelativeSegments.length >= 2
             ? releaseRelativeSegments[releaseRelativeSegments.length - 2]?.trim() || ''
             : '';
-        const album = firstTagValue(track, 'album') || (track.displayAlbum || '').trim() || releaseFolderTitle || 'Unknown Album';
+        const displayAlbum = overviewPlaceholderMetadataValue(track.displayAlbum, overviewUnknownAlbumLabel);
+        const displayArtist = overviewPlaceholderMetadataValue(track.displayArtist, overviewUnknownArtistLabel);
+        const album = firstTagValue(track, 'album') || displayAlbum || releaseFolderTitle || overviewUnknownAlbumLabel;
         const albumArtist = firstTagValue(track, 'albumartist', 'album artist', 'album_artist')
-            || (track.displayArtist || '').trim()
+            || displayArtist
             || releaseFolderArtist
-            || 'Unknown Artist';
+            || overviewUnknownArtistLabel;
         const key = releaseFolderKey !== ''
             ? [track.rootPath || '', releaseFolderKey].join('|').toLowerCase()
             : [track.rootPath || '', album, albumArtist].join('|').toLowerCase();
@@ -1158,6 +1175,29 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         }
 
         return entries;
+    };
+
+    const hydrateOverviewRecencyMetadata = async (entries: OverviewRecencyEntry[], requestVersion: number): Promise<void> => {
+        if (requestVersion !== overviewDashboardRequestVersion || entries.length === 0) {
+            return;
+        }
+
+        const indexesToHydrate = Array.from(new Set(entries
+            .map((entry) => entry.trackIndex)
+            .filter((trackIndex) => {
+                const track = context.tracks[trackIndex];
+                return !!track && !track.tagsResolved;
+            })));
+        if (indexesToHydrate.length === 0) {
+            return;
+        }
+
+        await trackMetadataService.ensureTrackTagsResolvedBatch(indexesToHydrate);
+        if (requestVersion !== overviewDashboardRequestVersion) {
+            return;
+        }
+
+        void refreshOverviewRecencySections();
     };
 
     const buildOverviewAlbumGridEntries = (): OverviewAlbumGridEntry[] => {
@@ -2397,6 +2437,148 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     let overviewDashboardRequestVersion = 0;
     let overviewAlbumGridRequestVersion = 0;
     let overviewDashboardMode: OverviewDashboardMode = 'recents';
+    let overviewDashboardRefreshHandle: number | null = null;
+    let overviewDashboardCountsRefreshHandle: number | null = null;
+    let overviewDashboardCountsRefreshVersion = 0;
+    let overviewDashboardCountsSourceTracks: Track[] | null = null;
+    let overviewDashboardCounts = {
+        trackCount: 0,
+        albumCount: 0,
+        artistCount: 0,
+        libraryCount: 0,
+    };
+    const overviewDashboardCountBatchSize = 2000;
+
+    const applyOverviewDashboardCounts = (): void => {
+        if (context.overviewTracksCount) {
+            context.overviewTracksCount.textContent = formatOverviewCount(overviewDashboardCounts.trackCount);
+        }
+
+        if (context.overviewAlbumsCount) {
+            context.overviewAlbumsCount.textContent = formatOverviewCount(overviewDashboardCounts.albumCount);
+        }
+
+        if (context.overviewArtistsCount) {
+            context.overviewArtistsCount.textContent = formatOverviewCount(overviewDashboardCounts.artistCount);
+        }
+
+        if (context.overviewLibrariesCount) {
+            context.overviewLibrariesCount.textContent = formatOverviewCount(overviewDashboardCounts.libraryCount);
+        }
+    };
+
+    const updateOverviewDashboardCounts = (
+        tracksSource: Track[],
+        trackCount: number,
+        albumKeys: Set<string>,
+        artistNames: Set<string>,
+        libraryNames: Set<string>,
+    ): void => {
+        overviewDashboardCounts = {
+            trackCount,
+            albumCount: albumKeys.size,
+            artistCount: artistNames.size,
+            libraryCount: libraryNames.size,
+        };
+        overviewDashboardCountsSourceTracks = tracksSource;
+        applyOverviewDashboardCounts();
+    };
+
+    const collectOverviewDashboardCountsForTrack = (
+        track: Pick<Track, 'folderPath' | 'rootName' | 'rootPath' | 'path' | 'releaseDepth' | 'displayAlbum' | 'displayArtist' | 'allFileTags'>,
+        albumKeys: Set<string>,
+        artistNames: Set<string>,
+        libraryNames: Set<string>,
+    ): void => {
+        albumKeys.add(overviewAlbumDescriptorForTrack(track).key);
+
+        const artistName = (track.displayArtist || '').trim();
+        if (artistName !== '') {
+            artistNames.add(artistName);
+        }
+
+        const libraryName = (track.rootName || '').trim();
+        if (libraryName !== '') {
+            libraryNames.add(libraryName);
+        }
+    };
+
+    const refreshOverviewDashboardCounts = (): void => {
+        const tracksSource = context.tracks;
+        const albumKeys = new Set<string>();
+        const artistNames = new Set<string>();
+        const libraryNames = new Set<string>();
+
+        tracksSource.forEach((track) => {
+            collectOverviewDashboardCountsForTrack(track, albumKeys, artistNames, libraryNames);
+        });
+
+        updateOverviewDashboardCounts(tracksSource, tracksSource.length, albumKeys, artistNames, libraryNames);
+    };
+
+    const refreshOverviewDashboardCountsDeferred = async (tracksSource: Track[], requestVersion: number): Promise<void> => {
+        const albumKeys = new Set<string>();
+        const artistNames = new Set<string>();
+        const libraryNames = new Set<string>();
+
+        for (let index = 0; index < tracksSource.length; index += 1) {
+            if (requestVersion !== overviewDashboardCountsRefreshVersion) {
+                return;
+            }
+
+            collectOverviewDashboardCountsForTrack(tracksSource[index], albumKeys, artistNames, libraryNames);
+
+            const processedCount = index + 1;
+            if (processedCount < tracksSource.length && processedCount % overviewDashboardCountBatchSize === 0) {
+                await waitForUiYield();
+            }
+        }
+
+        if (requestVersion !== overviewDashboardCountsRefreshVersion) {
+            return;
+        }
+
+        updateOverviewDashboardCounts(tracksSource, tracksSource.length, albumKeys, artistNames, libraryNames);
+    };
+
+    const scheduleOverviewDashboardCountsRefresh = (): void => {
+        if (context.tracks.length === 0) {
+            updateOverviewDashboardCounts(context.tracks, 0, new Set<string>(), new Set<string>(), new Set<string>());
+            return;
+        }
+
+        if (overviewDashboardCountsSourceTracks === context.tracks) {
+            applyOverviewDashboardCounts();
+            return;
+        }
+
+        applyOverviewDashboardCounts();
+        const requestVersion = ++overviewDashboardCountsRefreshVersion;
+        if (overviewDashboardCountsRefreshHandle !== null) {
+            window.clearTimeout(overviewDashboardCountsRefreshHandle);
+        }
+
+        overviewDashboardCountsRefreshHandle = window.setTimeout(() => {
+            overviewDashboardCountsRefreshHandle = null;
+            void refreshOverviewDashboardCountsDeferred(context.tracks, requestVersion);
+        }, 0);
+    };
+
+    const scheduleOverviewDashboardRefresh = (): void => {
+        scheduleOverviewDashboardCountsRefresh();
+        if (!context.app.classList.contains('showing-overview')) {
+            return;
+        }
+
+        if (overviewDashboardRefreshHandle !== null) {
+            window.clearTimeout(overviewDashboardRefreshHandle);
+        }
+
+        overviewDashboardRefreshHandle = window.setTimeout(() => {
+            overviewDashboardRefreshHandle = null;
+            void refreshOverviewRecencySections();
+        }, 0);
+    };
 
     const syncOverviewDashboardMode = (): void => {
         const recentsActive = overviewDashboardMode === 'recents';
@@ -2460,24 +2642,30 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
             renderOverviewRecencyEntries(context.overviewLastPlayedList, lastPlayedEntries, 'No listen history yet.');
             void hydrateOverviewAlbumCovers(context.overviewLastPlayedList, lastPlayedEntries, requestVersion);
+            void hydrateOverviewRecencyMetadata([...lastAddedEntries, ...lastPlayedEntries], requestVersion);
         } catch {
             if (requestVersion !== overviewDashboardRequestVersion) {
                 return;
             }
 
             renderOverviewRecencyEntries(context.overviewLastPlayedList, [], 'No listen history yet.');
+            void hydrateOverviewRecencyMetadata(lastAddedEntries, requestVersion);
         }
     };
 
     const isRoonShellActive = (): boolean => context.app.classList.contains('shell-theme-roon');
 
     const showOverviewPage = (): void => {
+        if (context.app.classList.contains('showing-overview')) {
+            return;
+        }
+
         setOverviewDashboardMode('recents');
         context.overviewPage.hidden = false;
         context.playerLane.hidden = isRoonShellActive() ? false : true;
         context.overviewPage.scrollTop = 0;
         context.app.classList.add('showing-overview');
-        refreshOverviewDashboard();
+        scheduleOverviewDashboardRefresh();
     };
 
     const showNowPlayingPage = (): void => {
@@ -2501,26 +2689,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     window.addEventListener('resize', syncResponsiveOverviewScrollPosition, { passive: true });
 
     function refreshOverviewDashboard(): void {
-        const trackCount = context.tracks.length;
-        const albumCount = buildOverviewAlbumGridEntries().length;
-        const artistCount = new Set(context.tracks.map((track) => (track.displayArtist || '').trim()).filter((value) => value !== '')).size;
-        const libraryCount = new Set(context.tracks.map((track) => (track.rootName || '').trim()).filter((value) => value !== '')).size;
-
-        if (context.overviewTracksCount) {
-            context.overviewTracksCount.textContent = formatOverviewCount(trackCount);
-        }
-
-        if (context.overviewAlbumsCount) {
-            context.overviewAlbumsCount.textContent = formatOverviewCount(albumCount);
-        }
-
-        if (context.overviewArtistsCount) {
-            context.overviewArtistsCount.textContent = formatOverviewCount(artistCount);
-        }
-
-        if (context.overviewLibrariesCount) {
-            context.overviewLibrariesCount.textContent = formatOverviewCount(libraryCount);
-        }
+        refreshOverviewDashboardCounts();
 
         void refreshOverviewRecencySections();
 
@@ -2848,6 +3017,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         playbackSequencingService,
         playbackStateService,
         refreshOverviewDashboard,
+        scheduleOverviewDashboardRefresh,
         refreshListenBrainzFeedbackForCurrentTrack,
         resetListenBrainzFeedbackState,
         scrobbleService,

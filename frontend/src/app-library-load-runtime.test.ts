@@ -101,6 +101,7 @@ const createContext = (quickScanResult: LibraryScanResult, trackEntry: LibraryIn
     setCoverFlipped: vi.fn(),
     resetArtistInfoPanel: vi.fn(),
     renderLibraryFolder: vi.fn(),
+    waitForCurrentLibraryBrowser: vi.fn(async () => undefined),
     updateMediaSessionMetadata: vi.fn(),
     beginLibraryLoadTracking: vi.fn(),
     markLibraryScanResolved: vi.fn(),
@@ -127,6 +128,7 @@ const createContext = (quickScanResult: LibraryScanResult, trackEntry: LibraryIn
     refreshPlaylistOpenModal: vi.fn(),
     scheduleLibraryIncrementalFolderRefresh: vi.fn(),
     scheduleNowPlayingCoverRefresh: vi.fn(),
+    scheduleOverviewDashboardRefresh: vi.fn(),
     resetListenBrainzFeedbackState: vi.fn(),
     listAudioOutputDevices: vi.fn(async () => []),
     getSettings: vi.fn(async () => ({ libraryFolders: [] })),
@@ -445,6 +447,40 @@ describe('app-library-load-runtime', () => {
         await scanPromise;
     });
 
+    it('keeps library loading active until the first folder render settles', async () => {
+        const quickScanResult = createScanResult({
+            totalEntries: 1,
+            trackCount: 1,
+        });
+        const trackEntry: LibraryIndexedFile = {
+            name: '01 Track.flac',
+            path: 'C:/Library/Artist/Album/01 Track.flac',
+            relativePath: 'Artist/Album/01 Track.flac',
+            folderPath: 'Library/Artist/Album',
+            rootPath: 'C:/Library',
+            rootName: 'Library',
+        };
+        const browserDeferred = createDeferred<undefined>();
+        const context = createContext(quickScanResult, trackEntry);
+        context.waitForCurrentLibraryBrowser = vi.fn(async () => await browserDeferred.promise);
+
+        const runtime = createAppLibraryLoadRuntime(context as never);
+        const scanPromise = runtime.scanConfiguredLibraryFolders();
+
+        await vi.waitFor(() => {
+            expect(context.waitForCurrentLibraryBrowser).toHaveBeenCalledTimes(1);
+        });
+
+        expect(context.finishLibraryLoadTracking).not.toHaveBeenCalled();
+        expect(context.setLibraryLoading).not.toHaveBeenCalledWith(false);
+
+        browserDeferred.resolve(undefined);
+        await scanPromise;
+
+        expect(context.finishLibraryLoadTracking).toHaveBeenCalledTimes(1);
+        expect(context.setLibraryLoading).toHaveBeenLastCalledWith(false);
+    });
+
     it('keeps the historical ETA running for deferred scans until hydration completes', async () => {
         vi.useFakeTimers();
         let nowMs = 0;
@@ -706,6 +742,7 @@ describe('app-library-load-runtime', () => {
 
         expect(context.clearResolvedCoverArtCache).toHaveBeenCalledTimes(1);
         expect(context.clearCoverArtCache).not.toHaveBeenCalled();
+        expect(context.scheduleOverviewDashboardRefresh).toHaveBeenCalledTimes(1);
         expect(context.scheduleLibraryIncrementalFolderRefresh).toHaveBeenCalledTimes(1);
         expect(context.scheduleNowPlayingCoverRefresh).toHaveBeenCalledTimes(1);
     });

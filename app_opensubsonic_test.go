@@ -1846,6 +1846,43 @@ func TestOpenSubsonicBrowseCacheReusesSnapshotWhileMusicBrainzWorkerActive(t *te
 	}
 }
 
+func TestOpenSubsonicSnapshotsDoNotBlockConcurrentReaders(t *testing.T) {
+	app, _, _ := newOpenSubsonicTestApp(t)
+	contentState := app.libraryContentState()
+
+	assertReturnsWhileReaderHeld := func(name string, snapshot func()) {
+		t.Helper()
+
+		contentState.indexMu.RLock()
+		defer contentState.indexMu.RUnlock()
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			snapshot()
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(200 * time.Millisecond):
+			t.Fatalf("%s blocked behind an existing reader lock", name)
+		}
+	}
+
+	assertReturnsWhileReaderHeld("openSubsonicLibrarySnapshot", func() {
+		_ = app.openSubsonicLibrarySnapshot()
+	})
+	assertReturnsWhileReaderHeld("openSubsonicAlbumListLibrarySnapshot", func() {
+		_ = app.openSubsonicAlbumListLibrarySnapshot()
+	})
+	assertReturnsWhileReaderHeld("openSubsonicLibraryVersion", func() {
+		_ = app.openSubsonicLibraryVersion()
+	})
+	assertReturnsWhileReaderHeld("openSubsonicLocalRootsSnapshot", func() {
+		_ = app.openSubsonicLocalRootsSnapshot()
+	})
+}
+
 func TestOpenSubsonicGetSongHydratesTechnicalMetadataFromTrackTags(t *testing.T) {
 	originalReadTaglibTags := readTaglibTags
 	originalReadTaglibProperties := readTaglibProperties

@@ -46,6 +46,62 @@ func TestSystemMediaTransportControlsSnapshotForStateFallsBackToTrackTagDuration
 	}
 }
 
+func TestSystemMediaTransportControlsSnapshotUsesSelectiveSQLiteFallbackWithoutLoadingStore(t *testing.T) {
+	fixture := createLibraryTestFixture(t)
+	app := newTestAppWithLoadedSettings(AppSettings{})
+	app.settingsPath = filepath.Join(t.TempDir(), appSettingsFileName)
+
+	signature, ok := trackTagsFileSignatureForPath(fixture.trackOne)
+	if !ok {
+		t.Fatalf("trackTagsFileSignatureForPath(%q) = false, want true", fixture.trackOne)
+	}
+
+	store := newMusicBrainzTagDatabaseStore()
+	store.Tracks[normalizePath(fixture.trackOne)] = musicBrainzTagTrackRecord{
+		Signature:       signature,
+		Title:           "Intro",
+		TrackArtist:     "Artist One",
+		AlbumTitle:      "Album One",
+		AlbumArtist:     "Album Artist One",
+		TrackNumber:     1,
+		TrackTotal:      8,
+		DurationSeconds: 215.5,
+	}
+	if err := writeMusicBrainzTagDatabaseStoreToSQLite(app.musicBrainzTagDatabasePath(), store); err != nil {
+		t.Fatalf("writeMusicBrainzTagDatabaseStoreToSQLite() error = %v", err)
+	}
+
+	snapshot := app.systemMediaTransportControlsSnapshotForState(AudioPlaybackState{
+		Loaded:      true,
+		Playing:     false,
+		CurrentTime: 0,
+		Duration:    0,
+		SourcePath:  normalizePath(fixture.trackOne),
+	})
+
+	if snapshot.Title != "Intro" {
+		t.Fatalf("snapshot.Title = %q, want %q", snapshot.Title, "Intro")
+	}
+	if snapshot.Artist != "Artist One" {
+		t.Fatalf("snapshot.Artist = %q, want %q", snapshot.Artist, "Artist One")
+	}
+	if snapshot.AlbumTitle != "Album One" {
+		t.Fatalf("snapshot.AlbumTitle = %q, want %q", snapshot.AlbumTitle, "Album One")
+	}
+	if snapshot.AlbumArtist != "Album Artist One" {
+		t.Fatalf("snapshot.AlbumArtist = %q, want %q", snapshot.AlbumArtist, "Album Artist One")
+	}
+	if snapshot.Duration != 215.5 {
+		t.Fatalf("snapshot.Duration = %v, want 215.5", snapshot.Duration)
+	}
+	if app.musicBrainzTagStoreLoaded {
+		t.Fatal("systemMediaTransportControlsSnapshotForState() loaded the metadata store, want selective SQLite fallback")
+	}
+	if _, _, cacheHit := app.getTrackTagsCache(normalizePath(fixture.trackOne), signature); cacheHit {
+		t.Fatal("systemMediaTransportControlsSnapshotForState() populated the shared track-tags cache from a partial SQLite row")
+	}
+}
+
 func TestTimeSpanSyscallArgUsesDurationValue(t *testing.T) {
 	const durationValue = int64(2_155_000_000)
 

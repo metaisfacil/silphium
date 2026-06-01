@@ -20,6 +20,7 @@ export type PaneState = {
     totalEntries: number | null;
     loadedPages: Map<number, LibraryBrowserEntry[]>;
     loadingPages: Set<number>;
+    pageRequests: Map<number, Promise<void>>;
     rowHeightEstimate: number;
     updateScheduled: boolean;
     errorMessage: string | null;

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CoverArtService } from './services/cover-art-service';
 
+type TrackMetadataServiceFactoryOptions = Parameters<typeof import('./services/track-metadata-service').createTrackMetadataService>[0];
+
 const {
     audioGetVisualizationFrameMock,
     createCoverArtServiceMock,
@@ -46,9 +48,13 @@ const {
         showLibrary: vi.fn(),
         showSocial: vi.fn(),
     })),
-    createTrackMetadataServiceMock: vi.fn(() => ({
-        ensureTrackTagsResolved: vi.fn(async () => undefined),
-    })),
+    createTrackMetadataServiceMock: vi.fn((options: TrackMetadataServiceFactoryOptions) => {
+        void options;
+        return {
+            ensureTrackTagsResolved: vi.fn(async (_index: number) => undefined),
+            ensureTrackTagsResolvedBatch: vi.fn(async (_indexes: number[]) => undefined),
+        };
+    }),
     createVisualizerControllerMock: vi.fn((options?: unknown) => {
         void options;
         return {
@@ -664,6 +670,65 @@ describe('createAppCoreServicesRuntime', () => {
         expect(context.playerLane.hidden).toBe(false);
     });
 
+    it('does not reset the overview state when it is already visible', async () => {
+        const context = createContext();
+        const runtime = createAppCoreServicesRuntime(context);
+        context.app.classList.add('showing-overview');
+        context.overviewPage.hidden = false;
+        context.playerLane.hidden = true;
+        context.overviewPage.scrollTop = 168;
+
+        runtime.refreshOverviewDashboard();
+        await flushPromises();
+        await flushPromises();
+
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        runtime.showOverviewPage();
+
+        expect(context.overviewAlbumGridView.hidden).toBe(false);
+        expect(context.overviewRecentsView.hidden).toBe(true);
+        expect(context.overviewShowAlbums.getAttribute('aria-pressed')).toBe('true');
+        expect(context.overviewShowRecents.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('uses cached counts immediately and defers recounting when opening overview with updated tracks', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const context = createContext();
+            const runtime = createAppCoreServicesRuntime(context);
+
+            runtime.refreshOverviewDashboard();
+            await flushPromises();
+            await flushPromises();
+
+            expect(context.overviewTracksCount.textContent).toBe('1');
+
+            (context as unknown as { tracks: unknown[] }).tracks = [
+                createTrack(),
+                {
+                    ...createTrack(),
+                    path: '/music/second.flac',
+                    relativePath: 'second.flac',
+                    displayTitle: 'Second Track',
+                },
+            ];
+
+            runtime.showOverviewPage();
+
+            expect(context.overviewTracksCount.textContent).toBe('1');
+
+            await vi.runAllTimersAsync();
+
+            expect(context.overviewTracksCount.textContent).toBe('2');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('initializes the Roon shell and clears deprecated shell preferences', () => {
         const context = createContext();
         const runtime = createAppCoreServicesRuntime(context);
@@ -729,6 +794,78 @@ describe('createAppCoreServicesRuntime', () => {
         expect((cards[0] as HTMLElement).dataset.overviewTrackIndexes).toBe('0,1');
         expect(context.overviewLastAddedList.querySelector('.overview-album-title')?.textContent).toBe('Tagged Album Title');
         expect(context.overviewLastAddedList.querySelector('.overview-album-artist')?.textContent).toBe('Album Artist');
+    });
+
+    it('falls back to release folder labels when startup placeholders still show unknown album metadata', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = [
+            {
+                ...createTrack(),
+                path: '/music/library/artist-one/album-one/01 Intro.flac',
+                relativePath: 'Library/Artist One/Album One/01 Intro.flac',
+                folderPath: 'Library/Artist One/Album One',
+                rootPath: '/music/library',
+                rootName: 'Library',
+                displayAlbum: 'Unknown Album',
+                displayArtist: 'Unknown Artist',
+                allFileTags: {},
+                modifiedAtMs: 1_700_000_000_000,
+            },
+        ] as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+
+        runtime.refreshOverviewDashboard();
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewLastAddedList.querySelector('.overview-album-title')?.textContent).toBe('Album One');
+        expect(context.overviewLastAddedList.querySelector('.overview-album-artist')?.textContent).toBe('Artist One');
+    });
+
+    it('rerenders last added albums after visible recency tag hydration resolves', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = [
+            {
+                ...createTrack(),
+                path: '/music/library/artist-one/album-one/01 Intro.flac',
+                relativePath: 'Library/Artist One/Album One/01 Intro.flac',
+                folderPath: 'Library/Artist One/Album One',
+                rootPath: '/music/library',
+                rootName: 'Library',
+                displayAlbum: 'Unknown Album',
+                displayArtist: 'Unknown Artist',
+                allFileTags: {},
+                tagsResolved: false,
+                modifiedAtMs: 1_700_000_000_000,
+            },
+        ] as never;
+        createTrackMetadataServiceMock.mockImplementationOnce((options: TrackMetadataServiceFactoryOptions) => ({
+            ensureTrackTagsResolved: vi.fn(async (_index: number) => undefined),
+            ensureTrackTagsResolvedBatch: vi.fn(async (indexes: number[]) => {
+                indexes.forEach((index) => {
+                    const latestTrack = options.getTracks()[index];
+                    options.setTrack(index, {
+                        ...latestTrack,
+                        displayAlbum: 'Hydrated Album',
+                        displayArtist: 'Hydrated Artist',
+                        tagsResolved: true,
+                    });
+                });
+
+                return undefined;
+            }),
+        }));
+
+        const runtime = createAppCoreServicesRuntime(context);
+
+        runtime.refreshOverviewDashboard();
+        await flushPromises();
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewLastAddedList.querySelector('.overview-album-title')?.textContent).toBe('Hydrated Album');
+        expect(context.overviewLastAddedList.querySelector('.overview-album-artist')?.textContent).toBe('Hydrated Artist');
     });
 
     it('renders last played overview cards as track entries with track titles', async () => {

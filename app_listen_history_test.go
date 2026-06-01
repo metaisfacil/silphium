@@ -175,7 +175,7 @@ func TestAddListenHistoryEntryWaitsForMetadataDatabasePathLock(t *testing.T) {
 		LocalLibraryFilesDatabaseListenHistoryLimit:   10,
 	})
 
-	unlock := lockMetadataDatabasePath(app.libraryFilesDatabasePath())
+	unlock := lockMetadataDatabasePath(app.metadataDatabasePath())
 	released := false
 	defer func() {
 		if !released {
@@ -233,7 +233,7 @@ func TestLoadListenHistoryPlaylistReturnsQuicklyWhileMetadataPathLockBusy(t *tes
 		t.Fatal("AddListenHistoryEntry() = false, want true")
 	}
 
-	unlock := lockMetadataDatabasePath(app.libraryFilesDatabasePath())
+	unlock := lockMetadataDatabasePath(app.metadataDatabasePath())
 	defer unlock()
 
 	start := time.Now()
