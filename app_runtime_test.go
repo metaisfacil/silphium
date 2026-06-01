@@ -12,6 +12,18 @@ import (
 	"time"
 )
 
+type runtimeEventsContextStub struct {
+	context.Context
+}
+
+func (runtimeEventsContextStub) Value(key interface{}) interface{} {
+	if key == "events" {
+		return struct{}{}
+	}
+
+	return context.Background().Value(key)
+}
+
 func TestAppRuntimeHelpers(t *testing.T) {
 	originalRuntimeEventsEmit := runtimeEventsEmit
 	originalRuntimeWindowHide := runtimeWindowHide
@@ -77,6 +89,41 @@ func TestAppRuntimeHelpers(t *testing.T) {
 	}
 
 	app.LogFrontendMessage("hello from frontend")
+}
+
+func TestCanEmitRuntimeEvent(t *testing.T) {
+	originalRuntimeEventsEmit := runtimeEventsEmit
+	t.Cleanup(func() {
+		runtimeEventsEmit = originalRuntimeEventsEmit
+	})
+
+	var nilCtx context.Context
+	if canEmitRuntimeEvent(nilCtx) {
+		t.Fatal("canEmitRuntimeEvent(nil) = true, want false")
+	}
+
+	if canEmitRuntimeEvent(context.Background()) {
+		t.Fatal("canEmitRuntimeEvent(context.Background()) = true, want false when using the real Wails emitter")
+	}
+
+	mockedEmitterCalled := false
+	runtimeEventsEmit = func(_ context.Context, _ string, _ ...interface{}) {
+		mockedEmitterCalled = true
+	}
+	if !canEmitRuntimeEvent(context.Background()) {
+		t.Fatal("canEmitRuntimeEvent(context.Background()) = false, want true when using a mocked emitter")
+	}
+
+	emitRuntimeEvent(context.Background(), libraryRescanLogEvent, "hello")
+	if !mockedEmitterCalled {
+		t.Fatal("emitRuntimeEvent() with mocked emitter should forward the event")
+	}
+
+	runtimeEventsEmit = originalRuntimeEventsEmit
+	runtimeCtx := runtimeEventsContextStub{Context: context.Background()}
+	if !canEmitRuntimeEvent(runtimeCtx) {
+		t.Fatal("canEmitRuntimeEvent(runtime context) = false, want true")
+	}
 }
 
 func TestFormatFrontendLogLine(t *testing.T) {

@@ -431,8 +431,8 @@ func (a *App) setMusicBrainzTagWorkerProgress(progress MusicBrainzTagWorkerProgr
 	workerState.progressMu.Unlock()
 
 	runtimeState := a.runtimeState()
-	if changed && runtimeState.ctx != nil {
-		runtimeEventsEmit(runtimeState.ctx, musicBrainzTagWorkerProgressEvent, progress)
+	if changed {
+		emitRuntimeEvent(runtimeState.ctx, musicBrainzTagWorkerProgressEvent, progress)
 	}
 }
 

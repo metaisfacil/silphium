@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -36,6 +37,7 @@ var AppVersion = "dev"
 var runtimeEventsEmit = runtime.EventsEmit
 var runtimeEventsOn = runtime.EventsOn
 var runtimeWindowHide = runtime.WindowHide
+var runtimeEventsEmitPointer = reflect.ValueOf(runtime.EventsEmit).Pointer()
 
 // App contains runtime state and service dependencies for the Wails backend.
 type App struct {
@@ -277,15 +279,33 @@ func formatFrontendLogLine(message string, now time.Time) string {
 	return fmt.Sprintf("%s [FRONTEND] %s", trimmedTimestamp, remainder)
 }
 
+func canEmitRuntimeEvent(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+
+	if ctx.Value("events") != nil {
+		return true
+	}
+
+	return reflect.ValueOf(runtimeEventsEmit).Pointer() != runtimeEventsEmitPointer
+}
+
+func emitRuntimeEvent(ctx context.Context, eventName string, optionalData ...interface{}) {
+	if !canEmitRuntimeEvent(ctx) {
+		return
+	}
+
+	runtimeEventsEmit(ctx, eventName, optionalData...)
+}
+
 // logRescanEvent logs a rescan-related event with precise timestamp to both console and frontend
 func (a *App) logRescanEvent(message string, args ...interface{}) {
 	runtimeState := a.runtimeState()
 	formattedMessage := fmt.Sprintf(message, args...)
 	logLine := formatBackendLogLine(formattedMessage, time.Now())
 	log.Println(logLine)
-	if runtimeState.ctx != nil {
-		runtimeEventsEmit(runtimeState.ctx, libraryRescanLogEvent, logLine)
-	}
+	emitRuntimeEvent(runtimeState.ctx, libraryRescanLogEvent, logLine)
 }
 
 const maxBridgeTraceLogStringLength = 120

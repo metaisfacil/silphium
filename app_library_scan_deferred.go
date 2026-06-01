@@ -256,7 +256,6 @@ func collectLibraryFolderTrackPathsFromFilesystem(roots []libraryRootConfig, fol
 			return nil
 		})
 	}
-
 	if normalizedFolderPath == "" {
 		for _, root := range roots {
 			if err := appendTracksUnderRoot(root, root.Path); err != nil {
@@ -633,7 +632,7 @@ func (a *App) emitDeferredHydrationProgress(rootPath string, totalEntries int, s
 		entriesScanned = int(math.Round(progress * float64(totalEntries)))
 	}
 
-	runtimeEventsEmit(runtimeState.ctx, libraryScanProgressEvent, LibraryScanProgress{
+	emitRuntimeEvent(runtimeState.ctx, libraryScanProgressEvent, LibraryScanProgress{
 		RootPath:       rootPath,
 		EntriesScanned: entriesScanned,
 		TotalEntries:   totalEntries,
@@ -673,7 +672,7 @@ func (a *App) emitDeferredScanInitialProgress(rootPath string) {
 		return
 	}
 
-	runtimeEventsEmit(runtimeState.ctx, libraryScanProgressEvent, LibraryScanProgress{
+	emitRuntimeEvent(runtimeState.ctx, libraryScanProgressEvent, LibraryScanProgress{
 		RootPath:       rootPath,
 		EntriesScanned: 0,
 		TotalEntries:   learnedTotalEntries,
@@ -769,8 +768,8 @@ func (a *App) startLibraryFileHydrationAsync(roots []libraryRootConfig, expected
 			payload = compactLibraryScanResult(contentState.libraryScan)
 		}
 		contentState.indexMu.Unlock()
-		if shouldEmitUpdate && runtimeState.ctx != nil {
-			runtimeEventsEmit(runtimeState.ctx, libraryScanUpdatedEvent, payload)
+		if shouldEmitUpdate {
+			emitRuntimeEvent(runtimeState.ctx, libraryScanUpdatedEvent, payload)
 		}
 		a.notifyMusicBrainzTagWorker()
 		a.notifyLibraryFilesDatabaseWorker()

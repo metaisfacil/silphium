@@ -497,8 +497,8 @@ func (a *App) startLibraryFilesRefreshAsync(roots []libraryRootConfig, expectedS
 		}
 		contentState.indexMu.Unlock()
 
-		if shouldEmitUpdate && runtimeState.ctx != nil {
-			runtimeEventsEmit(runtimeState.ctx, libraryScanUpdatedEvent, payload)
+		if shouldEmitUpdate {
+			emitRuntimeEvent(runtimeState.ctx, libraryScanUpdatedEvent, payload)
 		}
 
 		a.notifyMusicBrainzTagWorker()

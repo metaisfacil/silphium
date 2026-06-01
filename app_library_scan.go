@@ -335,7 +335,7 @@ func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWat
 			etaSeconds = int(math.Ceil(remainingMs / 1000))
 		}
 
-		runtimeEventsEmit(runtimeState.ctx, libraryScanProgressEvent, LibraryScanProgress{
+		emitRuntimeEvent(runtimeState.ctx, libraryScanProgressEvent, LibraryScanProgress{
 			RootPath:       result.RootPath,
 			EntriesScanned: scannedEntries,
 			TotalEntries:   progressTotalEntries,
@@ -374,7 +374,7 @@ func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWat
 		}
 		contentState.indexMu.Unlock()
 
-		runtimeEventsEmit(runtimeState.ctx, libraryScanUpdatedEvent, payload)
+		emitRuntimeEvent(runtimeState.ctx, libraryScanUpdatedEvent, payload)
 		lastScanUpdatedEmit = now
 	}
 
@@ -617,7 +617,6 @@ func (a *App) scanLibraryFoldersImmediate(folders []AppLibraryFolder, restartWat
 		return left < right
 	})
 	trackSortMs := time.Since(trackSortStartedAt).Seconds() * 1000
-
 	textSortStartedAt := time.Now()
 	sort.SliceStable(result.TextFiles, func(i int, j int) bool {
 		left := strings.ToLower(result.TextFiles[i].RelativePath)

@@ -123,7 +123,7 @@ func (a *App) bindProfilerFrontendEvents() {
 	})
 
 	offReady := runtimeEventsOn(runtimeState.ctx, profilerFrontendReadyEvent, func(...interface{}) {
-		runtimeEventsEmit(runtimeState.ctx, profilerFrontendConfigEvent, service.Snapshot().Config)
+		emitRuntimeEvent(runtimeState.ctx, profilerFrontendConfigEvent, service.Snapshot().Config)
 	})
 
 	state.mu.Lock()

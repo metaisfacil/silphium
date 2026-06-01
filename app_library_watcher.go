@@ -656,10 +656,10 @@ func (a *App) startLibraryWatcherReserved(roots []libraryRootConfig, directoryPa
 				a.logRescanEvent("Debounce timer fired, applying incremental changes to %d paths", len(changedPaths))
 
 				scan, changed := a.applyIncrementalLibraryChanges(changedPaths)
-				if changed && runtimeState.ctx != nil {
+				if changed {
 					emitStartTime := time.Now()
 					a.logRescanEvent("EventsEmit START: sending scan update event")
-					runtimeEventsEmit(runtimeState.ctx, libraryScanUpdatedEvent, scan)
+					emitRuntimeEvent(runtimeState.ctx, libraryScanUpdatedEvent, scan)
 					a.logRescanEvent("EventsEmit END: took %.2fms", time.Since(emitStartTime).Seconds()*1000)
 				}
 

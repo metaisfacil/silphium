@@ -164,7 +164,7 @@ func (t *musicBrainzExplorationProgressTracker) emit(message string, done bool) 
 		t.message = cleanMessage
 	}
 
-	runtimeEventsEmit(t.app.ctx, musicBrainzExplorationProgressEvent, MusicBrainzExplorationProgress{
+	emitRuntimeEvent(t.app.ctx, musicBrainzExplorationProgressEvent, MusicBrainzExplorationProgress{
 		RequestID: t.requestID,
 		Message:   t.message,
 		Current:   t.current,

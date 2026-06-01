@@ -35,7 +35,7 @@ func (a *App) emitMediaKeyAction(action string) {
 		return
 	}
 
-	runtimeEventsEmit(runtimeState.ctx, mediaKeyEvent, action)
+	emitRuntimeEvent(runtimeState.ctx, mediaKeyEvent, action)
 }
 
 func (a *App) startMediaKeyWatcher() {
