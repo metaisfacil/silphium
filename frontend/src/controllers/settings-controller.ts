@@ -56,6 +56,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const { elements } = options;
     const {
         settingsModal,
+        settingsTooltipLayer,
         settingsTabs,
         settingsTabsScrollLeft,
         settingsTabsScrollRight,
@@ -186,6 +187,11 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     const settingsModalTransitionMs = UI_TIMINGS_MS.modalTransition;
     const settingsShortcutAccordionTransitionMs = 180;
     const settingsTabScrollStepPx = 160;
+    const settingsTooltipId = 'settings-tooltip-portal';
+    const settingsTooltipOffsetPx = 8;
+    const settingsTooltipViewportPaddingPx = 12;
+    const settingsTooltipFallbackWidthPx = 240;
+    const settingsTooltipFallbackHeightPx = 64;
     const settingsTabsShell = settingsTabs.parentElement instanceof HTMLDivElement
         ? settingsTabs.parentElement
         : null;
@@ -202,8 +208,185 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
     let coverArtPriorityAccordionHideTimer: number | undefined;
     let musicBrainzTagWorkerRefreshHandle: number | undefined;
     let musicBrainzTagWorkerRefreshInFlight = false;
+    let activeSettingsTooltipTrigger: HTMLButtonElement | null = null;
     let librarySharingPasswordHash = '';
     const libraryFolderRepeatClickWindowMs = 400;
+    const settingsTooltipBubble = document.createElement('div');
+    settingsTooltipBubble.id = settingsTooltipId;
+    settingsTooltipBubble.className = 'settings-tooltip-bubble';
+    settingsTooltipBubble.setAttribute('role', 'tooltip');
+    settingsTooltipBubble.hidden = true;
+    settingsTooltipLayer.replaceChildren(settingsTooltipBubble);
+
+    const getSettingsTooltipTrigger = (target: EventTarget | null): HTMLButtonElement | null => {
+        if (!(target instanceof Element)) {
+            return null;
+        }
+
+        const trigger = target.closest('.settings-tooltip-trigger');
+        return trigger instanceof HTMLButtonElement ? trigger : null;
+    };
+
+    const getSettingsTooltipContainer = (target: EventTarget | null): HTMLElement | null => {
+        if (!(target instanceof Element)) {
+            return null;
+        }
+
+        const container = target.closest('.settings-tooltip');
+        return container instanceof HTMLElement ? container : null;
+    };
+
+    const getActiveSettingsTooltipSource = (): { container: HTMLElement; bubble: HTMLElement } | null => {
+        if (!(activeSettingsTooltipTrigger instanceof HTMLButtonElement) || !settingsModal.contains(activeSettingsTooltipTrigger)) {
+            return null;
+        }
+
+        const container = activeSettingsTooltipTrigger.closest('.settings-tooltip');
+        if (!(container instanceof HTMLElement)) {
+            return null;
+        }
+
+        const bubble = container.querySelector('.settings-tooltip-bubble');
+        if (!(bubble instanceof HTMLElement)) {
+            return null;
+        }
+
+        return { container, bubble };
+    };
+
+    const hideSettingsTooltip = (trigger?: HTMLButtonElement | null): void => {
+        if (trigger && activeSettingsTooltipTrigger !== trigger) {
+            return;
+        }
+
+        if (activeSettingsTooltipTrigger instanceof HTMLButtonElement) {
+            activeSettingsTooltipTrigger.removeAttribute('aria-describedby');
+        }
+
+        activeSettingsTooltipTrigger = null;
+        settingsTooltipBubble.classList.remove('is-visible', 'settings-tooltip-bubble--above');
+        settingsTooltipBubble.hidden = true;
+        settingsTooltipBubble.innerHTML = '';
+        settingsTooltipBubble.style.removeProperty('left');
+        settingsTooltipBubble.style.removeProperty('top');
+        settingsTooltipLayer.setAttribute('aria-hidden', 'true');
+    };
+
+    const positionSettingsTooltip = (): void => {
+        const source = getActiveSettingsTooltipSource();
+        if (source === null || activeSettingsTooltipTrigger === null) {
+            hideSettingsTooltip();
+            return;
+        }
+
+        if (settingsTooltipBubble.innerHTML !== source.bubble.innerHTML) {
+            settingsTooltipBubble.innerHTML = source.bubble.innerHTML;
+        }
+
+        const triggerRect = activeSettingsTooltipTrigger.getBoundingClientRect();
+        const tooltipWidth = Math.max(
+            Math.min(settingsTooltipFallbackWidthPx, window.innerWidth - (settingsTooltipViewportPaddingPx * 2)),
+            Math.round(settingsTooltipBubble.getBoundingClientRect().width),
+        );
+        const tooltipHeight = Math.max(settingsTooltipFallbackHeightPx, Math.round(settingsTooltipBubble.getBoundingClientRect().height));
+        const preferredLeft = source.container.classList.contains('settings-tooltip--end')
+            ? triggerRect.right - tooltipWidth
+            : triggerRect.left;
+        const maxLeft = Math.max(settingsTooltipViewportPaddingPx, window.innerWidth - settingsTooltipViewportPaddingPx - tooltipWidth);
+        const left = Math.min(Math.max(preferredLeft, settingsTooltipViewportPaddingPx), maxLeft);
+        const availableBelow = window.innerHeight - settingsTooltipViewportPaddingPx - triggerRect.bottom;
+        const availableAbove = triggerRect.top - settingsTooltipViewportPaddingPx;
+        let renderAbove = source.container.classList.contains('settings-tooltip--above');
+
+        if (renderAbove && availableAbove < tooltipHeight + settingsTooltipOffsetPx && availableBelow > availableAbove) {
+            renderAbove = false;
+        } else if (!renderAbove && availableBelow < tooltipHeight + settingsTooltipOffsetPx && availableAbove > availableBelow) {
+            renderAbove = true;
+        }
+
+        const preferredTop = renderAbove
+            ? triggerRect.top - tooltipHeight - settingsTooltipOffsetPx
+            : triggerRect.bottom + settingsTooltipOffsetPx;
+        const maxTop = Math.max(settingsTooltipViewportPaddingPx, window.innerHeight - settingsTooltipViewportPaddingPx - tooltipHeight);
+        const top = Math.min(Math.max(preferredTop, settingsTooltipViewportPaddingPx), maxTop);
+
+        settingsTooltipBubble.classList.toggle('settings-tooltip-bubble--above', renderAbove);
+        settingsTooltipBubble.style.left = `${left}px`;
+        settingsTooltipBubble.style.top = `${top}px`;
+    };
+
+    const showSettingsTooltip = (trigger: HTMLButtonElement): void => {
+        const container = trigger.closest('.settings-tooltip');
+        const sourceBubble = container?.querySelector('.settings-tooltip-bubble');
+        if (!(container instanceof HTMLElement) || !(sourceBubble instanceof HTMLElement) || sourceBubble.innerHTML.trim() === '') {
+            hideSettingsTooltip(trigger);
+            return;
+        }
+
+        activeSettingsTooltipTrigger = trigger;
+        settingsTooltipBubble.innerHTML = sourceBubble.innerHTML;
+        settingsTooltipBubble.hidden = false;
+        settingsTooltipLayer.setAttribute('aria-hidden', 'false');
+        positionSettingsTooltip();
+        settingsTooltipBubble.classList.add('is-visible');
+        trigger.setAttribute('aria-describedby', settingsTooltipId);
+    };
+
+    settingsModal.addEventListener('mouseover', (event) => {
+        const trigger = getSettingsTooltipTrigger(event.target);
+        if (trigger !== null) {
+            showSettingsTooltip(trigger);
+        }
+    });
+
+    settingsModal.addEventListener('mouseout', (event) => {
+        if (activeSettingsTooltipTrigger === null) {
+            return;
+        }
+
+        const activeContainer = activeSettingsTooltipTrigger.closest('.settings-tooltip');
+        const targetContainer = getSettingsTooltipContainer(event.target);
+        if (!(activeContainer instanceof HTMLElement) || targetContainer !== activeContainer) {
+            return;
+        }
+
+        if (event.relatedTarget instanceof Node && activeContainer.contains(event.relatedTarget)) {
+            return;
+        }
+
+        hideSettingsTooltip(activeSettingsTooltipTrigger);
+    });
+
+    settingsModal.addEventListener('focusin', (event) => {
+        const trigger = getSettingsTooltipTrigger(event.target);
+        if (trigger !== null) {
+            showSettingsTooltip(trigger);
+        }
+    });
+
+    settingsModal.addEventListener('focusout', (event) => {
+        if (activeSettingsTooltipTrigger === null) {
+            return;
+        }
+
+        const activeContainer = activeSettingsTooltipTrigger.closest('.settings-tooltip');
+        if (!(activeContainer instanceof HTMLElement)) {
+            hideSettingsTooltip();
+            return;
+        }
+
+        if (event.relatedTarget instanceof Node && activeContainer.contains(event.relatedTarget)) {
+            return;
+        }
+
+        hideSettingsTooltip(activeSettingsTooltipTrigger);
+    });
+
+    settingsModal.addEventListener('scroll', () => {
+        if (activeSettingsTooltipTrigger !== null) {
+            positionSettingsTooltip();
+        }
+    }, true);
 
     const refreshRoonAccentFieldPreview = (): void => {
         const accentTheme = resolveRoonAccentTheme({
@@ -764,6 +947,7 @@ export const createSettingsController = (options: SettingsControllerOptions) => 
 
     const finalizeClose = (): void => {
         stopMusicBrainzTagWorkerProgressRefresh();
+        hideSettingsTooltip();
         doCloseLibraryDepthDialog(null, false, true);
         doCloseScrobbleRuleDialog(null, false, true);
         doCloseSendToActionDialog(null, false, true);

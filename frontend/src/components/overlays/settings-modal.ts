@@ -1,6 +1,7 @@
 export type SettingsModalElements = {
     settingsModal: HTMLDivElement;
     settingsBackdrop: HTMLDivElement;
+    settingsTooltipLayer: HTMLDivElement;
     settingsClose: HTMLButtonElement;
     settingsTabs: HTMLDivElement;
     settingsTabsScrollLeft: HTMLButtonElement;
@@ -292,7 +293,7 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                     <div class="settings-field settings-toggle-field">
-                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-request-staggering-enabled', 'Stagger background refetches', 'Refreshes roughly total database entries divided by stale days per run, oldest first, so large libraries do not queue every refetch at once.')}
+                        ${renderSettingsCheckboxLabel('settings-musicbrainz-tag-request-staggering-enabled', 'Stagger background refetches', 'Refreshes roughly total database entries divided by stale days per run, oldest first, so libraries do not queue every refetch at once.')}
                     </div>
                     <div class="settings-field settings-toggle-field">
                         ${renderSettingsCheckboxLabel('settings-highlight-musicbrainz-tagged-album-folders', 'Highlight MusicBrainz-tagged album folders', 'When enabled, album folders tagged with MusicBrainz IDs use a subtle orange folder icon in the library browser.', 'end')}
@@ -388,7 +389,7 @@ export const renderSettingsModal = (): string => `
                 </div>
                 <div id="settings-panel-audio" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-audio" hidden>
                     <div class="settings-field">
-                        ${renderSettingsLabel('settings-audio-output-device', 'Audio output device', 'Choose the output device used when the audio backend initializes.<br>Use the refresh button to rescan devices and reload audio-related state without restarting.')}
+                        ${renderSettingsLabel('settings-audio-output-device', 'Audio output device', 'Choose the output device used when the audio backend initializes. Use the refresh button to rescan devices and reload audio-related state without restarting.')}
                         <div class="settings-audio-device-row">
                             <select id="settings-audio-output-device" class="settings-input settings-select"></select>
                             <button id="settings-apply-audio-now" class="settings-secondary-btn settings-audio-apply-btn" type="button" title="Refresh the device list and reload audio-related app state without restarting." aria-label="Refresh audio settings"><svg class="overlay-icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M20 5V10H15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 19V14H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.6 9.2C7.6 7.2 9.6 6 12 6C14.4 6 16.4 7.1 17.5 8.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M17.4 14.8C16.4 16.8 14.4 18 12 18C9.6 18 7.6 16.9 6.5 15.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -448,7 +449,7 @@ export const renderSettingsModal = (): string => `
                         </div>
                     </div>
                     <div class="settings-accordion">
-                        ${renderSettingsAccordionHeader('settings-cover-art-priority-accordion-toggle', 'settings-cover-art-priority-accordion-panel', 'Cover art source priority', 'Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are preferred by default.')}
+                        ${renderSettingsAccordionHeader('settings-cover-art-priority-accordion-toggle', 'settings-cover-art-priority-accordion-panel', 'Cover art source priority', 'Check sources to enable them, then drag to reorder priority. Top enabled entry is tried first. Separate cover files are default.')}
                         <div id="settings-cover-art-priority-accordion-panel" class="settings-accordion-panel" hidden>
                             <ul id="settings-cover-art-priority-list" class="settings-priority-list" role="listbox" aria-label="Cover art source priority"></ul>
                         </div>
@@ -502,6 +503,7 @@ export const renderSettingsModal = (): string => `
                 </div>
             </div>
         </section>
+        <div id="settings-tooltip-layer" class="settings-tooltip-layer" aria-hidden="true"></div>
         <div id="settings-library-depth-modal" class="settings-submodal" hidden>
             <div id="settings-library-depth-backdrop" class="settings-submodal-backdrop"></div>
             <form id="settings-library-depth-form" class="settings-subdialog" role="dialog" aria-modal="true" aria-labelledby="settings-library-depth-title">
@@ -608,6 +610,7 @@ export const renderSettingsModal = (): string => `
 export const getSettingsModalElements = (root: ParentNode): SettingsModalElements => ({
     settingsModal: root.querySelector('#settings-modal') as HTMLDivElement,
     settingsBackdrop: root.querySelector('#settings-backdrop') as HTMLDivElement,
+    settingsTooltipLayer: root.querySelector('#settings-tooltip-layer') as HTMLDivElement,
     settingsClose: root.querySelector('#settings-close') as HTMLButtonElement,
     settingsTabs: root.querySelector('#settings-tabs') as HTMLDivElement,
     settingsTabsScrollLeft: root.querySelector('#settings-tabs-scroll-left') as HTMLButtonElement,

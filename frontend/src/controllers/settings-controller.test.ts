@@ -211,6 +211,8 @@ describe('createSettingsController', () => {
     it('renders OpenSubsonic network help as tooltips', () => {
         document.body.innerHTML = renderSettingsModal();
 
+        expect(document.querySelector('#settings-tooltip-layer')).not.toBeNull();
+
         const networkPanel = document.querySelector('#settings-panel-network');
         const apiKeyField = document.querySelector('#settings-library-sharing-password')?.closest('.settings-field');
         const apiKeyHint = apiKeyField?.querySelector('.settings-tooltip-bubble')?.textContent;
@@ -230,6 +232,58 @@ describe('createSettingsController', () => {
         expect(document.querySelector('#settings-panel-library #settings-musicbrainz-tag-database-enabled')).not.toBeNull();
         expect(compactRow).not.toBeNull();
         expect(document.querySelector('#settings-musicbrainz-tag-worker-cores')?.closest('.settings-field-compact-grid')).toBe(compactRow);
+    });
+
+    it('renders active settings tooltips in the modal layer and clamps them into view', () => {
+        Object.defineProperty(window, 'innerWidth', {
+            configurable: true,
+            value: 400,
+        });
+        Object.defineProperty(window, 'innerHeight', {
+            configurable: true,
+            value: 240,
+        });
+
+        const { controller } = mountSettingsController();
+        controller.open('shortcuts');
+
+        const tooltipTrigger = document.querySelector('[aria-label="Show help for Keyboard shortcuts"]') as HTMLButtonElement | null;
+        expect(tooltipTrigger).not.toBeNull();
+
+        Object.defineProperty(tooltipTrigger as HTMLButtonElement, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => ({
+                x: 372,
+                y: 212,
+                width: 14,
+                height: 14,
+                top: 212,
+                right: 386,
+                bottom: 226,
+                left: 372,
+                toJSON: () => ({}),
+            }),
+        });
+
+        tooltipTrigger?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+
+        const portalBubble = document.querySelector('#settings-tooltip-layer > .settings-tooltip-bubble') as HTMLDivElement | null;
+        expect(portalBubble).not.toBeNull();
+        expect(portalBubble?.hidden).toBe(false);
+        expect(portalBubble?.classList.contains('is-visible')).toBe(true);
+        expect(portalBubble?.classList.contains('settings-tooltip-bubble--above')).toBe(true);
+        expect(portalBubble?.innerHTML).toContain('Click a field and press a key combination.');
+
+        const left = Number.parseFloat(portalBubble?.style.left || '0');
+        const top = Number.parseFloat(portalBubble?.style.top || '0');
+        expect(left).toBeGreaterThanOrEqual(12);
+        expect(top).toBeGreaterThanOrEqual(12);
+        expect(left).toBeLessThanOrEqual(148);
+        expect(top).toBeLessThanOrEqual(164);
+
+        tooltipTrigger?.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+
+        expect(portalBubble?.hidden).toBe(true);
     });
 
     it('hydrates the modal and saves the edited form state', async () => {

@@ -595,6 +595,13 @@
     transform: translateY(0) scale(1);
 }
 
+.settings-tooltip-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+}
+
 .settings-submodal {
     position: absolute;
     inset: 0;
@@ -1196,11 +1203,14 @@
 }
 
 .settings-tooltip-bubble {
-    position: absolute;
-    top: calc(100% + 0.35rem);
-    left: 0;
+    display: none;
+}
+
+.settings-tooltip-layer > .settings-tooltip-bubble {
+    display: block;
+    position: fixed;
     min-width: 12rem;
-    max-width: min(22rem, calc(100vw - 4rem));
+    max-width: min(15rem, calc(100vw - 4rem));
     padding: 0.55rem 0.65rem;
     border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 0.55rem;
@@ -1212,7 +1222,6 @@
     visibility: hidden;
     transform: translateY(-0.15rem);
     pointer-events: none;
-    z-index: 12;
     transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
 }
 
@@ -1220,8 +1229,7 @@
     font-size: 0.92em;
 }
 
-.settings-tooltip:hover .settings-tooltip-bubble,
-.settings-tooltip:focus-within .settings-tooltip-bubble {
+.settings-tooltip-layer > .settings-tooltip-bubble.is-visible {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
@@ -1237,10 +1245,12 @@
     right: 0;
 }
 
-.settings-tooltip--above .settings-tooltip-bubble {
-    top: auto;
-    bottom: calc(100% + 0.35rem);
+.settings-tooltip-layer > .settings-tooltip-bubble.settings-tooltip-bubble--above {
     transform: translateY(0.15rem);
+}
+
+.settings-tooltip-layer > .settings-tooltip-bubble.is-visible.settings-tooltip-bubble--above {
+    transform: translateY(0);
 }
 
 .settings-checkbox-row {
