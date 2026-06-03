@@ -69,7 +69,6 @@ type TaskbarCoverToggleContext = Pick<
     | 'sidebarController'
     | 'showOverviewPage'
     | 'showNowPlayingPage'
-    | 'refreshCurrentTrackMetadata'
 >;
 
 type CoverFrameInteractionContext = Pick<
@@ -545,7 +544,6 @@ export const toggleTaskbarCoverView = (context: TaskbarCoverToggleContext): void
     if (context.app.classList.contains('showing-overview')) {
         context.libraryController.setSidebarOpen(false);
         context.showNowPlayingPage();
-        void context.refreshCurrentTrackMetadata();
         return;
     }
 
@@ -717,7 +715,6 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
         handleFocusedKeyboardShortcut,
         focusedShortcutBindingsUseCode,
         setCtrlHeldState,
-        refreshCurrentTrackMetadata,
         handleLibraryScanUpdatedEvent,
         updateLibraryLoadingEtaFromProgress,
         normalizeMusicBrainzTagWorkerProgress,
@@ -959,7 +956,6 @@ export const setupAppEventBindings = (context: AppEventBindingsContext): void =>
             sidebarController,
             showOverviewPage,
             showNowPlayingPage,
-            refreshCurrentTrackMetadata,
         });
     });
 

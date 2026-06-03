@@ -233,6 +233,10 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         numeric: true,
         sensitivity: 'base',
     });
+    let cachedLastAddedAlbumEntries: OverviewRecencyEntry[] | null = null;
+    let cachedLastAddedAlbumEntriesSourceTracks: Track[] | null = null;
+    let cachedLastAddedAlbumEntriesVersion = 0;
+    let overviewRecencyDescriptorVersion = 0;
     let cachedOverviewAlbumGridEntries: OverviewAlbumGridEntry[] | null = null;
     let cachedOverviewAlbumGridSourceTracks: Track[] | null = null;
     let overviewAlbumGridEntriesForRender: OverviewAlbumGridEntry[] = [];
@@ -1083,52 +1087,103 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         };
     };
 
+    const invalidateOverviewRecencyCaches = (): void => {
+        overviewRecencyDescriptorVersion += 1;
+        cachedLastAddedAlbumEntries = null;
+        cachedLastAddedAlbumEntriesSourceTracks = null;
+        cachedLastAddedAlbumEntriesVersion = 0;
+    };
+
     const buildLastAddedAlbumEntries = (): OverviewRecencyEntry[] => {
-        const albumTrackIndexesByKey = new Map<string, number[]>();
-        context.tracks.forEach((track, trackIndex) => {
-            const descriptor = overviewAlbumDescriptorForTrack(track);
-            const existingTrackIndexes = albumTrackIndexesByKey.get(descriptor.key);
-            if (existingTrackIndexes) {
-                existingTrackIndexes.push(trackIndex);
-                return;
-            }
+        if (
+            cachedLastAddedAlbumEntries
+            && cachedLastAddedAlbumEntriesSourceTracks === context.tracks
+            && cachedLastAddedAlbumEntriesVersion === overviewRecencyDescriptorVersion
+        ) {
+            return cachedLastAddedAlbumEntries;
+        }
 
-            albumTrackIndexesByKey.set(descriptor.key, [trackIndex]);
-        });
+        type LastAddedAlbumCandidate = {
+            key: string;
+            title: string;
+            subtitle: string;
+            sortTimestamp: number;
+            trackIndex: number;
+        };
 
-        const recentTracks = context.tracks
-            .map((track, trackIndex) => ({ track, trackIndex }))
-            .filter(({ track }) => normalizedTimestampMs(track.modifiedAtMs) > 0)
-            .sort((left, right) => normalizedTimestampMs(right.track.modifiedAtMs) - normalizedTimestampMs(left.track.modifiedAtMs));
-
-        const seenAlbumKeys = new Set<string>();
-        const entries: OverviewRecencyEntry[] = [];
-
-        for (const { track, trackIndex } of recentTracks) {
-            const descriptor = overviewAlbumDescriptorForTrack(track);
-            if (seenAlbumKeys.has(descriptor.key)) {
+        const latestAlbumCandidateByKey = new Map<string, LastAddedAlbumCandidate>();
+        for (let trackIndex = 0; trackIndex < context.tracks.length; trackIndex += 1) {
+            const track = context.tracks[trackIndex];
+            const timestampMs = normalizedTimestampMs(track.modifiedAtMs);
+            if (timestampMs <= 0) {
                 continue;
             }
 
-            seenAlbumKeys.add(descriptor.key);
-            const timestampMs = normalizedTimestampMs(track.modifiedAtMs);
-            entries.push({
+            const descriptor = overviewAlbumDescriptorForTrack(track);
+            const existingCandidate = latestAlbumCandidateByKey.get(descriptor.key);
+            if (existingCandidate && existingCandidate.sortTimestamp >= timestampMs) {
+                continue;
+            }
+
+            latestAlbumCandidateByKey.set(descriptor.key, {
+                key: descriptor.key,
                 title: descriptor.album,
                 subtitle: descriptor.albumArtist,
-                meta: formatOverviewRelativeTime(timestampMs, 'Added'),
                 sortTimestamp: timestampMs,
                 trackIndex,
-                trackIndexes: albumTrackIndexesByKey.get(descriptor.key) || [trackIndex],
-                coverAlt: `Album cover for ${descriptor.album}`,
-                openLabel: `Open listen view for ${descriptor.album}`,
             });
+        }
 
-            if (entries.length >= 4) {
-                break;
+        const topCandidates: LastAddedAlbumCandidate[] = [];
+        latestAlbumCandidateByKey.forEach((candidate) => {
+            let insertAt = topCandidates.findIndex((existing) => existing.sortTimestamp < candidate.sortTimestamp);
+            if (insertAt < 0) {
+                insertAt = topCandidates.length;
+            }
+
+            if (insertAt >= 4) {
+                return;
+            }
+
+            topCandidates.splice(insertAt, 0, candidate);
+            if (topCandidates.length > 4) {
+                topCandidates.length = 4;
+            }
+        });
+
+        if (topCandidates.length === 0) {
+            cachedLastAddedAlbumEntries = [];
+            cachedLastAddedAlbumEntriesSourceTracks = context.tracks;
+            cachedLastAddedAlbumEntriesVersion = overviewRecencyDescriptorVersion;
+            return cachedLastAddedAlbumEntries;
+        }
+
+        const topTrackIndexesByKey = new Map<string, number[]>();
+        topCandidates.forEach((candidate) => {
+            topTrackIndexesByKey.set(candidate.key, []);
+        });
+
+        for (let trackIndex = 0; trackIndex < context.tracks.length; trackIndex += 1) {
+            const descriptor = overviewAlbumDescriptorForTrack(context.tracks[trackIndex]);
+            const trackIndexes = topTrackIndexesByKey.get(descriptor.key);
+            if (trackIndexes) {
+                trackIndexes.push(trackIndex);
             }
         }
 
-        return entries;
+        cachedLastAddedAlbumEntries = topCandidates.map((candidate) => ({
+            title: candidate.title,
+            subtitle: candidate.subtitle,
+            meta: formatOverviewRelativeTime(candidate.sortTimestamp, 'Added'),
+            sortTimestamp: candidate.sortTimestamp,
+            trackIndex: candidate.trackIndex,
+            trackIndexes: topTrackIndexesByKey.get(candidate.key) || [candidate.trackIndex],
+            coverAlt: `Album cover for ${candidate.title}`,
+            openLabel: `Open listen view for ${candidate.title}`,
+        }));
+        cachedLastAddedAlbumEntriesSourceTracks = context.tracks;
+        cachedLastAddedAlbumEntriesVersion = overviewRecencyDescriptorVersion;
+        return cachedLastAddedAlbumEntries;
     };
 
     const buildLastPlayedTrackEntries = async (): Promise<OverviewRecencyEntry[]> => {
@@ -1197,6 +1252,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
+        invalidateOverviewRecencyCaches();
         void refreshOverviewRecencySections();
     };
 
@@ -2448,6 +2504,23 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         libraryCount: 0,
     };
     const overviewDashboardCountBatchSize = 2000;
+    const overviewDashboardRevealDelayMs = 180;
+
+    const cancelOverviewDashboardRefresh = (): void => {
+        if (overviewDashboardRefreshHandle !== null) {
+            window.clearTimeout(overviewDashboardRefreshHandle);
+            overviewDashboardRefreshHandle = null;
+        }
+
+        if (overviewDashboardCountsRefreshHandle !== null) {
+            window.clearTimeout(overviewDashboardCountsRefreshHandle);
+            overviewDashboardCountsRefreshHandle = null;
+        }
+
+        // Invalidate any async overview work that might still resolve after the pane is hidden.
+        overviewDashboardRequestVersion += 1;
+        overviewDashboardCountsRefreshVersion += 1;
+    };
 
     const applyOverviewDashboardCounts = (): void => {
         if (context.overviewTracksCount) {
@@ -2565,19 +2638,26 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     };
 
     const scheduleOverviewDashboardRefresh = (): void => {
-        scheduleOverviewDashboardCountsRefresh();
+        cancelOverviewDashboardRefresh();
         if (!context.app.classList.contains('showing-overview')) {
             return;
         }
 
-        if (overviewDashboardRefreshHandle !== null) {
-            window.clearTimeout(overviewDashboardRefreshHandle);
-        }
-
         overviewDashboardRefreshHandle = window.setTimeout(() => {
             overviewDashboardRefreshHandle = null;
+
+            if (!context.app.classList.contains('showing-overview')) {
+                return;
+            }
+
+            scheduleOverviewDashboardCountsRefresh();
+
+            if (!context.app.classList.contains('showing-overview')) {
+                return;
+            }
+
             void refreshOverviewRecencySections();
-        }, 0);
+        }, overviewDashboardRevealDelayMs);
     };
 
     const syncOverviewDashboardMode = (): void => {
@@ -2662,14 +2742,15 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
         setOverviewDashboardMode('recents');
         context.overviewPage.hidden = false;
-        context.playerLane.hidden = isRoonShellActive() ? false : true;
+        context.playerLane.hidden = true;
         context.overviewPage.scrollTop = 0;
         context.app.classList.add('showing-overview');
         scheduleOverviewDashboardRefresh();
     };
 
     const showNowPlayingPage = (): void => {
-        context.overviewPage.hidden = isRoonShellActive() ? false : true;
+        cancelOverviewDashboardRefresh();
+        context.overviewPage.hidden = true;
         context.playerLane.hidden = false;
         context.app.classList.remove('showing-overview');
     };

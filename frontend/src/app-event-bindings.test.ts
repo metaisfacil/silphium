@@ -587,7 +587,6 @@ describe('toggleTaskbarCoverView', () => {
         };
         const showOverviewPage = vi.fn();
         const showNowPlayingPage = vi.fn();
-        const refreshCurrentTrackMetadata = vi.fn(async () => undefined);
 
         toggleTaskbarCoverView({
             app,
@@ -595,17 +594,15 @@ describe('toggleTaskbarCoverView', () => {
             sidebarController,
             showOverviewPage,
             showNowPlayingPage,
-            refreshCurrentTrackMetadata,
         } as never);
 
         expect(showOverviewPage).toHaveBeenCalledTimes(1);
         expect(sidebarController.showNavigation).toHaveBeenCalledTimes(1);
         expect(showNowPlayingPage).not.toHaveBeenCalled();
         expect(libraryController.setSidebarOpen).not.toHaveBeenCalled();
-        expect(refreshCurrentTrackMetadata).not.toHaveBeenCalled();
     });
 
-    it('switches from overview back to track view and refreshes metadata', async () => {
+    it('switches from overview back to track view without metadata refresh work', () => {
         const app = document.createElement('div');
         app.classList.add('showing-overview');
         const libraryController = {
@@ -616,7 +613,6 @@ describe('toggleTaskbarCoverView', () => {
         };
         const showOverviewPage = vi.fn();
         const showNowPlayingPage = vi.fn();
-        const refreshCurrentTrackMetadata = vi.fn(async () => undefined);
 
         toggleTaskbarCoverView({
             app,
@@ -624,15 +620,48 @@ describe('toggleTaskbarCoverView', () => {
             sidebarController,
             showOverviewPage,
             showNowPlayingPage,
-            refreshCurrentTrackMetadata,
         } as never);
-        await flushPromises();
 
         expect(libraryController.setSidebarOpen).toHaveBeenCalledWith(false);
         expect(showNowPlayingPage).toHaveBeenCalledTimes(1);
-        expect(refreshCurrentTrackMetadata).toHaveBeenCalledTimes(1);
         expect(showOverviewPage).not.toHaveBeenCalled();
         expect(sidebarController.showNavigation).not.toHaveBeenCalled();
+    });
+
+    it('rapid toggles only alternate the active view state', () => {
+        const app = document.createElement('div');
+        app.classList.add('showing-overview');
+        const libraryController = {
+            setSidebarOpen: vi.fn(),
+        };
+        const sidebarController = {
+            showNavigation: vi.fn(),
+        };
+        const showOverviewPage = vi.fn(() => {
+            app.classList.add('showing-overview');
+        });
+        const showNowPlayingPage = vi.fn(() => {
+            app.classList.remove('showing-overview');
+        });
+
+        toggleTaskbarCoverView({
+            app,
+            libraryController,
+            sidebarController,
+            showOverviewPage,
+            showNowPlayingPage,
+        } as never);
+
+        toggleTaskbarCoverView({
+            app,
+            libraryController,
+            sidebarController,
+            showOverviewPage,
+            showNowPlayingPage,
+        } as never);
+
+        expect(showOverviewPage).toHaveBeenCalledTimes(1);
+        expect(showNowPlayingPage).toHaveBeenCalledTimes(1);
     });
 });
 

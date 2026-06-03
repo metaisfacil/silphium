@@ -636,7 +636,7 @@ describe('createAppCoreServicesRuntime', () => {
         expect(artistFilterSearchQueryForTarget(track, guestArtistLink)).toBe('mbid-artist:artist-guest');
     });
 
-    it('keeps both overview and track panes mounted in the Roon shell while toggling the active view class', () => {
+    it('hides the inactive pane in the Roon shell while toggling the active view class', () => {
         const context = createContext();
         const runtime = createAppCoreServicesRuntime(context);
         context.overviewPage.scrollTop = 192;
@@ -646,7 +646,7 @@ describe('createAppCoreServicesRuntime', () => {
 
         expect(context.app.classList.contains('showing-overview')).toBe(true);
         expect(context.overviewPage.hidden).toBe(false);
-        expect(context.playerLane.hidden).toBe(false);
+        expect(context.playerLane.hidden).toBe(true);
         expect(context.overviewPage.scrollTop).toBe(0);
 
         Object.defineProperty(window, 'innerWidth', {
@@ -666,7 +666,7 @@ describe('createAppCoreServicesRuntime', () => {
         runtime.showNowPlayingPage();
 
         expect(context.app.classList.contains('showing-overview')).toBe(false);
-        expect(context.overviewPage.hidden).toBe(false);
+        expect(context.overviewPage.hidden).toBe(true);
         expect(context.playerLane.hidden).toBe(false);
     });
 
@@ -692,6 +692,60 @@ describe('createAppCoreServicesRuntime', () => {
         expect(context.overviewRecentsView.hidden).toBe(true);
         expect(context.overviewShowAlbums.getAttribute('aria-pressed')).toBe('true');
         expect(context.overviewShowRecents.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('defers overview dashboard work until the pane remains visible', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const context = createContext();
+            const runtime = createAppCoreServicesRuntime(context);
+
+            runtime.initializeRoonShell();
+
+            expect(context.overviewLastAddedList.querySelector('.overview-album-card')).toBeNull();
+            expect(context.overviewTracksCount.textContent).toBe('');
+
+            await vi.advanceTimersByTimeAsync(179);
+            await flushPromises();
+            await flushPromises();
+
+            expect(context.overviewLastAddedList.querySelector('.overview-album-card')).toBeNull();
+            expect(context.overviewTracksCount.textContent).toBe('');
+
+            await vi.advanceTimersByTimeAsync(1);
+            await vi.runAllTimersAsync();
+            await flushPromises();
+            await flushPromises();
+
+            expect(context.overviewTracksCount.textContent).toBe('1');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('cancels overview dashboard work when returning to now playing before the reveal delay elapses', async () => {
+        vi.useFakeTimers();
+
+        try {
+            const context = createContext();
+            const runtime = createAppCoreServicesRuntime(context);
+
+            runtime.initializeRoonShell();
+            runtime.showNowPlayingPage();
+
+            await vi.advanceTimersByTimeAsync(500);
+            await flushPromises();
+            await flushPromises();
+
+            expect(context.overviewLastAddedList.querySelector('.overview-album-card')).toBeNull();
+            expect(context.overviewTracksCount.textContent).toBe('');
+            expect(context.app.classList.contains('showing-overview')).toBe(false);
+            expect(context.overviewPage.hidden).toBe(true);
+            expect(context.playerLane.hidden).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('uses cached counts immediately and defers recounting when opening overview with updated tracks', async () => {
