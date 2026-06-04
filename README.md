@@ -48,49 +48,16 @@ Prerequisites:
 - Wails CLI
 - ffmpeg available on PATH
 
-Run in development mode:
+Common development commands:
 
 ```bash
-make dev
-```
-
-Run Go tests:
-
-```bash
-go test ./...
-```
-
-Run frontend tests:
-
-```bash
-cd frontend
-npm test
-```
-
-Run frontend coverage:
-
-```bash
-cd frontend
-npm run test:coverage
-```
-
-Run full local validation matching CI gates (lint, tests, frontend build/typecheck):
-
-```bash
-npm run validate:ci
-```
-
-Build frontend only:
-
-```bash
-cd frontend
-npm run build
-```
-
-Build desktop app:
-
-```bash
-make build
+make dev                                # run the app in development mode
+go test ./...                           # run Go tests
+npm --prefix frontend test              # run frontend tests
+npm --prefix frontend run test:coverage # run frontend coverage
+npm run validate:ci                     # run full local validation matching CI gates
+npm --prefix frontend run build         # build the frontend only
+make build                              # build the desktop app
 ```
 
 ## Contributing

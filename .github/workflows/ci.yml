@@ -70,7 +70,7 @@ jobs:
           touch frontend/dist/.gitkeep
 
       - name: Run Go tests
-        run: go test ./... -count=1 -v
+        run: go test ./... -count=1
 
       - name: Set up Node.js for frontend tests
         uses: actions/setup-node@v4
@@ -90,7 +90,7 @@ jobs:
           touch frontend/dist/.gitkeep
 
       - name: Run frontend tests
-        run: npm run test
+        run: npm run test:ci
         working-directory: frontend
 
   build:
