@@ -2,6 +2,8 @@
 	<img src="./frontend/public/silphium.svg" alt="Silphium logo" width="125" />
 </p>
 
+<img width="1459" height="967" alt="image" src="https://github.com/user-attachments/assets/07264eac-924b-446d-bc27-ac33dc7b2e9f" />
+
 # Silphium
 
 Silphium is a desktop music player built for people who already maintain a carefully curated local music library.
