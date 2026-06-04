@@ -1042,6 +1042,69 @@ describe('createAppCoreServicesRuntime', () => {
         expect(context.overviewShowRecents.getAttribute('aria-pressed')).toBe('true');
     });
 
+    it('builds overview album descriptors only once per track when opening albums', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 6 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/artist-${String(index + 1)}/album-${String(index + 1)}/01.flac`,
+            relativePath: `artist-${String(index + 1)}/album-${String(index + 1)}/01.flac`,
+            folderPath: `/music/artist-${String(index + 1)}/album-${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+
+        runtime.refreshOverviewDashboard();
+        vi.mocked(context.releaseDepthForTrack).mockClear();
+
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(vi.mocked(context.releaseDepthForTrack)).toHaveBeenCalledTimes(6);
+
+        context.overviewShowRecents.click();
+        vi.mocked(context.releaseDepthForTrack).mockClear();
+
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(vi.mocked(context.releaseDepthForTrack)).not.toHaveBeenCalled();
+    });
+
+    it('prewarms the album grid cache before opening albums so the click reuses it', async () => {
+        vi.useFakeTimers();
+
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 6 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/artist-${String(index + 1)}/album-${String(index + 1)}/01.flac`,
+            relativePath: `artist-${String(index + 1)}/album-${String(index + 1)}/01.flac`,
+            folderPath: `/music/artist-${String(index + 1)}/album-${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+
+        runtime.refreshOverviewDashboard();
+        vi.mocked(context.releaseDepthForTrack).mockClear();
+
+        await vi.runAllTimersAsync();
+        await flushPromises();
+
+        expect(vi.mocked(context.releaseDepthForTrack)).toHaveBeenCalledTimes(6);
+
+        vi.mocked(context.releaseDepthForTrack).mockClear();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(vi.mocked(context.releaseDepthForTrack)).not.toHaveBeenCalled();
+    });
+
     it('formats overview dashboard counts with grouped digits', async () => {
         const context = createContext();
         (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 1234 }, (_, index) => ({
@@ -1462,7 +1525,235 @@ describe('createAppCoreServicesRuntime', () => {
         expect(image.getAttribute('src')).toContain(btoa('cover:/music/cover-fresh.jpg'));
     });
 
-    it('aggressively realizes album-grid entries when dragging the scroll pill toward the bottom', async () => {
+    it('keeps the album-grid DOM bounded while dragging toward the bottom in large libraries', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback) => window.setTimeout(() => callback(16), 16)) as typeof window.requestAnimationFrame);
+        vi.stubGlobal('cancelAnimationFrame', ((handle: number) => window.clearTimeout(handle)) as typeof window.cancelAnimationFrame);
+
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 500 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/${String(index + 1)}/01.flac`,
+            relativePath: `${String(index + 1)}/01.flac`,
+            folderPath: `/music/${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn(() => undefined),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+
+        vi.mocked(ReadImageThumbnail).mockResolvedValue({
+            base64: btoa('cover:/music/cover.jpg'),
+            mimeType: 'image/jpeg',
+        });
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        context.overviewAlbumGridScrollRail.append(context.overviewAlbumGridScrollPill, context.overviewAlbumGridScrollHint);
+        document.body.append(context.overviewAlbumGridView, context.overviewAlbumGridScrollRail);
+
+        Object.defineProperty(context.overviewAlbumGridView, 'clientHeight', { configurable: true, value: 600 });
+        let scrollHeightReadCount = 0;
+        Object.defineProperty(context.overviewAlbumGridView, 'scrollHeight', {
+            configurable: true,
+            get: () => {
+                scrollHeightReadCount += 1;
+                return 6000;
+            },
+        });
+        Object.defineProperty(context.overviewAlbumGridScrollPill, 'offsetHeight', { configurable: true, value: 54 });
+        context.overviewAlbumGridView.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 500,
+            bottom: 600,
+            width: 500,
+            height: 600,
+            toJSON: () => '',
+        })) as never;
+        context.overviewAlbumGridScrollPill.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 20,
+            bottom: 54,
+            width: 20,
+            height: 54,
+            toJSON: () => '',
+        })) as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewAlbumGrid.querySelectorAll('.library-album-card').length).toBeLessThan(120);
+
+        context.overviewAlbumGridScrollRail.hidden = false;
+        scrollHeightReadCount = 0;
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointerdown', { clientY: 40, pointerId: 1 });
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointermove', { clientY: 598, pointerId: 1 });
+        await vi.advanceTimersByTimeAsync(16);
+        await flushPromises();
+        await flushPromises();
+
+        const cards = Array.from(context.overviewAlbumGrid.querySelectorAll('.overview-library-album-card')) as HTMLDivElement[];
+        expect(cards.length).toBeLessThan(120);
+        expect(cards.some((card) => Number(card.dataset.overviewGridTrackIndex || '0') > 300)).toBe(true);
+        expect(scrollHeightReadCount).toBe(0);
+    });
+
+    it('reuses cached scroll rail metrics across repeated album-grid drag moves', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 500 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/${String(index + 1)}/01.flac`,
+            relativePath: `${String(index + 1)}/01.flac`,
+            folderPath: `/music/${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn(() => undefined),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+
+        vi.mocked(ReadImageThumbnail).mockResolvedValue({
+            base64: btoa('cover:/music/cover.jpg'),
+            mimeType: 'image/jpeg',
+        });
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        context.overviewAlbumGridScrollRail.append(context.overviewAlbumGridScrollPill, context.overviewAlbumGridScrollHint);
+        document.body.append(context.overviewAlbumGridView, context.overviewAlbumGridScrollRail);
+
+        Object.defineProperty(context.overviewAlbumGridView, 'clientHeight', { configurable: true, value: 600 });
+        Object.defineProperty(context.overviewAlbumGridView, 'scrollHeight', { configurable: true, get: () => 6000 });
+        Object.defineProperty(context.overviewAlbumGridScrollPill, 'offsetHeight', { configurable: true, value: 54 });
+        context.overviewAlbumGridView.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 500,
+            bottom: 600,
+            width: 500,
+            height: 600,
+            toJSON: () => '',
+        })) as never;
+
+        const originalGetComputedStyle = window.getComputedStyle.bind(window);
+        const getComputedStyleSpy = vi.spyOn(window, 'getComputedStyle').mockImplementation((element: Element) => originalGetComputedStyle(element));
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        getComputedStyleSpy.mockClear();
+        context.overviewAlbumGridScrollRail.hidden = false;
+
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointerdown', { clientY: 40, pointerId: 1 });
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointermove', { clientY: 320, pointerId: 1 });
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointermove', { clientY: 560, pointerId: 1 });
+        await flushPromises();
+        await flushPromises();
+
+        expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips scroll-listener scrollHeight reads while the album-grid drag is active', async () => {
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 500 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/${String(index + 1)}/01.flac`,
+            relativePath: `${String(index + 1)}/01.flac`,
+            folderPath: `/music/${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn(() => undefined),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+
+        vi.mocked(ReadImageThumbnail).mockResolvedValue({
+            base64: btoa('cover:/music/cover.jpg'),
+            mimeType: 'image/jpeg',
+        });
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        context.overviewAlbumGridScrollRail.append(context.overviewAlbumGridScrollPill, context.overviewAlbumGridScrollHint);
+        document.body.append(context.overviewAlbumGridView, context.overviewAlbumGridScrollRail);
+
+        Object.defineProperty(context.overviewAlbumGridView, 'clientHeight', { configurable: true, value: 600 });
+        let scrollHeightReadCount = 0;
+        Object.defineProperty(context.overviewAlbumGridView, 'scrollHeight', {
+            configurable: true,
+            get: () => {
+                scrollHeightReadCount += 1;
+                return 6000;
+            },
+        });
+        Object.defineProperty(context.overviewAlbumGridScrollPill, 'offsetHeight', { configurable: true, value: 54 });
+        context.overviewAlbumGridView.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 500,
+            bottom: 600,
+            width: 500,
+            height: 600,
+            toJSON: () => '',
+        })) as never;
+        context.overviewAlbumGridScrollPill.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 20,
+            bottom: 54,
+            width: 20,
+            height: 54,
+            toJSON: () => '',
+        })) as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        context.overviewAlbumGridScrollRail.hidden = false;
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointerdown', { clientY: 40, pointerId: 1 });
+        scrollHeightReadCount = 0;
+
+        context.overviewAlbumGridView.dispatchEvent(new Event('scroll'));
+
+        expect(scrollHeightReadCount).toBe(0);
+    });
+
+    it('updates the album-grid viewport while dragging the scroll pill before release', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback) => window.setTimeout(() => callback(16), 16)) as typeof window.requestAnimationFrame);
+        vi.stubGlobal('cancelAnimationFrame', ((handle: number) => window.clearTimeout(handle)) as typeof window.cancelAnimationFrame);
+
         const context = createContext();
         (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 500 }, (_, index) => ({
             ...createTrack(),
@@ -1521,14 +1812,184 @@ describe('createAppCoreServicesRuntime', () => {
         await flushPromises();
         await flushPromises();
 
-        expect(context.overviewAlbumGrid.querySelectorAll('.library-album-card')).toHaveLength(80);
+        context.overviewAlbumGridScrollRail.hidden = false;
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointerdown', { clientY: 40, pointerId: 1 });
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointermove', { clientY: 560, pointerId: 1 });
+
+        expect(context.overviewAlbumGridView.scrollTop).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(16);
+        await flushPromises();
+
+        expect(context.overviewAlbumGridView.scrollTop).toBeGreaterThan(0);
+    });
+
+    it('reuses the cached album-grid max scroll range across repeated drag sync frames', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback) => window.setTimeout(() => callback(16), 16)) as typeof window.requestAnimationFrame);
+        vi.stubGlobal('cancelAnimationFrame', ((handle: number) => window.clearTimeout(handle)) as typeof window.cancelAnimationFrame);
+
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 80 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/${String(index + 1)}/01.flac`,
+            relativePath: `${String(index + 1)}/01.flac`,
+            folderPath: `/music/${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn(() => undefined),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+
+        vi.mocked(ReadImageThumbnail).mockResolvedValue({
+            base64: btoa('cover:/music/cover.jpg'),
+            mimeType: 'image/jpeg',
+        });
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        context.overviewAlbumGridScrollRail.append(context.overviewAlbumGridScrollPill, context.overviewAlbumGridScrollHint);
+        document.body.append(context.overviewAlbumGridView, context.overviewAlbumGridScrollRail);
+
+        Object.defineProperty(context.overviewAlbumGridView, 'clientHeight', { configurable: true, value: 600 });
+        let scrollHeightReadCount = 0;
+        Object.defineProperty(context.overviewAlbumGridView, 'scrollHeight', {
+            configurable: true,
+            get: () => {
+                scrollHeightReadCount += 1;
+                return 6000;
+            },
+        });
+        Object.defineProperty(context.overviewAlbumGridScrollPill, 'offsetHeight', { configurable: true, value: 54 });
+        context.overviewAlbumGridView.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 500,
+            bottom: 600,
+            width: 500,
+            height: 600,
+            toJSON: () => '',
+        })) as never;
+        context.overviewAlbumGridScrollPill.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 20,
+            bottom: 54,
+            width: 20,
+            height: 54,
+            toJSON: () => '',
+        })) as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        context.overviewAlbumGridScrollRail.hidden = false;
+        scrollHeightReadCount = 0;
+
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointerdown', { clientY: 40, pointerId: 1 });
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointermove', { clientY: 320, pointerId: 1 });
+        await vi.advanceTimersByTimeAsync(16);
+        dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointermove', { clientY: 560, pointerId: 1 });
+        await vi.advanceTimersByTimeAsync(16);
+        await flushPromises();
+
+        expect(scrollHeightReadCount).toBe(0);
+    });
+
+    it('reopens the albums view from a compact grid after the previous session realized deeper content', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('requestAnimationFrame', ((callback: FrameRequestCallback) => window.setTimeout(() => callback(16), 16)) as typeof window.requestAnimationFrame);
+        vi.stubGlobal('cancelAnimationFrame', ((handle: number) => window.clearTimeout(handle)) as typeof window.cancelAnimationFrame);
+
+        const context = createContext();
+        (context as unknown as { tracks: unknown[] }).tracks = Array.from({ length: 500 }, (_, index) => ({
+            ...createTrack(),
+            path: `/music/${String(index + 1)}/01.flac`,
+            relativePath: `${String(index + 1)}/01.flac`,
+            folderPath: `/music/${String(index + 1)}`,
+            displayAlbum: `Album ${String(index + 1)}`,
+            displayArtist: `Artist ${String(index + 1)}`,
+        })) as never;
+
+        createCoverArtServiceMock.mockReturnValueOnce(createCoverArtServiceStub({
+            getCachedMediaArtwork: vi.fn(() => undefined),
+            getFolderCoverPath: vi.fn(() => undefined),
+            resolveFolderCoverPath: vi.fn(async (folderPath: string) => `${folderPath}/cover.jpg`),
+            resolveForTrack: vi.fn(async () => ''),
+        }));
+
+        vi.mocked(ReadImageThumbnail).mockResolvedValue({
+            base64: btoa('cover:/music/cover.jpg'),
+            mimeType: 'image/jpeg',
+        });
+
+        context.overviewAlbumGridView.append(context.overviewAlbumGrid);
+        context.overviewAlbumGridScrollRail.append(context.overviewAlbumGridScrollPill, context.overviewAlbumGridScrollHint);
+        document.body.append(context.overviewAlbumGridView, context.overviewAlbumGridScrollRail);
+
+        Object.defineProperty(context.overviewAlbumGridView, 'clientHeight', { configurable: true, value: 600 });
+        Object.defineProperty(context.overviewAlbumGridView, 'scrollHeight', { configurable: true, get: () => 6000 });
+        Object.defineProperty(context.overviewAlbumGridScrollPill, 'offsetHeight', { configurable: true, value: 54 });
+        context.overviewAlbumGridView.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 500,
+            bottom: 600,
+            width: 500,
+            height: 600,
+            toJSON: () => '',
+        })) as never;
+        context.overviewAlbumGridScrollPill.getBoundingClientRect = vi.fn(() => ({
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 20,
+            bottom: 54,
+            width: 20,
+            height: 54,
+            toJSON: () => '',
+        })) as never;
+
+        const runtime = createAppCoreServicesRuntime(context);
+        runtime.refreshOverviewDashboard();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(context.overviewAlbumGrid.querySelectorAll('.library-album-card').length).toBeLessThan(120);
 
         context.overviewAlbumGridScrollRail.hidden = false;
         dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointerdown', { clientY: 40, pointerId: 1 });
         dispatchPointerLikeEvent(context.overviewAlbumGridScrollPill, 'pointermove', { clientY: 598, pointerId: 1 });
+        await vi.advanceTimersByTimeAsync(16);
         await flushPromises();
         await flushPromises();
 
-        expect(context.overviewAlbumGrid.querySelectorAll('.library-album-card').length).toBeGreaterThan(80);
+        let cards = Array.from(context.overviewAlbumGrid.querySelectorAll('.overview-library-album-card')) as HTMLDivElement[];
+        expect(cards.length).toBeLessThan(120);
+        expect(cards.some((card) => Number(card.dataset.overviewGridTrackIndex || '0') > 300)).toBe(true);
+
+        context.overviewShowRecents.click();
+        context.overviewShowAlbums.click();
+        await flushPromises();
+        await flushPromises();
+
+        cards = Array.from(context.overviewAlbumGrid.querySelectorAll('.overview-library-album-card')) as HTMLDivElement[];
+        expect(cards.length).toBeLessThan(120);
+        expect(Math.min(...cards.map((card) => Number(card.dataset.overviewGridTrackIndex || '0')))).toBe(0);
     });
 });

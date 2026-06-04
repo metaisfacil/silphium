@@ -98,6 +98,13 @@ type OverviewAlbumGridEntry = {
     coverFolderPath: string;
 };
 
+type OverviewAlbumDescriptor = {
+    album: string;
+    albumArtist: string;
+    key: string;
+    coverFolderPath: string;
+};
+
 type OverviewAlbumInlineTrackEntry = {
     trackIndex: number;
     title: string;
@@ -111,6 +118,8 @@ const overviewAlbumGridRenderBatchSize = 80;
 const overviewAlbumGridCoverLoadConcurrency = 4;
 const overviewAlbumGridFallbackInitialCoverCount = 32;
 const overviewAlbumGridThumbnailMaxEdgePx = 220;
+const overviewAlbumGridWindowingThreshold = 400;
+const overviewAlbumGridOverscanRows = 3;
 const overviewAlbumGridAppendThresholdPx = 900;
 const overviewAlbumGridLoadedCoverLimit = 250;
 const overviewAlbumGridSeekAppendBurstSize = 2_400;
@@ -239,8 +248,13 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     let overviewRecencyDescriptorVersion = 0;
     let cachedOverviewAlbumGridEntries: OverviewAlbumGridEntry[] | null = null;
     let cachedOverviewAlbumGridSourceTracks: Track[] | null = null;
+    let cachedOverviewAlbumDescriptors: OverviewAlbumDescriptor[] | null = null;
+    let cachedOverviewAlbumDescriptorSourceTracks: Track[] | null = null;
+    let overviewAlbumGridWarmupHandle: number | null = null;
+    let overviewAlbumGridWarmupVersion = 0;
     let overviewAlbumGridEntriesForRender: OverviewAlbumGridEntry[] = [];
     let overviewAlbumGridRenderedCount = 0;
+    let overviewAlbumGridRenderedCardsByTrackIndex = new Map<number, HTMLDivElement>();
     let overviewAlbumGridCoverObserver: IntersectionObserver | null = null;
     let overviewAlbumGridVisibilityObserver: IntersectionObserver | null = null;
     let overviewAlbumGridFallbackQueueHandle: number | null = null;
@@ -249,6 +263,21 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     let overviewAlbumGridScrollPillPointerId: number | null = null;
     let overviewAlbumGridScrollPillGrabOffsetPx = 0;
     let overviewAlbumGridRequestedScrollProgress: number | null = null;
+    let overviewAlbumGridScrollRailTopPx = 0;
+    let overviewAlbumGridScrollRailTravelPx = 0;
+    let overviewAlbumGridRequestedScrollSyncHandle: number | null = null;
+    let overviewAlbumGridCachedMaxScrollTopPx = 0;
+    let overviewAlbumGridMaxScrollTopDirty = true;
+    let overviewAlbumGridLayoutMetricsDirty = true;
+    let overviewAlbumGridColumnCount = 1;
+    let overviewAlbumGridCardWidthPx = 104;
+    let overviewAlbumGridRowGapPx = 0;
+    let overviewAlbumGridRowStridePx = 104;
+    let overviewAlbumGridViewportHeightPx = 0;
+    let overviewAlbumGridTotalHeightPx = 0;
+    let overviewAlbumGridLastVirtualRenderKey = '';
+    let overviewAlbumGridVirtualTopSpacer: HTMLDivElement | null = null;
+    let overviewAlbumGridVirtualBottomSpacer: HTMLDivElement | null = null;
     let overviewAlbumGridLastViewChangeAtMs = 0;
     let overviewAlbumGridCoverLoadsInFlight = 0;
     let overviewAlbumGridQueuedImages: HTMLImageElement[] = [];
@@ -937,8 +966,26 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         return match?.[0] || '#';
     };
 
+    const invalidateOverviewAlbumGridMaxScrollTop = (): void => {
+        overviewAlbumGridMaxScrollTopDirty = true;
+    };
+
+    const overviewAlbumGridMaxScrollTop = (pane: HTMLDivElement): number => {
+        if (isOverviewAlbumGridVirtualized()) {
+            updateOverviewAlbumGridLayoutMetrics(pane, context.overviewAlbumGrid);
+            return overviewAlbumGridCachedMaxScrollTopPx;
+        }
+
+        if (overviewAlbumGridMaxScrollTopDirty) {
+            overviewAlbumGridCachedMaxScrollTopPx = Math.max(0, pane.scrollHeight - pane.clientHeight);
+            overviewAlbumGridMaxScrollTopDirty = false;
+        }
+
+        return overviewAlbumGridCachedMaxScrollTopPx;
+    };
+
     const overviewAlbumGridProgress = (): number => {
-        const maxScrollTop = Math.max(0, context.overviewAlbumGridView.scrollHeight - context.overviewAlbumGridView.clientHeight);
+        const maxScrollTop = overviewAlbumGridMaxScrollTop(context.overviewAlbumGridView);
         if (maxScrollTop <= 0) {
             return 0;
         }
@@ -966,32 +1013,24 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         context.overviewAlbumGridScrollHint.setAttribute('aria-hidden', String(!visible));
     };
 
-    const syncOverviewAlbumGridScrollPill = (options: { showHint?: boolean; forceLetter?: string } = {}): void => {
-        const maxScrollTop = Math.max(0, context.overviewAlbumGridView.scrollHeight - context.overviewAlbumGridView.clientHeight);
+    const applyOverviewAlbumGridScrollPillProgress = (
+        progress: number,
+        options: { showHint?: boolean; forceLetter?: string } = {},
+        travelOverridePx?: number,
+    ): void => {
         const rail = context.overviewAlbumGridScrollRail;
         const pill = context.overviewAlbumGridScrollPill;
         const hint = context.overviewAlbumGridScrollHint;
-
-        if (overviewDashboardMode !== 'albums' || maxScrollTop <= 0 || overviewAlbumGridEntriesForRender.length === 0) {
-            rail.hidden = true;
-            rail.setAttribute('aria-hidden', 'true');
-            rail.classList.remove('is-active');
-            setOverviewAlbumGridScrollHintVisible(false);
-            pill.style.transform = 'translate(-50%, 0px)';
-            hint.style.transform = 'translateY(0px)';
-            return;
-        }
+        const safeProgress = Math.min(1, Math.max(0, progress));
+        const travel = Math.max(0, travelOverridePx ?? (rail.clientHeight - pill.offsetHeight));
+        const offsetPx = travel * safeProgress;
 
         rail.hidden = false;
         rail.setAttribute('aria-hidden', 'false');
         rail.classList.toggle('is-active', overviewAlbumGridScrollPillPointerId !== null);
-
-        const progress = overviewAlbumGridProgress();
-        const travel = Math.max(0, rail.clientHeight - pill.offsetHeight);
-        const offsetPx = travel * progress;
         pill.style.transform = `translate(-50%, ${offsetPx}px)`;
         hint.style.transform = `translateY(${offsetPx}px)`;
-        hint.textContent = options.forceLetter || overviewAlbumGridLetterForProgress(progress);
+        hint.textContent = options.forceLetter || overviewAlbumGridLetterForProgress(safeProgress);
 
         if (options.showHint === true) {
             setOverviewAlbumGridScrollHintVisible(true);
@@ -1000,26 +1039,48 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         }
     };
 
-    const scrollOverviewAlbumGridFromPointer = (clientY: number): void => {
+    const measureOverviewAlbumGridScrollDragMetrics = (): void => {
         const paneRect = context.overviewAlbumGridView.getBoundingClientRect();
         const railStyles = window.getComputedStyle(context.overviewAlbumGridScrollRail);
         const railTopInset = Number.parseFloat(railStyles.top || '0') || 0;
         const railBottomInset = Number.parseFloat(railStyles.bottom || '0') || 0;
-        const railTop = paneRect.top + railTopInset;
         const railHeight = Math.max(0, paneRect.height - railTopInset - railBottomInset);
         const pillHeight = context.overviewAlbumGridScrollPill.offsetHeight || 0;
-        const travel = Math.max(0, railHeight - pillHeight);
-        const rawOffsetPx = (clientY - railTop) - overviewAlbumGridScrollPillGrabOffsetPx;
+
+        overviewAlbumGridScrollRailTopPx = paneRect.top + railTopInset;
+        overviewAlbumGridScrollRailTravelPx = Math.max(0, railHeight - pillHeight);
+    };
+
+    const syncOverviewAlbumGridScrollPill = (options: { showHint?: boolean; forceLetter?: string } = {}): void => {
+        const maxScrollTop = overviewAlbumGridMaxScrollTop(context.overviewAlbumGridView);
+        const rail = context.overviewAlbumGridScrollRail;
+        const hint = context.overviewAlbumGridScrollHint;
+
+        if (overviewDashboardMode !== 'albums' || maxScrollTop <= 0 || overviewAlbumGridEntriesForRender.length === 0) {
+            rail.hidden = true;
+            rail.setAttribute('aria-hidden', 'true');
+            rail.classList.remove('is-active');
+            setOverviewAlbumGridScrollHintVisible(false);
+            context.overviewAlbumGridScrollPill.style.transform = 'translate(-50%, 0px)';
+            hint.style.transform = 'translateY(0px)';
+            return;
+        }
+
+        const progress = overviewAlbumGridProgress();
+        applyOverviewAlbumGridScrollPillProgress(progress, options);
+    };
+
+    const scrollOverviewAlbumGridFromPointer = (clientY: number): void => {
+        const rawOffsetPx = (clientY - overviewAlbumGridScrollRailTopPx) - overviewAlbumGridScrollPillGrabOffsetPx;
+        const travel = overviewAlbumGridScrollRailTravelPx;
         const offsetPx = Math.min(travel, Math.max(0, rawOffsetPx));
         const progress = travel <= 0 ? 0 : offsetPx / travel;
         overviewAlbumGridRequestedScrollProgress = progress;
         realizeOverviewAlbumGridForRequestedProgress(context.overviewAlbumGridView, context.overviewAlbumGrid, overviewAlbumGridRequestVersion, progress);
-        const maxScrollTop = Math.max(0, context.overviewAlbumGridView.scrollHeight - context.overviewAlbumGridView.clientHeight);
-        context.overviewAlbumGridView.scrollTop = progress * maxScrollTop;
-        syncOverviewAlbumGridScrollPill({
+        applyOverviewAlbumGridScrollPillProgress(progress, {
             showHint: true,
             forceLetter: overviewAlbumGridLetterForProgress(progress),
-        });
+        }, travel);
     };
 
     const releaseOverviewAlbumGridScrollPill = (pointerId: number): void => {
@@ -1027,9 +1088,19 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
+        if (overviewAlbumGridRequestedScrollProgress !== null) {
+            syncOverviewAlbumGridToRequestedProgressNow(context.overviewAlbumGridView);
+        }
+
         overviewAlbumGridScrollPillPointerId = null;
         overviewAlbumGridScrollPillGrabOffsetPx = 0;
         overviewAlbumGridRequestedScrollProgress = null;
+        overviewAlbumGridScrollRailTopPx = 0;
+        overviewAlbumGridScrollRailTravelPx = 0;
+        if (overviewAlbumGridRequestedScrollSyncHandle !== null) {
+            window.cancelAnimationFrame(overviewAlbumGridRequestedScrollSyncHandle);
+            overviewAlbumGridRequestedScrollSyncHandle = null;
+        }
         if (typeof context.overviewAlbumGridScrollPill.hasPointerCapture === 'function'
             && context.overviewAlbumGridScrollPill.hasPointerCapture(pointerId)) {
             context.overviewAlbumGridScrollPill.releasePointerCapture(pointerId);
@@ -1084,7 +1155,113 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             album,
             albumArtist,
             key,
+            coverFolderPath: releaseFolderPath || (track.folderPath || '').trim(),
         };
+    };
+
+    const overviewAlbumDescriptors = (): OverviewAlbumDescriptor[] => {
+        if (cachedOverviewAlbumDescriptors && cachedOverviewAlbumDescriptorSourceTracks === context.tracks) {
+            return cachedOverviewAlbumDescriptors;
+        }
+
+        cachedOverviewAlbumDescriptors = context.tracks.map((track) => overviewAlbumDescriptorForTrack(track));
+        cachedOverviewAlbumDescriptorSourceTracks = context.tracks;
+        return cachedOverviewAlbumDescriptors;
+    };
+
+    const buildOverviewAlbumGridEntriesFromDescriptors = (descriptors: OverviewAlbumDescriptor[]): OverviewAlbumGridEntry[] => {
+        const albumsByKey = new Map<string, OverviewAlbumGridEntry>();
+
+        descriptors.forEach((descriptor, trackIndex) => {
+            const existingEntry = albumsByKey.get(descriptor.key);
+            if (existingEntry) {
+                if (!existingEntry.trackIndexes) {
+                    existingEntry.trackIndexes = [existingEntry.trackIndex];
+                }
+
+                existingEntry.trackIndexes.push(trackIndex);
+                return;
+            }
+
+            albumsByKey.set(descriptor.key, {
+                title: descriptor.album,
+                artist: descriptor.albumArtist,
+                trackIndex,
+                trackIndexes: [trackIndex],
+                coverAlt: `Album cover for ${descriptor.album}`,
+                coverFolderPath: descriptor.coverFolderPath,
+            });
+        });
+
+        return Array.from(albumsByKey.values()).sort((left, right) => {
+            const artistComparison = overviewAlbumGridSortCollator.compare(left.artist, right.artist);
+            if (artistComparison !== 0) {
+                return artistComparison;
+            }
+
+            const titleComparison = overviewAlbumGridSortCollator.compare(left.title, right.title);
+            if (titleComparison !== 0) {
+                return titleComparison;
+            }
+
+            return left.trackIndex - right.trackIndex;
+        });
+    };
+
+    const warmOverviewAlbumGridCacheDeferred = async (tracksSource: Track[], warmupVersion: number): Promise<void> => {
+        if (cachedOverviewAlbumGridSourceTracks === tracksSource && cachedOverviewAlbumGridEntries) {
+            return;
+        }
+
+        let descriptors: OverviewAlbumDescriptor[];
+        if (cachedOverviewAlbumDescriptorSourceTracks === tracksSource && cachedOverviewAlbumDescriptors) {
+            descriptors = cachedOverviewAlbumDescriptors;
+        } else {
+            descriptors = [];
+            for (let index = 0; index < tracksSource.length; index += 1) {
+                if (warmupVersion !== overviewAlbumGridWarmupVersion || context.tracks !== tracksSource) {
+                    return;
+                }
+
+                descriptors.push(overviewAlbumDescriptorForTrack(tracksSource[index]));
+                if (index + 1 < tracksSource.length && (index + 1) % 1000 === 0) {
+                    await waitForUiYield();
+                }
+            }
+
+            if (warmupVersion !== overviewAlbumGridWarmupVersion || context.tracks !== tracksSource) {
+                return;
+            }
+
+            cachedOverviewAlbumDescriptors = descriptors;
+            cachedOverviewAlbumDescriptorSourceTracks = tracksSource;
+        }
+
+        const entries = buildOverviewAlbumGridEntriesFromDescriptors(descriptors);
+        if (warmupVersion !== overviewAlbumGridWarmupVersion || context.tracks !== tracksSource) {
+            return;
+        }
+
+        cachedOverviewAlbumGridEntries = entries;
+        cachedOverviewAlbumGridSourceTracks = tracksSource;
+    };
+
+    const scheduleOverviewAlbumGridWarmup = (): void => {
+        if (overviewAlbumGridWarmupHandle !== null) {
+            window.clearTimeout(overviewAlbumGridWarmupHandle);
+            overviewAlbumGridWarmupHandle = null;
+        }
+
+        const tracksSource = context.tracks;
+        if (tracksSource.length === 0 || (cachedOverviewAlbumGridSourceTracks === tracksSource && cachedOverviewAlbumGridEntries)) {
+            return;
+        }
+
+        const warmupVersion = ++overviewAlbumGridWarmupVersion;
+        overviewAlbumGridWarmupHandle = window.setTimeout(() => {
+            overviewAlbumGridWarmupHandle = null;
+            void warmOverviewAlbumGridCacheDeferred(tracksSource, warmupVersion);
+        }, 0);
     };
 
     const invalidateOverviewRecencyCaches = (): void => {
@@ -1261,52 +1438,8 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return cachedOverviewAlbumGridEntries;
         }
 
-        const albumsByKey = new Map<string, OverviewAlbumGridEntry>();
-        const albumTrackIndexesByKey = new Map<string, number[]>();
-
-        context.tracks.forEach((track, trackIndex) => {
-            const descriptor = overviewAlbumDescriptorForTrack(track);
-            const existingTrackIndexes = albumTrackIndexesByKey.get(descriptor.key);
-            if (existingTrackIndexes) {
-                existingTrackIndexes.push(trackIndex);
-                return;
-            }
-
-            albumTrackIndexesByKey.set(descriptor.key, [trackIndex]);
-        });
-
-        context.tracks.forEach((track, trackIndex) => {
-            const descriptor = overviewAlbumDescriptorForTrack(track);
-            if (albumsByKey.has(descriptor.key)) {
-                return;
-            }
-
-            const coverFolderPath = releaseFolderPathForTrackAtDepth(track, context.releaseDepthForTrack(track)).trim()
-                || (track.folderPath || '').trim();
-
-            albumsByKey.set(descriptor.key, {
-                title: descriptor.album,
-                artist: descriptor.albumArtist,
-                trackIndex,
-                trackIndexes: albumTrackIndexesByKey.get(descriptor.key) || [trackIndex],
-                coverAlt: `Album cover for ${descriptor.album}`,
-                coverFolderPath,
-            });
-        });
-
-        cachedOverviewAlbumGridEntries = Array.from(albumsByKey.values()).sort((left, right) => {
-            const artistComparison = overviewAlbumGridSortCollator.compare(left.artist, right.artist);
-            if (artistComparison !== 0) {
-                return artistComparison;
-            }
-
-            const titleComparison = overviewAlbumGridSortCollator.compare(left.title, right.title);
-            if (titleComparison !== 0) {
-                return titleComparison;
-            }
-
-            return left.trackIndex - right.trackIndex;
-        });
+        const descriptors = overviewAlbumDescriptors();
+        cachedOverviewAlbumGridEntries = buildOverviewAlbumGridEntriesFromDescriptors(descriptors);
 
         cachedOverviewAlbumGridSourceTracks = context.tracks;
         return cachedOverviewAlbumGridEntries;
@@ -1689,6 +1822,12 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
+        if (expandedOverviewAlbumGridTrackIndex === null
+            && !container.querySelector('.overview-album-inline-panel')
+            && !container.querySelector('.overview-library-album-card.is-expanded')) {
+            return;
+        }
+
         const syncToken = ++overviewAlbumGridExpansionSyncToken;
         const children = Array.from(container.children);
         const closePromises = children.flatMap((child) => (
@@ -1708,6 +1847,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
         if (closePromises.length > 0) {
             await Promise.all(closePromises);
+            invalidateOverviewAlbumGridMaxScrollTop();
         }
 
         if (syncToken !== overviewAlbumGridExpansionSyncToken || !container.isConnected) {
@@ -1751,6 +1891,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
         const panel = createOverviewAlbumInlinePanel(expandedEntry);
         container.insertBefore(panel, anchorCard.nextSibling);
+        invalidateOverviewAlbumGridMaxScrollTop();
         void animateOverviewAlbumInlinePanelOpen(panel);
     };
 
@@ -1905,6 +2046,37 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         cancelOverviewAlbumGridFallbackQueue();
         cancelAllOverviewAlbumGridPendingUnloads();
         resetOverviewAlbumGridViewStabilityGate();
+        if (overviewAlbumGridRequestedScrollSyncHandle !== null) {
+            window.cancelAnimationFrame(overviewAlbumGridRequestedScrollSyncHandle);
+            overviewAlbumGridRequestedScrollSyncHandle = null;
+        }
+    };
+
+    const discardOverviewAlbumGridRenderedDom = (container: HTMLDivElement | undefined): void => {
+        if (!container) {
+            return;
+        }
+
+        disconnectOverviewAlbumGridPaneWatcher(context.overviewAlbumGridView);
+        resetOverviewAlbumGridCoverQueue();
+        expandedOverviewAlbumGridTrackIndex = null;
+        overviewAlbumGridScrollPillPointerId = null;
+        overviewAlbumGridRequestedScrollProgress = null;
+        overviewAlbumGridScrollRailTopPx = 0;
+        overviewAlbumGridScrollRailTravelPx = 0;
+        overviewAlbumGridRenderedCount = 0;
+        overviewAlbumGridRenderedCardsByTrackIndex.forEach((card) => {
+            disposeOverviewAlbumGridCard(card);
+        });
+        overviewAlbumGridRenderedCardsByTrackIndex.clear();
+        overviewAlbumGridLastVirtualRenderKey = '';
+        overviewAlbumGridVirtualTopSpacer = null;
+        overviewAlbumGridVirtualBottomSpacer = null;
+        overviewAlbumGridLayoutMetricsDirty = true;
+        invalidateOverviewAlbumGridMaxScrollTop();
+        overviewAlbumGridEntriesForRender = [];
+        overviewAlbumGridEntryByTrackIndex.clear();
+        container.replaceChildren();
     };
 
     const isOverviewAlbumGridTrackVisible = (trackIndex: number): boolean => overviewAlbumGridVisibilityObserver !== null
@@ -2305,6 +2477,166 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         });
     };
 
+    const isOverviewAlbumGridVirtualized = (): boolean => overviewAlbumGridEntriesForRender.length > overviewAlbumGridWindowingThreshold;
+
+    const invalidateOverviewAlbumGridLayoutMetrics = (): void => {
+        overviewAlbumGridLayoutMetricsDirty = true;
+        overviewAlbumGridLastVirtualRenderKey = '';
+        invalidateOverviewAlbumGridMaxScrollTop();
+    };
+
+    const ensureOverviewAlbumGridVirtualSpacers = (): void => {
+        if (!overviewAlbumGridVirtualTopSpacer) {
+            overviewAlbumGridVirtualTopSpacer = document.createElement('div');
+            overviewAlbumGridVirtualTopSpacer.className = 'library-album-grid-spacer';
+            overviewAlbumGridVirtualTopSpacer.setAttribute('aria-hidden', 'true');
+        }
+
+        if (!overviewAlbumGridVirtualBottomSpacer) {
+            overviewAlbumGridVirtualBottomSpacer = document.createElement('div');
+            overviewAlbumGridVirtualBottomSpacer.className = 'library-album-grid-spacer';
+            overviewAlbumGridVirtualBottomSpacer.setAttribute('aria-hidden', 'true');
+        }
+    };
+
+    const updateOverviewAlbumGridLayoutMetrics = (
+        pane: HTMLDivElement,
+        container: HTMLDivElement,
+    ): void => {
+        if (!isOverviewAlbumGridVirtualized() || !overviewAlbumGridLayoutMetricsDirty) {
+            return;
+        }
+
+        const gridStyle = window.getComputedStyle(container);
+        const columnGap = Number.parseFloat(gridStyle.columnGap || gridStyle.gap || '0') || 0;
+        const rowGap = Number.parseFloat(gridStyle.rowGap || gridStyle.gap || '0') || 0;
+        const paneRect = pane.getBoundingClientRect();
+        const availableWidth = Math.max(1, container.clientWidth || pane.clientWidth || Math.floor(paneRect.width) || 720);
+        const columnCount = Math.max(1, Math.floor((availableWidth + columnGap) / (104 + columnGap)));
+        const cardWidth = Math.max(104, (availableWidth - ((columnCount - 1) * columnGap)) / columnCount);
+        const totalRows = Math.ceil(overviewAlbumGridEntriesForRender.length / columnCount);
+
+        overviewAlbumGridColumnCount = columnCount;
+        overviewAlbumGridCardWidthPx = cardWidth;
+        overviewAlbumGridRowGapPx = rowGap;
+        overviewAlbumGridRowStridePx = cardWidth + rowGap;
+        overviewAlbumGridViewportHeightPx = pane.clientHeight || Math.floor(paneRect.height) || 720;
+        overviewAlbumGridTotalHeightPx = totalRows <= 0
+            ? 0
+            : (totalRows * cardWidth) + ((totalRows - 1) * rowGap);
+        overviewAlbumGridCachedMaxScrollTopPx = Math.max(0, overviewAlbumGridTotalHeightPx - overviewAlbumGridViewportHeightPx);
+        overviewAlbumGridMaxScrollTopDirty = false;
+        overviewAlbumGridLayoutMetricsDirty = false;
+    };
+
+    const disposeOverviewAlbumGridCard = (card: HTMLDivElement): void => {
+        const trackIndex = Number(card.dataset.overviewGridTrackIndex || '');
+        const image = card.querySelector('.library-album-cover-image') as HTMLImageElement | null;
+        if (image) {
+            overviewAlbumGridCoverObserver?.unobserve(image);
+            overviewAlbumGridVisibilityObserver?.unobserve(image);
+        }
+
+        if (Number.isInteger(trackIndex) && trackIndex >= 0) {
+            clearOverviewAlbumGridPendingUnloadHandle(trackIndex);
+            overviewAlbumGridVisibleTrackIndexes.delete(trackIndex);
+            if (image && overviewAlbumGridCoverElementByTrackIndex.get(trackIndex) === image) {
+                overviewAlbumGridCoverElementByTrackIndex.delete(trackIndex);
+            }
+            if (image && overviewAlbumGridImageByTrackIndex.get(trackIndex) === image) {
+                overviewAlbumGridImageByTrackIndex.delete(trackIndex);
+            }
+        }
+
+        card.remove();
+    };
+
+    const renderOverviewAlbumGridVirtualWindow = (
+        pane: HTMLDivElement | undefined,
+        container: HTMLDivElement | undefined,
+        requestVersion: number,
+    ): void => {
+        if (!pane || !container || requestVersion !== overviewAlbumGridRequestVersion || !isOverviewAlbumGridVirtualized()) {
+            return;
+        }
+
+        ensureOverviewAlbumGridVirtualSpacers();
+        updateOverviewAlbumGridLayoutMetrics(pane, container);
+        const topSpacer = overviewAlbumGridVirtualTopSpacer;
+        const bottomSpacer = overviewAlbumGridVirtualBottomSpacer;
+        if (!topSpacer || !bottomSpacer) {
+            return;
+        }
+
+        const totalRows = Math.ceil(overviewAlbumGridEntriesForRender.length / overviewAlbumGridColumnCount);
+        const visibleRowCount = Math.max(
+            1,
+            Math.ceil((overviewAlbumGridViewportHeightPx + overviewAlbumGridRowGapPx) / Math.max(1, overviewAlbumGridRowStridePx)),
+        );
+        const startRow = Math.max(
+            0,
+            Math.floor(pane.scrollTop / Math.max(1, overviewAlbumGridRowStridePx)) - overviewAlbumGridOverscanRows,
+        );
+        const endRow = Math.min(totalRows, startRow + visibleRowCount + (overviewAlbumGridOverscanRows * 2));
+        const startIndex = startRow * overviewAlbumGridColumnCount;
+        const endIndex = Math.min(overviewAlbumGridEntriesForRender.length, endRow * overviewAlbumGridColumnCount);
+        const renderKey = `${requestVersion}:${overviewAlbumGridColumnCount}:${startRow}:${endRow}`;
+        if (renderKey === overviewAlbumGridLastVirtualRenderKey) {
+            return;
+        }
+
+        overviewAlbumGridLastVirtualRenderKey = renderKey;
+        overviewAlbumGridRenderedCount = Math.max(0, endIndex - startIndex);
+
+        const topHeight = startRow * overviewAlbumGridRowStridePx;
+        const renderedRowCount = Math.max(0, endRow - startRow);
+        const renderedHeight = renderedRowCount <= 0
+            ? 0
+            : (renderedRowCount * overviewAlbumGridCardWidthPx) + ((renderedRowCount - 1) * overviewAlbumGridRowGapPx);
+        const bottomHeight = Math.max(0, overviewAlbumGridTotalHeightPx - topHeight - renderedHeight);
+
+        topSpacer.style.height = `${String(topHeight)}px`;
+        bottomSpacer.style.height = `${String(bottomHeight)}px`;
+
+        const fragment = document.createDocumentFragment();
+        fragment.append(topSpacer);
+        const nextRenderedCardsByTrackIndex = new Map<number, HTMLDivElement>();
+        const batchImages: HTMLImageElement[] = [];
+        overviewAlbumGridEntriesForRender.slice(startIndex, endIndex).forEach((entry) => {
+            const existingCard = overviewAlbumGridRenderedCardsByTrackIndex.get(entry.trackIndex);
+            const card = existingCard ?? createOverviewAlbumGridCard(entry);
+            const image = card.querySelector('.library-album-cover-image') as HTMLImageElement | null;
+            if (image) {
+                overviewAlbumGridCoverElementByTrackIndex.set(entry.trackIndex, image);
+                if (!existingCard) {
+                    batchImages.push(image);
+                }
+            }
+
+            nextRenderedCardsByTrackIndex.set(entry.trackIndex, card);
+            fragment.append(card);
+        });
+
+        overviewAlbumGridRenderedCardsByTrackIndex.forEach((card, trackIndex) => {
+            if (nextRenderedCardsByTrackIndex.has(trackIndex)) {
+                return;
+            }
+
+            disposeOverviewAlbumGridCard(card);
+        });
+
+        fragment.append(bottomSpacer);
+        container.replaceChildren(fragment);
+        overviewAlbumGridRenderedCardsByTrackIndex = nextRenderedCardsByTrackIndex;
+        markOverviewAlbumGridViewDirty();
+
+        void syncOverviewAlbumGridExpandedRow(container);
+
+        if (batchImages.length > 0) {
+            queueOverviewAlbumGridCovers(pane, batchImages, requestVersion);
+        }
+    };
+
     const appendOverviewAlbumGridToCount = (
         pane: HTMLDivElement | undefined,
         container: HTMLDivElement | undefined,
@@ -2335,12 +2667,21 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             fragment.append(card);
         });
         container.append(fragment);
+        invalidateOverviewAlbumGridMaxScrollTop();
         overviewAlbumGridRenderedCount = batchEnd;
 
         void syncOverviewAlbumGridExpandedRow(container);
 
         if (pane && batchImages.length > 0) {
             queueOverviewAlbumGridCovers(pane, batchImages, requestVersion);
+        }
+
+        if (overviewAlbumGridScrollPillPointerId !== null && overviewAlbumGridRequestedScrollProgress !== null) {
+            applyOverviewAlbumGridScrollPillProgress(overviewAlbumGridRequestedScrollProgress, {
+                showHint: true,
+                forceLetter: overviewAlbumGridLetterForProgress(overviewAlbumGridRequestedScrollProgress),
+            }, overviewAlbumGridScrollRailTravelPx);
+            return;
         }
 
         syncOverviewAlbumGridScrollPill();
@@ -2359,13 +2700,36 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         );
     };
 
+    const syncOverviewAlbumGridToRequestedProgressNow = (pane: HTMLDivElement): void => {
+        if (overviewAlbumGridRequestedScrollProgress === null) {
+            return;
+        }
+
+        const maxScrollTop = overviewAlbumGridMaxScrollTop(pane);
+        markOverviewAlbumGridViewDirty();
+        pane.scrollTop = overviewAlbumGridRequestedScrollProgress * maxScrollTop;
+        if (isOverviewAlbumGridVirtualized()) {
+            renderOverviewAlbumGridVirtualWindow(pane, context.overviewAlbumGrid, overviewAlbumGridRequestVersion);
+        }
+    };
+
     const syncOverviewAlbumGridToRequestedProgress = (pane: HTMLDivElement): void => {
         if (overviewAlbumGridRequestedScrollProgress === null) {
             return;
         }
 
-        const maxScrollTop = Math.max(0, pane.scrollHeight - pane.clientHeight);
-        pane.scrollTop = overviewAlbumGridRequestedScrollProgress * maxScrollTop;
+        if (overviewAlbumGridRequestedScrollSyncHandle !== null) {
+            return;
+        }
+
+        overviewAlbumGridRequestedScrollSyncHandle = window.requestAnimationFrame(() => {
+            overviewAlbumGridRequestedScrollSyncHandle = null;
+            if (overviewAlbumGridRequestedScrollProgress === null || !pane.isConnected) {
+                return;
+            }
+
+            syncOverviewAlbumGridToRequestedProgressNow(pane);
+        });
     };
 
     const realizeOverviewAlbumGridForRequestedProgress = (
@@ -2375,6 +2739,11 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         progress: number,
     ): void => {
         if (!pane || !container || requestVersion !== overviewAlbumGridRequestVersion) {
+            return;
+        }
+
+        if (isOverviewAlbumGridVirtualized()) {
+            syncOverviewAlbumGridToRequestedProgress(pane);
             return;
         }
 
@@ -2431,7 +2800,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
                     }
                 }
 
-                const remainingScrollPx = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
+                const remainingScrollPx = Math.max(0, overviewAlbumGridMaxScrollTop(pane) - pane.scrollTop);
                 if (remainingScrollPx <= overviewAlbumGridAppendThresholdPx) {
                     scheduleOverviewAlbumGridAppend(pane, container, requestVersion);
                 }
@@ -2452,6 +2821,12 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         disconnectOverviewAlbumGridPaneWatcher(pane);
         resetOverviewAlbumGridCoverQueue();
         container.replaceChildren();
+        overviewAlbumGridRenderedCardsByTrackIndex.clear();
+        overviewAlbumGridLastVirtualRenderKey = '';
+        overviewAlbumGridVirtualTopSpacer = null;
+        overviewAlbumGridVirtualBottomSpacer = null;
+        overviewAlbumGridLayoutMetricsDirty = true;
+        invalidateOverviewAlbumGridMaxScrollTop();
         overviewAlbumGridEntriesForRender = entries;
         overviewAlbumGridRenderedCount = 0;
         markOverviewAlbumGridViewDirty();
@@ -2462,6 +2837,36 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
+        if (isOverviewAlbumGridVirtualized()) {
+            renderOverviewAlbumGridVirtualWindow(pane, container, requestVersion);
+
+            if (!pane || requestVersion !== overviewAlbumGridRequestVersion) {
+                return;
+            }
+
+            overviewAlbumGridScrollListener = () => {
+                if (overviewAlbumGridScrollPillPointerId !== null && overviewAlbumGridRequestedScrollProgress !== null) {
+                    applyOverviewAlbumGridScrollPillProgress(overviewAlbumGridRequestedScrollProgress, {
+                        showHint: true,
+                        forceLetter: overviewAlbumGridLetterForProgress(overviewAlbumGridRequestedScrollProgress),
+                    }, overviewAlbumGridScrollRailTravelPx);
+                    return;
+                }
+
+                renderOverviewAlbumGridVirtualWindow(pane, container, requestVersion);
+                syncOverviewAlbumGridScrollPill({ showHint: false });
+            };
+            pane.addEventListener('scroll', overviewAlbumGridScrollListener, { passive: true });
+
+            await waitForNextAnimationFrame();
+            if (requestVersion !== overviewAlbumGridRequestVersion) {
+                return;
+            }
+
+            syncOverviewAlbumGridScrollPill();
+            return;
+        }
+
         appendOverviewAlbumGridBatch(pane, container, requestVersion);
 
         if (!pane || requestVersion !== overviewAlbumGridRequestVersion) {
@@ -2469,9 +2874,17 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         }
 
         overviewAlbumGridScrollListener = () => {
+            if (overviewAlbumGridScrollPillPointerId !== null && overviewAlbumGridRequestedScrollProgress !== null) {
+                applyOverviewAlbumGridScrollPillProgress(overviewAlbumGridRequestedScrollProgress, {
+                    showHint: true,
+                    forceLetter: overviewAlbumGridLetterForProgress(overviewAlbumGridRequestedScrollProgress),
+                }, overviewAlbumGridScrollRailTravelPx);
+                return;
+            }
+
             markOverviewAlbumGridViewDirty();
-            const remainingScrollPx = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
-            syncOverviewAlbumGridScrollPill({ showHint: overviewAlbumGridScrollPillPointerId !== null });
+            const remainingScrollPx = Math.max(0, overviewAlbumGridMaxScrollTop(pane) - pane.scrollTop);
+            syncOverviewAlbumGridScrollPill({ showHint: false });
             if (remainingScrollPx <= overviewAlbumGridAppendThresholdPx) {
                 scheduleOverviewAlbumGridAppend(pane, container, requestVersion);
             }
@@ -2483,7 +2896,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             return;
         }
 
-        if (pane.scrollHeight - pane.clientHeight <= overviewAlbumGridAppendThresholdPx) {
+        if (overviewAlbumGridMaxScrollTop(pane) <= overviewAlbumGridAppendThresholdPx) {
             scheduleOverviewAlbumGridAppend(pane, container, requestVersion);
         }
 
@@ -2517,9 +2930,15 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             overviewDashboardCountsRefreshHandle = null;
         }
 
+        if (overviewAlbumGridWarmupHandle !== null) {
+            window.clearTimeout(overviewAlbumGridWarmupHandle);
+            overviewAlbumGridWarmupHandle = null;
+        }
+
         // Invalidate any async overview work that might still resolve after the pane is hidden.
         overviewDashboardRequestVersion += 1;
         overviewDashboardCountsRefreshVersion += 1;
+        overviewAlbumGridWarmupVersion += 1;
     };
 
     const applyOverviewDashboardCounts = (): void => {
@@ -2651,6 +3070,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             }
 
             scheduleOverviewDashboardCountsRefresh();
+            scheduleOverviewAlbumGridWarmup();
 
             if (!context.app.classList.contains('showing-overview')) {
                 return;
@@ -2688,6 +3108,15 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
     };
 
     const setOverviewDashboardMode = (mode: OverviewDashboardMode): void => {
+        const previousMode = overviewDashboardMode;
+        if (previousMode === mode) {
+            return;
+        }
+
+        if (mode === 'albums') {
+            discardOverviewAlbumGridRenderedDom(context.overviewAlbumGrid);
+        }
+
         overviewDashboardMode = mode;
         syncOverviewDashboardMode();
         context.overviewPage.scrollTop = 0;
@@ -2763,6 +3192,12 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
         if (window.innerWidth <= 1100) {
             context.overviewPage.scrollTop = 0;
         }
+
+        if (overviewDashboardMode === 'albums' && isOverviewAlbumGridVirtualized()) {
+            invalidateOverviewAlbumGridLayoutMetrics();
+            renderOverviewAlbumGridVirtualWindow(context.overviewAlbumGridView, context.overviewAlbumGrid, overviewAlbumGridRequestVersion);
+            syncOverviewAlbumGridScrollPill({ showHint: false });
+        }
     };
 
     const formatOverviewCount = (value: number): string => overviewCountNumberFormatter.format(value);
@@ -2771,6 +3206,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
 
     function refreshOverviewDashboard(): void {
         refreshOverviewDashboardCounts();
+        scheduleOverviewAlbumGridWarmup();
 
         void refreshOverviewRecencySections();
 
@@ -2795,6 +3231,7 @@ export const createAppCoreServicesRuntime = (context: AppCoreServicesRuntimeCont
             context.overviewAlbumGridScrollPill.setPointerCapture(event.pointerId);
         }
 
+        measureOverviewAlbumGridScrollDragMetrics();
         scrollOverviewAlbumGridFromPointer(event.clientY);
     });
 
