@@ -100,6 +100,14 @@ type trackTagsInflightEntry struct {
 	hasMetadata bool
 }
 
+type trackTagsReadReservation struct {
+	entry       *trackTagsInflightEntry
+	tags        TrackTags
+	hasMetadata bool
+	cacheHit    bool
+	shouldRead  bool
+}
+
 type ffprobeAudioStream struct {
 	CodecName        string            `json:"codec_name"`
 	CodecLongName    string            `json:"codec_long_name"`
@@ -948,10 +956,24 @@ func trackTagsInflightKey(path string, signature trackTagsFileSignature) string 
 	return path + "|" + strconv.FormatInt(signature.Size, 10) + "|" + strconv.FormatInt(signature.ModUnixNs, 10)
 }
 
-func (a *App) beginTrackTagsInflight(path string, signature trackTagsFileSignature) (*trackTagsInflightEntry, bool) {
+func (a *App) reserveTrackTagsRead(path string, signature trackTagsFileSignature) trackTagsReadReservation {
 	cacheState := a.trackTagsCacheState()
 	cacheState.mu.Lock()
 	defer cacheState.mu.Unlock()
+
+	if entry, exists := cacheState.byPath[path]; exists {
+		if entry.Signature == signature {
+			a.touchTrackTagsCacheOrderLocked(path)
+			return trackTagsReadReservation{
+				tags:        entry.Tags,
+				hasMetadata: entry.HasMetadata,
+				cacheHit:    true,
+			}
+		}
+
+		delete(cacheState.byPath, path)
+		a.removeTrackTagsCacheOrderEntryLocked(path)
+	}
 
 	if cacheState.inflightBy == nil {
 		cacheState.inflightBy = make(map[string]*trackTagsInflightEntry)
@@ -959,12 +981,12 @@ func (a *App) beginTrackTagsInflight(path string, signature trackTagsFileSignatu
 
 	key := trackTagsInflightKey(path, signature)
 	if existing, exists := cacheState.inflightBy[key]; exists {
-		return existing, false
+		return trackTagsReadReservation{entry: existing}
 	}
 
 	entry := &trackTagsInflightEntry{waitCh: make(chan struct{})}
 	cacheState.inflightBy[key] = entry
-	return entry, true
+	return trackTagsReadReservation{entry: entry, shouldRead: true}
 }
 
 func (a *App) finishTrackTagsInflight(path string, signature trackTagsFileSignature, tags TrackTags, hasMetadata bool) {
@@ -1434,13 +1456,21 @@ func (a *App) readTrackTagsWithWorkerLimit(paths []string, maxWorkerCount int, a
 	}
 	waiters := make([]trackTagsWaiter, 0, len(pendingJobs))
 	for _, job := range pendingJobs {
-		entry, shouldRead := a.beginTrackTagsInflight(job.path, job.signature)
-		if shouldRead {
+		reservation := a.reserveTrackTagsRead(job.path, job.signature)
+		if reservation.cacheHit {
+			cacheHits++
+			if reservation.hasMetadata {
+				tagByPath[job.path] = reservation.tags
+			}
+			continue
+		}
+
+		if reservation.shouldRead {
 			ownedJobs = append(ownedJobs, job)
 			continue
 		}
 
-		waiters = append(waiters, trackTagsWaiter{path: job.path, entry: entry})
+		waiters = append(waiters, trackTagsWaiter{path: job.path, entry: reservation.entry})
 	}
 	pendingJobs = ownedJobs
 
